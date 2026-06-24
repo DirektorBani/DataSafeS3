@@ -1,0 +1,2 @@
+# Tauri bundles `datasafe-sync` sidecar binaries per target triple.
+# Generate with: ../../scripts/build-datasafe-sync.ps1 (from repo root)

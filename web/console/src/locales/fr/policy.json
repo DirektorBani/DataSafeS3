@@ -1,0 +1,29 @@
+{
+  "toast": {
+    "saved": "Policy saved",
+    "jsonParsed": "JSON parsed",
+    "invalidJson": "Invalid policy JSON"
+  },
+  "title": "Bucket Policies",
+  "description": "Admin-only IAM-style policy editor with visual builder and JSON view.",
+  "saving": "Saving...",
+  "save": "Save policy",
+  "fields": {
+    "bucket": "Bucket"
+  },
+  "placeholder": {
+    "selectBucket": "Select bucket"
+  },
+  "tabs": {
+    "visual": "Visual builder",
+    "json": "JSON editor"
+  },
+  "loading": "Loading policy...",
+  "json": {
+    "apply": "Apply JSON to visual editor",
+    "refresh": "Refresh JSON from visual editor"
+  },
+  "hint": {
+    "visual": "Changes sync to JSON automatically. Switch to the JSON tab for advanced edits."
+  }
+}

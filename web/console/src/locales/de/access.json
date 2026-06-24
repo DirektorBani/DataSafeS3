@@ -1,0 +1,72 @@
+{
+  "toast": {
+    "keyCreated": "Access key created",
+    "keyDeleted": "Access key deleted",
+    "tokenCreated": "API token created",
+    "tokenDeleted": "API token deleted"
+  },
+  "title": "Access",
+  "description": "S3 access keys for object storage API and console API tokens for REST admin access.",
+  "tabs": {
+    "s3": "S3 Access Keys",
+    "api": "API Tokens"
+  },
+  "actions": {
+    "createKey": "Create key",
+    "createToken": "Create token"
+  },
+  "loading": {
+    "keys": "Loading keys...",
+    "tokens": "Loading tokens..."
+  },
+  "searchPlaceholder": "Search access keys...",
+  "empty": {
+    "keys": "No access keys yet. Create one for S3 API access.",
+    "tokens": "No API tokens yet."
+  },
+  "columns": {
+    "accessKeyId": "Access Key ID",
+    "label": "Label",
+    "owner": "Owner",
+    "created": "Created",
+    "name": "Name",
+    "user": "User",
+    "scopes": "Scopes",
+    "expires": "Expires"
+  },
+  "copy": {
+    "keyId": "Key ID",
+    "secret": "Secret key",
+    "token": "Token"
+  },
+  "createKey": {
+    "title": "Create access key",
+    "description": "A new access key and secret will be generated. Store the secret securely."
+  },
+  "created": {
+    "title": "Key created successfully",
+    "description": "Copy both values now. The secret is shown only once.",
+    "warning": "Store your secret key securely. You cannot retrieve it later from this console."
+  },
+  "fields": {
+    "accessKeyId": "Access Key ID",
+    "secretAccessKey": "Secret Access Key"
+  },
+  "deleteKey": {
+    "title": "Delete access key",
+    "description": "Delete access key \"{{key}}\"? Applications using this key will lose access."
+  },
+  "createToken": {
+    "title": "Create API token",
+    "description": "Console REST token with read/write scopes. Shown once at creation."
+  },
+  "placeholder": {
+    "ciPipeline": "CI pipeline",
+    "keyLabel": "console"
+  },
+  "tokenCreated": "Token created",
+  "deleteToken": {
+    "title": "Delete API token",
+    "description": "Delete token \"{{name}}\"?"
+  }
+}

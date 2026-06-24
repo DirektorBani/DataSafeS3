@@ -1,0 +1,186 @@
+name: datasafe
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    profiles:
+      - postgres
+    environment:
+      POSTGRES_USER: ${STORAGE_POSTGRES_USER:-datasafe}
+      POSTGRES_PASSWORD: ${STORAGE_POSTGRES_PASSWORD:-datasafe}
+      POSTGRES_DB: ${STORAGE_POSTGRES_DB:-datasafe}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deploy/docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${STORAGE_POSTGRES_USER:-datasafe} -d ${STORAGE_POSTGRES_DB:-datasafe}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "${STORAGE_POSTGRES_PUBLISH_PORT:-5432}:5432"
+
+  storage-server:
+
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.0.0}
+
+    restart: unless-stopped
+
+    pull_policy: if_not_present
+
+    build:
+
+      context: .
+
+      dockerfile: deploy/docker/Dockerfile
+
+    environment:
+
+      - STORAGE_ADDR=:9000
+
+      - STORAGE_LOG_LEVEL=${STORAGE_LOG_LEVEL:-info}
+
+      - STORAGE_DEV=${STORAGE_DEV:-true}
+
+      - STORAGE_DATA_DIR=/data
+
+      - STORAGE_REGION=${STORAGE_REGION:-us-east-1}
+
+      - STORAGE_ACCESS_KEY=${STORAGE_ACCESS_KEY:-datasafe}
+
+      - STORAGE_SECRET_KEY=${STORAGE_SECRET_KEY:-datasafesecret}
+
+      - STORAGE_ADMIN_USER=${STORAGE_ADMIN_USER:-admin}
+
+      - STORAGE_ADMIN_PASSWORD=${STORAGE_ADMIN_PASSWORD:-admin}
+
+      - STORAGE_JWT_SECRET=${STORAGE_JWT_SECRET:-datasafe-jwt-secret}
+
+      - STORAGE_METADATA_BACKEND=${STORAGE_METADATA_BACKEND:-bolt}
+
+      - STORAGE_POSTGRES_DSN=${STORAGE_POSTGRES_DSN:-}
+
+      # Always use the compose service name inside the stack (.env may set localhost for native dev).
+      - STORAGE_POSTGRES_HOST=postgres
+
+      - STORAGE_POSTGRES_PORT=5432
+
+      - STORAGE_POSTGRES_USER=${STORAGE_POSTGRES_USER:-datasafe}
+
+      - STORAGE_POSTGRES_PASSWORD=${STORAGE_POSTGRES_PASSWORD:-datasafe}
+
+      - STORAGE_POSTGRES_DB=${STORAGE_POSTGRES_DB:-datasafe}
+
+      - STORAGE_SSE_MASTER_KEY=${STORAGE_SSE_MASTER_KEY:-}
+
+    ports:
+
+      - "9000:9000"
+
+    volumes:
+
+      - storage-data:/data
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+
+    logging:
+
+      driver: json-file
+
+      options:
+
+        max-size: "10m"
+
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:9000/healthz"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+
+
+  caddy:
+
+    image: caddy:2-alpine
+
+    restart: unless-stopped
+
+    depends_on:
+
+      storage-server:
+
+        condition: service_healthy
+
+    ports:
+
+      - "${PUBLIC_HTTP_PORT:-8080}:80"
+
+    volumes:
+
+      - ./deploy/docker/Caddyfile:/etc/caddy/Caddyfile:ro
+
+      - ./web/console/dist:/srv/console:ro
+
+
+
+  prometheus:
+
+    image: prom/prometheus:latest
+
+    command:
+
+      - "--config.file=/etc/prometheus/prometheus.yml"
+
+    volumes:
+
+      - ./deploy/docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+    ports:
+
+      - "${PROMETHEUS_PORT:-9090}:9090"
+
+
+
+  grafana:
+
+    image: grafana/grafana:latest
+
+    depends_on:
+
+      - prometheus
+
+    ports:
+
+      - "${GRAFANA_PORT:-3000}:3000"
+
+    environment:
+
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+
+      - GF_USERS_ALLOW_SIGN_UP=false
+
+    volumes:
+
+      - ./deploy/docker/grafana/provisioning:/etc/grafana/provisioning:ro
+
+      - ./deploy/docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+
+
+volumes:
+
+  storage-data:
+
+  postgres-data:
+
+
+

@@ -1,0 +1,73 @@
+{
+  "access": {
+    "readOnly": "Только чтение",
+    "readWrite": "Чтение и запись"
+  },
+  "groups": {
+    "empty": "Групп пока нет. Сначала создайте группу.",
+    "create": "Создать группу",
+    "createAction": "Создать группу",
+    "summary": "{{access}} — {{buckets}} бакетов — {{members}} участников",
+    "idp": "IdP:",
+    "idpMap": "Сопоставление IdP",
+    "buckets": "Бакеты",
+    "tenantBuckets": "Бакеты тенанта",
+    "noBuckets": "В этом тенанте пока нет бакетов.",
+    "saveBuckets": "Сохранить бакеты",
+    "emptyList": "Групп пока нет. Создайте для ограничения доступа к бакетам."
+  },
+  "toast": {
+    "tenantCreated": "Тенант создан",
+    "memberAdded": "Участник добавлен",
+    "userCreated": "Пользователь создан",
+    "groupCreated": "Группа создана",
+    "roleUpdated": "Роль обновлена",
+    "groupsUpdated": "Группы обновлены",
+    "groupBucketsUpdated": "Бакеты группы обновлены",
+    "idpMappingUpdated": "Сопоставление IdP обновлено"
+  },
+  "title": "Тенанты",
+  "description": {
+    "admin": "Мультитенантная изоляция с группами, ролями участников и доступом к бакетам.",
+    "tenantAdmin": "Управление группами, участниками и ролями для ваших тенантов."
+  },
+  "fields": {
+    "tenantName": "Имя тенанта",
+    "name": "Имя",
+    "accessLevel": "Уровень доступа",
+    "idpGroup": "Имя группы IdP (необязательно)",
+    "description": "Описание (необязательно)",
+    "username": "Имя пользователя",
+    "email": "Email (необязательно)",
+    "password": "Пароль",
+    "tenantRole": "Роль в тенанте",
+    "groups": "Группы"
+  },
+  "actions": {
+    "create": "Создать"
+  },
+  "empty": "Для вашего аккаунта нет доступных тенантов.",
+  "sections": {
+    "members": "Участники",
+    "groups": "Группы"
+  },
+  "placeholder": {
+    "idpGroup": "напр. audit-finance — сопоставляется при входе LDAP/OIDC"
+  },
+  "users": {
+    "create": "Создать пользователя",
+    "createAction": "Создать пользователя",
+    "selectExisting": "Выбрать существующего",
+    "add": "Добавить",
+    "groupsForMember": "Группы для нового участника"
+  },
+  "badge": {
+    "tenantAdmin": "Администратор тенанта"
+  },
+  "members": {
+    "empty": "Участников пока нет. Создайте пользователя или добавьте существующий аккаунт."
+  },
+  "prompt": {
+    "idpGroup": "Имя группы IdP (claim LDAP/OIDC)"
+  }
+}

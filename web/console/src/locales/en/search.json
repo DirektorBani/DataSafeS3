@@ -1,0 +1,6 @@
+{
+  "placeholder": "Search buckets, objects, users… (Ctrl+K)",
+  "searching": "Searching…",
+  "noResults": "No results for \"{{query}}\"",
+  "loadMore": "Load more ({{remaining}} remaining)"
+}

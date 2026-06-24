@@ -1,0 +1,66 @@
+{{- if .Values.storageServerStandby.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "datasafe.storageServer.fullname" . }}-standby
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage-server-standby
+spec:
+  replicas: {{ .Values.storageServerStandby.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "datasafe.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: storage-server-standby
+  template:
+    metadata:
+      labels:
+        {{- include "datasafe.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: storage-server-standby
+    spec:
+      containers:
+        - name: storage-server-standby
+          image: {{ include "datasafe.image" (dict "global" .Values.global "image" .Values.storageServer.image) }}
+          imagePullPolicy: {{ .Values.storageServer.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.storageServerStandby.service.port }}
+          env:
+            - name: STORAGE_READ_ONLY
+              value: "true"
+            - name: STORAGE_ADDR
+              value: ":{{ .Values.storageServerStandby.service.port }}"
+            - name: STORAGE_METADATA_BACKEND
+              value: postgres
+          envFrom:
+            - configMapRef:
+                name: {{ include "datasafe.storageServer.fullname" . }}
+            - secretRef:
+                name: {{ include "datasafe.storageServer.fullname" . }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          resources:
+            {{- toYaml .Values.storageServerStandby.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "datasafe.storageServer.fullname" . }}-standby
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.storageServerStandby.service.port }}
+      targetPort: http
+      name: http
+  selector:
+    {{- include "datasafe.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: storage-server-standby
+{{- end }}

@@ -1,0 +1,73 @@
+{
+  "access": {
+    "readOnly": "Read only",
+    "readWrite": "Read & write"
+  },
+  "groups": {
+    "empty": "No groups yet. Create a group first.",
+    "create": "Create group",
+    "createAction": "Create group",
+    "summary": "{{access}} — {{buckets}} buckets — {{members}} members",
+    "idp": "IdP:",
+    "idpMap": "IdP map",
+    "buckets": "Buckets",
+    "tenantBuckets": "Tenant buckets",
+    "noBuckets": "No buckets in this tenant yet.",
+    "saveBuckets": "Save buckets",
+    "emptyList": "No groups yet. Create one to scope bucket access."
+  },
+  "toast": {
+    "tenantCreated": "Tenant created",
+    "memberAdded": "Member added",
+    "userCreated": "User created",
+    "groupCreated": "Group created",
+    "roleUpdated": "Role updated",
+    "groupsUpdated": "Groups updated",
+    "groupBucketsUpdated": "Group buckets updated",
+    "idpMappingUpdated": "IdP mapping updated"
+  },
+  "title": "Tenants",
+  "description": {
+    "admin": "Multi-tenant isolation with groups, member roles, and bucket access.",
+    "tenantAdmin": "Manage groups, members, and roles for tenants you administer."
+  },
+  "fields": {
+    "tenantName": "Tenant name",
+    "name": "Name",
+    "accessLevel": "Access level",
+    "idpGroup": "IdP group name (optional)",
+    "description": "Description (optional)",
+    "username": "Username",
+    "email": "Email (optional)",
+    "password": "Password",
+    "tenantRole": "Tenant role",
+    "groups": "Groups"
+  },
+  "actions": {
+    "create": "Create"
+  },
+  "empty": "No tenants available for your account.",
+  "sections": {
+    "members": "Members",
+    "groups": "Groups"
+  },
+  "placeholder": {
+    "idpGroup": "e.g. audit-finance — matched on LDAP/OIDC login"
+  },
+  "users": {
+    "create": "Create user",
+    "createAction": "Create user",
+    "selectExisting": "Select existing user",
+    "add": "Add",
+    "groupsForMember": "Groups for new member"
+  },
+  "badge": {
+    "tenantAdmin": "Tenant administrator"
+  },
+  "members": {
+    "empty": "No members yet. Create a user or add an existing account."
+  },
+  "prompt": {
+    "idpGroup": "IdP group name (LDAP/OIDC claim)"
+  }
+}

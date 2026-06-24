@@ -1,0 +1,22 @@
+{
+  "section": {
+    "console": "Console",
+    "administration": "Administration",
+    "tenantAdmin": "Admin locataire"
+  },
+  "dashboard": "Tableau de bord",
+  "buckets": "Buckets",
+  "files": "Fichiers",
+  "access": "Accès",
+  "usage": "Utilisation",
+  "profile": "Profil",
+  "users": "Utilisateurs",
+  "tenants": "Locataires",
+  "gateway": "Passerelle",
+  "federation": "Fédération",
+  "cluster": "Cluster",
+  "policies": "Stratégies",
+  "activity": "Activité",
+  "webhooks": "Webhooks",
+  "settings": "Paramètres"
+}

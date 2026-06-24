@@ -1,0 +1,38 @@
+name: feature-audit
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  pull_request:
+    paths:
+      - "internal/**"
+      - "scripts/feature-audit-test.ps1"
+      - "docker-compose.yml"
+      - ".github/workflows/audit.yml"
+  workflow_dispatch:
+
+jobs:
+  feature-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start core compose stack
+        run: |
+          docker compose -p datasafe-audit up -d --build --wait storage-server caddy postgres 2>/dev/null \
+            || docker compose -p datasafe-audit --profile postgres up -d --build --wait storage-server caddy postgres
+          for i in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:8080/healthz; then exit 0; fi
+            sleep 2
+          done
+          docker compose -p datasafe-audit ps
+          exit 1
+
+      - name: Run feature-audit (API smoke subset)
+        run: |
+          pwsh -File scripts/feature-audit-test.ps1 -BaseUrl http://127.0.0.1:8080/api/v1
+        continue-on-error: false
+
+      - name: Tear down
+        if: always()
+        run: docker compose -p datasafe-audit down -v --remove-orphans

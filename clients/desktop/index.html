@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DataSafeS3 Sync</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>DataSafeS3 Sync</h1>
+        <p id="statusBadge" class="badge badge-muted">Loading…</p>
+      </header>
+
+      <section class="card">
+        <h2>Account</h2>
+        <label>Server URL <input id="server" value="http://localhost:8080" /></label>
+        <label>Username <input id="user" autocomplete="username" /></label>
+        <label>Password <input id="password" type="password" autocomplete="current-password" /></label>
+        <button id="loginBtn" type="button" class="primary">Sign in</button>
+      </section>
+
+      <section class="card">
+        <h2>Sync folder</h2>
+        <label>Local folder
+          <div class="row">
+            <input id="folder" placeholder="Choose a folder…" readonly />
+            <button id="pickFolderBtn" type="button">Browse…</button>
+          </div>
+        </label>
+        <label>Bucket
+          <select id="bucket"><option value="files">files (home)</option></select>
+        </label>
+        <label>Prefix (optional) <input id="prefix" placeholder="reports/" /></label>
+        <label>Conflict policy
+          <select id="conflictPolicy">
+            <option value="last_write_wins">Last write wins</option>
+            <option value="local_wins">Always keep local</option>
+            <option value="remote_wins">Always keep remote</option>
+            <option value="keep_both">Keep both (backup remote)</option>
+          </select>
+        </label>
+        <label class="check"><input id="deleteSync" type="checkbox" /> Propagate deletions</label>
+        <label class="check"><input id="useFsnotify" type="checkbox" checked /> Use filesystem watch (fsnotify)</label>
+        <label>Watch interval (seconds) <input id="interval" type="number" min="1" value="15" /></label>
+        <div class="actions">
+          <button id="syncBtn" type="button" class="primary">Sync now</button>
+          <button id="watchStartBtn" type="button">Start watch</button>
+          <button id="watchStopBtn" type="button" disabled>Stop watch</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Conflicts</h2>
+        <button id="refreshConflictsBtn" type="button">Refresh</button>
+        <ul id="conflictList"></ul>
+      </section>
+
+      <section class="card">
+        <h2>Activity</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

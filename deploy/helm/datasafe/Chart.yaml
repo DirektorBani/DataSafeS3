@@ -1,0 +1,12 @@
+apiVersion: v2
+name: datasafe
+description: Helm chart for DataSafeS3 — self-hosted S3-compatible object storage with web console
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - s3
+  - object-storage
+  - datasafe
+maintainers:
+  - name: DataSafeS3

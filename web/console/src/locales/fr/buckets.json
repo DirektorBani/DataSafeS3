@@ -1,0 +1,42 @@
+{
+  "toast": {
+    "created": "Bucket created",
+    "deleted": "Bucket deleted",
+    "unpinned": "Unpinned",
+    "pinned": "Pinned to dashboard",
+    "failed": "Failed"
+  },
+  "columns": {
+    "name": "Name",
+    "access": "Access",
+    "created": "Created"
+  },
+  "visibility": {
+    "publicRead": "Public read only",
+    "private": "Private"
+  },
+  "actions": {
+    "pinTitle": "Pin bucket",
+    "create": "Create bucket"
+  },
+  "title": "Buckets",
+  "description": "Create and manage storage buckets.",
+  "loading": "Loading buckets...",
+  "searchPlaceholder": "Search buckets...",
+  "empty": "No buckets yet. Create one to get started.",
+  "create": {
+    "title": "Create bucket",
+    "description": "Enter a unique bucket name. Names are case-sensitive."
+  },
+  "fields": {
+    "bucketName": "Bucket name",
+    "storageType": "Storage type"
+  },
+  "placeholder": {
+    "bucketName": "my-bucket"
+  },
+  "delete": {
+    "title": "Delete bucket",
+    "description": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone and requires the bucket to be empty."
+  }
+}

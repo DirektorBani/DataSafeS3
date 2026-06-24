@@ -1,0 +1,72 @@
+{
+  "toast": {
+    "keyCreated": "Ключ доступа создан",
+    "keyDeleted": "Ключ доступа удалён",
+    "tokenCreated": "API-токен создан",
+    "tokenDeleted": "API-токен удалён"
+  },
+  "title": "Доступ",
+  "description": "S3-ключи для API объектного хранилища и API-токены консоли для REST-доступа администратора.",
+  "tabs": {
+    "s3": "S3-ключи доступа",
+    "api": "API-токены"
+  },
+  "actions": {
+    "createKey": "Создать ключ",
+    "createToken": "Создать токен"
+  },
+  "loading": {
+    "keys": "Загрузка ключей...",
+    "tokens": "Загрузка токенов..."
+  },
+  "searchPlaceholder": "Поиск ключей доступа...",
+  "empty": {
+    "keys": "Ключей доступа пока нет. Создайте для доступа к S3 API.",
+    "tokens": "API-токенов пока нет."
+  },
+  "columns": {
+    "accessKeyId": "Access Key ID",
+    "label": "Метка",
+    "owner": "Владелец",
+    "created": "Создан",
+    "name": "Имя",
+    "user": "Пользователь",
+    "scopes": "Области",
+    "expires": "Истекает"
+  },
+  "copy": {
+    "keyId": "Key ID",
+    "secret": "Секретный ключ",
+    "token": "Токен"
+  },
+  "createKey": {
+    "title": "Создать ключ доступа",
+    "description": "Будут сгенерированы новый ключ и секрет. Храните секрет в безопасности."
+  },
+  "created": {
+    "title": "Ключ успешно создан",
+    "description": "Скопируйте оба значения сейчас. Секрет показывается только один раз.",
+    "warning": "Храните секретный ключ в безопасности. Позже его нельзя получить из консоли."
+  },
+  "fields": {
+    "accessKeyId": "Access Key ID",
+    "secretAccessKey": "Secret Access Key"
+  },
+  "deleteKey": {
+    "title": "Удалить ключ доступа",
+    "description": "Удалить ключ «{{key}}»? Приложения, использующие этот ключ, потеряют доступ."
+  },
+  "createToken": {
+    "title": "Создать API-токен",
+    "description": "REST-токен консоли с областями чтения/записи. Показывается один раз при создании."
+  },
+  "placeholder": {
+    "ciPipeline": "CI pipeline",
+    "keyLabel": "console"
+  },
+  "tokenCreated": "Токен создан",
+  "deleteToken": {
+    "title": "Удалить API-токен",
+    "description": "Удалить токен «{{name}}»?"
+  }
+}

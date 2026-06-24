@@ -1,0 +1,42 @@
+﻿# Development overrides — single-node BoltDB with monitoring and optional S3 test target.
+# Install: helm install datasafe deploy/helm/datasafe -f deploy/helm/datasafe/values-dev.yaml
+
+storageServer:
+  replicaCount: 1
+  metadataBackend: bolt
+  config:
+    logLevel: debug
+
+postgres:
+  enabled: false
+
+ldap:
+  enabled: false
+
+oidc:
+  enabled: false
+
+minio:
+  enabled: true
+  persistence:
+    enabled: false
+
+monitoring:
+  prometheus:
+    enabled: true
+  grafana:
+    enabled: true
+
+ingress:
+  enabled: true
+  console:
+    host: datasafe.local
+  s3:
+    host: s3.datasafe.local
+
+persistence:
+  enabled: true
+  data:
+    size: 10Gi
+  metadata:
+    enabled: false

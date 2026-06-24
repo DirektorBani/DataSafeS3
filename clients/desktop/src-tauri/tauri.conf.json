@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "DataSafeS3 Sync",
+  "version": "0.3.0",
+  "identifier": "com.datasafe.sync",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "DataSafeS3 Sync",
+        "width": 520,
+        "height": 720,
+        "resizable": true
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": ["binaries/datasafe-sync"]
+  },
+  "plugins": {
+    "shell": {
+      "open": false
+    }
+  }
+}

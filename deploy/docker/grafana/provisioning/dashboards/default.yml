@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: DataSafeS3
+    orgId: 1
+    folder: Датасейф S3
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

@@ -1,0 +1,32 @@
+{
+  "title": "Usage",
+  "description": {
+    "admin": "System-wide storage consumption and transfer metrics (all buckets).",
+    "user": "Storage usage for buckets you own."
+  },
+  "metrics": {
+    "bucketsAll": "Buckets (all)",
+    "yourBuckets": "Your buckets",
+    "objects": "Objects",
+    "totalStorage": "Total storage",
+    "uploadBytes": "Upload bytes",
+    "download": "Download: {{bytes}}"
+  },
+  "chart": {
+    "perBucket": "Per-bucket storage (system)",
+    "yourBucketStorage": "Your bucket storage",
+    "totalByBucket": "Total size by bucket",
+    "growth": "Storage growth",
+    "last30Days": "Daily snapshots (last 30 days)"
+  },
+  "loading": "Loading bucket usage...",
+  "searchPlaceholder": "Search buckets...",
+  "empty": "No buckets yet.",
+  "columns": {
+    "bucket": "Bucket",
+    "owner": "Owner",
+    "objects": "Objects",
+    "size": "Size",
+    "lastActivity": "Last activity"
+  }
+}

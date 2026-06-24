@@ -1,0 +1,129 @@
+:root {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: #0f172a;
+  background: #f1f5f9;
+  --card: #fff;
+  --border: #e2e8f0;
+  --primary: #2563eb;
+  --ok: #15803d;
+  --warn: #b45309;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  padding: 1rem 1.25rem 2rem;
+}
+main {
+  max-width: 36rem;
+  margin: 0 auto;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+h1 {
+  font-size: 1.35rem;
+  margin: 0;
+}
+h2 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem 1.1rem;
+  margin-bottom: 1rem;
+}
+label {
+  display: block;
+  margin: 0.6rem 0;
+  font-size: 0.9rem;
+}
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+input,
+select {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  font: inherit;
+}
+.row {
+  display: flex;
+  gap: 0.5rem;
+}
+.row input {
+  flex: 1;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+}
+button.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.badge-muted {
+  background: #e2e8f0;
+}
+.badge-ok {
+  background: #dcfce7;
+  color: var(--ok);
+}
+.badge-warn {
+  background: #ffedd5;
+  color: var(--warn);
+}
+.muted {
+  color: #64748b;
+}
+pre {
+  margin: 0.5rem 0 0;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 0.75rem;
+  min-height: 8rem;
+  max-height: 14rem;
+  overflow: auto;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+}

@@ -1,0 +1,19 @@
+# Dev overlay: Vite HMR for console (use with --profile dev).
+# Usage:
+#   docker compose -p cursor_p --profile dev -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+services:
+  console-dev:
+    profiles:
+      - dev
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    volumes:
+      - ./web/console:/app
+    ports:
+      - "5173:5173"
+
+  caddy:
+    volumes:
+      - ./deploy/docker/Caddyfile.dev:/etc/caddy/Caddyfile:ro

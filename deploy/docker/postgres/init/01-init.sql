@@ -1,0 +1,3 @@
+﻿-- DataSafeS3 PostgreSQL metadata init (docker-entrypoint)
+-- Role and database are created by POSTGRES_USER / POSTGRES_DB in docker-compose.
+-- Schema migrations run when storage-server starts.

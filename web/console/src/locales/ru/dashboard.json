@@ -1,0 +1,35 @@
+{
+  "title": "Обзор",
+  "description": {
+    "system": "Обзор кластера хранения {{brand}} по всей системе.",
+    "user": "Обзор ваших бакетов и использования хранилища."
+  },
+  "metrics": {
+    "buckets": "Бакеты",
+    "bucketsDesc": "Всего бакетов",
+    "storageUsed": "Использовано",
+    "againstQuota": "Относительно квоты",
+    "quota": "Квота",
+    "maxStorage": "Максимальный объём",
+    "remaining": "Осталось",
+    "availableStorage": "Доступное хранилище",
+    "fromUsageApi": "Из API использования",
+    "objects": "Объекты",
+    "latestObjects": "Последние объекты",
+    "accessKeys": "Ключи доступа",
+    "activeCredentials": "Активные API-учётные данные",
+    "apiHealth": "Состояние API",
+    "online": "В сети",
+    "offline": "Не в сети"
+  },
+  "favorites": {
+    "title": "Избранное",
+    "description": "Закреплённые бакеты и папки"
+  },
+  "chart": {
+    "title": "Рост хранилища",
+    "description": "Ежедневные снимки объёма",
+    "empty": "Пока нет данных для графика.",
+    "series": "Хранилище"
+  }
+}

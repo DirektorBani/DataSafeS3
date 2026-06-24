@@ -1,0 +1,58 @@
+{
+  "actions": {
+    "all": "All actions",
+    "login": "Login",
+    "logout": "Logout",
+    "bucketCreated": "Bucket created",
+    "bucketDeleted": "Bucket deleted",
+    "objectUploaded": "Object uploaded",
+    "objectDeleted": "Object deleted",
+    "keyCreated": "Access key created",
+    "keyDeleted": "Access key deleted",
+    "userCreated": "User created",
+    "userDeleted": "User deleted",
+    "userUpdated": "User updated",
+    "policyChanged": "Policy changed",
+    "settingsChanged": "Settings changed",
+    "webhookCreated": "Webhook created",
+    "webhookDeleted": "Webhook deleted",
+    "shareCreated": "Share link created",
+    "mfaEnabled": "MFA enabled",
+    "mfaDisabled": "MFA disabled"
+  },
+  "title": "Activity",
+  "description": "Audit log of storage and admin operations. Refreshes every 5 seconds.",
+  "live": "Live",
+  "updating": "Updating…",
+  "filters": {
+    "period": "Period",
+    "action": "Action",
+    "user": "User",
+    "bucket": "Bucket",
+    "ip": "IP address",
+    "search": "Search"
+  },
+  "period": {
+    "24h": "Last 24 hours",
+    "7d": "Last 7 days",
+    "30d": "Last 30 days",
+    "all": "All time"
+  },
+  "placeholder": {
+    "username": "Username",
+    "bucket": "Bucket name",
+    "ip": "192.168.1.1",
+    "search": "Resource, action..."
+  },
+  "loading": "Loading activity...",
+  "empty": "No activity events match your filters.",
+  "columns": {
+    "time": "Time",
+    "user": "User",
+    "action": "Action",
+    "resourceType": "Resource type",
+    "resource": "Resource",
+    "ip": "IP"
+  },
+  "pagination": "{{total}} events · page {{page}} of {{pages}}"
+}

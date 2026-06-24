@@ -1,0 +1,54 @@
+{
+  "toast": {
+    "created": "User created",
+    "deleted": "User deleted",
+    "updated": "User updated",
+    "passwordReset": "Password reset",
+    "quotaUpdated": "Quota updated"
+  },
+  "fields": {
+    "password": "Password"
+  },
+  "columns": {
+    "username": "Username",
+    "email": "Email",
+    "role": "Role",
+    "storageQuota": "Storage quota",
+    "objectQuota": "Object quota",
+    "status": "Status",
+    "lastLogin": "Last login"
+  },
+  "status": {
+    "active": "Active",
+    "suspended": "Suspended"
+  },
+  "actions": {
+    "edit": "Edit",
+    "resetPwd": "Reset pwd"
+  },
+  "title": "Users",
+  "description": "Manage console accounts and roles.",
+  "loading": "Loading users...",
+  "searchPlaceholder": "Search users...",
+  "empty": "No users found.",
+  "create": {
+    "title": "Create user",
+    "description": "Add a new console account.",
+    "action": "Create"
+  },
+  "reset": {
+    "title": "Reset password",
+    "description": "Set a new password for {{username}}.",
+    "action": "Reset"
+  },
+  "quota": {
+    "title": "Edit user",
+    "description": "Set storage and object limits for {{username}}.",
+    "storage": "Storage quota",
+    "objectCount": "Object count quota"
+  },
+  "delete": {
+    "title": "Delete user",
+    "description": "Delete user \"{{username}}\"? This cannot be undone."
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "trash": {
+    "title": "Soft delete / Trash",
+    "description": "Move deleted objects to .datasafe-trash instead of permanent delete.",
+    "enable": "Enable soft delete (trash bucket)",
+    "autoPurge": "Auto-purge after",
+    "days": "Days",
+    "months": "Months",
+    "daysTotal": "{{days}} days total (min 1, max 3650)"
+  },
+  "ldap": {
+    "title": "LDAP / Active Directory",
+    "enable": "Enable LDAP",
+    "placeholder": {
+      "url": "ldap://localhost:389",
+      "bindDn": "Bind DN",
+      "bindPassword": "Bind password",
+      "baseDn": "Base DN",
+      "groupAttr": "Group attribute (e.g. memberOf)"
+    },
+    "dockerHint": "When DataSafeS3 runs in Docker, localhost is auto-rewritten to reach the host LDAP server.",
+    "groupsHint": "LDAP group names are matched to tenant group IdP map on login.",
+    "test": "Test connection",
+    "sync": "Sync users",
+    "synced": "Synced {{count}} users",
+    "syncInterval": "Scheduled sync interval (minutes)",
+    "syncIntervalHint": "0 disables background sync. Default 60 when LDAP is enabled."
+  },
+  "oidc": {
+    "title": "OIDC / SSO",
+    "enable": "Enable SSO",
+    "placeholder": {
+      "issuer": "Issuer URL",
+      "internalIssuer": "Internal issuer URL",
+      "clientId": "Client ID",
+      "clientSecret": "Client secret",
+      "redirectUrl": "Redirect URL",
+      "groupsClaim": "Groups claim"
+    },
+    "dockerHint": "When DataSafeS3 runs in Docker, set internal issuer to reach the IdP from the container.",
+    "groupsHint": "OIDC group names from this JWT claim are matched to tenant group IdP map."
+  },
+  "mfa": {
+    "title": "MFA policy",
+    "requireAdmin": "Require MFA for administrators",
+    "hint": "Personal MFA enrollment is in Profile."
+  },
+  "cluster": {
+    "title": "Cluster (MVP)",
+    "distributed": "Distributed mode",
+    "erasure": "Erasure coding (planned)",
+    "diskPaths": "Disk paths (one per line)"
+  },
+  "logging": {
+    "title": "External logging",
+    "description": "Forward structured JSON logs to multiple sinks simultaneously.",
+    "address": "Address / URL",
+    "index": "Index name",
+    "bearerToken": "Optional bearer token",
+    "username": "Username (basic auth)",
+    "password": "Password (basic auth)",
+    "apiKey": "API key (optional, overrides basic auth)",
+    "tlsVerify": "TLS verify"
+  },
+  "swagger": {
+    "title": "Community API (Swagger)",
+    "description": "Interactive OpenAPI explorer for the Community Integration API.",
+    "open": "Open Swagger UI"
+  }
+}

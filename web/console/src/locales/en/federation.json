@@ -1,0 +1,17 @@
+{
+  "toast": {
+    "registered": "Cluster registered"
+  },
+  "title": "Federation",
+  "description": "Registered remote {{brand}} clusters (config MVP).",
+  "fields": {
+    "name": "Name",
+    "endpoint": "Endpoint"
+  },
+  "placeholder": {
+    "endpoint": "https://remote:9000"
+  },
+  "actions": {
+    "register": "Register"
+  }
+}

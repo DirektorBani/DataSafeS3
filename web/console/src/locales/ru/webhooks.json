@@ -1,0 +1,60 @@
+{
+  "error": {
+    "headersJson": "Заголовки должны быть JSON-объектом"
+  },
+  "toast": {
+    "created": "Вебхук создан",
+    "deleted": "Вебхук удалён",
+    "retryQueued": "Повтор поставлен в очередь"
+  },
+  "title": "Вебхуки",
+  "description": "HTTP-уведомления о событиях хранилища и администрирования.",
+  "actions": {
+    "add": "Добавить вебхук",
+    "log": "Журнал"
+  },
+  "loading": "Загрузка вебхуков...",
+  "columns": {
+    "name": "Имя",
+    "url": "URL",
+    "events": "События",
+    "status": "Статус",
+    "created": "Создан"
+  },
+  "status": {
+    "enabled": "Включён",
+    "disabled": "Отключён"
+  },
+  "empty": "Вебхуки не настроены.",
+  "create": {
+    "title": "Добавить вебхук",
+    "description": "POST JSON на ваш HTTP-эндпоинт при возникновении событий.",
+    "defaultName": "Вебхук"
+  },
+  "fields": {
+    "name": "Имя",
+    "template": "Шаблон (необязательно)",
+    "targetUrl": "Целевой URL",
+    "eventTypes": "Типы событий",
+    "headers": "Заголовки (JSON, необязательно)",
+    "enabled": "Включён"
+  },
+  "placeholder": {
+    "name": "Production alerts",
+    "template": "Пользовательский URL",
+    "url": "https://example.com/hook",
+    "headers": "{\"Authorization\": \"Bearer token\"}"
+  },
+  "delete": {
+    "title": "Удалить вебхук",
+    "description": "Удалить вебхук «{{name}}»?"
+  },
+  "delivery": {
+    "title": "Журнал доставки — {{name}}",
+    "description": "Последние попытки доставки вебхука",
+    "loading": "Загрузка…",
+    "empty": "Доставок пока нет.",
+    "retry": "Повторить",
+    "attempts": "попыток:"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "tabs": {
+    "buckets": "Bucket settings",
+    "system": "Administrator settings"
+  },
+  "buckets": {
+    "confirmDiscard": "Discard unsaved changes?",
+    "toast": {
+      "resolveMixed": "Resolve mixed values before saving ({{fields}}).",
+      "saved": "Saved {{ok}}/{{total}} buckets",
+      "partial": "Saved {{ok}}/{{total}} buckets. Failed: {{names}}",
+      "failed": "Save failed"
+    },
+    "loading": "Loading bucket settings...",
+    "title": "Bucket settings",
+    "description": "Configure bucket properties, lifecycle, and quotas.",
+    "empty": "Create a bucket to configure per-bucket settings.",
+    "selectOne": "Select at least one bucket to edit settings.",
+    "applyMode": {
+      "label": "Apply mode",
+      "overwrite": "Overwrite all",
+      "onlyEmpty": "Only empty fields",
+      "overwriteHint": "Replace settings on every selected bucket.",
+      "onlyEmptyHint": "Update only default/empty fields per bucket."
+    },
+    "confirm": {
+      "title": "Apply to {{count}} buckets?",
+      "description": "Existing settings on selected buckets will be replaced.",
+      "apply": "Apply"
+    }
+  },
+  "system": {
+    "error": {
+      "retentionRange": "Auto-purge must be between 1 and 3650 days"
+    },
+    "toast": {
+      "saved": "System settings saved"
+    },
+    "loading": "Loading administrator settings...",
+    "loadError": "Unable to load system configuration.",
+    "title": "Administrator settings",
+    "description": "LDAP, SSO, logging, trash, and cluster configuration."
+  },
+  "picker": {
+    "label": "Buckets",
+    "selected": "{{count}} selected",
+    "searchPlaceholder": "Search buckets...",
+    "selectVisible": "Select visible",
+    "clear": "Clear",
+    "noMatch": "No buckets match.",
+    "configured": "configured",
+    "default": "default"
+  },
+  "bucketTabs": {
+    "general": "General",
+    "versioning": "Versioning",
+    "objectLock": "Object Lock",
+    "storageClass": "Storage Class",
+    "lifecycle": "Lifecycle",
+    "visibility": "Visibility",
+    "quotas": "Quotas",
+    "multipleValues": "Multiple values",
+    "multipleValuesCount": "Multiple values ({{count}} buckets)",
+    "generalTitle": "General",
+    "owner": "Owner: {{owner}}",
+    "description": "Description",
+    "tags": "Bucket tags (JSON)",
+    "saveTags": "Save tags",
+    "adminOnly": "Administrator only",
+    "enableVersioning": "Enable object versioning",
+    "objectLockTitle": "Object Lock (WORM)",
+    "enableWorm": "Enable immutable storage (WORM)",
+    "defaultRetention": "Default retention",
+    "storageClassTitle": "Storage class",
+    "lifecycleTitle": "Lifecycle rules",
+    "lifecycleDescription": "JSON array of expiration rules",
+    "lifecyclePlaceholder": "Multiple values — edit to set for all selected",
+    "visibilityTitle": "Visibility",
+    "private": "Private",
+    "publicRead": "Public read",
+    "quotasTitle": "Quotas",
+    "quotasDescription": "0 = unlimited",
+    "maxSize": "Max size (bytes)",
+    "maxObjects": "Max objects"
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "id": "datasafe",
+  "realm": "datasafe",
+  "displayName": "Датасейф S3",
+  "displayNameHtml": "Датасейф S3",
+  "loginTheme": "datasafe",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "groups": [
+    {
+      "name": "datasafe-users",
+      "path": "/datasafe-users"
+    }
+  ],
+  "users": [
+    {
+      "username": "ssouser",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "SSO",
+      "lastName": "User",
+      "email": "ssouser@datasafe.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "groups": ["/datasafe-users"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "datasafe-console",
+      "name": "DataSafeS3 Console",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "datasafe-console-secret",
+      "redirectUris": [
+        "http://localhost:8080/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8080"
+      ],
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}

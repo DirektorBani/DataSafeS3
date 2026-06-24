@@ -1,0 +1,30 @@
+{
+  "statement": "Оператор",
+  "effect": "Эффект",
+  "effectAllow": "Разрешить",
+  "effectDeny": "Запретить",
+  "principal": "Субъект",
+  "quickPresets": "Быстрые пресеты",
+  "presets": {
+    "read": "Чтение",
+    "write": "Запись",
+    "delete": "Удаление",
+    "list": "Список",
+    "admin": "Админ"
+  },
+  "actions": "Действия",
+  "resources": "Ресурсы",
+  "bucketArn": "ARN бакета",
+  "allObjects": "Все объекты",
+  "addResource": "Добавить ресурс",
+  "intro": "Создайте IAM-операторы для бакета {{bucket}}",
+  "addStatement": "Добавить оператор",
+  "empty": "Операторов пока нет. Добавьте для выдачи или запрета прав.",
+  "s3Actions": {
+    "listBucket": "Список бакета",
+    "getObject": "Получить объект",
+    "putObject": "Записать объект",
+    "deleteObject": "Удалить объект",
+    "allS3": "Все действия S3"
+  }
+}

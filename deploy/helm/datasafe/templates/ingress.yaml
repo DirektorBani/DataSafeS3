@@ -1,0 +1,67 @@
+{{- if and .Values.ingress.enabled .Values.caddy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "datasafe.fullname" . }}-console
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-console
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.console.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.console.host | quote }}
+      secretName: {{ .Values.ingress.console.tlsSecret | required "ingress.console.tlsSecret is required when ingress.console.tls is true" }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.console.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.console.path }}
+            pathType: {{ .Values.ingress.console.pathType }}
+            backend:
+              service:
+                name: {{ include "datasafe.caddy.fullname" . }}
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "datasafe.fullname" . }}-s3
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress-s3
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.s3.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.s3.host | quote }}
+      secretName: {{ .Values.ingress.s3.tlsSecret | required "ingress.s3.tlsSecret is required when ingress.s3.tls is true" }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.s3.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.s3.path }}
+            pathType: {{ .Values.ingress.s3.pathType }}
+            backend:
+              service:
+                name: {{ include "datasafe.storageServer.fullname" . }}
+                port:
+                  number: 9000
+{{- end }}

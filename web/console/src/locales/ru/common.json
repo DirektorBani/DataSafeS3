@@ -1,0 +1,107 @@
+{
+  "brand": "Датасейф S3",
+  "tagline": "Объектное хранилище",
+  "cancel": "Отмена",
+  "confirm": "Подтвердить",
+  "save": "Сохранить",
+  "delete": "Удалить",
+  "create": "Создать",
+  "creating": "Создание...",
+  "refresh": "Обновить",
+  "working": "Выполняется...",
+  "loading": "Загрузка...",
+  "back": "Назад",
+  "close": "Закрыть",
+  "done": "Готово",
+  "edit": "Изменить",
+  "apply": "Применить",
+  "enabled": "Включено",
+  "disabled": "Отключено",
+  "unlimited": "Без ограничений",
+  "failed": "Ошибка",
+  "name": "Имя",
+  "status": "Статус",
+  "actions": "Действия",
+  "previous": "Назад",
+  "next": "Далее",
+  "copy": {
+    "copied": "{{label}} скопировано",
+    "copiedGeneric": "Скопировано в буфер обмена",
+    "failed": "Не удалось скопировать",
+    "aria": "Копировать {{label}}",
+    "ariaGeneric": "Копировать",
+    "buttonCopied": "Скопировано",
+    "buttonCopy": "Копировать"
+  },
+  "dataTable": {
+    "searchPlaceholder": "Поиск...",
+    "empty": "Ничего не найдено.",
+    "pagination": "Страница {{page}} из {{pages}}"
+  },
+  "status": {
+    "healthy": "Работает",
+    "warning": "Предупреждение",
+    "error": "Ошибка",
+    "info": "Информация",
+    "demo": "Демо-данные",
+    "ok": "В сети",
+    "offline": "Не в сети"
+  },
+  "theme": {
+    "label": "Тема: {{theme}}",
+    "appearance": "Оформление",
+    "dark": "Тёмная",
+    "light": "Светлая",
+    "system": "Системная"
+  },
+  "signOut": "Выйти",
+  "languageSwitcher": {
+    "ariaLabel": "Язык"
+  },
+  "otp": {
+    "digitAria": "Цифра {{index}} из {{length}}"
+  },
+  "units": {
+    "bytes": "Б",
+    "kilobytes": "КБ",
+    "megabytes": "МБ",
+    "gigabytes": "ГБ",
+    "terabytes": "ТБ"
+  },
+  "duration": {
+    "seconds": "{{count}} с",
+    "minutesSeconds": "{{minutes}} мин {{seconds}} с",
+    "empty": "—"
+  },
+  "quotaPresets": {
+    "unlimited": "Без ограничений",
+    "10gb": "10 ГБ",
+    "100gb": "100 ГБ",
+    "1tb": "1 ТБ"
+  },
+  "objectQuotaPresets": {
+    "unlimited": "Без ограничений",
+    "1k": "1 000",
+    "10k": "10 000",
+    "100k": "100 000",
+    "1m": "1 000 000"
+  },
+  "retentionPresets": {
+    "30days": "30 дней",
+    "90days": "90 дней",
+    "1year": "1 год"
+  },
+  "storageClasses": {
+    "hot": "Горячее",
+    "warm": "Тёплое",
+    "cold": "Холодное"
+  },
+  "roles": {
+    "administrator": "Администратор",
+    "operator": "Оператор",
+    "user": "Пользователь",
+    "tenantAdmin": "Администратор тенанта",
+    "member": "Участник",
+    "viewer": "Наблюдатель"
+  }
+}

@@ -1,0 +1,80 @@
+# HA overlay: primary + standby storage-server + optional Postgres replication profile
+# Usage: docker compose -f docker-compose.yml -f docker-compose.ha.yml --profile ha-standby --profile postgres up -d
+services:
+  postgres-standby:
+    profiles: ["ha-postgres"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${STORAGE_POSTGRES_USER:-datasafe}
+      POSTGRES_PASSWORD: ${STORAGE_POSTGRES_PASSWORD:-datasafe}
+      POSTGRES_DB: ${STORAGE_POSTGRES_DB:-datasafe}
+      PGUSER: ${STORAGE_POSTGRES_USER:-datasafe}
+    volumes:
+      - postgres-standby-data:/var/lib/postgresql/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${STORAGE_POSTGRES_USER:-datasafe} -d ${STORAGE_POSTGRES_DB:-datasafe}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "${STORAGE_POSTGRES_STANDBY_PORT:-5433}:5432"
+    command: >
+      bash -c "
+      if [ ! -f /var/lib/postgresql/data/PG_VERSION ]; then
+        until pg_isready -h postgres -p 5432 -U $$POSTGRES_USER; do sleep 2; done;
+        PGPASSWORD=$$POSTGRES_PASSWORD pg_basebackup -h postgres -p 5432 -U $$POSTGRES_USER -D /var/lib/postgresql/data -Fp -Xs -P -R;
+      fi;
+      exec docker-entrypoint.sh postgres
+      "
+
+  storage-server:
+    environment:
+      STORAGE_POSTGRES_READ_REPLICA_DSN: ${STORAGE_POSTGRES_READ_REPLICA_DSN:-postgres://datasafe:datasafe@postgres-standby:5432/datasafe?sslmode=disable}
+
+  storage-server-standby:
+    profiles: ["ha-standby"]
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:latest}
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+    pull_policy: never
+    environment:
+      STORAGE_READ_ONLY: "true"
+      STORAGE_ADDR: ":9001"
+      STORAGE_DATA_DIR: /data
+      STORAGE_METADATA_BACKEND: ${STORAGE_METADATA_BACKEND:-postgres}
+      STORAGE_POSTGRES_DSN: ${STORAGE_POSTGRES_DSN:-postgres://datasafe:datasafe@postgres:5432/datasafe?sslmode=disable}
+      STORAGE_DEV: ${STORAGE_DEV:-true}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-datasafe}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-datasafesecret}
+      STORAGE_ADMIN_USER: ${STORAGE_ADMIN_USER:-admin}
+      STORAGE_ADMIN_PASSWORD: ${STORAGE_ADMIN_PASSWORD:-admin}
+      STORAGE_JWT_SECRET: ${STORAGE_JWT_SECRET:-datasafe-jwt-secret}
+    ports:
+      - "9001:9001"
+    volumes:
+      - storage-standby-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:9001/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  nats:
+    profiles: ["nats"]
+    image: nats:2-alpine
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["-js", "-m", "8222"]
+
+volumes:
+  postgres-standby-data:
+  storage-standby-data:

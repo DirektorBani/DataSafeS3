@@ -1,0 +1,104 @@
+{{- if .Values.minio.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "datasafe.minio.fullname" . }}
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+type: Opaque
+stringData:
+  MINIO_ROOT_USER: {{ .Values.minio.rootUser | quote }}
+  MINIO_ROOT_PASSWORD: {{ .Values.minio.rootPassword | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "datasafe.minio.fullname" . }}
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "datasafe.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: minio
+  template:
+    metadata:
+      labels:
+        {{- include "datasafe.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: minio
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: minio
+          image: {{ include "datasafe.image" (dict "global" .Values.global "image" .Values.minio.image) }}
+          imagePullPolicy: {{ .Values.minio.image.pullPolicy }}
+          args:
+            - server
+            - /data
+            - --console-address
+            - ":9001"
+          ports:
+            - name: api
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          envFrom:
+            - secretRef:
+                name: {{ include "datasafe.minio.fullname" . }}
+          {{- if .Values.minio.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- end }}
+      {{- if .Values.minio.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "datasafe.minio.fullname" . }}-data
+      {{- end }}
+---
+{{- if .Values.minio.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "datasafe.minio.fullname" . }}-data
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.minio.persistence.storageClass }}
+  storageClassName: {{ .Values.minio.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.minio.persistence.size }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "datasafe.minio.fullname" . }}
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9000
+      targetPort: api
+      name: api
+    - port: 9001
+      targetPort: console
+      name: console
+  selector:
+    {{- include "datasafe.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+{{- end }}

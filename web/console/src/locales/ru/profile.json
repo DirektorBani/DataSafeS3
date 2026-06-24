@@ -1,0 +1,58 @@
+{
+  "toast": {
+    "scanQr": "Отсканируйте QR-код в Google Authenticator",
+    "mfaEnabled": "MFA включена",
+    "mfaDisabled": "MFA отключена",
+    "passwordChanged": "Пароль изменён"
+  },
+  "title": "Профиль",
+  "description": "Безопасность аккаунта и настройки MFA.",
+  "account": {
+    "title": "Аккаунт",
+    "role": "Роль:",
+    "primaryTenant": "Основной тенант:",
+    "tenantMemberships": "Членство в тенантах"
+  },
+  "mfa": {
+    "title": "Многофакторная аутентификация (TOTP)",
+    "enabled": "MFA включена для вашего аккаунта.",
+    "disabled": "Защитите аккаунт одноразовым паролем по времени.",
+    "enable": "Включить MFA",
+    "scanApps": "Отсканируйте в Google Authenticator, Authy или Microsoft Authenticator.",
+    "qrAlt": "QR-код MFA",
+    "manualSecret": "Или введите секрет вручную:",
+    "secretLabel": "Секрет",
+    "verificationCode": "Код подтверждения",
+    "confirmSetup": "Введите код из приложения для подтверждения · обновится через {{seconds}} с",
+    "verifyAndEnable": "Подтвердить и включить",
+    "cancelSetup": "Отменить настройку",
+    "disable": "Отключить MFA"
+  },
+  "recovery": {
+    "title": "Сохраните коды восстановления — показываются один раз",
+    "copyAll": "Копировать все",
+    "download": "Скачать"
+  },
+  "password": {
+    "title": "Пароль",
+    "ldap": "Пароль управляется LDAP-провайдером",
+    "oidc": "Пароль управляется SSO-провайдером",
+    "local": "Измените пароль локального аккаунта.",
+    "ldapHint": "Ваш аккаунт аутентифицируется через LDAP. Смена пароля выполняется в каталоге.",
+    "oidcHint": "Ваш аккаунт аутентифицируется через SSO. Смена пароля выполняется у провайдера идентификации."
+  },
+  "fields": {
+    "currentPassword": "Текущий пароль",
+    "newPassword": "Новый пароль",
+    "confirmPassword": "Подтвердите новый пароль",
+    "password": "Пароль",
+    "authenticatorCode": "Код аутентификатора или восстановления"
+  },
+  "actions": {
+    "changePassword": "Изменить пароль"
+  },
+  "disableMfa": {
+    "title": "Отключить MFA",
+    "description": "Введите пароль и текущий код аутентификатора (или код восстановления) для отключения MFA."
+  }
+}

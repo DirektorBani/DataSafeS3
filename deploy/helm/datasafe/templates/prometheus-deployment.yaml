@@ -1,0 +1,79 @@
+{{- if .Values.monitoring.prometheus.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "datasafe.prometheus.fullname" . }}-config
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+
+    scrape_configs:
+      - job_name: storage-server
+        static_configs:
+          - targets:
+              - {{ include "datasafe.storageServer.fullname" . }}:9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "datasafe.prometheus.fullname" . }}
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "datasafe.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: prometheus
+  template:
+    metadata:
+      labels:
+        {{- include "datasafe.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: prometheus
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: prometheus
+          image: {{ include "datasafe.image" (dict "global" .Values.global "image" .Values.monitoring.prometheus.image) }}
+          imagePullPolicy: {{ .Values.monitoring.prometheus.image.pullPolicy }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+          ports:
+            - name: http
+              containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+          resources:
+            {{- toYaml .Values.monitoring.prometheus.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "datasafe.prometheus.fullname" . }}-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "datasafe.prometheus.fullname" . }}
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9090
+      targetPort: http
+      name: http
+  selector:
+    {{- include "datasafe.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+{{- end }}

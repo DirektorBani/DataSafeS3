@@ -1,0 +1,22 @@
+{
+  "section": {
+    "console": "Консоль",
+    "administration": "Администрирование",
+    "tenantAdmin": "Админ тенанта"
+  },
+  "dashboard": "Обзор",
+  "buckets": "Бакеты",
+  "files": "Файлы",
+  "access": "Доступ",
+  "usage": "Использование",
+  "profile": "Профиль",
+  "users": "Пользователи",
+  "tenants": "Тенанты",
+  "gateway": "Шлюз",
+  "federation": "Федерация",
+  "cluster": "Кластер",
+  "policies": "Политики",
+  "activity": "Активность",
+  "webhooks": "Вебхуки",
+  "settings": "Настройки"
+}

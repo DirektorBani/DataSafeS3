@@ -1,0 +1,35 @@
+{
+  "title": "Dashboard",
+  "description": {
+    "system": "System-wide overview of your {{brand}} storage cluster.",
+    "user": "Overview of your buckets and storage usage."
+  },
+  "metrics": {
+    "buckets": "Buckets",
+    "bucketsDesc": "Total bucket count",
+    "storageUsed": "Storage Used",
+    "againstQuota": "Against your quota",
+    "quota": "Quota",
+    "maxStorage": "Maximum allowed storage",
+    "remaining": "Remaining",
+    "availableStorage": "Available storage",
+    "fromUsageApi": "From usage API",
+    "objects": "Objects",
+    "latestObjects": "Latest objects",
+    "accessKeys": "Access Keys",
+    "activeCredentials": "Active API credentials",
+    "apiHealth": "API Health",
+    "online": "Online",
+    "offline": "Offline"
+  },
+  "favorites": {
+    "title": "Favorites",
+    "description": "Pinned buckets and folders"
+  },
+  "chart": {
+    "title": "Storage growth",
+    "description": "Daily storage snapshots",
+    "empty": "No snapshot data yet.",
+    "series": "Storage"
+  }
+}

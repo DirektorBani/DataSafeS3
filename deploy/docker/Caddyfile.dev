@@ -1,0 +1,30 @@
+{
+	auto_https off
+}
+
+:80 {
+	encode gzip
+
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ws: wss:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	handle /api/* {
+		reverse_proxy storage-server:9000
+	}
+
+	handle /healthz {
+		reverse_proxy storage-server:9000
+	}
+
+	handle /metrics {
+		reverse_proxy storage-server:9000
+	}
+
+	handle {
+		reverse_proxy console-dev:5173
+	}
+}

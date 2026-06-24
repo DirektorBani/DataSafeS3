@@ -1,0 +1,56 @@
+# HA profile: primary storage-server + read-only standby (Community Edition — no license gates)
+# Install: helm upgrade --install datasafe ./deploy/helm/datasafe -f deploy/helm/datasafe/values-ha.yaml
+
+storageServer:
+  replicaCount: 1
+  metadataBackend: postgres
+  config:
+    postgres:
+      host: ""
+      port: "5432"
+    readReplicaDSN: ""  # set to standby Postgres service when streaming replica is configured
+  gateway:
+    workerInterval: 2s
+    fullSyncInterval: 15m
+
+storageServerStandby:
+  enabled: true
+  replicaCount: 1
+  readOnly: true
+  service:
+    port: 9001
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+postgres:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 20Gi
+
+# Optional NATS event bus (enable with --set nats.enabled=true)
+nats:
+  enabled: false
+  url: nats://datasafe-nats:4222
+  subject: datasafe.events
+
+console:
+  replicaCount: 1
+
+ingress:
+  enabled: true
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: storage-server
+          topologyKey: kubernetes.io/hostname

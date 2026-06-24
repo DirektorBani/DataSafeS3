@@ -1,0 +1,100 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  SERVER_IMAGE: ghcr.io/direktorbani/datasafe-storage-server
+  CONSOLE_IMAGE: ghcr.io/direktorbani/datasafe-console
+
+jobs:
+  publish-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version tag
+        id: meta
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push storage-server
+        run: |
+          docker build -f deploy/docker/Dockerfile \
+            -t "${SERVER_IMAGE}:${GITHUB_REF_NAME}" \
+            -t "${SERVER_IMAGE}:latest" \
+            .
+          docker push "${SERVER_IMAGE}:${GITHUB_REF_NAME}"
+          docker push "${SERVER_IMAGE}:latest"
+
+      - name: Build and push console
+        run: |
+          docker build -f deploy/docker/Dockerfile.console \
+            -t "${CONSOLE_IMAGE}:${GITHUB_REF_NAME}" \
+            -t "${CONSOLE_IMAGE}:latest" \
+            .
+          docker push "${CONSOLE_IMAGE}:${GITHUB_REF_NAME}"
+          docker push "${CONSOLE_IMAGE}:latest"
+
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: "${{ env.SERVER_IMAGE }}:${{ github.ref_name }}"
+          format: cyclonedx-json
+          output-file: sbom-storage-server.cdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.ref_name }}
+          path: sbom-storage-server.cdx.json
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign storage-server image
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign --yes "${SERVER_IMAGE}:${GITHUB_REF_NAME}"
+          cosign sign --yes "${CONSOLE_IMAGE}:${GITHUB_REF_NAME}"
+
+      - name: List benchmark (artifact)
+        continue-on-error: true
+        run: |
+          docker compose up -d storage-server
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:9000/healthz && break; sleep 2; done
+          pwsh -File scripts/benchmark-list-upload.ps1 -ObjectCount 100 -JsonOut | tee benchmark-${{ github.ref_name }}.json
+      - name: Upload benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-${{ github.ref_name }}
+          path: benchmark-${{ github.ref_name }}.json
+
+      - name: Smoke test server image (alpine)
+        run: |
+          docker run --rm -d --name ds-smoke -e STORAGE_DEV=true "${SERVER_IMAGE}:${GITHUB_REF_NAME}"
+          for i in $(seq 1 30); do
+            if docker exec ds-smoke wget -q -O- http://127.0.0.1:9000/healthz 2>/dev/null; then
+              docker rm -f ds-smoke
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs ds-smoke
+          docker rm -f ds-smoke
+          exit 1

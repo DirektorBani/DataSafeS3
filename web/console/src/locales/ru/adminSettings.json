@@ -1,0 +1,70 @@
+{
+  "trash": {
+    "title": "Мягкое удаление / Корзина",
+    "description": "Перемещать удалённые объекты в .datasafe-trash вместо безвозвратного удаления.",
+    "enable": "Включить мягкое удаление (корзина)",
+    "autoPurge": "Автоочистка через",
+    "days": "Дней",
+    "months": "Месяцев",
+    "daysTotal": "Всего {{days}} дней (мин. 1, макс. 3650)"
+  },
+  "ldap": {
+    "title": "LDAP / Active Directory",
+    "enable": "Включить LDAP",
+    "placeholder": {
+      "url": "ldap://localhost:389",
+      "bindDn": "Bind DN",
+      "bindPassword": "Пароль привязки",
+      "baseDn": "Base DN",
+      "groupAttr": "Атрибут группы (напр. memberOf)"
+    },
+    "dockerHint": "При запуске DataSafeS3 в Docker localhost автоматически перенаправляется на LDAP хоста.",
+    "groupsHint": "Имена LDAP-групп сопоставляются с IdP map групп тенанта при входе.",
+    "test": "Проверить подключение",
+    "sync": "Синхронизировать пользователей",
+    "synced": "Синхронизировано пользователей: {{count}}",
+    "syncInterval": "Интервал фоновой синхронизации (минуты)",
+    "syncIntervalHint": "0 отключает фоновую синхронизацию. По умолчанию 60 при включённом LDAP."
+  },
+  "oidc": {
+    "title": "OIDC / SSO",
+    "enable": "Включить SSO",
+    "placeholder": {
+      "issuer": "URL издателя",
+      "internalIssuer": "Внутренний URL издателя",
+      "clientId": "Client ID",
+      "clientSecret": "Client secret",
+      "redirectUrl": "Redirect URL",
+      "groupsClaim": "Claim групп"
+    },
+    "dockerHint": "В Docker укажите внутренний issuer для доступа к IdP из контейнера.",
+    "groupsHint": "Имена OIDC-групп из этого JWT claim сопоставляются с IdP map групп тенанта."
+  },
+  "mfa": {
+    "title": "Политика MFA",
+    "requireAdmin": "Требовать MFA для администраторов",
+    "hint": "Личная настройка MFA — в Профиле."
+  },
+  "cluster": {
+    "title": "Кластер (MVP)",
+    "distributed": "Распределённый режим",
+    "erasure": "Erasure coding (планируется)",
+    "diskPaths": "Пути к дискам (по одному на строку)"
+  },
+  "logging": {
+    "title": "Внешнее логирование",
+    "description": "Пересылка структурированных JSON-логов в несколько приёмников одновременно.",
+    "address": "Адрес / URL",
+    "index": "Имя индекса",
+    "bearerToken": "Bearer-токен (необязательно)",
+    "username": "Имя пользователя (basic auth)",
+    "password": "Пароль (basic auth)",
+    "apiKey": "API-ключ (необязательно, заменяет basic auth)",
+    "tlsVerify": "Проверка TLS"
+  },
+  "swagger": {
+    "title": "Community API (Swagger)",
+    "description": "Интерактивный OpenAPI-обозреватель Community Integration API.",
+    "open": "Открыть Swagger UI"
+  }
+}

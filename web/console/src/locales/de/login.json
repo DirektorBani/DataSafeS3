@@ -1,0 +1,44 @@
+{
+  "validation": {
+    "usernameRequired": "Username is required",
+    "passwordRequired": "Password is required"
+  },
+  "error": {
+    "loginFailed": "Login failed",
+    "invalidCode": "Invalid code. Try again."
+  },
+  "title": {
+    "mfa": "Two-factor authentication",
+    "brand": "DataSafeS3"
+  },
+  "description": {
+    "mfaRecovery": "Enter one of your recovery codes.",
+    "mfa": "Enter the 6-digit code from your authenticator app.",
+    "signIn": "Sign in to manage buckets, objects, and access keys."
+  },
+  "mfa": {
+    "codeRefreshes": "Code refreshes in {{seconds}}s"
+  },
+  "fields": {
+    "recoveryCode": "Recovery code",
+    "username": "Username",
+    "password": "Password"
+  },
+  "placeholder": {
+    "recoveryCode": "xxxx-xxxx"
+  },
+  "actions": {
+    "verifying": "Verifying...",
+    "verifyRecovery": "Verify recovery code",
+    "verify": "Verify",
+    "useAuthenticator": "Use authenticator code instead",
+    "useRecovery": "Use recovery code",
+    "backToLogin": "Back to login",
+    "signingIn": "Signing in...",
+    "signIn": "Sign in",
+    "signInSso": "Sign in with SSO"
+  },
+  "hint": {
+    "defaultCredentials": "Default credentials: admin / admin"
+  }
+}

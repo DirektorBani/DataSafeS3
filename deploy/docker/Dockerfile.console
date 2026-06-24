@@ -1,0 +1,13 @@
+# Multi-stage build for DataSafeS3 web console static assets.
+# Published as ghcr.io/direktorbani/datasafe-console:<tag>
+
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY web/console/package.json web/console/package-lock.json ./
+RUN npm ci
+COPY web/console/ ./
+RUN npm run build
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates
+COPY --from=build /app/dist /srv/console

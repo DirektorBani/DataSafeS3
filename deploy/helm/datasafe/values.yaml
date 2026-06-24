@@ -1,0 +1,219 @@
+# Default values for DataSafeS3 Helm chart.
+# Build storage-server image: docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .
+
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+storageServer:
+  # Published image: ghcr.io/direktorbani/datasafe-storage-server (build locally via deploy/docker/Dockerfile).
+  image:
+    repository: ghcr.io/direktorbani/datasafe-storage-server
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+  metadataBackend: bolt  # bolt | postgres
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  # Core STORAGE_* settings (non-secret; secrets go to storageServer.secret below).
+  config:
+    addr: ":9000"
+    logLevel: info
+    dataDir: /data
+    region: us-east-1
+    accessKey: datasafe
+    secretKey: datasafesecret
+    adminUser: admin
+    adminPassword: admin
+    jwtSecret: datasafe-jwt-secret
+    sseMasterKey: ""
+    # Postgres connection (used when metadataBackend=postgres or postgres.enabled).
+    postgres:
+      host: ""  # auto-set to release-postgres service when postgres.enabled
+      port: "5432"
+      user: datasafe
+      password: datasafe
+      database: datasafe
+      dsn: ""  # optional full DSN override (STORAGE_POSTGRES_DSN)
+  # Gateway replication worker tuning (STORAGE_GATEWAY_*).
+  gateway:
+    workerInterval: 2s
+    maxRetries: "5"
+    fullSyncInterval: 1h
+
+storageServerStandby:
+  enabled: false
+  replicaCount: 1
+  readOnly: true
+  service:
+    port: 9001
+  resources: {}
+
+nats:
+  enabled: false
+  url: ""
+  subject: datasafe.events
+
+postgres:
+  enabled: false
+  image:
+    repository: postgres
+    tag: 16-alpine
+    pullPolicy: IfNotPresent
+  auth:
+    username: datasafe
+    password: datasafe
+    database: datasafe
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+  resources: {}
+
+ldap:
+  enabled: false
+  url: ldap://ldap.example:389
+  bindDn: cn=admin,dc=example,dc=local
+  bindPassword: ""
+  baseDn: ou=users,dc=example,dc=local
+  groupDn: ""  # optional; also configurable via Admin → Settings
+
+oidc:
+  enabled: false
+  issuer: https://keycloak.example/realms/datasafe
+  internalIssuer: ""  # server-side token exchange (STORAGE_OIDC_INTERNAL_ISSUER)
+  clientId: datasafe-console
+  clientSecret: ""
+  redirectUrl: ""  # e.g. https://datasafe.example/api/v1/auth/oidc/callback
+
+logging:
+  # External log sinks are stored in system settings (metadata DB).
+  # Enable seed ConfigMap to document/preload via Admin API import.
+  seed: false
+  syslog:
+    enabled: false
+    address: udp://syslog.example:514
+    tls: false
+  loki:
+    enabled: false
+    address: http://loki.example:3100
+    token: ""
+  elasticsearch:
+    enabled: false
+    address: http://elasticsearch.example:9200
+    index: datasafe-logs
+    username: ""
+    password: ""
+    token: ""
+  webhook:
+    enabled: false
+    address: https://hooks.example/log
+    token: ""
+
+gateway:
+  # Gateway connections/rules are configured in Admin UI; worker env vars above.
+  enabled: true
+
+minio:
+  # Optional dev-only S3 test target for Gateway replication testing.
+  enabled: false
+  image:
+    repository: minio/minio
+    tag: latest
+    pullPolicy: IfNotPresent
+  rootUser: minioadmin
+  rootPassword: minioadmin
+  persistence:
+    enabled: false
+    size: 5Gi
+    storageClass: ""
+  service:
+    apiPort: 9100
+    consolePort: 9101
+
+caddy:
+  enabled: true
+  image:
+    repository: caddy
+    tag: 2-alpine
+    pullPolicy: IfNotPresent
+  resources: {}
+
+console:
+  # Pre-built static console image (copy to shared volume for Caddy).
+  # Build: docker build -f deploy/docker/Dockerfile.console -t ghcr.io/direktorbani/datasafe-console:latest .
+  image:
+    repository: ghcr.io/direktorbani/datasafe-console
+    tag: latest
+    pullPolicy: IfNotPresent
+  # When false, Caddy serves an emptyDir populated by initContainer from console.image.
+  existingConfigMap: ""
+
+monitoring:
+  prometheus:
+    enabled: true
+    image:
+      repository: prom/prometheus
+      tag: latest
+      pullPolicy: IfNotPresent
+    resources: {}
+  grafana:
+    enabled: true
+    image:
+      repository: grafana/grafana
+      tag: latest
+      pullPolicy: IfNotPresent
+    adminUser: admin
+    adminPassword: admin
+    resources: {}
+
+ingress:
+  enabled: true
+  className: ""
+  annotations: {}
+  console:
+    host: datasafe.local
+    path: /
+    pathType: Prefix
+    tls: false
+    tlsSecret: ""
+  s3:
+    host: s3.datasafe.local
+    path: /
+    pathType: Prefix
+    tls: false
+    tlsSecret: ""
+
+persistence:
+  enabled: true
+  data:
+    size: 100Gi
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+  # Separate volume for BoltDB metadata.db (optional; single /data volume is default in compose).
+  metadata:
+    enabled: false
+    size: 1Gi
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+
+systemSettings:
+  seed:
+    enabled: false

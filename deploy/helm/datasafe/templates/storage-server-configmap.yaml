@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "datasafe.storageServer.fullname" . }}
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage-server
+data:
+  STORAGE_ADDR: {{ .Values.storageServer.config.addr | quote }}
+  STORAGE_LOG_LEVEL: {{ .Values.storageServer.config.logLevel | quote }}
+  STORAGE_DATA_DIR: {{ .Values.storageServer.config.dataDir | quote }}
+  STORAGE_REGION: {{ .Values.storageServer.config.region | quote }}
+  STORAGE_ACCESS_KEY: {{ .Values.storageServer.config.accessKey | quote }}
+  STORAGE_ADMIN_USER: {{ .Values.storageServer.config.adminUser | quote }}
+  STORAGE_METADATA_BACKEND: {{ include "datasafe.metadataBackend" . | quote }}
+  {{- if or .Values.postgres.enabled (eq (include "datasafe.metadataBackend" .) "postgres") }}
+  STORAGE_POSTGRES_HOST: {{ include "datasafe.postgres.host" . | quote }}
+  STORAGE_POSTGRES_PORT: {{ .Values.storageServer.config.postgres.port | default "5432" | quote }}
+  STORAGE_POSTGRES_USER: {{ .Values.storageServer.config.postgres.user | default .Values.postgres.auth.username | quote }}
+  STORAGE_POSTGRES_DB: {{ .Values.storageServer.config.postgres.database | default .Values.postgres.auth.database | quote }}
+  {{- end }}
+  {{- if .Values.gateway.enabled }}
+  STORAGE_GATEWAY_WORKER_INTERVAL: {{ .Values.storageServer.gateway.workerInterval | quote }}
+  STORAGE_GATEWAY_MAX_RETRIES: {{ .Values.storageServer.gateway.maxRetries | quote }}
+  STORAGE_GATEWAY_FULL_SYNC_INTERVAL: {{ .Values.storageServer.gateway.fullSyncInterval | quote }}
+  {{- end }}
+  {{- if .Values.ldap.enabled }}
+  STORAGE_LDAP_ENABLED: "true"
+  STORAGE_LDAP_URL: {{ .Values.ldap.url | quote }}
+  STORAGE_LDAP_BIND_DN: {{ .Values.ldap.bindDn | quote }}
+  STORAGE_LDAP_BASE_DN: {{ .Values.ldap.baseDn | quote }}
+  {{- if .Values.ldap.groupDn }}
+  STORAGE_LDAP_GROUP_DN: {{ .Values.ldap.groupDn | quote }}
+  {{- end }}
+  {{- end }}
+  {{- if .Values.oidc.enabled }}
+  STORAGE_OIDC_ENABLED: "true"
+  STORAGE_OIDC_ISSUER: {{ .Values.oidc.issuer | quote }}
+  {{- if .Values.oidc.internalIssuer }}
+  STORAGE_OIDC_INTERNAL_ISSUER: {{ .Values.oidc.internalIssuer | quote }}
+  {{- end }}
+  STORAGE_OIDC_CLIENT_ID: {{ .Values.oidc.clientId | quote }}
+  STORAGE_OIDC_REDIRECT_URL: {{ include "datasafe.oidc.redirectUrl" . | quote }}
+  {{- end }}

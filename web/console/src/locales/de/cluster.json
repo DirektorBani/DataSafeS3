@@ -1,0 +1,25 @@
+{
+  "title": "Cluster",
+  "description": "Multi-node distributed mode status (MVP foundation).",
+  "config": {
+    "title": "Configuration",
+    "description": "Erasure coding is planned; configure nodes in Admin → Settings → Administrator settings."
+  },
+  "distributedMode": "Distributed mode:",
+  "distributed": {
+    "enabled": "enabled",
+    "single": "single-node"
+  },
+  "erasureCoding": "Erasure coding:",
+  "erasure": {
+    "planned": "planned",
+    "notConfigured": "not configured"
+  },
+  "diskPaths": "Disk paths:",
+  "nodes": {
+    "title": "Nodes"
+  },
+  "node": {
+    "unknown": "unknown"
+  }
+}

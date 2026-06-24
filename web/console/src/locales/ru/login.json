@@ -1,0 +1,44 @@
+{
+  "validation": {
+    "usernameRequired": "Укажите имя пользователя",
+    "passwordRequired": "Укажите пароль"
+  },
+  "error": {
+    "loginFailed": "Не удалось войти",
+    "invalidCode": "Неверный код. Попробуйте снова."
+  },
+  "title": {
+    "mfa": "Двухфакторная аутентификация",
+    "brand": "Датасейф S3"
+  },
+  "description": {
+    "mfaRecovery": "Введите один из кодов восстановления.",
+    "mfa": "Введите 6-значный код из приложения-аутентификатора.",
+    "signIn": "Войдите для управления бакетами, объектами и ключами доступа."
+  },
+  "mfa": {
+    "codeRefreshes": "Код обновится через {{seconds}} с"
+  },
+  "fields": {
+    "recoveryCode": "Код восстановления",
+    "username": "Имя пользователя",
+    "password": "Пароль"
+  },
+  "placeholder": {
+    "recoveryCode": "xxxx-xxxx"
+  },
+  "actions": {
+    "verifying": "Проверка...",
+    "verifyRecovery": "Подтвердить код восстановления",
+    "verify": "Подтвердить",
+    "useAuthenticator": "Использовать код аутентификатора",
+    "useRecovery": "Использовать код восстановления",
+    "backToLogin": "Вернуться ко входу",
+    "signingIn": "Вход...",
+    "signIn": "Войти",
+    "signInSso": "Войти через SSO"
+  },
+  "hint": {
+    "defaultCredentials": "Учётные данные по умолчанию: admin / admin"
+  }
+}

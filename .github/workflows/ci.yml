@@ -1,0 +1,83 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+      - name: gofmt
+        run: |
+          test -z "$(gofmt -l .)" || (echo "gofmt issues:" && gofmt -l . && exit 1)
+      - name: govet
+        run: go vet ./...
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+      - name: go test
+        run: go test ./...
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  web-console:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: build console
+        working-directory: web/console
+        run: |
+          npm ci
+          npm run build
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build (server)
+        run: docker build -f deploy/docker/Dockerfile .
+
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    needs: [test, web-console, docker-build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Start compose stack for E2E
+        run: |
+          docker compose up -d --wait storage-server caddy postgres 2>/dev/null || docker compose up -d
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8080/healthz; then exit 0; fi
+            sleep 2
+          done
+          echo "Stack did not become healthy in time"
+          docker compose ps
+          exit 1
+      - name: Install Playwright
+        working-directory: web/console
+        run: |
+          npm ci
+          npx playwright install chromium --with-deps
+      - name: E2E smoke
+        working-directory: web/console
+        run: npx playwright test
+      - name: OIDC browser smoke (optional)
+        run: node scripts/oidc-browser-e2e.mjs
+        continue-on-error: true

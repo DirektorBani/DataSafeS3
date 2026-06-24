@@ -1,0 +1,6 @@
+# Optional overlay when `docker compose build` fails (e.g. stale Windows proxy).
+# Usage: scripts\dev-docker-local-binary.cmd
+services:
+  storage-server:
+    volumes:
+      - ./deploy/docker/storage-server-linux:/storage-server-bin:ro

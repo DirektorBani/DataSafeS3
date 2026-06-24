@@ -1,0 +1,41 @@
+{
+	auto_https off
+}
+
+:80 {
+	encode gzip
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	@swagger path /api/v1/docs /api/v1/docs/*
+	header @swagger Content-Security-Policy "default-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"
+
+	@strict_csp not path /api/v1/docs /api/v1/docs/*
+	header @strict_csp Content-Security-Policy "default-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"
+
+	# Versioned API
+	handle /api/* {
+		reverse_proxy storage-server:9000
+	}
+
+	# Healthz
+	handle /healthz {
+		reverse_proxy storage-server:9000
+	}
+
+	# Metrics
+	handle /metrics {
+		reverse_proxy storage-server:9000
+	}
+
+	# Console (pre-built static assets from web/console/dist on host)
+	handle {
+		root * /srv/console
+		try_files {path} /index.html
+		file_server
+	}
+}

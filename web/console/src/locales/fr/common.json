@@ -1,0 +1,107 @@
+{
+  "brand": "DataSafeS3",
+  "tagline": "Stockage d'objets",
+  "cancel": "Annuler",
+  "confirm": "Confirmer",
+  "save": "Enregistrer",
+  "delete": "Supprimer",
+  "create": "Créer",
+  "creating": "Création…",
+  "refresh": "Actualiser",
+  "working": "En cours…",
+  "loading": "Chargement…",
+  "back": "Retour",
+  "close": "Fermer",
+  "done": "Terminé",
+  "edit": "Modifier",
+  "apply": "Appliquer",
+  "enabled": "Activé",
+  "disabled": "Désactivé",
+  "unlimited": "Illimité",
+  "failed": "Échec",
+  "name": "Nom",
+  "status": "État",
+  "actions": "Actions",
+  "previous": "Précédent",
+  "next": "Suivant",
+  "copy": {
+    "copied": "{{label}} copié",
+    "copiedGeneric": "Copié dans le presse-papiers",
+    "failed": "Échec de la copie",
+    "aria": "Copier {{label}}",
+    "ariaGeneric": "Copier",
+    "buttonCopied": "Copié",
+    "buttonCopy": "Copier"
+  },
+  "dataTable": {
+    "searchPlaceholder": "Rechercher…",
+    "empty": "Aucun résultat.",
+    "pagination": "Page {{page}} sur {{pages}}"
+  },
+  "status": {
+    "healthy": "Sain",
+    "warning": "Avertissement",
+    "error": "Erreur",
+    "info": "Info",
+    "demo": "Données de démo",
+    "ok": "En ligne",
+    "offline": "Hors ligne"
+  },
+  "theme": {
+    "label": "Thème : {{theme}}",
+    "appearance": "Apparence",
+    "dark": "Sombre",
+    "light": "Clair",
+    "system": "Système"
+  },
+  "signOut": "Déconnexion",
+  "languageSwitcher": {
+    "ariaLabel": "Langue"
+  },
+  "otp": {
+    "digitAria": "Chiffre {{index}} sur {{length}}"
+  },
+  "units": {
+    "bytes": "o",
+    "kilobytes": "Ko",
+    "megabytes": "Mo",
+    "gigabytes": "Go",
+    "terabytes": "To"
+  },
+  "duration": {
+    "seconds": "{{count}} s",
+    "minutesSeconds": "{{minutes}} min {{seconds}} s",
+    "empty": "—"
+  },
+  "quotaPresets": {
+    "unlimited": "Illimité",
+    "10gb": "10 Go",
+    "100gb": "100 Go",
+    "1tb": "1 To"
+  },
+  "objectQuotaPresets": {
+    "unlimited": "Illimité",
+    "1k": "1 000",
+    "10k": "10 000",
+    "100k": "100 000",
+    "1m": "1 000 000"
+  },
+  "retentionPresets": {
+    "30days": "30 jours",
+    "90days": "90 jours",
+    "1year": "1 an"
+  },
+  "storageClasses": {
+    "hot": "Chaud",
+    "warm": "Tiède",
+    "cold": "Froid"
+  },
+  "roles": {
+    "administrator": "Administrateur",
+    "operator": "Opérateur",
+    "user": "Utilisateur",
+    "tenantAdmin": "Administrateur locataire",
+    "member": "Membre",
+    "viewer": "Lecteur"
+  }
+}

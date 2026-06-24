@@ -1,0 +1,10 @@
+{
+  "securityBanner": {
+    "message": "Default secrets detected ({{vars}}). Rotate before production use.",
+    "learnMore": "Security hardening guide"
+  },
+  "mfaSetupBanner": {
+    "message": "Administrator MFA is required. Enable TOTP or add a passkey before using the console.",
+    "action": "Set up MFA"
+  }
+}

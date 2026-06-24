@@ -1,0 +1,236 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Датасейф S3 — бакеты / DataSafeS3 Buckets",
+      "type": "link",
+      "url": "/d/datasafe-buckets/datasafe-buckets"
+    }
+  ],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "HTTP / S3",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum(rate(datasafe_http_requests_total[1m]))",
+          "legendFormat": "requests/sec",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP requests per second",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "datasafe_storage_bytes",
+          "legendFormat": "storage",
+          "refId": "A"
+        }
+      ],
+      "title": "Storage used (total)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 9 },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "datasafe_buckets_total",
+          "legendFormat": "buckets",
+          "refId": "A"
+        }
+      ],
+      "title": "Bucket count",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 9 },
+      "id": 10,
+      "targets": [
+        {
+          "expr": "datasafe_objects_total",
+          "legendFormat": "objects",
+          "refId": "A"
+        }
+      ],
+      "title": "Object count",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 9 },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(datasafe_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95 latency",
+          "refId": "A"
+        }
+      ],
+      "title": "Request latency (p95)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 9 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "sum(rate(datasafe_http_requests_total{status=~\"4..|5..\"}[5m]))",
+          "legendFormat": "errors/sec",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP errors",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 17 },
+      "id": 11,
+      "targets": [
+        { "expr": "sum(rate(datasafe_s3_read_ops_total[1m]))", "legendFormat": "reads", "refId": "A" },
+        { "expr": "sum(rate(datasafe_s3_write_ops_total[1m]))", "legendFormat": "writes", "refId": "B" }
+      ],
+      "title": "S3 read/write ops (total)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 17 },
+      "id": 12,
+      "targets": [
+        { "expr": "topk(10, datasafe_storage_per_bucket)", "legendFormat": "{{bucket}}", "refId": "A" }
+      ],
+      "title": "Top buckets by size",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 101,
+      "title": "Host",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 25 },
+      "id": 6,
+      "targets": [{ "expr": "datasafe_host_disk_used_percent", "legendFormat": "disk %", "refId": "A" }],
+      "title": "Disk used %",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 7, "w": 6, "x": 6, "y": 25 },
+      "id": 7,
+      "targets": [{ "expr": "datasafe_host_cpu_load1", "legendFormat": "load1", "refId": "A" }],
+      "title": "CPU load (1m)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 25 },
+      "id": 8,
+      "targets": [{ "expr": "datasafe_host_memory_used_percent", "legendFormat": "mem %", "refId": "A" }],
+      "title": "Memory used %",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 25 },
+      "id": 9,
+      "targets": [
+        { "expr": "rate(datasafe_host_network_in_bytes_total[1m])", "legendFormat": "in", "refId": "A" },
+        { "expr": "rate(datasafe_host_network_out_bytes_total[1m])", "legendFormat": "out", "refId": "B" }
+      ],
+      "title": "Network I/O",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 32 },
+      "id": 14,
+      "targets": [
+        { "expr": "datasafe_postgres_replication_lag_seconds", "legendFormat": "lag seconds", "refId": "A" }
+      ],
+      "title": "PostgreSQL replication lag",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 39 },
+      "id": 13,
+      "targets": [
+        { "expr": "datasafe_host_disk_total_bytes", "legendFormat": "total", "refId": "A" },
+        { "expr": "datasafe_host_disk_free_bytes", "legendFormat": "free", "refId": "B" },
+        { "expr": "datasafe_host_disk_used_bytes", "legendFormat": "used", "refId": "C" }
+      ],
+      "title": "Disk capacity",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["datasafe", "датасейф S3", "admin"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Датасейф S3 — обзор системы / DataSafeS3 System Overview",
+  "uid": "datasafe-overview",
+  "version": 6
+}

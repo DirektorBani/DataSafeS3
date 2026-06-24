@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN IF NOT EXISTS webauthn_credentials TEXT NOT NULL DEFAULT '';

@@ -1,0 +1,2726 @@
+openapi: 3.1.0
+info:
+  title: DataSafeS3 REST Admin API
+  version: 1.0.0
+  summary: Complete JSON REST API served at /api/v1 (excluding S3 XML)
+  description: |
+    **Full hand-written OpenAPI 3.1** for all Admin JSON routes registered in internal/api/server.go.
+
+    ## Authentication
+    | Scheme | Use |
+    |--------|-----|
+    | **BearerAPIToken** | Integration tokens ds_* (recommended for automation) |
+    | **BearerJWT** | JWT from POST /admin/login or OIDC callback (console sessions) |
+
+    Public endpoints: GET /health, POST /admin/login, OIDC bootstrap, GET /public/share/*.
+
+    ## Not included
+    - GET /metrics (Prometheus text)
+    - S3 XML API on paths outside /api/v1 (SigV4, port 9000)
+
+    ## Errors
+    Standard envelope: JSON object with error field (HTTP 4xx/5xx).
+
+    Interactive docs for **Community subset**: GET /api/v1/docs (Swagger UI).
+
+    Canonical file: [openapi-full.yaml](../../api/openapi-full.yaml)
+  contact:
+    name: DataSafeS3 / Ilya Trachuk
+    url: https://github.com/DirektorBani/DataSafeS3
+  license:
+    name: Apache 2.0
+    identifier: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Via Caddy (console origin)
+  - url: http://localhost:9000/api/v1
+    description: storage-server direct
+
+security:
+  - BearerAPIToken: []
+  - BearerJWT: []
+
+components:
+  securitySchemes:
+    BearerAPIToken:
+      type: http
+      scheme: bearer
+      bearerFormat: ds_
+      description: |
+        Integration API token with prefix ds_. Create in console: Access → API tokens.
+        Inherits creator's role and bucket access.
+
+    BearerJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        HS256 JWT from POST /admin/login, MFA completion, or OIDC callback.
+
+  parameters:
+    BucketName:
+      name: bucket
+      in: path
+      required: true
+      schema: { type: string }
+    ObjectKey:
+      name: key
+      in: path
+      required: true
+      schema: { type: string }
+      description: Object key (may contain slashes)
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 1000, default: 50 }
+    Prefix:
+      name: prefix
+      in: query
+      schema: { type: string }
+    Delimiter:
+      name: delimiter
+      in: query
+      schema: { type: string, example: "/" }
+    StartAfter:
+      name: start_after
+      in: query
+      schema: { type: string }
+    MaxKeys:
+      name: max_keys
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        mfa_required: { type: boolean }
+        mfa_token: { type: string }
+        mfa_setup_required: { type: boolean }
+        scheduled_delete_at: { type: string, format: date-time }
+        trashed: { type: boolean }
+        trash_id: { type: string }
+
+    HealthStatus:
+      type: object
+      properties:
+        status: { type: string, example: ok }
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+        mfa_code: { type: string }
+
+    LoginResponse:
+      type: object
+      properties:
+        token: { type: string }
+        expires_in: { type: integer, example: 86400 }
+        username: { type: string }
+        role: { type: string, enum: [administrator, operator, user] }
+        user_id: { type: string }
+        mfa_enabled: { type: boolean }
+        mfa_required: { type: boolean }
+        mfa_token: { type: string }
+
+    MFALoginRequest:
+      type: object
+      required: [mfa_token, mfa_code]
+      properties:
+        mfa_token: { type: string }
+        mfa_code: { type: string }
+
+    MeResponse:
+      type: object
+      properties:
+        username: { type: string }
+        email: { type: string }
+        role: { type: string }
+        status: { type: string }
+        user_id: { type: string }
+        tenant_id: { type: string }
+        mfa_enabled: { type: boolean }
+        auth_source: { type: string }
+        is_tenant_admin: { type: boolean }
+        tenant_memberships:
+          type: array
+          items:
+            type: object
+            properties:
+              tenant_id: { type: string }
+              tenant_name: { type: string }
+              role: { type: string }
+
+    Bucket:
+      type: object
+      properties:
+        name: { type: string }
+        storage_key: { type: string }
+        owner: { type: string }
+        owner_id: { type: string }
+        tenant_id: { type: string }
+        created_at: { type: string, format: date-time }
+        visibility: { type: string, enum: [private, public-read] }
+        access:
+          type: object
+          properties:
+            ownership: { type: string, enum: [owned, shared, tenant] }
+            can_read: { type: boolean }
+            can_write: { type: boolean }
+            shared_by: { type: string, nullable: true }
+        versioning_enabled: { type: boolean }
+        object_lock_enabled: { type: boolean }
+        description: { type: string }
+        tags: { type: object, additionalProperties: { type: string } }
+
+    Object:
+      type: object
+      properties:
+        bucket: { type: string }
+        key: { type: string }
+        size: { type: integer, format: int64 }
+        etag: { type: string }
+        content_type: { type: string }
+        version_id: { type: string }
+        last_modified: { type: string, format: date-time }
+        legal_hold: { type: boolean }
+        retention_until: { type: string, format: date-time }
+        metadata: { type: object, additionalProperties: { type: string } }
+        tags: { type: object, additionalProperties: { type: string } }
+
+    ObjectListResponse:
+      type: object
+      properties:
+        objects:
+          type: array
+          items: { $ref: '#/components/schemas/Object' }
+        folders:
+          type: array
+          items: { type: string }
+        truncated: { type: boolean }
+        next_marker: { type: string }
+
+    AccessKey:
+      type: object
+      properties:
+        access_key: { type: string }
+        label: { type: string }
+        owner: { type: string }
+        created_at: { type: string, format: date-time }
+
+    ShareLink:
+      type: object
+      properties:
+        id: { type: string }
+        bucket: { type: string }
+        key: { type: string }
+        token: { type: string }
+        max_downloads: { type: integer }
+        download_count: { type: integer }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+
+    APIToken:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        username: { type: string }
+        scopes:
+          type: array
+          items: { type: string }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+
+    OkResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        username: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [administrator, operator, user] }
+        status: { type: string }
+        tenant_id: { type: string }
+        mfa_enabled: { type: boolean }
+
+    CreateShareRequest:
+      type: object
+      required: [key]
+      properties:
+        key: { type: string, description: Object key to share }
+        expires_in_sec: { type: integer, minimum: 0, description: "TTL; 0 = no expiry" }
+        max_downloads: { type: integer, minimum: 0, default: 0 }
+
+    CreateTokenRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        expires_days: { type: integer, minimum: 1, default: 90 }
+        scopes: { type: array, items: { type: string } }
+
+    CreateTokenResponse:
+      type: object
+      properties:
+        id: { type: string }
+        token: { type: string, description: Plain token shown once }
+        name: { type: string }
+        expires_at: { type: string, format: date-time }
+
+    PresignRequest:
+      type: object
+      required: [bucket, key]
+      properties:
+        method: { type: string, enum: [GET, PUT, HEAD, DELETE], default: GET }
+        bucket: { type: string }
+        key: { type: string }
+        expires_seconds: { type: integer, minimum: 1, default: 3600 }
+        endpoint: { type: string, format: uri, description: S3 base URL, default request Host }
+
+    PresignResponse:
+      type: object
+      properties:
+        url: { type: string, format: uri }
+
+    CreateKeyRequest:
+      type: object
+      properties:
+        label: { type: string }
+
+    CreateKeyResponse:
+      type: object
+      properties:
+        access_key: { type: string }
+        secret_key: { type: string, description: Shown once }
+        label: { type: string }
+
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, format: password }
+        new_password: { type: string, format: password, minLength: 6 }
+
+    HooksTestRequest:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, format: uri }
+        event: { type: string, example: extension.test }
+        secret: { type: string }
+
+    BulkDeleteRequest:
+      type: object
+      required: [keys]
+      properties:
+        keys: { type: array, items: { type: string }, minItems: 1 }
+
+    TagsMap:
+      type: object
+      additionalProperties: { type: string }
+
+    LifecycleRules:
+      type: object
+      properties:
+        rules:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              prefix: { type: string }
+              enabled: { type: boolean }
+              expiration_days: { type: integer }
+
+  examples:
+    HealthOk:
+      value: { status: ok }
+    ErrorUnauthorized:
+      value: { error: unauthorized }
+    CreateShareBody:
+      value: { key: reports/2024/q1.pdf, expires_in_sec: 86400, max_downloads: 10 }
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    InternalError:
+      description: Server error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Health check
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+
+  /admin/login:
+    post:
+      operationId: adminLogin
+      summary: Sign in (local/LDAP)
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: JWT issued or MFA step required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /mfa/login:
+    post:
+      operationId: mfaLogin
+      summary: Complete MFA login (alias)
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MFALoginRequest' }
+      responses:
+        '200':
+          description: JWT issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /auth/login/mfa:
+    post:
+      operationId: authLoginMfa
+      summary: Complete MFA login
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MFALoginRequest' }
+      responses:
+        '200':
+          description: JWT issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /auth/oidc/config:
+    get:
+      operationId: oidcConfig
+      summary: OIDC public config
+      tags: [Auth]
+      security: []
+      responses:
+        '200': { description: OIDC client config }
+
+  /auth/oidc/login:
+    get:
+      operationId: oidcLogin
+      summary: Start OIDC redirect
+      tags: [Auth]
+      security: []
+      responses:
+        '302': { description: Redirect to IdP }
+
+  /auth/oidc/password-login:
+    post:
+      operationId: oidcPasswordLogin
+      summary: OIDC resource-owner password (test)
+      tags: [Auth]
+      security: []
+      responses:
+        '200': { description: JWT }
+
+  /me:
+    get:
+      operationId: getMe
+      summary: Current user profile
+      tags: [Profile]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /me/password:
+    post:
+      operationId: changePassword
+      summary: Change password
+      tags: [Profile]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OkResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /me/mfa/webauthn/register/begin:
+    post:
+      operationId: webauthnRegisterBegin
+      summary: Begin WebAuthn passkey enrollment
+      tags: [Profile]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      responses:
+        '200': { description: PublicKeyCredentialCreationOptions JSON }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /me/mfa/webauthn/register/finish:
+    post:
+      operationId: webauthnRegisterFinish
+      summary: Finish WebAuthn passkey enrollment
+      tags: [Profile]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      responses:
+        '200': { description: Passkey enrolled }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/logout:
+    post:
+      operationId: logout
+      summary: Sign out
+      tags: [Buckets]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      responses:
+        '204': { description: Logged out }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /buckets:
+    get:
+      operationId: listBuckets
+      summary: List buckets
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: filter
+            in: query
+            schema: { type: string, enum: [owned, shared, tenant, all] }
+            description: Filter by access.ownership (default all)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  buckets:
+                    type: array
+                    items: { $ref: '#/components/schemas/Bucket' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /buckets/{bucket}:
+    post:
+      operationId: createBucket
+      summary: Create bucket
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '201':
+          description: Created with visibility
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bucket: { type: string }
+                  visibility: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    delete:
+      operationId: deleteBucket
+      summary: Delete empty bucket
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/access:
+    get:
+      operationId: listBucketAccessByBucket
+      summary: List bucket access grants (owner or tenant admin)
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Grants }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    put:
+      operationId: putBucketAccessByBucket
+      summary: Replace bucket access grants
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/access/{user_id}:
+    delete:
+      operationId: deleteBucketAccessByBucket
+      summary: Revoke bucket access for user
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+          - name: user_id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Revoked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /shareable-users:
+    get:
+      operationId: listShareableUsers
+      summary: Users that can receive bucket grants
+      tags: [Shares]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: bucket
+            in: query
+            required: true
+            schema: { type: string }
+          - name: q
+            in: query
+            schema: { type: string }
+            description: Username search (max 50 results)
+      responses:
+        '200': { description: Users }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      summary: In-app notifications for current user
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      responses:
+        '200': { description: Notifications }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /notifications/{id}/read:
+    post:
+      operationId: markNotificationRead
+      summary: Mark notification as read
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Read }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      summary: Mark all notifications read
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      responses:
+        '204': { description: Read }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /recent:
+    get:
+      operationId: listRecent
+      summary: Recently accessed buckets and folders
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      responses:
+        '200': { description: Recent items }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /buckets/{bucket}/objects:
+    get:
+      operationId: listObjects
+      summary: List objects
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+          - $ref: '#/components/parameters/Prefix'
+          - $ref: '#/components/parameters/Delimiter'
+          - $ref: '#/components/parameters/StartAfter'
+          - $ref: '#/components/parameters/MaxKeys'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObjectListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/versions:
+    get:
+      operationId: listObjectVersions
+      summary: List object versions
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Version list }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/settings:
+    get:
+      operationId: getBucketSettings
+      summary: Get bucket settings
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Bucket settings }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/object-meta:
+    get:
+      operationId: getObjectMeta
+      summary: Get object metadata
+      tags: [Search]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+          - name: key
+            in: query
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Object metadata }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    put:
+      operationId: putObjectMeta
+      summary: Update object metadata
+      tags: [Search]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/folders:
+    post:
+      operationId: createFolder
+      summary: Create folder placeholder
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '201': { description: Folder created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    delete:
+      operationId: deleteFolder
+      summary: Delete folder
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Deleted or conflict with object_count }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/bulk-delete:
+    post:
+      operationId: bulkDeleteObjects
+      summary: Bulk delete objects
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BulkDeleteRequest' }
+      responses:
+        '200': { description: Bulk result }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /buckets/{bucket}/object-actions:
+    post:
+      operationId: objectActions
+      summary: Batch object actions
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Action results }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /buckets/{bucket}/objects/{key}:
+    get:
+      operationId: downloadObject
+      summary: Download object
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+          - $ref: '#/components/parameters/ObjectKey'
+      responses:
+        '200':
+          description: Object bytes
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    put:
+      operationId: uploadObject
+      summary: Upload object
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+          - $ref: '#/components/parameters/ObjectKey'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object: { $ref: '#/components/schemas/Object' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      operationId: deleteObject
+      summary: Delete or schedule delete object
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+          - $ref: '#/components/parameters/ObjectKey'
+          - name: schedule
+            in: query
+            schema: { type: string, enum: [1d, 1w, 1m] }
+          - name: versionId
+            in: query
+            schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+        '200': { description: Scheduled delete or soft-delete to trash }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /presign:
+    post:
+      operationId: presignURL
+      summary: Generate presigned S3 URL
+      tags: [Keys]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PresignRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PresignResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /keys:
+    get:
+      operationId: listKeys
+      summary: List S3 access keys
+      tags: [Keys]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items: { $ref: '#/components/schemas/AccessKey' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      operationId: createKey
+      summary: Create S3 access key
+      tags: [Keys]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateKeyRequest' }
+      responses:
+        '201':
+          description: access_key and secret_key returned once
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateKeyResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /keys/{accessKey}:
+    delete:
+      operationId: deleteKey
+      summary: Delete access key
+      tags: [Keys]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: accessKey
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/policy:
+    get:
+      operationId: getBucketPolicy
+      summary: Get bucket policy JSON
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: policy document }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    put:
+      operationId: putBucketPolicy
+      summary: Set bucket policy
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OkResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/lifecycle:
+    get:
+      operationId: getLifecycle
+      summary: Get lifecycle rules
+      tags: [Lifecycle]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: rules array }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    put:
+      operationId: putLifecycle
+      summary: Set lifecycle rules
+      tags: [Lifecycle]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LifecycleRules' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OkResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /activity:
+    get:
+      operationId: listActivity
+      summary: Audit activity log
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - $ref: '#/components/parameters/Offset'
+          - $ref: '#/components/parameters/Limit'
+      responses:
+        '200': { description: Paginated activity }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /usage:
+    get:
+      operationId: getUsage
+      summary: Storage usage statistics
+      tags: [Usage]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      responses:
+        '200': { description: Usage aggregates }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /users:
+    get:
+      operationId: listUsers
+      summary: List users
+      tags: [Admin]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/Offset'
+          - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+                  total: { type: integer }
+                  offset: { type: integer }
+                  limit: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      operationId: createUser
+      summary: Create user
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '201': { description: User created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /users/{id}:
+    put:
+      operationId: updateUser
+      summary: Update user
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      operationId: deleteUser
+      summary: Delete user
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{id}/reset-password:
+    post:
+      operationId: resetPassword
+      summary: Reset user password
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: New password }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /settings/buckets:
+    get:
+      operationId: listBucketSettings
+      summary: List all bucket settings
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Bucket settings list }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /settings/buckets/{name}:
+    put:
+      operationId: updateBucketSettings
+      summary: Update bucket settings by name
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: name
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /settings/system:
+    get:
+      operationId: getSystemConfig
+      summary: Get system configuration
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: SystemConfig object }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    put:
+      operationId: putSystemConfig
+      summary: Update system configuration
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OkResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /trash:
+    get:
+      operationId: listTrash
+      summary: List trashed objects
+      tags: [Search]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: bucket
+            in: query
+            schema: { type: string }
+      responses:
+        '200': { description: Trash items }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /trash/{id}/restore:
+    post:
+      operationId: restoreTrash
+      summary: Restore from trash
+      tags: [Search]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Object restored }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /trash/{id}:
+    delete:
+      operationId: purgeTrash
+      summary: Permanently purge trash item
+      tags: [Search]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Purged }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tokens:
+    get:
+      operationId: listTokens
+      summary: List API tokens
+      tags: [Tokens]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items: { $ref: '#/components/schemas/APIToken' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      operationId: createToken
+      summary: Create API token
+      tags: [Tokens]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTokenRequest' }
+      responses:
+        '201':
+          description: token value returned once
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateTokenResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /tokens/{id}:
+    delete:
+      operationId: deleteToken
+      summary: Revoke API token
+      tags: [Tokens]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Revoked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /webhooks:
+    get:
+      operationId: listWebhooks
+      summary: List webhooks
+      tags: [Webhooks]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Webhooks }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      operationId: createWebhook
+      summary: Create webhook
+      tags: [Webhooks]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /webhooks/{id}:
+    put:
+      operationId: updateWebhook
+      summary: Update webhook
+      tags: [Webhooks]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      operationId: deleteWebhook
+      summary: Delete webhook
+      tags: [Webhooks]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /webhooks/templates:
+    get:
+      operationId: webhookTemplates
+      summary: Webhook payload templates
+      tags: [Webhooks]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Templates }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /hooks/test:
+    post:
+      operationId: hooksTest
+      summary: Send extension diagnostic webhook
+      tags: [Webhooks]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HooksTestRequest' }
+      responses:
+        '200': { description: Delivery result }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /webhooks/{id}/deliveries:
+    get:
+      operationId: listWebhookDeliveries
+      summary: Webhook delivery log
+      tags: [Webhooks]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+          - name: limit
+            in: query
+            schema: { type: integer, default: 50 }
+      responses:
+        '200': { description: Deliveries }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /webhooks/{id}/deliveries/{deliveryId}/retry:
+    post:
+      operationId: retryWebhookDelivery
+      summary: Retry failed delivery
+      tags: [Webhooks]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+          - name: deliveryId
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Retry queued }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /search:
+    get:
+      operationId: search
+      summary: Global search
+      tags: [Search]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: q
+            in: query
+            required: true
+            schema: { type: string }
+          - $ref: '#/components/parameters/Offset'
+          - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  offset: { type: integer }
+                  limit: { type: integer }
+                  results: { type: array, items: { type: object } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /favorites:
+    get:
+      operationId: listFavorites
+      summary: List favorites
+      tags: [Search]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      responses:
+        '200': { description: Favorites }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      operationId: createFavorite
+      summary: Add favorite
+      tags: [Search]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /favorites/{id}:
+    delete:
+      operationId: deleteFavorite
+      summary: Remove favorite
+      tags: [Search]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Removed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/tags:
+    get:
+      operationId: getBucketTags
+      summary: Get bucket tags
+      tags: [Search]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Tags map }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    put:
+      operationId: putBucketTags
+      summary: Set bucket tags
+      tags: [Search]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/object-tags:
+    get:
+      operationId: getObjectTags
+      summary: Get object tags
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Tags }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    put:
+      operationId: putObjectTags
+      summary: Set object tags
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/multipart:
+    post:
+      operationId: initiateMultipart
+      summary: Initiate multipart upload
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: upload_id }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /buckets/{bucket}/multipart/{uploadId}/parts/{partNumber}:
+    put:
+      operationId: uploadMultipartPart
+      summary: Upload multipart part
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+          - name: uploadId
+            in: path
+            required: true
+            schema: { type: string }
+          - name: partNumber
+            in: path
+            required: true
+            schema: { type: integer }
+      responses:
+        '200': { description: Part etag }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/multipart/{uploadId}/complete:
+    post:
+      operationId: completeMultipart
+      summary: Complete multipart upload
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+          - name: uploadId
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Object created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /buckets/{bucket}/multipart/{uploadId}:
+    delete:
+      operationId: abortMultipart
+      summary: Abort multipart upload
+      tags: [Buckets]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+          - name: uploadId
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Aborted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /settings/ldap/test:
+    post:
+      operationId: ldapTest
+      summary: Test LDAP connection
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Bind OK }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /settings/ldap/sync:
+    post:
+      operationId: ldapSync
+      summary: Sync LDAP users
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Sync result }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /mfa/enroll:
+    post:
+      operationId: mfaEnroll
+      summary: Start MFA enrollment
+      tags: [Auth]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      responses:
+        '200': { description: QR secret }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /mfa/verify-enroll:
+    post:
+      operationId: mfaVerifyEnroll
+      summary: Verify MFA enrollment
+      tags: [Auth]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      responses:
+        '200': { description: MFA enabled }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /mfa/verify:
+    post:
+      operationId: mfaVerify
+      summary: Verify MFA code
+      tags: [Auth]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      responses:
+        '200': { description: Verified }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /mfa/disable:
+    post:
+      operationId: mfaDisable
+      summary: Disable MFA
+      tags: [Auth]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      responses:
+        '200': { description: Disabled }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /buckets/{bucket}/legal-hold:
+    put:
+      operationId: setLegalHold
+      summary: Set object legal hold
+      tags: [Lifecycle]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /buckets/{bucket}/shares:
+    get:
+      operationId: listShares
+      summary: List share links
+      tags: [Shares]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+          - name: key
+            in: query
+            schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shares:
+                    type: array
+                    items: { $ref: '#/components/schemas/ShareLink' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    post:
+      operationId: createShare
+      summary: Create share link
+      tags: [Shares]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateShareRequest' }
+      responses:
+        '201':
+          description: Share created (expires_in_sec in request body)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  share: { $ref: '#/components/schemas/ShareLink' }
+                  url: { type: string, format: uri }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /shares/{id}:
+    delete:
+      operationId: revokeShare
+      summary: Revoke share link
+      tags: [Shares]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Revoked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /public/share/{token}:
+    get:
+      operationId: publicShareInfo
+      summary: Public share metadata
+      tags: [Shares]
+      security: []
+      parameters:
+          - name: token
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Share info (no auth) }
+
+  /public/share/{token}/download:
+    get:
+      operationId: publicShareDownload
+      summary: Download via share token
+      tags: [Shares]
+      security: []
+      parameters:
+          - name: token
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200':
+          description: File bytes
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+
+  /tenants:
+    get:
+      operationId: listTenants
+      summary: List tenants
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      responses:
+        '200': { description: Tenants }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      operationId: createTenant
+      summary: Create tenant
+      tags: [Tenants]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tenants/{id}:
+    delete:
+      operationId: deleteTenant
+      summary: Delete tenant
+      tags: [Tenants]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tenants/{id}/buckets:
+    get:
+      operationId: listTenantBuckets
+      summary: List tenant buckets
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Buckets }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tenants/{id}/groups:
+    get:
+      operationId: listTenantGroups
+      summary: List tenant groups
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Groups }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    post:
+      operationId: createTenantGroup
+      summary: Create tenant group
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tenants/{id}/groups/{group_id}:
+    get:
+      operationId: getTenantGroup
+      summary: Get tenant group
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+          - name: group_id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Group }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    put:
+      operationId: updateTenantGroup
+      summary: Update tenant group
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+          - name: group_id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      operationId: deleteTenantGroup
+      summary: Delete tenant group
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+          - name: group_id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tenants/{id}/groups/{group_id}/buckets:
+    put:
+      operationId: putTenantGroupBuckets
+      summary: Assign buckets to group
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+          - name: group_id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tenants/{id}/members/{user_id}/groups:
+    put:
+      operationId: putMemberGroups
+      summary: Assign member groups
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+          - name: user_id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tenants/{id}/members:
+    get:
+      operationId: listTenantMembers
+      summary: List tenant members
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Members }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    post:
+      operationId: addTenantMember
+      summary: Add tenant member
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '201': { description: Added }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tenants/{id}/users:
+    post:
+      operationId: createTenantUser
+      summary: Create user in tenant
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tenants/{id}/members/{userId}:
+    put:
+      operationId: updateTenantMember
+      summary: Update tenant member
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+          - name: userId
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      operationId: removeTenantMember
+      summary: Remove tenant member
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+          - name: userId
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Removed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tenants/{tenant}/buckets/{bucket}/access:
+    get:
+      operationId: listBucketAccess
+      summary: List bucket access grants
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: tenant
+            in: path
+            required: true
+            schema: { type: string }
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Grants }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    put:
+      operationId: putBucketAccess
+      summary: Set bucket access grants
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: tenant
+            in: path
+            required: true
+            schema: { type: string }
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tenants/{tenant}/buckets/{bucket}/access/{user_id}:
+    delete:
+      operationId: deleteBucketAccess
+      summary: Revoke bucket access
+      tags: [Tenants]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - name: tenant
+            in: path
+            required: true
+            schema: { type: string }
+          - $ref: '#/components/parameters/BucketName'
+          - name: user_id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Revoked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /gateway/connections:
+    get:
+      operationId: listGatewayConnections
+      summary: List gateway connections
+      tags: [Gateway]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Connections }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      operationId: createGatewayConnection
+      summary: Create gateway connection
+      tags: [Gateway]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /gateway/connections/{id}:
+    delete:
+      operationId: deleteGatewayConnection
+      summary: Delete connection
+      tags: [Gateway]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /gateway/connections/{id}/test:
+    post:
+      operationId: testGatewayConnection
+      summary: Test gateway connection
+      tags: [Gateway]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: OK or error }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /gateway/replication:
+    get:
+      operationId: listReplicationRules
+      summary: List replication rules
+      tags: [Gateway]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Rules }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      operationId: createReplicationRule
+      summary: Create replication rule
+      tags: [Gateway]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /gateway/replication/{id}:
+    delete:
+      operationId: deleteReplicationRule
+      summary: Delete replication rule
+      tags: [Gateway]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /gateway/replication/{id}/sync:
+    post:
+      operationId: triggerReplicationSync
+      summary: Trigger full sync job
+      tags: [Gateway]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Job started }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /gateway/sync-jobs:
+    get:
+      operationId: listSyncJobs
+      summary: List sync jobs
+      tags: [Gateway]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Jobs }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /gateway/health:
+    get:
+      operationId: gatewayHealth
+      summary: Gateway health metrics
+      tags: [Gateway]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Health }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /gateway/replication/queue:
+    get:
+      operationId: replicationQueue
+      summary: Replication task queue
+      tags: [Gateway]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Queue }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /gateway/replication/retry-failed:
+    post:
+      operationId: retryFailedReplication
+      summary: Retry failed replication tasks
+      tags: [Gateway]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Retried }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /gateway/replication/clear-errors:
+    post:
+      operationId: clearReplicationErrors
+      summary: Clear replication errors
+      tags: [Gateway]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Cleared }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /federation/clusters:
+    get:
+      operationId: listFederationClusters
+      summary: List federation clusters
+      tags: [Federation]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Clusters }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      operationId: createFederationCluster
+      summary: Register federation cluster
+      tags: [Federation]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /federation/clusters/{id}:
+    delete:
+      operationId: deleteFederationCluster
+      summary: Remove federation cluster
+      tags: [Federation]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /cluster/status:
+    get:
+      operationId: clusterStatus
+      summary: Cluster node status
+      tags: [Federation]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Status }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /sts/assume-role:
+    post:
+      operationId: assumeRole
+      summary: STS assume-role (MVP)
+      tags: [Enterprise]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      responses:
+        '200': { description: Temporary credentials }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /buckets/{bucket}/object-retention:
+    put:
+      operationId: putObjectRetention
+      summary: Set object retention
+      tags: [Lifecycle]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    get:
+      operationId: getObjectRetention
+      summary: Get object retention
+      tags: [Lifecycle]
+      security:
+        - BearerAPIToken: []
+        - BearerJWT: []
+      parameters:
+          - $ref: '#/components/parameters/BucketName'
+      responses:
+        '200': { description: Retention }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+tags:
+  - name: Health
+    description: Health and readiness probes
+  - name: Auth
+    description: Login, MFA, OIDC browser flows, logout
+  - name: Profile
+    description: Current user profile and password
+  - name: Buckets
+    description: Buckets, objects, multipart, folders
+  - name: Keys
+    description: S3 access keys and presigned URLs
+  - name: Shares
+    description: Share links and anonymous public download
+  - name: Tokens
+    description: Console API tokens (ds_*)
+  - name: Usage
+    description: Storage usage and quotas
+  - name: Search
+    description: Search, favorites, tags, trash, metadata
+  - name: Lifecycle
+    description: Lifecycle rules, legal hold, retention
+  - name: Admin
+    description: Users, activity, bucket policies, settings
+  - name: Webhooks
+    description: Event webhooks and delivery log
+  - name: Tenants
+    description: Multi-tenant isolation, groups, members, grants
+  - name: Gateway
+    description: Replication to external S3, connections, sync jobs
+  - name: Federation
+    description: Federation clusters and cluster status
+  - name: Enterprise
+    description: LDAP admin, MFA enrollment, STS

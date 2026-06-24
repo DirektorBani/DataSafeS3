@@ -1,0 +1,17 @@
+{
+  "toast": {
+    "registered": "Кластер зарегистрирован"
+  },
+  "title": "Федерация",
+  "description": "Зарегистрированные удалённые кластеры {{brand}} (MVP конфигурации).",
+  "fields": {
+    "name": "Имя",
+    "endpoint": "Endpoint"
+  },
+  "placeholder": {
+    "endpoint": "https://remote:9000"
+  },
+  "actions": {
+    "register": "Зарегистрировать"
+  }
+}

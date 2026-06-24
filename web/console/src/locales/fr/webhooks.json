@@ -1,0 +1,60 @@
+{
+  "error": {
+    "headersJson": "Headers must be a JSON object"
+  },
+  "toast": {
+    "created": "Webhook created",
+    "deleted": "Webhook deleted",
+    "retryQueued": "Retry queued"
+  },
+  "title": "Webhooks",
+  "description": "HTTP notifications for storage and admin events.",
+  "actions": {
+    "add": "Add webhook",
+    "log": "Log"
+  },
+  "loading": "Loading webhooks...",
+  "columns": {
+    "name": "Name",
+    "url": "URL",
+    "events": "Events",
+    "status": "Status",
+    "created": "Created"
+  },
+  "status": {
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "empty": "No webhooks configured.",
+  "create": {
+    "title": "Add webhook",
+    "description": "POST JSON payloads to your HTTP endpoint when events occur.",
+    "defaultName": "Webhook"
+  },
+  "fields": {
+    "name": "Name",
+    "template": "Template (optional)",
+    "targetUrl": "Target URL",
+    "eventTypes": "Event types",
+    "headers": "Headers (optional JSON)",
+    "enabled": "Enabled"
+  },
+  "placeholder": {
+    "name": "Production alerts",
+    "template": "Custom URL",
+    "url": "https://example.com/hook",
+    "headers": "{\"Authorization\": \"Bearer token\"}"
+  },
+  "delete": {
+    "title": "Delete webhook",
+    "description": "Delete webhook \"{{name}}\"?"
+  },
+  "delivery": {
+    "title": "Delivery log — {{name}}",
+    "description": "Recent webhook delivery attempts",
+    "loading": "Loading…",
+    "empty": "No deliveries yet.",
+    "retry": "Retry",
+    "attempts": "attempts:"
+  }
+}

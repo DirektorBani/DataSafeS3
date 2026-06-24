@@ -1,0 +1,30 @@
+{
+  "statement": "Statement",
+  "effect": "Effect",
+  "effectAllow": "Allow",
+  "effectDeny": "Deny",
+  "principal": "Principal",
+  "quickPresets": "Quick presets",
+  "presets": {
+    "read": "Read",
+    "write": "Write",
+    "delete": "Delete",
+    "list": "List",
+    "admin": "Admin"
+  },
+  "actions": "Actions",
+  "resources": "Resources",
+  "bucketArn": "Bucket ARN",
+  "allObjects": "All objects",
+  "addResource": "Add resource",
+  "intro": "Build IAM-style statements for bucket {{bucket}}",
+  "addStatement": "Add statement",
+  "empty": "No statements yet. Add one to grant or deny permissions.",
+  "s3Actions": {
+    "listBucket": "List bucket",
+    "getObject": "Get object",
+    "putObject": "Put object",
+    "deleteObject": "Delete object",
+    "allS3": "All S3 actions"
+  }
+}

@@ -1,0 +1,76 @@
+{{- if .Values.caddy.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "datasafe.caddy.fullname" . }}
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "datasafe.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: caddy
+  template:
+    metadata:
+      labels:
+        {{- include "datasafe.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: caddy
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: copy-console
+          image: {{ include "datasafe.image" (dict "global" .Values.global "image" .Values.console.image) }}
+          imagePullPolicy: {{ .Values.console.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - cp -a /srv/console/. /console-assets/
+          volumeMounts:
+            - name: console-assets
+              mountPath: /console-assets
+      containers:
+        - name: caddy
+          image: {{ include "datasafe.image" (dict "global" .Values.global "image" .Values.caddy.image) }}
+          imagePullPolicy: {{ .Values.caddy.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - name: caddy-config
+              mountPath: /etc/caddy/Caddyfile
+              subPath: Caddyfile
+            - name: console-assets
+              mountPath: /srv/console
+          resources:
+            {{- toYaml .Values.caddy.resources | nindent 12 }}
+      volumes:
+        - name: caddy-config
+          configMap:
+            name: {{ include "datasafe.caddy.fullname" . }}-config
+        - name: console-assets
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "datasafe.caddy.fullname" . }}
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "datasafe.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy
+{{- end }}

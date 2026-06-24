@@ -1,0 +1,50 @@
+﻿Thank you for installing {{ .Chart.Name }}!
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+== DataSafeS3 core ==
+{{- if .Values.ingress.enabled }}
+Console URL: {{ if .Values.ingress.console.tls }}https{{ else }}http{{ end }}://{{ .Values.ingress.console.host }}/
+S3 API URL:  {{ if .Values.ingress.s3.tls }}https{{ else }}http{{ end }}://{{ .Values.ingress.s3.host }}/
+{{- else if .Values.caddy.enabled }}
+Console (port-forward): kubectl port-forward svc/{{ include "datasafe.caddy.fullname" . }} 8080:80
+S3 API (port-forward): kubectl port-forward svc/{{ include "datasafe.storageServer.fullname" . }} 9000:9000
+{{- end }}
+
+Admin login: {{ .Values.storageServer.config.adminUser }} / (see secret {{ include "datasafe.storageServer.fullname" . }})
+S3 credentials: {{ .Values.storageServer.config.accessKey }} / (see secret)
+
+Metadata backend: {{ include "datasafe.metadataBackend" . }}
+{{- if .Values.postgres.enabled }}
+PostgreSQL service: {{ include "datasafe.postgres.fullname" . }}:5432
+{{- end }}
+
+{{- if .Values.monitoring.grafana.enabled }}
+
+== Monitoring ==
+Grafana: kubectl port-forward svc/{{ include "datasafe.grafana.fullname" . }} 3000:3000
+  User: {{ .Values.monitoring.grafana.adminUser }}
+{{- end }}
+{{- if .Values.monitoring.prometheus.enabled }}
+Prometheus: kubectl port-forward svc/{{ include "datasafe.prometheus.fullname" . }} 9090:9090
+{{- end }}
+
+{{- if .Values.minio.enabled }}
+
+== S3 test endpoint (dev) ==
+S3 test API: {{ include "datasafe.minio.fullname" . }}:9000 (cluster-internal)
+Configure Gateway connection endpoint: http://{{ include "datasafe.minio.fullname" . }}:9000
+{{- end }}
+
+{{- if or .Values.systemSettings.seed.enabled .Values.logging.seed }}
+
+== System settings seed ==
+ConfigMap {{ include "datasafe.fullname" . }}-system-settings contains JSON for Admin API.
+Apply after sign-in: PUT /api/v1/settings/system with the payload from the ConfigMap.
+{{- end }}
+
+Build images before production use:
+  docker build -f deploy/docker/Dockerfile -t {{ .Values.storageServer.image.repository }}:{{ .Values.storageServer.image.tag }} .
+
+Documentation: deploy/helm/datasafe/README.md

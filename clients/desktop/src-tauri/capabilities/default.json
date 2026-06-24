@@ -1,0 +1,10 @@
+{
+  "identifier": "default",
+  "description": "DataSafeS3 Sync default capabilities",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:default",
+    "dialog:default"
+  ]
+}

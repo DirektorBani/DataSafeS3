@@ -1,0 +1,107 @@
+{
+  "brand": "DataSafeS3",
+  "tagline": "Object storage",
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "save": "Save",
+  "delete": "Delete",
+  "create": "Create",
+  "creating": "Creating...",
+  "refresh": "Refresh",
+  "working": "Working...",
+  "loading": "Loading...",
+  "back": "Back",
+  "close": "Close",
+  "done": "Done",
+  "edit": "Edit",
+  "apply": "Apply",
+  "enabled": "Enabled",
+  "disabled": "Disabled",
+  "unlimited": "Unlimited",
+  "failed": "Failed",
+  "name": "Name",
+  "status": "Status",
+  "actions": "Actions",
+  "previous": "Previous",
+  "next": "Next",
+  "copy": {
+    "copied": "{{label}} copied",
+    "copiedGeneric": "Copied to clipboard",
+    "failed": "Failed to copy",
+    "aria": "Copy {{label}}",
+    "ariaGeneric": "Copy",
+    "buttonCopied": "Copied",
+    "buttonCopy": "Copy"
+  },
+  "dataTable": {
+    "searchPlaceholder": "Search...",
+    "empty": "No results.",
+    "pagination": "Page {{page}} of {{pages}}"
+  },
+  "status": {
+    "healthy": "Healthy",
+    "warning": "Warning",
+    "error": "Error",
+    "info": "Info",
+    "demo": "Demo data",
+    "ok": "Online",
+    "offline": "Offline"
+  },
+  "theme": {
+    "label": "Theme: {{theme}}",
+    "appearance": "Appearance",
+    "dark": "Dark",
+    "light": "Light",
+    "system": "System"
+  },
+  "signOut": "Sign out",
+  "languageSwitcher": {
+    "ariaLabel": "Language"
+  },
+  "otp": {
+    "digitAria": "Digit {{index}} of {{length}}"
+  },
+  "units": {
+    "bytes": "B",
+    "kilobytes": "KB",
+    "megabytes": "MB",
+    "gigabytes": "GB",
+    "terabytes": "TB"
+  },
+  "duration": {
+    "seconds": "{{count}}s",
+    "minutesSeconds": "{{minutes}}m {{seconds}}s",
+    "empty": "—"
+  },
+  "quotaPresets": {
+    "unlimited": "Unlimited",
+    "10gb": "10 GB",
+    "100gb": "100 GB",
+    "1tb": "1 TB"
+  },
+  "objectQuotaPresets": {
+    "unlimited": "Unlimited",
+    "1k": "1,000",
+    "10k": "10,000",
+    "100k": "100,000",
+    "1m": "1,000,000"
+  },
+  "retentionPresets": {
+    "30days": "30 days",
+    "90days": "90 days",
+    "1year": "1 year"
+  },
+  "storageClasses": {
+    "hot": "Hot",
+    "warm": "Warm",
+    "cold": "Cold"
+  },
+  "roles": {
+    "administrator": "Administrator",
+    "operator": "Operator",
+    "user": "User",
+    "tenantAdmin": "Tenant administrator",
+    "member": "Member",
+    "viewer": "Viewer"
+  }
+}

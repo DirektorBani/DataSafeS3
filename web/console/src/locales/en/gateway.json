@@ -1,0 +1,78 @@
+﻿{
+  "title": "{{brand}} Gateway",
+  "description": "Replicate local buckets to external S3-compatible storage (async).",
+  "error": {
+    "load": "Failed to load gateway data: {{message}}"
+  },
+  "tabs": {
+    "connections": "Connections",
+    "rules": "Replication Rules",
+    "jobs": "Sync Jobs",
+    "health": "Health"
+  },
+  "connections": {
+    "empty": "No gateway connections configured",
+    "create": "Create Connection",
+    "add": {
+      "title": "Add Connection",
+      "description": "External S3 endpoint (any S3-compatible provider)"
+    },
+    "loading": "Loading connections…",
+    "test": "Test Connection",
+    "addAction": "Add Connection"
+  },
+  "fields": {
+    "name": "Name",
+    "endpoint": "Endpoint",
+    "region": "Region",
+    "accessKey": "Access key",
+    "secretKey": "Secret key",
+    "localBucket": "Local source bucket",
+    "remoteConnection": "Remote connection",
+    "remoteBucket": "Remote destination bucket"
+  },
+  "pathStyle": "Path-style URLs (required for path-style endpoints)",
+  "tlsVerify": "Verify TLS certificate",
+  "toast": {
+    "connectionCreated": "Connection created — click Test Connection to verify",
+    "ruleCreated": "Replication rule created — click Sync now to start",
+    "requeued": "Requeued failed tasks",
+    "noFailed": "No failed tasks to retry",
+    "errorsCleared": "Replication errors cleared"
+  },
+  "rules": {
+    "hint": "Create a connection first (Connections tab), then add a replication rule here.",
+    "add": {
+      "title": "Add Replication Rule",
+      "description": "One-way sync: local bucket → remote bucket via connection"
+    },
+    "selectBucket": "Select bucket",
+    "selectConnection": "Select connection",
+    "addAction": "Add Rule",
+    "empty": "No replication rules yet.",
+    "syncNow": "Sync now"
+  },
+  "jobs": {
+    "empty": "No manual sync jobs yet. Use Sync now on a replication rule."
+  },
+  "health": {
+    "loading": "Loading health…",
+    "failed": "Health check failed:",
+    "title": "Gateway health",
+    "connections": "Connections",
+    "rules": "Rules",
+    "queuePending": "Queue pending",
+    "replicated": "Replicated",
+    "replicationErrors": "replication errors",
+    "missingConnections": "rule(s) reference missing connections",
+    "retryFailed": "Retry failed",
+    "clearErrors": "Clear errors"
+  },
+  "queue": {
+    "title": "Replication queue",
+    "description": "Pending async replication tasks (processed every ~2s)",
+    "empty": "Queue empty — all caught up.",
+    "failed": "Failed tasks",
+    "retry": "retry {{n}}"
+  }
+}

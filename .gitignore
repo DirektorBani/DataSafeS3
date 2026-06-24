@@ -1,0 +1,77 @@
+.DS_Store
+.idea/
+.vscode/
+
+# --- IDE / editor (local) ---
+.cursor/
+
+# Go
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+
+# Env / secrets
+.env
+
+# Local runtime data
+data/
+**/metadata.db
+
+# License / secrets
+LICENSE.local
+
+# Node
+node_modules/
+web/console/node_modules/
+web/console/dist/
+web/console/.vite/
+*.tsbuildinfo
+
+# Windows stray redirect artifacts
+nul
+nul)
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Docker
+*.log
+deploy/docker/storage-server-linux
+
+# --- Local test data ---
+data-local-test/
+
+# --- Internal analysis (local / not for public repo) ---
+docs/analysis/
+
+# --- Internal roadmap phase TZs (keep en/ru product specs) ---
+docs/specs/roadmap/
+
+# --- Legacy dev context mirror (public copies under docs/en|ru/context/) ---
+docs/context/
+
+# --- QA / audit artifacts (not product documentation) ---
+docs/testing/
+
+# --- Local binaries / tool downloads ---
+tools/*.jar
+/datasafe-sync
+/datasafe-sync.exe
+clients/desktop/src-tauri/binaries/datasafe-sync-*
+
+# --- Local OpenAPI lint config (optional; scripts use npx spectral-cli) ---
+.spectral.yaml
+
+# --- Archives / accidental exports ---
+README.zip
+
+# --- Build / coverage ---
+web/console/coverage/

@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "datasafe.storageServer.fullname" . }}
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage-server
+spec:
+  replicas: {{ .Values.storageServer.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "datasafe.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: storage-server
+  template:
+    metadata:
+      labels:
+        {{- include "datasafe.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: storage-server
+    spec:
+      serviceAccountName: {{ include "datasafe.serviceAccountName" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.postgres.enabled }}
+      initContainers:
+        - name: wait-postgres
+          image: {{ include "datasafe.image" (dict "global" .Values.global "image" .Values.postgres.image) }}
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h {{ include "datasafe.postgres.host" . }} -p {{ .Values.storageServer.config.postgres.port | default "5432" }} -U {{ .Values.postgres.auth.username }}; do
+                echo "waiting for postgres..."
+                sleep 2
+              done
+      {{- end }}
+      containers:
+        - name: storage-server
+          image: {{ include "datasafe.image" (dict "global" .Values.global "image" .Values.storageServer.image) }}
+          imagePullPolicy: {{ .Values.storageServer.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 9000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "datasafe.storageServer.fullname" . }}
+            - secretRef:
+                name: {{ include "datasafe.storageServer.fullname" . }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.storageServer.config.dataDir }}
+              {{- if .Values.persistence.metadata.enabled }}
+              subPath: objects
+              {{- end }}
+            {{- if .Values.persistence.metadata.enabled }}
+            - name: metadata
+              mountPath: {{ .Values.storageServer.config.dataDir }}
+              subPath: bolt
+            {{- end }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.storageServer.resources | nindent 12 }}
+      {{- if .Values.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "datasafe.fullname" . }}-data
+        {{- if .Values.persistence.metadata.enabled }}
+        - name: metadata
+          persistentVolumeClaim:
+            claimName: {{ include "datasafe.fullname" . }}-metadata
+        {{- end }}
+      {{- end }}
+      {{- with .Values.storageServer.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.storageServer.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.storageServer.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

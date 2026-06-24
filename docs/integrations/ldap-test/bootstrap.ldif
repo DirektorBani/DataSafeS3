@@ -1,0 +1,38 @@
+# Тестовые OU, пользователи и группа для DataSafeS3 (dc=datasafe,dc=local)
+# Пароли: plain-text для dev-стенда (osixia/openldap принимает при первом bootstrap)
+
+dn: ou=users,dc=datasafe,dc=local
+objectClass: organizationalUnit
+ou: users
+
+dn: cn=ldapuser,ou=users,dc=datasafe,dc=local
+objectClass: inetOrgPerson
+objectClass: organizationalPerson
+objectClass: person
+objectClass: top
+cn: ldapuser
+sn: User
+uid: ldapuser
+mail: ldapuser@datasafe.local
+userPassword: password
+
+dn: cn=ldapadmin,ou=users,dc=datasafe,dc=local
+objectClass: inetOrgPerson
+objectClass: organizationalPerson
+objectClass: person
+objectClass: top
+cn: ldapadmin
+sn: Admin
+uid: ldapadmin
+mail: ldapadmin@datasafe.local
+userPassword: password
+
+dn: ou=groups,dc=datasafe,dc=local
+objectClass: organizationalUnit
+ou: groups
+
+dn: cn=datasafe-users,ou=groups,dc=datasafe,dc=local
+objectClass: groupOfNames
+cn: datasafe-users
+member: cn=ldapuser,ou=users,dc=datasafe,dc=local
+member: cn=ldapadmin,ou=users,dc=datasafe,dc=local

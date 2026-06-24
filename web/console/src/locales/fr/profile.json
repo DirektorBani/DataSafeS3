@@ -1,0 +1,58 @@
+{
+  "toast": {
+    "scanQr": "Scan the QR code with Google Authenticator",
+    "mfaEnabled": "MFA enabled",
+    "mfaDisabled": "MFA disabled",
+    "passwordChanged": "Password changed"
+  },
+  "title": "Profile",
+  "description": "Account security and MFA settings.",
+  "account": {
+    "title": "Account",
+    "role": "Role:",
+    "primaryTenant": "Primary tenant:",
+    "tenantMemberships": "Tenant memberships"
+  },
+  "mfa": {
+    "title": "Multi-factor authentication (TOTP)",
+    "enabled": "MFA is enabled on your account.",
+    "disabled": "Protect your account with a time-based one-time password.",
+    "enable": "Enable MFA",
+    "scanApps": "Scan with Google Authenticator, Authy, or Microsoft Authenticator.",
+    "qrAlt": "MFA QR code",
+    "manualSecret": "Or enter this secret manually:",
+    "secretLabel": "Secret",
+    "verificationCode": "Verification code",
+    "confirmSetup": "Enter the code from your app to confirm setup · refreshes in {{seconds}}s",
+    "verifyAndEnable": "Verify and enable",
+    "cancelSetup": "Cancel setup",
+    "disable": "Disable MFA"
+  },
+  "recovery": {
+    "title": "Save these recovery codes — shown once only",
+    "copyAll": "Copy all",
+    "download": "Download"
+  },
+  "password": {
+    "title": "Password",
+    "ldap": "Password managed by LDAP provider",
+    "oidc": "Password managed by SSO provider",
+    "local": "Change your local account password.",
+    "ldapHint": "Your account authenticates through LDAP. Password changes must be done in your directory service.",
+    "oidcHint": "Your account authenticates through SSO. Password changes must be done in your identity provider."
+  },
+  "fields": {
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "password": "Password",
+    "authenticatorCode": "Authenticator or recovery code"
+  },
+  "actions": {
+    "changePassword": "Change password"
+  },
+  "disableMfa": {
+    "title": "Disable MFA",
+    "description": "Enter your password and a current authenticator code (or recovery code) to disable MFA."
+  }
+}

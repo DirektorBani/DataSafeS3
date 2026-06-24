@@ -1,0 +1,62 @@
+{{- if or .Values.systemSettings.seed.enabled .Values.logging.seed }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "datasafe.fullname" . }}-system-settings
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: system-settings
+  annotations:
+    datasafe.dev/description: >-
+      Optional seed for PUT /api/v1/settings/system after install.
+      External logging sinks are configured here (not via STORAGE_* env vars).
+data:
+  system-settings.json: |
+    {
+      "soft_delete_enabled": true,
+      "trash_retention_days": 30,
+      {{- if .Values.ldap.enabled }}
+      "ldap": {
+        "enabled": true,
+        "url": {{ .Values.ldap.url | quote }},
+        "bind_dn": {{ .Values.ldap.bindDn | quote }},
+        "base_dn": {{ .Values.ldap.baseDn | quote }}
+        {{- if .Values.ldap.groupDn }},
+        "group_dn": {{ .Values.ldap.groupDn | quote }}
+        {{- end }}
+      },
+      {{- end }}
+      {{- if .Values.oidc.enabled }}
+      "oidc": {
+        "enabled": true,
+        "issuer": {{ .Values.oidc.issuer | quote }},
+        {{- if .Values.oidc.internalIssuer }}
+        "internal_issuer": {{ .Values.oidc.internalIssuer | quote }},
+        {{- end }}
+        "client_id": {{ .Values.oidc.clientId | quote }},
+        "redirect_url": {{ include "datasafe.oidc.redirectUrl" . | quote }}
+      },
+      {{- end }}
+      "logging": {
+        "syslog": {
+          "enabled": {{ .Values.logging.syslog.enabled }},
+          "address": {{ .Values.logging.syslog.address | quote }},
+          "tls": {{ .Values.logging.syslog.tls }}
+        },
+        "loki": {
+          "enabled": {{ .Values.logging.loki.enabled }},
+          "address": {{ .Values.logging.loki.address | quote }}
+        },
+        "elasticsearch": {
+          "enabled": {{ .Values.logging.elasticsearch.enabled }},
+          "address": {{ .Values.logging.elasticsearch.address | quote }},
+          "index": {{ .Values.logging.elasticsearch.index | quote }},
+          "username": {{ .Values.logging.elasticsearch.username | quote }}
+        },
+        "webhook": {
+          "enabled": {{ .Values.logging.webhook.enabled }},
+          "address": {{ .Values.logging.webhook.address | quote }}
+        }
+      }
+    }
+{{- end }}

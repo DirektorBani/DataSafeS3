@@ -1,0 +1,203 @@
+{
+  "presign": {
+    "1h": "1 hour",
+    "24h": "24 hours",
+    "7d": "7 days",
+    "30d": "30 days"
+  },
+  "breadcrumb": {
+    "root": "Root"
+  },
+  "toast": {
+    "deletionScheduled": "Deletion scheduled for {{date}}",
+    "deletionScheduledShort": "Deletion scheduled",
+    "objectDeleted": "Object deleted",
+    "bulkDeleted": "Deleted {{count}} object(s)",
+    "uploadFailed": "Upload failed",
+    "folderCreated": "Folder created",
+    "settingsSaved": "Settings saved",
+    "lifecycleSaved": "Lifecycle rules saved",
+    "shareCreated": "Share link created",
+    "folderUnpinned": "Folder unpinned",
+    "folderPinned": "Folder pinned",
+    "legalHoldEnabled": "Legal hold enabled",
+    "legalHoldCleared": "Legal hold cleared",
+    "metadataSaved": "Metadata saved",
+    "invalidJson": "Invalid JSON",
+    "tagsSaved": "Tags saved",
+    "invalidTagsJson": "Invalid tags JSON",
+    "accessSaved": "Access rules saved",
+    "versionRestored": "Version restored",
+    "versionDeleted": "Version deleted",
+    "restored": "Restored",
+    "permanentlyDeleted": "Permanently deleted",
+    "copied": "Copied",
+    "moved": "Moved",
+    "renamed": "Renamed",
+    "folderDeleted": "Deleted {{count}} object(s)",
+    "deleteFailed": "Delete failed",
+    "folderNotEmpty": "Folder is not empty — enable recursive delete"
+  },
+  "invalidBucket": "Invalid bucket.",
+  "backToBuckets": "Back to buckets",
+  "description": "Object browser, versions, settings, and lifecycle.",
+  "storageUsage": "Storage usage",
+  "tabs": {
+    "objects": "Objects",
+    "versions": "Versions",
+    "settings": "Settings",
+    "share": "Share",
+    "access": "Access",
+    "lifecycle": "Lifecycle",
+    "trash": "Trash"
+  },
+  "pin": {
+    "pinned": "Pinned",
+    "pinFolder": "Pin folder"
+  },
+  "actions": {
+    "upload": "Upload",
+    "newFolder": "New folder",
+    "delete": "Delete ({{count}})"
+  },
+  "dropzone": "Drag and drop files here",
+  "upload": {
+    "part": "Part {{done}}/{{total}}",
+    "eta": "ETA {{duration}}"
+  },
+  "table": {
+    "name": "Name",
+    "size": "Size",
+    "modified": "Modified"
+  },
+  "emptyFolder": "This folder is empty.",
+  "loadMore": "Load more objects",
+  "metadata": {
+    "title": "Metadata",
+    "key": "Key",
+    "contentType": "Content-Type",
+    "size": "Size",
+    "etag": "ETag",
+    "created": "Created",
+    "modified": "Modified",
+    "version": "Version",
+    "retentionUntil": "Retention until",
+    "storageClass": "Storage class",
+    "legalHold": "Legal hold",
+    "tagsJson": "Tags (JSON)",
+    "customMetadata": "Custom metadata (JSON)",
+    "save": "Save metadata",
+    "download": "Download",
+    "rename": "Rename",
+    "move": "Move",
+    "copy": "Copy",
+    "share": "Share",
+    "selectObject": "Select an object to view metadata."
+  },
+  "versions": {
+    "title": "Object versions",
+    "description": "All versions when bucket versioning is enabled.",
+    "noVersions": "No versions found.",
+    "versionId": "Version ID"
+  },
+  "settings": {
+    "openAdmin": "Open in admin bucket settings"
+  },
+  "access": {
+    "title": "Tenant access",
+    "description": "Regulate who can read or write this bucket. Empty list = default tenant role rules.",
+    "save": "Save access",
+    "read": "Read",
+    "write": "Write",
+    "loadError": "Unable to load access rules.",
+    "folderTitle": "Folder sharing",
+    "folderDescription": "Grant access to a folder prefix inside this bucket (e.g. reports/).",
+    "folderPrefix": "Folder prefix",
+    "addFolderShare": "Add folder share",
+    "selectUser": "Select user"
+  },
+  "lifecycle": {
+    "expire": "Delete after N days",
+    "abortMultipart": "Delete incomplete uploads",
+    "expireNoncurrent": "Delete old versions",
+    "title": "Lifecycle rules",
+    "description": "Automatic expiration and cleanup.",
+    "addRule": "Add rule",
+    "columns": {
+      "name": "Name",
+      "prefix": "Prefix",
+      "action": "Action",
+      "days": "Days",
+      "status": "Status"
+    },
+    "edit": "Edit",
+    "empty": "No lifecycle rules."
+  },
+  "trash": {
+    "title": "Trash",
+    "description": "Soft-deleted objects from this bucket (when enabled in Administrator settings).",
+    "columns": {
+      "key": "Key",
+      "size": "Size",
+      "deleted": "Deleted",
+      "by": "By"
+    },
+    "restore": "Restore",
+    "empty": "No items in trash for this bucket."
+  },
+  "share": {
+    "title": "Share object",
+    "description": "Create a public share link for \"{{key}}\" (download counter enforced server-side).",
+    "expiration": "Expiration",
+    "customSeconds": "Custom (seconds)",
+    "maxDownloads": "Max downloads (0 = unlimited)",
+    "downloadsRemaining": "{{remaining}} of {{max}} downloads remaining",
+    "url": "URL",
+    "createLink": "Create link"
+  },
+  "folder": {
+    "title": "New folder",
+    "placeholder": "Folder name"
+  },
+  "copy": {
+    "title": "Copy object",
+    "description": "Copy \"{{key}}\" to another location."
+  },
+  "move": {
+    "title": "Move object"
+  },
+  "deleteFolder": {
+    "title": "Delete folder",
+    "description": "Delete folder \"{{name}}\"?",
+    "recursive": "Delete all contents recursively (required if folder is not empty)"
+  },
+  "lifecycleRule": {
+    "edit": "Edit rule",
+    "new": "New rule",
+    "save": "Save rule"
+  },
+  "rename": {
+    "title": "Rename object",
+    "placeholder": "New name"
+  },
+  "deleteObject": {
+    "title": "Delete object",
+    "description": "Delete \"{{key}}\"?",
+    "now": "Delete now",
+    "schedule": "Schedule deletion"
+  },
+  "schedule": {
+    "1d": "1 day",
+    "1w": "1 week",
+    "1m": "1 month"
+  },
+  "fields": {
+    "destBucket": "Destination bucket",
+    "destKey": "Destination key"
+  },
+  "placeholder": {
+    "bucket": "Bucket",
+    "objectPath": "path/to/object.txt",
+    "seconds": "Seconds"
+  }
+}

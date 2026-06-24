@@ -1,0 +1,37 @@
+{{- if .Values.persistence.enabled }}
+{{- if .Values.persistence.metadata.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "datasafe.fullname" . }}-metadata
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage-server
+spec:
+  accessModes:
+    {{- toYaml .Values.persistence.metadata.accessModes | nindent 4 }}
+  {{- if .Values.persistence.metadata.storageClass }}
+  storageClassName: {{ .Values.persistence.metadata.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.metadata.size }}
+---
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "datasafe.fullname" . }}-data
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage-server
+spec:
+  accessModes:
+    {{- toYaml .Values.persistence.data.accessModes | nindent 4 }}
+  {{- if .Values.persistence.data.storageClass }}
+  storageClassName: {{ .Values.persistence.data.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.data.size }}
+{{- end }}

@@ -1,0 +1,22 @@
+{
+  "section": {
+    "console": "Konsole",
+    "administration": "Administration",
+    "tenantAdmin": "Mandantenverwaltung"
+  },
+  "dashboard": "Übersicht",
+  "buckets": "Buckets",
+  "files": "Dateien",
+  "access": "Zugriff",
+  "usage": "Nutzung",
+  "profile": "Profil",
+  "users": "Benutzer",
+  "tenants": "Mandanten",
+  "gateway": "Gateway",
+  "federation": "Föderation",
+  "cluster": "Cluster",
+  "policies": "Richtlinien",
+  "activity": "Aktivität",
+  "webhooks": "Webhooks",
+  "settings": "Einstellungen"
+}

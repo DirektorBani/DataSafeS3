@@ -1,0 +1,28 @@
+{
+  "error": {
+    "notFound": "Link not found",
+    "expired": "Link expired",
+    "limitReached": "Download limit reached",
+    "generic": "Could not open share link"
+  },
+  "brand": "DataSafeS3",
+  "title": {
+    "shared": "Shared access"
+  },
+  "loading": "Loading shared file…",
+  "ready": "File ready to download",
+  "hint": {
+    "limitReached": "The link owner has limited the number of downloads.",
+    "expired": "Request a new link from the sender.",
+    "notFound": "Check the address or contact the sender.",
+    "generic": "Try again later or contact the sender."
+  },
+  "fields": {
+    "size": "Size",
+    "type": "Type",
+    "expires": "Expires",
+    "remaining": "Remaining"
+  },
+  "downloading": "Downloading…",
+  "download": "Download"
+}

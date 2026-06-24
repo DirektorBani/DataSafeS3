@@ -1,0 +1,63 @@
+{
+  "toast": {
+    "created": "Bucket created",
+    "deleted": "Bucket deleted",
+    "unpinned": "Unpinned",
+    "pinned": "Pinned to dashboard",
+    "failed": "Failed"
+  },
+  "columns": {
+    "name": "Name",
+    "access": "Access",
+    "created": "Created",
+    "sharedBy": "Shared by",
+    "type": "Type"
+  },
+  "ownership": {
+    "tenant": "Team"
+  },
+  "tabs": {
+    "myFiles": "My files",
+    "shared": "Shared with me",
+    "team": "Team"
+  },
+  "recent": {
+    "title": "Recent"
+  },
+  "visibility": {
+    "publicRead": "Public read only",
+    "private": "Private"
+  },
+  "actions": {
+    "pinTitle": "Pin bucket",
+    "create": "Create storage"
+  },
+  "title": "Buckets",
+  "titleFiles": "Files",
+  "description": "Create and manage storage buckets.",
+  "descriptionFiles": "Your personal storage and files shared with you.",
+  "homeReady": "Your personal storage is ready — open",
+  "loading": "Loading buckets...",
+  "searchPlaceholder": "Search buckets...",
+  "empty": {
+    "owned": "No buckets yet. Create one to get started.",
+    "ownedUser": "No personal storage yet. Create a bucket or ask your administrator to enable auto-provisioning.",
+    "shared": "No files have been shared with you yet.",
+    "tenant": "No team buckets visible."
+  },
+  "create": {
+    "title": "Create bucket",
+    "description": "Enter a unique bucket name. Names are case-sensitive."
+  },
+  "fields": {
+    "bucketName": "Bucket name",
+    "storageType": "Storage type"
+  },
+  "placeholder": {
+    "bucketName": "my-bucket"
+  },
+  "delete": {
+    "title": "Delete bucket",
+    "description": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone and requires the bucket to be empty."
+  }
+}

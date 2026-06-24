@@ -1,0 +1,36 @@
+{{- if .Values.caddy.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "datasafe.caddy.fullname" . }}-config
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy
+data:
+  Caddyfile: |
+    {
+      auto_https off
+    }
+
+    :80 {
+      encode gzip
+
+      handle /api/* {
+        reverse_proxy {{ include "datasafe.storageServer.fullname" . }}:9000
+      }
+
+      handle /healthz {
+        reverse_proxy {{ include "datasafe.storageServer.fullname" . }}:9000
+      }
+
+      handle /metrics {
+        reverse_proxy {{ include "datasafe.storageServer.fullname" . }}:9000
+      }
+
+      handle {
+        root * /srv/console
+        try_files {path} /index.html
+        file_server
+      }
+    }
+{{- end }}
