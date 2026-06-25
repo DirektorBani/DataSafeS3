@@ -21,7 +21,7 @@ scripts\feature-audit-test.ps1   # requires compose stack on :8080
 
 ## Local-only documentation
 
-Some paths are gitignored and kept only on your machine: `docs/analysis/`, `docs/specs/roadmap/`, `docs/context/` (legacy mirror), `docs/testing/` audit artifacts, and `.cursor/` skills. Product specs live under `docs/en/specs/` and `docs/ru/specs/` (and root `docs/specs/` where mirrored).
+Some paths are gitignored and kept only on your machine: `docs/analysis/`, `docs/specs/roadmap/`, `docs/context/` (legacy mirror), `docs/testing/` audit artifacts, `docs/publishing/` drafts, `docs/images/brand/` (logo WIP), `**/capture-summary.json`, and `.cursor/` skills. Product specs live under `docs/en/specs/` and `docs/ru/specs/` (and root `docs/specs/` where mirrored).
 
 ## Community and Enterprise
 

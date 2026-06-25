@@ -1,7 +1,7 @@
 # Quarterly DR drill checklist automation (Community Edition — manual failover pattern)
 param(
   [string]$BaseUrl = "http://127.0.0.1:8080",
-  [string]$ComposeProject = "cursor_p",
+  [string]$ComposeProject = "datasafe",
   [switch]$SkipFailover
 )
 $ErrorActionPreference = "Stop"

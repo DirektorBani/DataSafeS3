@@ -12,7 +12,7 @@
 #
 # РџСЂРёРјРµСЂС‹:
 #   .\scripts\reset-fresh-install.ps1 -Postgres
-#   .\scripts\reset-fresh-install.ps1 -DataDir .\data-local-test -Postgres -ProjectName cursor_p
+#   .\scripts\reset-fresh-install.ps1 -DataDir .\data-local-test -Postgres -ProjectName datasafe
 #
 # Р”Р»СЏ local-binary overlay (Windows dev) overlay РїРѕРґРєР»СЋС‡Р°РµС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё, РµСЃР»Рё РµСЃС‚СЊ
 # docker-compose.local-binary.yml. РџСЂРѕРµРєС‚ Compose: -ProjectName РёР»Рё COMPOSE_PROJECT_NAME,

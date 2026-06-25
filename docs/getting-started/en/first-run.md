@@ -38,7 +38,7 @@ Open **http://localhost:8080** — you should see the login page.
 ## Fresh install reset
 
 ```powershell
-.\scripts\reset-fresh-install.ps1 -Postgres -ProjectName cursor_p
+.\scripts\reset-fresh-install.ps1 -Postgres -ProjectName datasafe
 ```
 
 After reset, `GET /api/v1/setup/status` returns `needs_setup: true`.

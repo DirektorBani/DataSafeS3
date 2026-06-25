@@ -2,7 +2,7 @@
 param(
   [string]$StandbyContainer = "datasafe-postgres-standby",
   [string]$PrimaryDSN = "postgres://datasafe:datasafe@postgres:5432/datasafe?sslmode=disable",
-  [string]$ComposeProject = "cursor_p",
+  [string]$ComposeProject = "datasafe",
   [switch]$DryRun
 )
 $ErrorActionPreference = "Stop"

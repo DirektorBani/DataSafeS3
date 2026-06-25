@@ -61,6 +61,15 @@ docs/context/
 # --- QA / audit artifacts (not product documentation) ---
 docs/testing/
 
+# --- Publishing drafts (Habr, blog posts; not product documentation) ---
+docs/publishing/
+
+# --- Brand assets draft (logos, favicons; not ready for repo) ---
+docs/images/brand/
+
+# --- Screenshot capture local summary (machine-specific paths) ---
+**/capture-summary.json
+
 # --- Local binaries / tool downloads ---
 tools/*.jar
 /datasafe-sync

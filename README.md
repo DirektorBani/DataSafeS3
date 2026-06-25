@@ -98,7 +98,7 @@ flowchart TB
 
 ```cmd
 copy .env.example .env
-docker compose -p cursor_p --profile postgres -f docker-compose.yml -f docker-compose.local-binary.yml up -d --build
+docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-binary.yml up -d --build
 ```
 
 Production console is served from `web/console/dist` (build with `cd web/console && npm run build`). For Vite HMR during UI work: add `-f docker-compose.dev.yml --profile dev`.

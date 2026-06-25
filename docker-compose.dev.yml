@@ -1,6 +1,6 @@
 # Dev overlay: Vite HMR for console (use with --profile dev).
 # Usage:
-#   docker compose -p cursor_p --profile dev -f docker-compose.yml -f docker-compose.dev.yml up -d
+#   docker compose -p datasafe --profile dev -f docker-compose.yml -f docker-compose.dev.yml up -d
 
 services:
   console-dev:

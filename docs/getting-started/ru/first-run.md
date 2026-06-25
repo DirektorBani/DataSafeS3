@@ -38,7 +38,7 @@ curl http://localhost:9000/api/v1/health
 ## Сброс к чистой установке
 
 ```powershell
-.\scripts\reset-fresh-install.ps1 -Postgres -ProjectName cursor_p
+.\scripts\reset-fresh-install.ps1 -Postgres -ProjectName datasafe
 ```
 
 После сброса `GET /api/v1/setup/status` возвращает `needs_setup: true`.

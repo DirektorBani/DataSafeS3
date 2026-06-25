@@ -3,7 +3,7 @@
 set -euo pipefail
 
 STANDBY_CONTAINER="${STANDBY_CONTAINER:-datasafe-postgres-standby}"
-COMPOSE_PROJECT="${COMPOSE_PROJECT:-cursor_p}"
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-datasafe}"
 DRY_RUN="${DRY_RUN:-0}"
 
 log() { echo "[postgres-failover] $*"; }

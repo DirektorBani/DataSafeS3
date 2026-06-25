@@ -21,7 +21,7 @@ docker compose stop storage-server
 tar czf datasafe-backup-$(date +%F).tar.gz ./data/
 
 # PostgreSQL
-docker exec cursor_p-postgres-1 pg_dump -U datasafe datasafe > metadata.sql
+docker exec datasafe-postgres-1 pg_dump -U datasafe datasafe > metadata.sql
 
 docker compose start storage-server
 ```
