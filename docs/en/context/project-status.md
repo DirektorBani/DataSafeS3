@@ -1,14 +1,14 @@
-English | **[Русский](../../ru/context/project-status.md)**
+English | **[???????](../../ru/context/project-status.md)**
 
 # Project Status
 
-**Last updated:** 2026-06-28 · **Current release:** v1.0.2 (docs ready; tag pending user approval)
+**Last updated:** 2026-06-28 ? **Current release:** v1.0.2 (tagged; security patch)
 
 ## Summary
 
-DataSafeS3 **Community Edition v1.0.2** is the current release candidate (security patch after v1.0.1): S3-compatible API, web console (EN/RU/DE/FR), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, HA tooling, and supply-chain artifacts (GHCR images, SBOM, cosign).
+DataSafeS3 **Community Edition v1.0.2** is the current release (security patch after v1.0.1): S3-compatible API, web console (EN/RU/DE/FR), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, HA tooling, and supply-chain artifacts (GHCR images, SBOM, cosign).
 
-Patch **v1.0.2** closes Community security remediation (SSRF outbound policy, OIDC exchange_code flow, login rate limits, secrets diagnostics) — no new product capabilities beyond hardening and operator UX.
+Patch **v1.0.2** closes Community security remediation (SSRF outbound policy, OIDC exchange_code flow, login rate limits, secrets diagnostics) ? no new product capabilities beyond hardening and operator UX.
 
 ## Feature maturity (CE)
 
@@ -26,7 +26,7 @@ Patch **v1.0.2** closes Community security remediation (SSRF outbound policy, OI
 | Erasure coding | **Lab MVP** | Not production multi-AZ |
 | Supply chain (SBOM + cosign) | **Shipped** | Both images on release tags (v1.0.1+) |
 | OpenAPI 3.1 + Swagger UI | **Shipped** | Community Integration API scope |
-| File collaboration (phases 1–3) | **Shipped** | Home bucket, grants, share links |
+| File collaboration (phases 1?3) | **Shipped** | Home bucket, grants, share links |
 | Security hardening (v1.0.2) | **Shipped** | SSRF policy, rate limits, security-status API |
 
 ## Test gates (last verified)
@@ -40,9 +40,9 @@ Patch **v1.0.2** closes Community security remediation (SSRF outbound policy, OI
 ## Documentation
 
 - Bilingual guides: 35 EN = 35 RU markdown files under `docs/`.
-- v1.0.2 upgrade guide (EN/RU), OpenAPI full spec sync, CHANGELOG migration section — completed 2026-06-28.
-- Roadmap audit items: [roadmap.md](./roadmap.md) — AUD-08/09 closed in v1.0.1 scope.
-- Architecture: [architecture.md](./architecture.md) · [competitiveness roadmap](../../specs/roadmap/README.md).
+- v1.0.2 upgrade guide (EN/RU), OpenAPI full spec sync, CHANGELOG migration section ? completed 2026-06-28.
+- Roadmap audit items: [roadmap.md](./roadmap.md) ? AUD-08/09 closed in v1.0.1 scope.
+- Architecture: [architecture.md](./architecture.md) ? [competitiveness roadmap](../../specs/roadmap/README.md).
 
 ## Out of scope for CE (planned 1.1.0+)
 
@@ -50,4 +50,4 @@ Mobile (Flutter/PWA), Kafka event sink, automatic failover orchestrator, product
 
 ---
 
-[Documentation index](../README.md) · [Roadmap](./roadmap.md) · [Architecture](./architecture.md)
+[Documentation index](../README.md) ? [Roadmap](./roadmap.md) ? [Architecture](./architecture.md)

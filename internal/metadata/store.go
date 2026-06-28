@@ -12,8 +12,8 @@ var (
 	ErrNotFound        = errors.New("not found")
 	ErrInvalidArgument = errors.New("invalid argument")
 	ErrBucketExists    = errors.New("bucket already exists")
-	ErrBucketNotEmpty = errors.New("bucket not empty")
-	ErrQuotaExceeded  = errors.New("quota exceeded")
+	ErrBucketNotEmpty  = errors.New("bucket not empty")
+	ErrQuotaExceeded   = errors.New("quota exceeded")
 )
 
 type LifecycleRule struct {
@@ -26,32 +26,32 @@ type LifecycleRule struct {
 }
 
 const (
-	LifecycleExpire            = "expire"
-	LifecycleAbortMultipart    = "abort_multipart"
-	LifecycleExpireNoncurrent  = "expire_noncurrent"
+	LifecycleExpire           = "expire"
+	LifecycleAbortMultipart   = "abort_multipart"
+	LifecycleExpireNoncurrent = "expire_noncurrent"
 )
 
 type BucketRecord struct {
-	StorageKey       string          `json:"storage_key,omitempty"`
-	Name             string          `json:"name"`
-	CreatedAt        time.Time       `json:"created_at"`
-	Owner            string          `json:"owner"`
-	OwnerID          string          `json:"owner_id,omitempty"`
-	TeamID           string          `json:"team_id,omitempty"`
-	Policy           string          `json:"policy,omitempty"`
-	LifecycleRules   []LifecycleRule `json:"lifecycle_rules,omitempty"`
-	Description      string          `json:"description,omitempty"`
-	Versioning           bool `json:"versioning_enabled"`
-	VersioningSuspended  bool `json:"versioning_suspended,omitempty"`
-	ObjectLock           bool   `json:"object_lock_enabled"`
-	RetentionDays        int    `json:"retention_days,omitempty"`
-	RetentionMode        string `json:"retention_mode,omitempty"` // GOVERNANCE | COMPLIANCE
-	StorageClass         string            `json:"storage_class,omitempty"`
-	TenantID             string            `json:"tenant_id,omitempty"`
-	Visibility       string          `json:"visibility,omitempty"` // private, public-read
-	MaxSizeBytes     int64             `json:"max_size_bytes,omitempty"`
-	MaxObjects       int64             `json:"max_objects,omitempty"`
-	Tags             map[string]string `json:"tags,omitempty"`
+	StorageKey          string            `json:"storage_key,omitempty"`
+	Name                string            `json:"name"`
+	CreatedAt           time.Time         `json:"created_at"`
+	Owner               string            `json:"owner"`
+	OwnerID             string            `json:"owner_id,omitempty"`
+	TeamID              string            `json:"team_id,omitempty"`
+	Policy              string            `json:"policy,omitempty"`
+	LifecycleRules      []LifecycleRule   `json:"lifecycle_rules,omitempty"`
+	Description         string            `json:"description,omitempty"`
+	Versioning          bool              `json:"versioning_enabled"`
+	VersioningSuspended bool              `json:"versioning_suspended,omitempty"`
+	ObjectLock          bool              `json:"object_lock_enabled"`
+	RetentionDays       int               `json:"retention_days,omitempty"`
+	RetentionMode       string            `json:"retention_mode,omitempty"` // GOVERNANCE | COMPLIANCE
+	StorageClass        string            `json:"storage_class,omitempty"`
+	TenantID            string            `json:"tenant_id,omitempty"`
+	Visibility          string            `json:"visibility,omitempty"` // private, public-read
+	MaxSizeBytes        int64             `json:"max_size_bytes,omitempty"`
+	MaxObjects          int64             `json:"max_objects,omitempty"`
+	Tags                map[string]string `json:"tags,omitempty"`
 }
 
 type ObjectRecord struct {

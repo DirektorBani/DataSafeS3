@@ -107,8 +107,8 @@ func (s *Service) tenantBucketAccessInput(role, userID, username string, teamIDs
 		BucketTenantID: rec.TenantID, BucketKey: bucketKey,
 		UserTenants: s.userTenantMemberships(userID), Grants: s.grantsForRBAC(grants),
 		PrefixGrants: s.prefixGrantsForRBAC(prefixGrants),
-		HasGrants: s.bucketUsesGrants(rec), HasPrefixGrants: s.bucketUsesPrefixGrants(rec),
-		GroupAccess: s.tenantGroupAccessForUser(userID, bucketKey),
+		HasGrants:    s.bucketUsesGrants(rec), HasPrefixGrants: s.bucketUsesPrefixGrants(rec),
+		GroupAccess:     s.tenantGroupAccessForUser(userID, bucketKey),
 		TenantHasGroups: s.tenantHasGroups(rec.TenantID), BucketInTenantGroup: s.bucketInTenantGroup(rec.TenantID, bucketKey),
 	}
 }

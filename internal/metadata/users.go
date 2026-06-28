@@ -9,9 +9,9 @@ import (
 )
 
 var (
-	ErrUserExists     = errors.New("user already exists")
-	ErrUserNotFound   = errors.New("user not found")
-	ErrLastAdmin      = errors.New("cannot delete last administrator")
+	ErrUserExists   = errors.New("user already exists")
+	ErrUserNotFound = errors.New("user not found")
+	ErrLastAdmin    = errors.New("cannot delete last administrator")
 )
 
 const (
@@ -24,21 +24,21 @@ const (
 )
 
 type UserRecord struct {
-	ID            string     `json:"id"`
-	Username      string     `json:"username"`
-	Email         string     `json:"email"`
-	PasswordHash  string     `json:"password_hash"`
-	Role          string     `json:"role"`
-	Status        string     `json:"status"`
-	TenantID      string     `json:"tenant_id,omitempty"`
-	TeamID        string     `json:"team_id,omitempty"`
-	MFAEnabled    bool       `json:"mfa_enabled,omitempty"`
-	TOTPSecret    string     `json:"totp_secret,omitempty"`
-	RecoveryCodes []string   `json:"recovery_codes,omitempty"`
-	AuthSource    string     `json:"auth_source,omitempty"`
-	MaxSizeBytes  int64      `json:"max_size_bytes,omitempty"`
-	MaxObjects    int64      `json:"max_objects,omitempty"`
-	LastLogin     *time.Time `json:"last_login,omitempty"`
+	ID                  string     `json:"id"`
+	Username            string     `json:"username"`
+	Email               string     `json:"email"`
+	PasswordHash        string     `json:"password_hash"`
+	Role                string     `json:"role"`
+	Status              string     `json:"status"`
+	TenantID            string     `json:"tenant_id,omitempty"`
+	TeamID              string     `json:"team_id,omitempty"`
+	MFAEnabled          bool       `json:"mfa_enabled,omitempty"`
+	TOTPSecret          string     `json:"totp_secret,omitempty"`
+	RecoveryCodes       []string   `json:"recovery_codes,omitempty"`
+	AuthSource          string     `json:"auth_source,omitempty"`
+	MaxSizeBytes        int64      `json:"max_size_bytes,omitempty"`
+	MaxObjects          int64      `json:"max_objects,omitempty"`
+	LastLogin           *time.Time `json:"last_login,omitempty"`
 	Locale              string     `json:"locale,omitempty"`
 	WebAuthnCredentials string     `json:"webauthn_credentials,omitempty"`
 	CreatedAt           time.Time  `json:"created_at"`

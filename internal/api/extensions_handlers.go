@@ -172,9 +172,9 @@ func (s *Server) handleListAPITokens(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCreateAPIToken(w http.ResponseWriter, r *http.Request) {
 	info, _ := authFrom(r)
 	var req struct {
-		Name          string   `json:"name"`
-		ExpiresDays   int      `json:"expires_days"`
-		Scopes        []string `json:"scopes"`
+		Name        string   `json:"name"`
+		ExpiresDays int      `json:"expires_days"`
+		Scopes      []string `json:"scopes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})

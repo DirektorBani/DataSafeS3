@@ -15,15 +15,15 @@ var (
 )
 
 type SharedLinkRecord struct {
-	ID             string     `json:"id"`
-	Bucket         string     `json:"bucket"`
-	Key            string     `json:"key"`
-	Token          string     `json:"token"`
-	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
-	MaxDownloads   int        `json:"max_downloads"`
-	DownloadCount  int        `json:"download_count"`
-	CreatedBy      string     `json:"created_by"`
-	CreatedAt      time.Time  `json:"created_at"`
+	ID            string     `json:"id"`
+	Bucket        string     `json:"bucket"`
+	Key           string     `json:"key"`
+	Token         string     `json:"token"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
+	MaxDownloads  int        `json:"max_downloads"`
+	DownloadCount int        `json:"download_count"`
+	CreatedBy     string     `json:"created_by"`
+	CreatedAt     time.Time  `json:"created_at"`
 }
 
 func (rec SharedLinkRecord) Active(now time.Time) error {
@@ -140,7 +140,7 @@ func (s *Store) IncrementSharedLinkDownload(id string) (SharedLinkRecord, error)
 		rec.DownloadCount++
 		updated, err := json.Marshal(rec)
 		if err != nil {
-		 return err
+			return err
 		}
 		return b.Put([]byte(id), updated)
 	})

@@ -46,10 +46,10 @@ func (s *Server) serveListBucketAccess(w http.ResponseWriter, r *http.Request, l
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"grants":         out,
-		"prefix_grants":  prefixOut,
-		"bucket":         logicalBucket,
-		"tenant_id":      rec.EffectiveTenantID(),
+		"grants":        out,
+		"prefix_grants": prefixOut,
+		"bucket":        logicalBucket,
+		"tenant_id":     rec.EffectiveTenantID(),
 	})
 }
 

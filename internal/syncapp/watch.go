@@ -13,10 +13,10 @@ import (
 // WatchOptions configures background sync.
 type WatchOptions struct {
 	Options
-	Interval   time.Duration
+	Interval    time.Duration
 	UseFSNotify bool
-	OnResult   func(SyncResult)
-	OnError    func(error)
+	OnResult    func(SyncResult)
+	OnError     func(error)
 }
 
 // Watch runs sync in a loop until ctx is cancelled.

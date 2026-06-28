@@ -59,7 +59,7 @@ func (s *Server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 			"expiration":        expiration.Format(time.RFC3339),
 		},
 		"assumed_role_user": map[string]any{
-			"arn":           req.RoleArn,
+			"arn":             req.RoleArn,
 			"assumed_role_id": accessKey,
 		},
 	})
@@ -79,9 +79,9 @@ func (s *Server) handlePutObjectRetention(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var req struct {
-		Key        string `json:"key"`
-		VersionID  string `json:"version_id"`
-		Mode       string `json:"mode"` // GOVERNANCE | COMPLIANCE
+		Key         string `json:"key"`
+		VersionID   string `json:"version_id"`
+		Mode        string `json:"mode"` // GOVERNANCE | COMPLIANCE
 		RetainUntil string `json:"retain_until"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Key == "" {
@@ -168,13 +168,13 @@ func (s *Server) extendedStats() observability.ExtendedStats {
 		versions += len(vers)
 	}
 	return observability.ExtendedStats{
-		ObjectsTotal:        objects,
-		VersionsTotal:       versions,
-		ReplicationQueue:    pending,
-		WebhookFailures:     webhookFails,
-		MultipartActive:     len(multipart),
-		ObjectsPerBucket:    perObjects,
-		StoragePerBucket:    perBucket,
-		StoragePerTenant:    perTenant,
+		ObjectsTotal:     objects,
+		VersionsTotal:    versions,
+		ReplicationQueue: pending,
+		WebhookFailures:  webhookFails,
+		MultipartActive:  len(multipart),
+		ObjectsPerBucket: perObjects,
+		StoragePerBucket: perBucket,
+		StoragePerTenant: perTenant,
 	}
 }

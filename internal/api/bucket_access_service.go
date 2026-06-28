@@ -92,9 +92,9 @@ func (s *Server) granteeAllowedForBucket(rec metadata.BucketRecord, granteeID st
 }
 
 var (
-	errGranteeInvalid     = &grantError{"user not found or inactive"}
-	errGranteeIsOwner     = &grantError{"cannot grant bucket owner"}
-	errGranteeNotInTenant = &grantError{"user not in tenant"}
+	errGranteeInvalid      = &grantError{"user not found or inactive"}
+	errGranteeIsOwner      = &grantError{"cannot grant bucket owner"}
+	errGranteeNotInTenant  = &grantError{"user not in tenant"}
 	errGranteeNotShareable = &grantError{"user not shareable"}
 )
 

@@ -7,12 +7,12 @@ import (
 
 // SyncProgress is emitted during RunOnce when OnProgress is set.
 type SyncProgress struct {
-	Phase    string `json:"phase"` // push, pull, delete
-	File     string `json:"file,omitempty"`
-	Action   string `json:"action,omitempty"` // upload, download, skip, delete, conflict
-	Uploaded int    `json:"uploaded"`
-	Downloaded int  `json:"downloaded"`
-	Skipped  int    `json:"skipped"`
+	Phase      string `json:"phase"` // push, pull, delete
+	File       string `json:"file,omitempty"`
+	Action     string `json:"action,omitempty"` // upload, download, skip, delete, conflict
+	Uploaded   int    `json:"uploaded"`
+	Downloaded int    `json:"downloaded"`
+	Skipped    int    `json:"skipped"`
 }
 
 // SyncResult is the outcome of one sync pass.
@@ -32,10 +32,10 @@ func (r SyncResult) JSON() ([]byte, error) {
 
 // ProfileSnapshot for status --json.
 type ProfileSnapshot struct {
-	ProfileName string `json:"profile"`
+	ProfileName string  `json:"profile"`
 	Profile     Profile `json:"profile_detail"`
-	Tracked     int    `json:"tracked_files"`
-	LoggedIn    bool   `json:"logged_in"`
+	Tracked     int     `json:"tracked_files"`
+	LoggedIn    bool    `json:"logged_in"`
 }
 
 func ProfileStatus(profileName string) (ProfileSnapshot, error) {

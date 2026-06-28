@@ -137,10 +137,10 @@ func isCommunityOp(op opDef) bool {
 
 type opDef struct {
 	method, path, id, summary, tag, security string
-	priority                                   string
-	bodySchema                                 string
-	responses                                  string
-	params                                     string
+	priority                                 string
+	bodySchema                               string
+	responses                                string
+	params                                   string
 }
 
 const communityHeader = `openapi: 3.1.0

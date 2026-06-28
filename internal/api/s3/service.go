@@ -826,7 +826,7 @@ func (s *Service) PruneScheduledDeletesOnce(ctx context.Context) []metadata.Obje
 			if obj.ScheduledDeleteAt == nil || obj.ScheduledDeleteAt.After(now) {
 				continue
 			}
-				if err := s.DeleteObject(ctx, b.Name, obj.Key, ""); err != nil {
+			if err := s.DeleteObject(ctx, b.Name, obj.Key, ""); err != nil {
 				continue
 			}
 			deleted = append(deleted, obj)

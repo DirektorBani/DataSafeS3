@@ -22,9 +22,9 @@ func TestMFAEnrollFlow(t *testing.T) {
 		t.Fatalf("enroll: %d %s", enrollW.Code, enrollW.Body.String())
 	}
 	var enrollResp struct {
-		Secret      string `json:"secret"`
-		OtpauthURI  string `json:"otpauth_uri"`
-		QRCode      string `json:"qr_code"`
+		Secret     string `json:"secret"`
+		OtpauthURI string `json:"otpauth_uri"`
+		QRCode     string `json:"qr_code"`
 	}
 	if err := json.Unmarshal(enrollW.Body.Bytes(), &enrollResp); err != nil {
 		t.Fatal(err)

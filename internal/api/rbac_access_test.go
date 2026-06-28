@@ -793,7 +793,7 @@ func TestTenantAdminMemberManagement(t *testing.T) {
 		t.Fatalf("me %d", rec.Code)
 	}
 	var meResp struct {
-		IsTenantAdmin    bool `json:"is_tenant_admin"`
+		IsTenantAdmin     bool `json:"is_tenant_admin"`
 		TenantMemberships []struct {
 			TenantID string `json:"tenant_id"`
 			Role     string `json:"role"`

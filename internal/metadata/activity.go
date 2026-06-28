@@ -11,29 +11,29 @@ import (
 )
 
 const (
-	ActionLogin              = "login"
-	ActionLogout             = "logout"
-	ActionBucketCreated      = "bucket_created"
-	ActionBucketDeleted      = "bucket_deleted"
-	ActionBucketUpdated      = "bucket_updated"
-	ActionObjectUploaded     = "object_uploaded"
-	ActionObjectDownloaded   = "object_downloaded"
+	ActionLogin                 = "login"
+	ActionLogout                = "logout"
+	ActionBucketCreated         = "bucket_created"
+	ActionBucketDeleted         = "bucket_deleted"
+	ActionBucketUpdated         = "bucket_updated"
+	ActionObjectUploaded        = "object_uploaded"
+	ActionObjectDownloaded      = "object_downloaded"
 	ActionObjectDeleted         = "object_deleted"
 	ActionObjectScheduledDelete = "object_scheduled_delete"
-	ActionAccessKeyCreated   = "access_key_created"
-	ActionAccessKeyDeleted   = "access_key_deleted"
-	ActionUserCreated        = "user_created"
-	ActionUserDeleted        = "user_deleted"
-	ActionSettingsChanged    = "settings_changed"
-	ActionPolicyChanged      = "policy_changed"
-	ActionTrashRestored      = "trash_restored"
-	ActionTrashPurged        = "trash_purged"
-	ActionGatewayReplicated  = "gateway_replicated"
-	ActionGatewayReplFailed  = "gateway_replication_failed"
-	ActionShareCreated       = "share.created"
-	ActionShareDownloaded    = "share.downloaded"
-	ActionShareLimitReached  = "share.limit_reached"
-	ActionShareExpired       = "share.expired"
+	ActionAccessKeyCreated      = "access_key_created"
+	ActionAccessKeyDeleted      = "access_key_deleted"
+	ActionUserCreated           = "user_created"
+	ActionUserDeleted           = "user_deleted"
+	ActionSettingsChanged       = "settings_changed"
+	ActionPolicyChanged         = "policy_changed"
+	ActionTrashRestored         = "trash_restored"
+	ActionTrashPurged           = "trash_purged"
+	ActionGatewayReplicated     = "gateway_replicated"
+	ActionGatewayReplFailed     = "gateway_replication_failed"
+	ActionShareCreated          = "share.created"
+	ActionShareDownloaded       = "share.downloaded"
+	ActionShareLimitReached     = "share.limit_reached"
+	ActionShareExpired          = "share.expired"
 )
 
 type ActivityRecord struct {
@@ -47,15 +47,15 @@ type ActivityRecord struct {
 }
 
 type ActivityFilter struct {
-	Period       string // 24h, 7d, 30d, all
-	User         string
-	Action       string
-	Bucket       string
-	IP           string
-	Search       string
-	LimitUser    string // RBAC: restrict to this username
-	Offset       int
-	Limit        int
+	Period    string // 24h, 7d, 30d, all
+	User      string
+	Action    string
+	Bucket    string
+	IP        string
+	Search    string
+	LimitUser string // RBAC: restrict to this username
+	Offset    int
+	Limit     int
 }
 
 type ActivityListResult struct {

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 const setupTestObjectKey = ".datasafe-setup-test"
@@ -23,11 +23,11 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"initial_setup_completed":      cfg.InitialSetupCompleted,
+		"initial_setup_completed":     cfg.InitialSetupCompleted,
 		"admin_first_login_completed": cfg.AdminFirstLoginCompleted,
 		"admin_password_changed":      cfg.AdminPasswordChanged,
 		"needs_password_change":       s.adminNeedsPasswordChange(cfg),
-		"needs_setup":                !cfg.InitialSetupCompleted,
+		"needs_setup":                 !cfg.InitialSetupCompleted,
 	})
 }
 

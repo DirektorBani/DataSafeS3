@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/federation"
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"golang.org/x/oauth2"
 )
 
@@ -73,11 +73,11 @@ func (s *Server) handleLDAPSync(w http.ResponseWriter, r *http.Request) {
 	}
 	s.logActivity(r, metadata.ActionSettingsChanged, "ldap", fmt.Sprintf("synced %d users (created=%d updated=%d suspended=%d)", res.synced(), res.Created, res.Updated, res.Suspended))
 	writeJSON(w, http.StatusOK, map[string]any{
-		"synced":       res.synced(),
-		"created":      res.Created,
-		"updated":      res.Updated,
-		"suspended":    res.Suspended,
-		"total_found":  res.TotalFound,
+		"synced":      res.synced(),
+		"created":     res.Created,
+		"updated":     res.Updated,
+		"suspended":   res.Suspended,
+		"total_found": res.TotalFound,
 	})
 }
 
@@ -354,10 +354,10 @@ func (s *Server) handleMFAEnroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"secret":       secret,
-		"otpauth_uri":  otpauthURI,
-		"qr_url":       otpauthURI,
-		"qr_code":      qrPNG,
+		"secret":      secret,
+		"otpauth_uri": otpauthURI,
+		"qr_url":      otpauthURI,
+		"qr_code":     qrPNG,
 	})
 }
 
@@ -514,7 +514,6 @@ func (s *Server) handleMFALogin(w http.ResponseWriter, r *http.Request) {
 		"username": user.Username, "role": user.Role, "user_id": user.ID,
 	})
 }
-
 
 func (s *Server) checkObjectDeletable(bucket, key, versionID string) error {
 	rec, err := s.meta.GetObjectVersion(bucket, key, versionID)
@@ -895,18 +894,18 @@ func (s *Server) handleGatewayHealth(w http.ResponseWriter, r *http.Request) {
 		lagSeconds = time.Since(stats.OldestPending).Seconds()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"connections_total":    len(conns),
-		"connections_ok":       okCount,
-		"rules_total":          len(rules),
-		"rules_broken":         brokenRules,
-		"recent_jobs":          jobs,
-		"recent_errors":        recentErrors,
-		"queue_pending":        stats.PendingCount,
-		"queue_lag_seconds":    lagSeconds,
-		"bytes_replicated":     stats.BytesReplicated,
-		"replication_errors":   stats.ReplicationErrors,
-		"tasks_completed":      stats.TasksCompletedTotal,
-		"last_processed_at":    stats.LastProcessedAt,
+		"connections_total":  len(conns),
+		"connections_ok":     okCount,
+		"rules_total":        len(rules),
+		"rules_broken":       brokenRules,
+		"recent_jobs":        jobs,
+		"recent_errors":      recentErrors,
+		"queue_pending":      stats.PendingCount,
+		"queue_lag_seconds":  lagSeconds,
+		"bytes_replicated":   stats.BytesReplicated,
+		"replication_errors": stats.ReplicationErrors,
+		"tasks_completed":    stats.TasksCompletedTotal,
+		"last_processed_at":  stats.LastProcessedAt,
 	})
 }
 

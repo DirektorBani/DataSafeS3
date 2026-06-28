@@ -1,4 +1,4 @@
-﻿package api_test
+package api_test
 
 import (
 	"encoding/json"
@@ -326,4 +326,3 @@ func TestOpenAPISecurityScheme(t *testing.T) {
 		t.Fatal("BearerJWT must not be in community spec")
 	}
 }
-

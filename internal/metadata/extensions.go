@@ -33,14 +33,14 @@ type WebhookDeliveryRecord struct {
 }
 
 type SearchResult struct {
-	Type        string `json:"type"` // bucket, object, user
-	Name        string `json:"name"`
-	Bucket      string `json:"bucket,omitempty"`
-	Key         string `json:"key,omitempty"`
-	Size        int64  `json:"size,omitempty"`
-	Owner       string `json:"owner,omitempty"`
-	Username    string `json:"username,omitempty"`
-	Email       string `json:"email,omitempty"`
+	Type         string `json:"type"` // bucket, object, user
+	Name         string `json:"name"`
+	Bucket       string `json:"bucket,omitempty"`
+	Key          string `json:"key,omitempty"`
+	Size         int64  `json:"size,omitempty"`
+	Owner        string `json:"owner,omitempty"`
+	Username     string `json:"username,omitempty"`
+	Email        string `json:"email,omitempty"`
 	LastModified string `json:"last_modified,omitempty"`
 }
 

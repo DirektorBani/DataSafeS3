@@ -144,22 +144,22 @@ type GroupBucketAccess struct {
 
 // TenantBucketAccessInput collects inputs for tenant-scoped bucket access resolution.
 type TenantBucketAccessInput struct {
-	Role               string
-	UserID             string
-	Username           string
-	TeamIDs            []string
-	BucketOwnerID      string
-	BucketOwner        string
-	BucketTeamID       string
-	BucketTenantID     string
-	BucketKey          string
-	UserTenants        []TenantMembership
+	Role                string
+	UserID              string
+	Username            string
+	TeamIDs             []string
+	BucketOwnerID       string
+	BucketOwner         string
+	BucketTeamID        string
+	BucketTenantID      string
+	BucketKey           string
+	UserTenants         []TenantMembership
 	Grants              []BucketGrant
 	PrefixGrants        []PrefixGrant
 	HasGrants           bool
 	HasPrefixGrants     bool
 	GroupAccess         *GroupBucketAccess
-	TenantHasGroups    bool
+	TenantHasGroups     bool
 	BucketInTenantGroup bool
 }
 

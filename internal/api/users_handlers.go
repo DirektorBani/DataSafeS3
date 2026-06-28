@@ -100,11 +100,11 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"username":            info.Username,
-			"role":                info.Role,
-			"user_id":             info.UserID,
-			"tenant_memberships":  tenantViews,
-			"is_tenant_admin":     auth.CanManageAnyTenant(info.Role, memberships),
+			"username":           info.Username,
+			"role":               info.Role,
+			"user_id":            info.UserID,
+			"tenant_memberships": tenantViews,
+			"is_tenant_admin":    auth.CanManageAnyTenant(info.Role, memberships),
 		})
 		return
 	}

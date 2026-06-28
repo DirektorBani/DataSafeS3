@@ -99,9 +99,9 @@ type LifecycleConfiguration struct {
 }
 
 type LifecycleRule struct {
-	ID         string              `xml:"ID"`
-	Prefix     string              `xml:"Prefix,omitempty"`
-	Status     string              `xml:"Status"`
+	ID         string               `xml:"ID"`
+	Prefix     string               `xml:"Prefix,omitempty"`
+	Status     string               `xml:"Status"`
 	Expiration *LifecycleExpiration `xml:"Expiration,omitempty"`
 }
 
@@ -205,9 +205,9 @@ func lifecycleRulesToXML(rules []metadata.LifecycleRule) LifecycleConfiguration 
 			status = "Enabled"
 		}
 		xr := LifecycleRule{
-			ID:     id,
-			Prefix: r.Prefix,
-			Status: status,
+			ID:         id,
+			Prefix:     r.Prefix,
+			Status:     status,
 			Expiration: &LifecycleExpiration{Days: r.ExpirationDays},
 		}
 		cfg.Rules = append(cfg.Rules, xr)
@@ -236,10 +236,10 @@ type TagEntry struct {
 }
 
 type ObjectLockConfiguration struct {
-	XMLName            xml.Name              `xml:"ObjectLockConfiguration"`
-	Xmlns              string                `xml:"xmlns,attr"`
-	ObjectLockEnabled  string                `xml:"ObjectLockEnabled,omitempty"`
-	Rule               *ObjectLockRule       `xml:"Rule,omitempty"`
+	XMLName           xml.Name        `xml:"ObjectLockConfiguration"`
+	Xmlns             string          `xml:"xmlns,attr"`
+	ObjectLockEnabled string          `xml:"ObjectLockEnabled,omitempty"`
+	Rule              *ObjectLockRule `xml:"Rule,omitempty"`
 }
 
 type ObjectLockRule struct {
@@ -253,9 +253,9 @@ type DefaultRetention struct {
 }
 
 type ObjectLockRetention struct {
-	XMLName xml.Name `xml:"Retention"`
-	Mode    string   `xml:"Mode"`
-	RetainUntilDate string `xml:"RetainUntilDate,omitempty"`
+	XMLName         xml.Name `xml:"Retention"`
+	Mode            string   `xml:"Mode"`
+	RetainUntilDate string   `xml:"RetainUntilDate,omitempty"`
 }
 
 type ObjectLockLegalHold struct {
@@ -264,17 +264,17 @@ type ObjectLockLegalHold struct {
 }
 
 type NotificationConfiguration struct {
-	XMLName xml.Name             `xml:"NotificationConfiguration"`
-	Xmlns   string               `xml:"xmlns,attr"`
-	QueueConfiguration []QueueConfiguration `xml:"QueueConfiguration,omitempty"`
-	TopicConfiguration []TopicConfiguration `xml:"TopicConfiguration,omitempty"`
+	XMLName                    xml.Name                     `xml:"NotificationConfiguration"`
+	Xmlns                      string                       `xml:"xmlns,attr"`
+	QueueConfiguration         []QueueConfiguration         `xml:"QueueConfiguration,omitempty"`
+	TopicConfiguration         []TopicConfiguration         `xml:"TopicConfiguration,omitempty"`
 	CloudFunctionConfiguration []CloudFunctionConfiguration `xml:"CloudFunctionConfiguration,omitempty"`
 }
 
 type QueueConfiguration struct {
-	Id       string   `xml:"Id,omitempty"`
-	Queue    string   `xml:"Queue,omitempty"`
-	Events   []string `xml:"Event"`
+	Id     string   `xml:"Id,omitempty"`
+	Queue  string   `xml:"Queue,omitempty"`
+	Events []string `xml:"Event"`
 }
 
 type TopicConfiguration struct {
@@ -284,9 +284,9 @@ type TopicConfiguration struct {
 }
 
 type CloudFunctionConfiguration struct {
-	Id       string   `xml:"Id,omitempty"`
-	CloudFunction string `xml:"CloudFunction,omitempty"`
-	Events   []string `xml:"Event"`
+	Id            string   `xml:"Id,omitempty"`
+	CloudFunction string   `xml:"CloudFunction,omitempty"`
+	Events        []string `xml:"Event"`
 }
 
 func tagsToMap(tags []TagEntry) map[string]string {
@@ -306,4 +306,3 @@ func mapToTagEntries(tags map[string]string) []TagEntry {
 	}
 	return out
 }
-

@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	smithy "github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
-	"github.com/DirektorBani/datasafe/internal/metadata"
 )
 
 func isS3NotFound(err error) bool {

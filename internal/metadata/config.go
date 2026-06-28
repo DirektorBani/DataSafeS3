@@ -8,12 +8,12 @@ import (
 )
 
 const (
-	TrashBucketName    = ".datasafe-trash"
-	EventObjectCreated = "ObjectCreated"
-	EventObjectDeleted = "ObjectDeleted"
-	EventBucketCreated = "BucketCreated"
-	EventBucketDeleted = "BucketDeleted"
-	EventUserCreated   = "UserCreated"
+	TrashBucketName         = ".datasafe-trash"
+	EventObjectCreated      = "ObjectCreated"
+	EventObjectDeleted      = "ObjectDeleted"
+	EventBucketCreated      = "BucketCreated"
+	EventBucketDeleted      = "BucketDeleted"
+	EventUserCreated        = "UserCreated"
 	EventMultipartCompleted = "MultipartCompleted"
 )
 
@@ -47,28 +47,28 @@ type ExternalS3Config struct {
 }
 
 type SystemConfig struct {
-	InitialSetupCompleted     bool             `json:"initial_setup_completed"`
-	AdminFirstLoginCompleted  bool             `json:"admin_first_login_completed"`
-	AdminPasswordChanged      bool             `json:"admin_password_changed"`
-	SoftDeleteEnabled         bool             `json:"soft_delete_enabled"`
-	TrashRetentionDays        int              `json:"trash_retention_days"` // 1–3650 days
-	ExternalS3                ExternalS3Config `json:"external_s3,omitempty"`
-	LDAP                      LDAPConfig       `json:"ldap,omitempty"`
-	OIDC                      OIDCConfig       `json:"oidc,omitempty"`
-	MFA                       MFASettings      `json:"mfa,omitempty"`
-	Cluster                   ClusterConfig    `json:"cluster,omitempty"`
-	Logging                   LoggingConfig    `json:"logging,omitempty"`
+	InitialSetupCompleted    bool             `json:"initial_setup_completed"`
+	AdminFirstLoginCompleted bool             `json:"admin_first_login_completed"`
+	AdminPasswordChanged     bool             `json:"admin_password_changed"`
+	SoftDeleteEnabled        bool             `json:"soft_delete_enabled"`
+	TrashRetentionDays       int              `json:"trash_retention_days"` // 1–3650 days
+	ExternalS3               ExternalS3Config `json:"external_s3,omitempty"`
+	LDAP                     LDAPConfig       `json:"ldap,omitempty"`
+	OIDC                     OIDCConfig       `json:"oidc,omitempty"`
+	MFA                      MFASettings      `json:"mfa,omitempty"`
+	Cluster                  ClusterConfig    `json:"cluster,omitempty"`
+	Logging                  LoggingConfig    `json:"logging,omitempty"`
 }
 
 type TrashRecord struct {
-	ID            string    `json:"id"`
-	OriginalBucket string   `json:"original_bucket"`
-	OriginalKey   string    `json:"original_key"`
-	TrashKey      string    `json:"trash_key"`
-	Size          int64     `json:"size"`
-	VersionID     string    `json:"version_id,omitempty"`
-	DeletedBy     string    `json:"deleted_by,omitempty"`
-	DeletedAt     time.Time `json:"deleted_at"`
+	ID             string    `json:"id"`
+	OriginalBucket string    `json:"original_bucket"`
+	OriginalKey    string    `json:"original_key"`
+	TrashKey       string    `json:"trash_key"`
+	Size           int64     `json:"size"`
+	VersionID      string    `json:"version_id,omitempty"`
+	DeletedBy      string    `json:"deleted_by,omitempty"`
+	DeletedAt      time.Time `json:"deleted_at"`
 }
 
 type ConsoleTokenRecord struct {

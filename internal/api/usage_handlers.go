@@ -92,10 +92,10 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 			"upload_bytes":   uploadBytes,
 			"download_bytes": downloadBytes,
 		},
-		"quota":           quota,
-		"buckets":         bucketStats,
-		"storage_growth":  storageSeries,
-		"objects_growth":  objectSeries,
+		"quota":          quota,
+		"buckets":        bucketStats,
+		"storage_growth": storageSeries,
+		"objects_growth": objectSeries,
 	})
 }
 
@@ -107,17 +107,17 @@ func (s *Server) handleListBucketSettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 	type settingsRow struct {
-		Name           string                  `json:"name"`
-		Owner          string                  `json:"owner"`
-		Description    string                  `json:"description"`
-		Versioning     bool                    `json:"versioning_enabled"`
-		ObjectLock     bool                    `json:"object_lock_enabled"`
-		RetentionDays  int                     `json:"retention_days"`
-		StorageClass   string                  `json:"storage_class"`
-		TenantID       string                  `json:"tenant_id"`
-		Visibility     string                  `json:"visibility"`
-		MaxSizeBytes   int64                   `json:"max_size_bytes"`
-		MaxObjects     int64                   `json:"max_objects"`
+		Name           string                   `json:"name"`
+		Owner          string                   `json:"owner"`
+		Description    string                   `json:"description"`
+		Versioning     bool                     `json:"versioning_enabled"`
+		ObjectLock     bool                     `json:"object_lock_enabled"`
+		RetentionDays  int                      `json:"retention_days"`
+		StorageClass   string                   `json:"storage_class"`
+		TenantID       string                   `json:"tenant_id"`
+		Visibility     string                   `json:"visibility"`
+		MaxSizeBytes   int64                    `json:"max_size_bytes"`
+		MaxObjects     int64                    `json:"max_objects"`
 		LifecycleRules []metadata.LifecycleRule `json:"lifecycle_rules"`
 	}
 	var out []settingsRow
@@ -151,14 +151,14 @@ func (s *Server) handleUpdateBucketSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var req struct {
-		Description    string                  `json:"description"`
-		Versioning     *bool                   `json:"versioning_enabled"`
-		ObjectLock     *bool                   `json:"object_lock_enabled"`
-		RetentionDays  *int                    `json:"retention_days"`
-		StorageClass   string                  `json:"storage_class"`
-		Visibility     string                  `json:"visibility"`
-		MaxSizeBytes   *int64                  `json:"max_size_bytes"`
-		MaxObjects     *int64                  `json:"max_objects"`
+		Description    string                   `json:"description"`
+		Versioning     *bool                    `json:"versioning_enabled"`
+		ObjectLock     *bool                    `json:"object_lock_enabled"`
+		RetentionDays  *int                     `json:"retention_days"`
+		StorageClass   string                   `json:"storage_class"`
+		Visibility     string                   `json:"visibility"`
+		MaxSizeBytes   *int64                   `json:"max_size_bytes"`
+		MaxObjects     *int64                   `json:"max_objects"`
 		LifecycleRules []metadata.LifecycleRule `json:"lifecycle_rules"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

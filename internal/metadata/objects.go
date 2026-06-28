@@ -55,7 +55,7 @@ func (s *Store) putObject(rec ObjectRecord, versioned bool) error {
 				return ErrNotFound
 			}
 			if err := objects.Put(versionObjectKey(rec.Bucket, rec.Key, rec.VersionID), data); err != nil {
-			 return err
+				return err
 			}
 			return latest.Put(latestIndexKey(rec.Bucket, rec.Key), []byte(rec.VersionID))
 		}

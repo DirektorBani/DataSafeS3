@@ -15,10 +15,10 @@ import (
 
 	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/auth"
-	"github.com/DirektorBani/datasafe/internal/openapi"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	_ "github.com/DirektorBani/datasafe/internal/metadata/postgres"
 	"github.com/DirektorBani/datasafe/internal/observability"
+	"github.com/DirektorBani/datasafe/internal/openapi"
 	"github.com/DirektorBani/datasafe/internal/storage"
 )
 
@@ -36,19 +36,19 @@ type Config struct {
 }
 
 type Server struct {
-	cfg               Config
-	meta              metadata.MetadataStore
-	backend           *storage.FSBackend
-	svc               *s3.Service
-	s3                *s3.Handler
-	jwt               *auth.JWTManager
-	oidcSessions      *auth.OIDCSessionStore
-	oidcExchange      *auth.OIDCExchangeStore
-	loginRateLimit    *ipRateLimiter
-	webauthnSessions  *webauthnSessionStore
-	mux               *http.ServeMux
-	cluster           *clusterMonitor
-	eventSinks        []EventSink
+	cfg              Config
+	meta             metadata.MetadataStore
+	backend          *storage.FSBackend
+	svc              *s3.Service
+	s3               *s3.Handler
+	jwt              *auth.JWTManager
+	oidcSessions     *auth.OIDCSessionStore
+	oidcExchange     *auth.OIDCExchangeStore
+	loginRateLimit   *ipRateLimiter
+	webauthnSessions *webauthnSessionStore
+	mux              *http.ServeMux
+	cluster          *clusterMonitor
+	eventSinks       []EventSink
 }
 
 var corsAllowedOrigins []string

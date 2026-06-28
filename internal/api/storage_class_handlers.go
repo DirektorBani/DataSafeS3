@@ -53,10 +53,10 @@ func (s *Server) handleTransitionStorageClass(w http.ResponseWriter, r *http.Req
 	}
 	if !transitionAllowed(from, target) {
 		writeJSON(w, http.StatusConflict, map[string]any{
-			"error":    "transition not allowed",
-			"from":     from,
-			"to":       target,
-			"allowed":  []string{metadata.StorageClassWarm, metadata.StorageClassCold},
+			"error":   "transition not allowed",
+			"from":    from,
+			"to":      target,
+			"allowed": []string{metadata.StorageClassWarm, metadata.StorageClassCold},
 		})
 		return
 	}

@@ -99,27 +99,27 @@ const (
 )
 
 type LDAPConfig struct {
-	Enabled        bool              `json:"enabled"`
-	URL            string            `json:"url"`
-	BindDN         string            `json:"bind_dn"`
-	BindPassword   string            `json:"bind_password,omitempty"`
-	BaseDN         string            `json:"base_dn"`
-	GroupDN        string            `json:"group_dn,omitempty"`
-	UserAttr       string            `json:"user_attr,omitempty"`
-	GroupAttr      string            `json:"group_attr,omitempty"`
-	GroupRoleMap   map[string]string `json:"group_role_map,omitempty"`
-	SyncOnLogin           bool `json:"sync_on_login"`
-	SyncIntervalMinutes   int  `json:"sync_interval_minutes,omitempty"`
+	Enabled             bool              `json:"enabled"`
+	URL                 string            `json:"url"`
+	BindDN              string            `json:"bind_dn"`
+	BindPassword        string            `json:"bind_password,omitempty"`
+	BaseDN              string            `json:"base_dn"`
+	GroupDN             string            `json:"group_dn,omitempty"`
+	UserAttr            string            `json:"user_attr,omitempty"`
+	GroupAttr           string            `json:"group_attr,omitempty"`
+	GroupRoleMap        map[string]string `json:"group_role_map,omitempty"`
+	SyncOnLogin         bool              `json:"sync_on_login"`
+	SyncIntervalMinutes int               `json:"sync_interval_minutes,omitempty"`
 }
 
 type OIDCConfig struct {
-	Enabled         bool   `json:"enabled"`
-	Issuer          string `json:"issuer"`
-	InternalIssuer  string `json:"internal_issuer,omitempty"`
-	ClientID        string `json:"client_id"`
-	ClientSecret    string `json:"client_secret,omitempty"`
-	RedirectURL     string `json:"redirect_url"`
-	GroupsClaim     string `json:"groups_claim,omitempty"`
+	Enabled        bool   `json:"enabled"`
+	Issuer         string `json:"issuer"`
+	InternalIssuer string `json:"internal_issuer,omitempty"`
+	ClientID       string `json:"client_id"`
+	ClientSecret   string `json:"client_secret,omitempty"`
+	RedirectURL    string `json:"redirect_url"`
+	GroupsClaim    string `json:"groups_claim,omitempty"`
 }
 
 type MFASettings struct {
@@ -148,37 +148,37 @@ type TenantRecord struct {
 }
 
 type GatewayConnection struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Endpoint   string    `json:"endpoint"`
-	Region     string    `json:"region"`
-	AccessKey  string    `json:"access_key"`
-	SecretKey  string    `json:"secret_key,omitempty"`
-	PathStyle  bool      `json:"path_style"`
-	TLSVerify  bool      `json:"tls_verify"`
-	Status     string    `json:"status,omitempty"`
-	LastCheck  time.Time `json:"last_check,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Endpoint  string    `json:"endpoint"`
+	Region    string    `json:"region"`
+	AccessKey string    `json:"access_key"`
+	SecretKey string    `json:"secret_key,omitempty"`
+	PathStyle bool      `json:"path_style"`
+	TLSVerify bool      `json:"tls_verify"`
+	Status    string    `json:"status,omitempty"`
+	LastCheck time.Time `json:"last_check,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type ReplicationRule struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	SourceBucket    string    `json:"source_bucket"`
-	DestConnection  string    `json:"dest_connection_id"`
-	DestBucket      string    `json:"dest_bucket"`
-	Enabled         bool      `json:"enabled"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	SourceBucket   string    `json:"source_bucket"`
+	DestConnection string    `json:"dest_connection_id"`
+	DestBucket     string    `json:"dest_bucket"`
+	Enabled        bool      `json:"enabled"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type SyncJob struct {
-	ID        string    `json:"id"`
-	RuleID    string    `json:"rule_id"`
-	Status    string    `json:"status"`
-	Objects   int       `json:"objects_synced"`
-	Errors    int       `json:"errors"`
-	Message   string    `json:"message,omitempty"`
-	StartedAt time.Time `json:"started_at"`
+	ID        string     `json:"id"`
+	RuleID    string     `json:"rule_id"`
+	Status    string     `json:"status"`
+	Objects   int        `json:"objects_synced"`
+	Errors    int        `json:"errors"`
+	Message   string     `json:"message,omitempty"`
+	StartedAt time.Time  `json:"started_at"`
 	EndedAt   *time.Time `json:"ended_at,omitempty"`
 }
 

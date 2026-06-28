@@ -14,15 +14,15 @@ type TeamRecord struct {
 }
 
 type BucketListFilter struct {
-	UserID              string
-	Username            string
-	TeamIDs             []string
-	TenantIDs           []string
-	TenantAdminIDs      []string
-	GroupBucketKeys     map[string]struct{}
-	TenantsWithGroups   map[string]struct{}
-	GrantBucketKeys     map[string]struct{}
-	Unfiltered          bool
+	UserID            string
+	Username          string
+	TeamIDs           []string
+	TenantIDs         []string
+	TenantAdminIDs    []string
+	GroupBucketKeys   map[string]struct{}
+	TenantsWithGroups map[string]struct{}
+	GrantBucketKeys   map[string]struct{}
+	Unfiltered        bool
 }
 
 func MergeTeamIDs(primary string, extra []string) []string {

@@ -130,7 +130,7 @@ func TestSetupCompleteSkip(t *testing.T) {
 
 	changeBody, _ := json.Marshal(map[string]string{
 		"current_password": "admin",
-		"new_password":   "Admin123!",
+		"new_password":     "Admin123!",
 	})
 	req = authReq(http.MethodPost, "/api/v1/me/password", tok, changeBody)
 	rec = httptest.NewRecorder()

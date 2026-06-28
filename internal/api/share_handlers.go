@@ -129,13 +129,13 @@ func (s *Server) handlePublicShareInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"filename":        shareFilename(link.Key),
-		"key":             link.Key,
-		"size":            rec.Size,
-		"content_type":    rec.ContentType,
-		"expires_at":      link.ExpiresAt,
-		"max_downloads":   link.MaxDownloads,
-		"download_count":  link.DownloadCount,
+		"filename":       shareFilename(link.Key),
+		"key":            link.Key,
+		"size":           rec.Size,
+		"content_type":   rec.ContentType,
+		"expires_at":     link.ExpiresAt,
+		"max_downloads":  link.MaxDownloads,
+		"download_count": link.DownloadCount,
 	})
 }
 
