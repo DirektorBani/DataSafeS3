@@ -11,12 +11,32 @@
 
 Please **do not** open public GitHub issues for security vulnerabilities.
 
-1. Email **security@datasafe.local** (replace with your project security contact) with:
+1. Email **[trachyk.i@gmail.com](mailto:trachyk.i@gmail.com)** or use [GitHub Security Advisories](https://github.com/DirektorBani/DataSafeS3/security/advisories/new) with:
    - Affected component and version
    - Steps to reproduce
    - Impact assessment (if known)
 2. We aim to acknowledge within **3 business days** and provide a remediation timeline within **14 days** for confirmed issues.
 3. Coordinated disclosure: we prefer a 90-day window before public details unless a fix is available sooner.
+
+## Verifying release images (cosign)
+
+Release tags on GHCR are signed with [Cosign](https://docs.sigstore.dev/) (keyless, OIDC). Verify before deploy:
+
+```bash
+# Install cosign: https://docs.sigstore.dev/cosign/system_install/
+export COSIGN_EXPERIMENTAL=1
+TAG=v1.0.1
+
+cosign verify "ghcr.io/direktorbani/datasafe-storage-server:${TAG}" \
+  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+cosign verify "ghcr.io/direktorbani/datasafe-console:${TAG}" \
+  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+```
+
+SBOM files (`sbom-storage-server.cdx.json`, `sbom-console.cdx.json`) are attached to each [GitHub Release](https://github.com/DirektorBani/DataSafeS3/releases).
 
 ## Secure development
 

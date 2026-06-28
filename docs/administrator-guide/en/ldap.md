@@ -2,6 +2,8 @@ English | **[Русский](../ru/ldap.md)**
 
 # LDAP integration
 
+![System settings](../../images/screenshots/settings.png)
+
 Sync users and map LDAP groups to DataSafeS3 roles on login.
 
 ## Configuration

@@ -38,16 +38,16 @@ Integrations use **API tokens** with prefix `ds_`, not administrator JWT.
 2. Go to **Access → API tokens → Create**.
 3. Set name, expiry, and scopes → **copy the token immediately** (shown once).
 
-![Console Access → API tokens — placeholder for screenshot]
+Console path: **Access → API tokens → Create** — table columns: Name, Created, Expires, Scopes.
 
 ### 2. Authorize in Swagger UI
 
 1. Open `/api/v1/docs`.
-2. Click **Authorize**.
+2. Click **Authorize** (lock icon, top right).
 3. Enter `ds_your_token_here` (Swagger adds the `Bearer` prefix).
 4. Authorization persists in the browser session (`persistAuthorization: true`).
 
-![Swagger Authorize dialog — placeholder for screenshot]
+The Authorize dialog accepts the raw token value; no `Bearer` prefix required in the input field.
 
 ### 3. Call protected endpoints
 

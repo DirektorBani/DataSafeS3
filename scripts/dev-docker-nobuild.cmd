@@ -5,6 +5,9 @@ cd /d "%~dp0.."
 if not exist .env (
   if exist .env.example copy /Y .env.example .env >nul
 )
+if not defined DATASAFE_DATA_ROOT set DATASAFE_DATA_ROOT=D:/datasafe-data
+
+set COMPOSE_ARGS=-p datasafe -f docker-compose.yml -f docker-compose.local-data.yml
 
 echo Building web console static assets for Caddy...
 call scripts\build-console.cmd
@@ -14,7 +17,7 @@ echo Starting Docker Compose stack without rebuilding images...
 echo (Use this when docker compose up -d --build fails due to proxy/registry issues.)
 echo.
 
-docker compose up -d
+docker compose %COMPOSE_ARGS% up -d
 if errorlevel 1 exit /b 1
 
 echo.
@@ -26,7 +29,7 @@ if not errorlevel 1 goto wait_console
 set /a tries+=1
 if %tries% geq 30 (
   echo storage-server did not become ready in time.
-  docker compose ps
+  docker compose %COMPOSE_ARGS% ps
   exit /b 1
 )
 timeout /t 2 /nobreak >nul
@@ -41,8 +44,8 @@ if not errorlevel 1 goto done
 set /a tries+=1
 if %tries% geq 30 (
   echo Console did not return HTTP 200 in time.
-  docker compose ps
-  docker compose logs --tail=20 caddy
+  docker compose %COMPOSE_ARGS% ps
+  docker compose %COMPOSE_ARGS% logs --tail=20 caddy
   exit /b 1
 )
 timeout /t 2 /nobreak >nul
@@ -50,7 +53,7 @@ goto console_loop
 
 :done
 echo.
-docker compose ps
+docker compose %COMPOSE_ARGS% ps
 echo.
 echo Console (via Caddy): http://localhost:8080/
 echo S3 API (direct):      http://localhost:9000/

@@ -52,7 +52,7 @@ DataSafeS3 addresses that need as a **single product** — not a loose collectio
 - **Docker Compose** — fastest path to evaluate and small production; optional [HA overlay](../../operations-guide/en/reference-deployment-2node.md)
 - **Helm chart** — Kubernetes production deployments (`values-production.yaml`, `values-ha.yaml`)
 - **Metadata** — BoltDB (default) or PostgreSQL with read-replica routing
-- **Release artifacts** — `ghcr.io/direktorbani/datasafe-*` images, SBOM, cosign signatures on tags
+- **Release artifacts** — `ghcr.io/direktorbani/datasafe-*` images (tag e.g. `v1.0.1`), SBOM, cosign signatures on tags — verify with `cosign verify` (see [SECURITY.md](../../../SECURITY.md))
 - **Integrations** — STS scoped credentials, NATS event sink, [extension hooks](../../../examples/extension-hook/README.md)
 - **File workspace** — home bucket, sharing, optional [desktop sync CLI](../../../clients/README.md) — [status](../../en/specs/file-collaboration-status.md)
 

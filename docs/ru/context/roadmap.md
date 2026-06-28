@@ -33,8 +33,8 @@ Prioritized backlog from [feature audit 2026-06-17](../../testing/feature-audit-
 | AUD-06 | UX | Bucket create response — always include `visibility` in POST response | S | done | In latest source; ensure deployed image |
 | AUD-07 | Integrations | Share link API — document `expires_in_sec` (not `expires_in`) in OpenAPI/user guide | S | **done** | Audit script + user guide |
 | OPENAPI-01 | Integrations | OpenAPI 3.1 spec + live `/api/v1/openapi.json` + Swagger UI | M | **done** | [openapi-roadmap.md](openapi-roadmap.md), `docs/api/openapi.yaml` |
-| AUD-08 | UX | User bucket list empty state — clear 409/500 when create fails (e.g. FK error) | S | planned | Avoid silent empty list |
-| AUD-09 | UX | OIDC login button — in-console status when Keycloak issuer unreachable (browser vs server) | M | planned | Better SSO diagnostics |
+| AUD-08 | UX | User bucket list empty state — clear 409/500 when create fails (e.g. FK error) | S | **done** | Страница бакетов показывает ошибки API; create — 409 только при конфликте |
+| AUD-09 | UX | OIDC login button — in-console status when Keycloak issuer unreachable (browser vs server) | M | **done** | `login.tsx`: `issuerError` + disabled SSO button |
 | AUD-23 | UX | Elasticsearch sink `token` field — UI placeholder "API key (base64)" not "bearer token" | S | **done** | Basic auth username/password + API key in Admin Settings |
 
 ### P2 — Operations / Monitoring

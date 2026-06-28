@@ -50,23 +50,32 @@ jobs:
           docker push "${CONSOLE_IMAGE}:${GITHUB_REF_NAME}"
           docker push "${CONSOLE_IMAGE}:latest"
 
-      - name: Generate SBOM (Syft)
+      - name: Generate SBOM storage-server (Syft)
         uses: anchore/sbom-action@v0
         with:
           image: "${{ env.SERVER_IMAGE }}:${{ github.ref_name }}"
           format: cyclonedx-json
           output-file: sbom-storage-server.cdx.json
 
-      - name: Upload SBOM artifact
+      - name: Generate SBOM console (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: "${{ env.CONSOLE_IMAGE }}:${{ github.ref_name }}"
+          format: cyclonedx-json
+          output-file: sbom-console.cdx.json
+
+      - name: Upload SBOM artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sbom-${{ github.ref_name }}
-          path: sbom-storage-server.cdx.json
+          path: |
+            sbom-storage-server.cdx.json
+            sbom-console.cdx.json
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
-      - name: Sign storage-server image
+      - name: Sign release images
         env:
           COSIGN_EXPERIMENTAL: "1"
         run: |
@@ -98,3 +107,30 @@ jobs:
           docker logs ds-smoke
           docker rm -f ds-smoke
           exit 1
+
+  github-release:
+    needs: publish-images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download SBOM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-${{ github.ref_name }}
+          path: sbom
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sbom/*
+          generate_release_notes: true
+          body: |
+            ## Container images
+
+            - `${{ env.SERVER_IMAGE }}:${{ github.ref_name }}`
+            - `${{ env.CONSOLE_IMAGE }}:${{ github.ref_name }}`
+
+            CycloneDX SBOM files and cosign signatures are attached. See [SECURITY.md](https://github.com/${{ github.repository }}/blob/main/SECURITY.md) for `cosign verify` instructions.

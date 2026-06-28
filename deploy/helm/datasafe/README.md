@@ -9,11 +9,21 @@ Helm chart for deploying **DataSafeS3** — self-hosted S3-compatible object sto
 - Kubernetes 1.24+
 - Helm 3.10+
 - PersistentVolume provisioner (for object data and optional PostgreSQL)
-- Built images (or use a private registry):
-  - `datasafe/storage-server:latest` — `docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .`
-  - `datasafe/console:latest` — package `web/console/dist` (see below)
+- Built images (or pull from GHCR):
+  - `ghcr.io/direktorbani/datasafe-storage-server:v1.0.1` — release tag (or build locally: `docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .`)
+  - `ghcr.io/direktorbani/datasafe-console:v1.0.1` — release tag (or build via `deploy/docker/Dockerfile.console`)
 
-## Quick install
+## Quick install (GHCR release tags)
+
+```bash
+# Minimal BoltDB stack with published v1.0.1 images
+helm install datasafe deploy/helm/datasafe \
+  --set storageServer.image.tag=v1.0.1 \
+  --set console.image.tag=v1.0.1 \
+  --namespace datasafe --create-namespace
+```
+
+## Quick install (local build)
 
 ```bash
 # Minimal BoltDB stack (default values)

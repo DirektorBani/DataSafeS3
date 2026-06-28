@@ -592,7 +592,11 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	if err := s.svc.CreateBucket(r.Context(), bucket, owner); err != nil {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
+		status := http.StatusInternalServerError
+		if errors.Is(err, metadata.ErrBucketExists) {
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, map[string]any{"error": err.Error()})
 		return
 	}
 	vis := req.Visibility

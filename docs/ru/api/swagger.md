@@ -38,16 +38,16 @@
 2. **Access → API tokens → Create**.
 3. Имя, срок, scopes → **скопируйте токен сразу** (показывается один раз).
 
-![Консоль Access → API tokens — placeholder для скриншота]
+Путь в консоли: **Access → API tokens → Create** — колонки: Name, Created, Expires, Scopes.
 
 ### 2. Authorize в Swagger UI
 
 1. Откройте `/api/v1/docs`.
-2. **Authorize**.
+2. **Authorize** (иконка замка, справа сверху).
 3. Введите `ds_ваш_токен` (Swagger добавит префикс `Bearer`).
 4. Авторизация сохраняется в сессии браузера.
 
-![Диалог Authorize — placeholder для скриншота]
+В диалоге Authorize достаточно вставить сам токен — префикс `Bearer` вводить не нужно.
 
 ### 3. Запросы к защищённым endpoint
 
@@ -90,6 +90,7 @@ Authorization: Bearer ds_xxxxxxxx
 go run tools/gen-openapi-yaml.go
 go test ./internal/api/... -run OpenAPI -count=1
 powershell -File scripts\openapi-drift-check.ps1
+powershell -File scripts\lint-openapi.ps1
 ```
 
 После изменений спеки пересоберите `storage-server`.

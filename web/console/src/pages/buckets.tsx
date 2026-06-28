@@ -261,7 +261,12 @@ export function BucketsPage() {
         </div>
       )}
 
-      {buckets.isLoading ? (
+      {buckets.isError ? (
+        <p className="text-destructive" role="alert">
+          {t("buckets:listError")}{" "}
+          {buckets.error instanceof Error ? buckets.error.message : t("buckets:toast.failed")}
+        </p>
+      ) : buckets.isLoading ? (
         <p className="text-muted-foreground">{t("buckets:loading")}</p>
       ) : (
         <DataTable

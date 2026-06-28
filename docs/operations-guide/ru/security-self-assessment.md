@@ -11,7 +11,7 @@
 | Аутентификация | JWT, SigV4, WebAuthn/TOTP | feature-audit B6–B10 |
 | Авторизация | RBAC, policies, tenants | feature-audit C12–C16 |
 | Аудит | Activity log, share events | Admin → Activity |
-| Supply chain | SBOM + Cosign | release workflow |
+| Supply chain | SBOM + Cosign на тегах (оба образа) | release workflow, [SECURITY.md](../../../SECURITY.md) |
 | Сканирование | govulncheck в CI | ci.yml |
 | Раскрытие уязвимостей | SECURITY.md | корень репозитория |
 

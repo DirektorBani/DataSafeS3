@@ -1,5 +1,11 @@
 # DataSafeS3 Feature Audit - automated API tests (corrected API contracts)
-param([string]$BaseUrl = 'http://localhost:8080', [string]$S3Url = 'http://localhost:9000')
+param(
+    [string]$BaseUrl = 'http://localhost:8080',
+    [string]$S3Url = 'http://localhost:9000',
+    [string]$S3AccessKey = 's3fork',
+    [string]$S3SecretKey = 's3forksecret',
+    [string]$S3Region = 'us-east-1'
+)
 
 $ErrorActionPreference = 'Continue'
 $results = [System.Collections.Generic.List[object]]::new()
@@ -61,6 +67,129 @@ function Put-Object($token, $bucket, $key, $content) {
     Remove-Item $tmp -Force
     $code = [int](($out -split "`n")[-1])
     return $code
+}
+
+function Get-Sha256Hex([string]$Text) {
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLower() }
+    finally { $sha.Dispose() }
+}
+
+function Get-HmacSha256Bytes([byte[]]$Key, [string]$Data) {
+    $hmac = [System.Security.Cryptography.HMACSHA256]::new($Key)
+    try { return $hmac.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Data)) }
+    finally { $hmac.Dispose() }
+}
+
+function Get-AwsUriEncode([string]$Value, [switch]$Path) {
+    $sb = [System.Text.StringBuilder]::new()
+    foreach ($c in $Value.ToCharArray()) {
+        if (($c -match '[A-Za-z0-9\-_.~]') -or ($Path -and $c -eq '/')) { [void]$sb.Append($c) }
+        else { [void]$sb.Append(('%{0:X2}' -f [int][char]$c)) }
+    }
+    return $sb.ToString()
+}
+
+function Get-AwsCanonicalQuery([hashtable]$Query) {
+    if (-not $Query -or $Query.Count -eq 0) { return '' }
+    $pairs = [System.Collections.Generic.List[string]]::new()
+    foreach ($key in ($Query.Keys | Sort-Object)) {
+        $vals = @($Query[$key])
+        if ($vals.Count -eq 1 -and $null -eq $vals[0]) { $vals = @('') }
+        foreach ($val in ($vals | Sort-Object)) {
+            $pairs.Add("$(Get-AwsUriEncode $key)=$(Get-AwsUriEncode ([string]$val))")
+        }
+    }
+    return ($pairs -join '&')
+}
+
+function Get-Aws4SigningKey([string]$SecretKey, [string]$DateStamp, [string]$Region, [string]$Service) {
+    $kDate = Get-HmacSha256Bytes ([System.Text.Encoding]::UTF8.GetBytes("AWS4$SecretKey")) $DateStamp
+    $kRegion = Get-HmacSha256Bytes $kDate $Region
+    $kService = Get-HmacSha256Bytes $kRegion $Service
+    return Get-HmacSha256Bytes $kService 'aws4_request'
+}
+
+function Invoke-S3Signed {
+    param(
+        [string]$Method,
+        [string]$Url,
+        [string]$Body = $null,
+        [hashtable]$ExtraHeaders = @{},
+        [string]$PayloadHash = 'UNSIGNED-PAYLOAD'
+    )
+    $uri = [Uri]$Url
+    $amzDate = [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmss') + 'Z'
+    $dateStamp = $amzDate.Substring(0, 8)
+    $hostHeader = if ($uri.IsDefaultPort) { $uri.Host } else { "$($uri.Host):$($uri.Port)" }
+    $path = if ($uri.AbsolutePath) { $uri.AbsolutePath } else { '/' }
+    $query = @{}
+    if ($uri.Query) {
+        $qs = $uri.Query.TrimStart('?')
+        foreach ($part in $qs.Split('&')) {
+            if ($part -eq '') { continue }
+            $eq = $part.IndexOf('=')
+            if ($eq -lt 0) { $query[[Uri]::UnescapeDataString($part)] = '' }
+            else {
+                $qk = [Uri]::UnescapeDataString($part.Substring(0, $eq))
+                $qv = [Uri]::UnescapeDataString($part.Substring($eq + 1))
+                $query[$qk] = $qv
+            }
+        }
+    }
+    $signedHeaders = @('host', 'x-amz-content-sha256', 'x-amz-date')
+    $headerMap = @{
+        host = $hostHeader
+        'x-amz-content-sha256' = $PayloadHash
+        'x-amz-date' = $amzDate
+    }
+    foreach ($k in $ExtraHeaders.Keys) { $headerMap[$k.ToLower()] = $ExtraHeaders[$k] }
+    $canonicalHeaders = (($signedHeaders | ForEach-Object { "$_`:$($headerMap[$_])" }) -join "`n") + "`n"
+    $canonicalRequest = @(
+        $Method.ToUpper()
+        (Get-AwsUriEncode $path -Path)
+        (Get-AwsCanonicalQuery $query)
+        $canonicalHeaders
+        ($signedHeaders -join ';')
+        $PayloadHash
+    ) -join "`n"
+    $credentialScope = "$dateStamp/$S3Region/s3/aws4_request"
+    $stringToSign = @(
+        'AWS4-HMAC-SHA256'
+        $amzDate
+        $credentialScope
+        (Get-Sha256Hex $canonicalRequest)
+    ) -join "`n"
+    $signingKey = Get-Aws4SigningKey $S3SecretKey $dateStamp $S3Region 's3'
+    $signature = ([BitConverter]::ToString((Get-HmacSha256Bytes $signingKey $stringToSign))).Replace('-', '').ToLower()
+    $auth = "AWS4-HMAC-SHA256 Credential=$S3AccessKey/$credentialScope, SignedHeaders=$($signedHeaders -join ';'), Signature=$signature"
+    $bodyFile = [System.IO.Path]::GetTempFileName()
+    $hdrFile = [System.IO.Path]::GetTempFileName()
+    $curlArgs = @('-s', '-o', $bodyFile, '-D', $hdrFile, '-w', '%{http_code}', '-X', $Method.ToUpper(), $Url,
+        '-H', "Host: $hostHeader",
+        '-H', "X-Amz-Date: $amzDate",
+        '-H', "X-Amz-Content-Sha256: $PayloadHash",
+        '-H', "Authorization: $auth")
+    foreach ($k in $ExtraHeaders.Keys) { $curlArgs += @('-H', "$k`: $($ExtraHeaders[$k])") }
+    $tmp = $null
+    if ($null -ne $Body) {
+        $tmp = [System.IO.Path]::GetTempFileName()
+        [System.IO.File]::WriteAllText($tmp, $Body, [System.Text.UTF8Encoding]::new($false))
+        $curlArgs += @('--data-binary', "@$tmp")
+    }
+    try {
+        $code = [int]((& curl.exe @curlArgs | Out-String).Trim())
+        $bodyText = [System.IO.File]::ReadAllText($bodyFile, [System.Text.UTF8Encoding]::new($false))
+        $respHeaders = @{}
+        foreach ($line in [System.IO.File]::ReadAllLines($hdrFile)) {
+            if ($line -match '^([^:]+):\s*(.*)$') { $respHeaders[$Matches[1].ToLower()] = $Matches[2].Trim() }
+        }
+        return @{ Code = $code; Body = $bodyText; Headers = $respHeaders }
+    } finally {
+        if ($tmp) { Remove-Item -Force -ErrorAction SilentlyContinue $tmp }
+        Remove-Item -Force -ErrorAction SilentlyContinue $bodyFile, $hdrFile
+    }
 }
 
 Write-Host "=== DataSafeS3 Feature Audit ===" -ForegroundColor Cyan
@@ -196,6 +325,169 @@ if ($r.Code -eq 201 -and $r.Json.share.token) {
 Put-Object $adminTok $pubBucket 'anon-test.txt' 'anon-content' | Out-Null
 $r = Invoke-DS GET "$S3Url/$pubBucket/anon-test.txt"
 Record 'S3/Buckets' 'Public-read anonymous S3 GET' $(if($r.Code -eq 200 -and $r.Body -eq 'anon-content'){'PASS'}else{'FAIL'}) "HTTP $($r.Code)"
+
+# Phase B: S3 raw API (SigV4, multipart, presign) + home bucket
+$s3RawBucket = "audit-s3raw-$ts"
+$s3PutKey = 'sigv4-test.bin'
+$s3PutBody = "audit-s3raw-$ts-content"
+$bucketPut = Invoke-S3Signed PUT "$S3Url/$s3RawBucket"
+$s3BucketOk = $bucketPut.Code -in 200,201
+if ($s3BucketOk) {
+    $objPut = Invoke-S3Signed PUT "$S3Url/$s3RawBucket/$s3PutKey" -Body $s3PutBody
+    Record 'S3 API (raw)' 'SigV4 PUT object' $(if($objPut.Code -in 200,201){'PASS'}else{'FAIL'}) "HTTP $($objPut.Code)"
+    $objGet = Invoke-S3Signed GET "$S3Url/$s3RawBucket/$s3PutKey"
+    Record 'S3 API (raw)' 'SigV4 GET object' $(if($objGet.Code -eq 200 -and $objGet.Body.Trim() -eq $s3PutBody){'PASS'}else{'FAIL'}) "HTTP $($objGet.Code) len=$($objGet.Body.Length)"
+
+    $mpKey = 'large.bin'
+    $mpInit = Invoke-S3Signed POST "$S3Url/$s3RawBucket/${mpKey}?uploads"
+    $uploadId = $null
+    if ($mpInit.Body -match '<UploadId>([^<]+)</UploadId>') { $uploadId = $Matches[1] }
+    elseif ($mpInit.Body) {
+        try { $uploadId = ([xml]$mpInit.Body).InitiateMultipartUploadResult.UploadId } catch {}
+    }
+    $mpOk = $false
+    if ($uploadId) {
+        $partBody = 'aaa'
+        $mpPart = Invoke-S3Signed PUT "$S3Url/$s3RawBucket/${mpKey}?partNumber=1&uploadId=$uploadId" -Body $partBody
+        $etag = $mpPart.Headers['etag']
+        if (-not $etag) { $etag = $mpPart.Headers['ETag'] }
+        if ($mpPart.Code -eq 200 -and $etag) {
+            $etagClean = $etag.Trim('"')
+            $completeXml = "<CompleteMultipartUpload><Part><PartNumber>1</PartNumber><ETag>`"$etagClean`"</ETag></Part></CompleteMultipartUpload>"
+            $mpComplete = Invoke-S3Signed POST "$S3Url/$s3RawBucket/${mpKey}?uploadId=$uploadId" -Body $completeXml -ExtraHeaders @{ 'Content-Type' = 'application/xml' }
+            if ($mpComplete.Code -eq 200) {
+                $mpGet = Invoke-S3Signed GET "$S3Url/$s3RawBucket/$mpKey"
+                $mpOk = ($mpGet.Code -eq 200 -and $mpGet.Body -eq $partBody)
+            }
+        }
+    }
+    Record 'S3 API (raw)' 'Multipart upload complete' $(if($mpOk){'PASS'}else{'FAIL'}) "init=$($mpInit.Code) uploadId=$([bool]$uploadId)"
+
+    $presignPutBody = @{ method = 'PUT'; bucket = $s3RawBucket; key = 'presign-put.txt'; expires_seconds = 900; endpoint = $S3Url } | ConvertTo-Json -Compress
+    $presignGetBody = @{ method = 'GET'; bucket = $s3RawBucket; key = $s3PutKey; expires_seconds = 900; endpoint = $S3Url } | ConvertTo-Json -Compress
+    $pp = Invoke-DS POST "$BaseUrl/api/v1/presign" -Headers $adminH -Body $presignPutBody
+    $pg = Invoke-DS POST "$BaseUrl/api/v1/presign" -Headers $adminH -Body $presignGetBody
+    $presignPutOk = $false
+    $presignGetOk = $false
+    if ($pp.Json.url) {
+        $ptmp = [System.IO.Path]::GetTempFileName()
+        [System.IO.File]::WriteAllText($ptmp, 'presigned-put-content', [System.Text.UTF8Encoding]::new($false))
+        $pout = curl.exe -s -w "`n%{http_code}" -X PUT $pp.Json.url -H 'Content-Type: text/plain' --data-binary "@$ptmp"
+        Remove-Item $ptmp -Force
+        $presignPutOk = ([int](($pout -split "`n")[-1]) -in 200,201)
+    }
+    if ($pg.Json.url) {
+        $gout = curl.exe -s -w "`n%{http_code}" $pg.Json.url
+        $gcode = [int](($gout -split "`n")[-1])
+        $gbody = (($gout -split "`n")[0..(($gout -split "`n").Count-2)] -join "`n").Trim()
+        $presignGetOk = ($gcode -eq 200 -and $gbody -eq $s3PutBody)
+    }
+    Record 'S3 API (raw)' 'Presigned URL PUT' $(if($presignPutOk){'PASS'}else{'FAIL'}) $(if($pp.Json.url){'signed put ok'}else{"presign HTTP $($pp.Code)"})
+    Record 'S3 API (raw)' 'Presigned URL GET' $(if($presignGetOk){'PASS'}else{'FAIL'}) $(if($pg.Json.url){'signed get ok'}else{"presign HTTP $($pg.Code)"})
+} else {
+    Record 'S3 API (raw)' 'SigV4 PUT object' 'FAIL' "bucket create HTTP $($bucketPut.Code)"
+    Record 'S3 API (raw)' 'SigV4 GET object' 'SKIP' 'no bucket'
+    Record 'S3 API (raw)' 'Multipart upload complete' 'SKIP' 'no bucket'
+    Record 'S3 API (raw)' 'Presigned URL PUT' 'SKIP' 'no bucket'
+    Record 'S3 API (raw)' 'Presigned URL GET' 'SKIP' 'no bucket'
+}
+
+$homeUser = "audit-home-$ts"
+$homePass = 'pass123'
+$homeCreated = Invoke-DS POST "$BaseUrl/api/v1/users" -Headers $adminH -Body "{`"username`":`"$homeUser`",`"password`":`"$homePass`",`"role`":`"user`",`"email`":`"$homeUser@test.com`"}"
+$homeTok = $null
+if ($homeCreated.Code -eq 201) { $homeTok = Login $homeUser $homePass }
+$homeOk = $false
+$homeDupOk = $false
+if ($homeTok) {
+    $hb1 = Invoke-DS GET "$BaseUrl/api/v1/buckets" -Headers (Auth $homeTok)
+    $hb2 = Invoke-DS GET "$BaseUrl/api/v1/me" -Headers (Auth $homeTok)
+    $hb3 = Invoke-DS GET "$BaseUrl/api/v1/buckets" -Headers (Auth $homeTok)
+    $buckets1 = @($hb1.Json.buckets)
+    $buckets3 = @($hb3.Json.buckets)
+    $filesBucket = $buckets1 | Where-Object { $_.name -eq 'files' } | Select-Object -First 1
+    $homeOk = ($buckets1.Count -ge 1) -and $filesBucket -and ($filesBucket.access.ownership -eq 'owned')
+    $homeDupOk = ($buckets1.Count -eq $buckets3.Count) -and ($buckets1.Count -ge 1)
+}
+Record 'S3/Buckets' 'Home bucket auto-provision' $(if($homeOk){'PASS'}else{'FAIL'}) $(if($homeOk){"files owned"}else{"create=$($homeCreated.Code) buckets=$(@($hb1.Json.buckets).Count)"})
+Record 'S3/Buckets' 'Home bucket idempotent list' $(if($homeDupOk){'PASS'}else{'FAIL'}) "count1=$(@($hb1.Json.buckets).Count) count2=$(@($hb3.Json.buckets).Count)"
+
+# Phase B: owner bucket access grants + prefix grants (live stack)
+$ownOwnerU = Create-User $adminH "audit-ownowner-$ts" 'pass123'
+$ownGranteeU = Create-User $adminH "audit-owngrantee-$ts" 'pass123'
+$ownPrefixOwnerU = Create-User $adminH "audit-pfxowner-$ts" 'pass123'
+$ownPrefixGranteeU = Create-User $adminH "audit-pfxgrantee-$ts" 'pass123'
+if ($ownOwnerU -and $ownGranteeU) {
+    $ownTr = Invoke-DS POST "$BaseUrl/api/v1/tenants" -Headers $adminH -Body "{`"name`":`"OwnerGrantCo $ts`"}"
+    $ownTenant = $ownTr.Json.tenant.id
+    Invoke-DS POST "$BaseUrl/api/v1/tenants/$ownTenant/members" -Headers $adminH -Body "{`"user_id`":`"$($ownOwnerU.Id)`",`"role`":`"member`"}" | Out-Null
+    Invoke-DS POST "$BaseUrl/api/v1/tenants/$ownTenant/members" -Headers $adminH -Body "{`"user_id`":`"$($ownGranteeU.Id)`",`"role`":`"member`"}" | Out-Null
+    $ownOwnerH = Auth $ownOwnerU.Token
+    $ownGranteeH = Auth $ownGranteeU.Token
+    $ownBucket = "audit-ownbkt-$ts"
+    $ownCr = Invoke-DS POST "$BaseUrl/api/v1/buckets/$ownBucket" -Headers $ownOwnerH -Body '{"visibility":"private"}'
+    if ($ownCr.Code -eq 201) {
+        Put-Object $ownOwnerU.Token $ownBucket 'shared.txt' 'owner-grant-data' | Out-Null
+        $ownGrantBody = "{`"grants`":[{`"user_id`":`"$($ownGranteeU.Id)`",`"can_read`":true,`"can_write`":false}]}"
+        $ownGr = Invoke-DS PUT "$BaseUrl/api/v1/buckets/$ownBucket/access" -Headers $ownOwnerH -Body $ownGrantBody
+        $ownList = Invoke-DS GET "$BaseUrl/api/v1/buckets?filter=shared" -Headers $ownGranteeH
+        $ownShared = @($ownList.Json.buckets) | Where-Object { $_.name -eq $ownBucket } | Select-Object -First 1
+        $ownReadOk = ($ownGr.Code -eq 200) -and $ownShared -and ($ownShared.access.ownership -eq 'shared') -and (-not $ownShared.access.can_write)
+        $ownGet = Invoke-DS GET "$BaseUrl/api/v1/buckets/$ownBucket/objects/shared.txt" -Headers $ownGranteeH
+        $ownWrite = Put-Object $ownGranteeU.Token $ownBucket 'deny-write.txt' 'x'
+        $ownGrantOk = $ownReadOk -and ($ownGet.Code -eq 200) -and ($ownWrite -eq 403)
+        Record 'Tenant' 'Owner bucket access grant round-trip' $(if($ownGrantOk){'PASS'}else{'FAIL'}) "grant=$($ownGr.Code) read=$($ownGet.Code) write=$ownWrite"
+    } else {
+        Record 'Tenant' 'Owner bucket access grant round-trip' 'FAIL' "bucket create HTTP $($ownCr.Code)"
+    }
+} else {
+    Record 'Tenant' 'Owner bucket access grant round-trip' 'FAIL' 'user create failed'
+}
+if ($ownPrefixOwnerU -and $ownPrefixGranteeU) {
+    $pfxTr = Invoke-DS POST "$BaseUrl/api/v1/tenants" -Headers $adminH -Body "{`"name`":`"PrefixGrantCo $ts`"}"
+    $pfxTenant = $pfxTr.Json.tenant.id
+    Invoke-DS POST "$BaseUrl/api/v1/tenants/$pfxTenant/members" -Headers $adminH -Body "{`"user_id`":`"$($ownPrefixOwnerU.Id)`",`"role`":`"member`"}" | Out-Null
+    Invoke-DS POST "$BaseUrl/api/v1/tenants/$pfxTenant/members" -Headers $adminH -Body "{`"user_id`":`"$($ownPrefixGranteeU.Id)`",`"role`":`"member`"}" | Out-Null
+    $pfxOwnerH = Auth $ownPrefixOwnerU.Token
+    $pfxGranteeH = Auth $ownPrefixGranteeU.Token
+    $pfxBucket = "audit-pfxbkt-$ts"
+    $pfxCr = Invoke-DS POST "$BaseUrl/api/v1/buckets/$pfxBucket" -Headers $pfxOwnerH -Body '{"visibility":"private"}'
+    if ($pfxCr.Code -eq 201) {
+        Put-Object $ownPrefixOwnerU.Token $pfxBucket 'reports/q1.pdf' 'pdf-content' | Out-Null
+        Put-Object $ownPrefixOwnerU.Token $pfxBucket 'private/secret.txt' 'secret-content' | Out-Null
+        $pfxGrantBody = "{`"grants`":[],`"prefix_grants`":[{`"user_id`":`"$($ownPrefixGranteeU.Id)`",`"prefix`":`"reports/`",`"can_read`":true,`"can_write`":false}]}"
+        $pfxGr = Invoke-DS PUT "$BaseUrl/api/v1/buckets/$pfxBucket/access" -Headers $pfxOwnerH -Body $pfxGrantBody
+        $pfxGetOk = Invoke-DS GET "$BaseUrl/api/v1/buckets/$pfxBucket/objects/reports/q1.pdf" -Headers $pfxGranteeH
+        $pfxDeny = Invoke-DS GET "$BaseUrl/api/v1/buckets/$pfxBucket/objects/private/secret.txt" -Headers $pfxGranteeH
+        $pfxWrite = Put-Object $ownPrefixGranteeU.Token $pfxBucket 'reports/nope.txt' 'x'
+        $pfxOk = ($pfxGr.Code -eq 200) -and ($pfxGetOk.Code -eq 200) -and ($pfxDeny.Code -eq 403) -and ($pfxWrite -eq 403)
+        Record 'Tenant' 'Prefix grant read/write' $(if($pfxOk){'PASS'}else{'FAIL'}) "grant=$($pfxGr.Code) in=$($pfxGetOk.Code) out=$($pfxDeny.Code) write=$pfxWrite"
+    } else {
+        Record 'Tenant' 'Prefix grant read/write' 'FAIL' "bucket create HTTP $($pfxCr.Code)"
+    }
+} else {
+    Record 'Tenant' 'Prefix grant read/write' 'FAIL' 'user create failed'
+}
+
+# Phase B: Object Lock governance retention blocks delete (S3 SigV4)
+$lockBucket = "audit-lock-$ts"
+$lockKey = 'locked-file.txt'
+$lockPutBucket = Invoke-S3Signed PUT "$S3Url/$lockBucket"
+$lockOk = $false
+if ($lockPutBucket.Code -in 200,201) {
+    $lockObjPut = Invoke-S3Signed PUT "$S3Url/$lockBucket/$lockKey" -Body 'locked-data'
+    if ($lockObjPut.Code -in 200,201) {
+        $retainUntil = [DateTimeOffset]::UtcNow.AddDays(2).ToString('yyyy-MM-ddTHH:mm:ss') + 'Z'
+        $retXML = "<Retention><Mode>GOVERNANCE</Mode><RetainUntilDate>$retainUntil</RetainUntilDate></Retention>"
+        $lockRet = Invoke-S3Signed PUT "$S3Url/$lockBucket/$lockKey`?retention" -Body $retXML -ExtraHeaders @{ 'Content-Type' = 'application/xml' }
+        $lockDel = Invoke-S3Signed DELETE "$S3Url/$lockBucket/$lockKey"
+        $lockGet = Invoke-S3Signed GET "$S3Url/$lockBucket/$lockKey`?retention"
+        $lockOk = ($lockRet.Code -eq 200) -and ($lockDel.Code -eq 403) -and ($lockGet.Body -match 'GOVERNANCE')
+    }
+    Record 'Object Lock' 'Governance retention blocks delete' $(if($lockOk){'PASS'}else{'FAIL'}) "ret=$($lockRet.Code) del=$($lockDel.Code) get=$($lockGet.Code)"
+} else {
+    Record 'Object Lock' 'Governance retention blocks delete' 'FAIL' "bucket HTTP $($lockPutBucket.Code)"
+}
 
 # RBAC
 if ($userTok) {

@@ -26,6 +26,23 @@ PostgreSQL schema migrations run automatically on `storage-server` start (`inter
 2. Restore previous binary/image and data backup
 3. Start stack
 
+## Verify release images (cosign)
+
+Before upgrading to a tagged release, verify GHCR signatures (see [SECURITY.md](../../../SECURITY.md)):
+
+```bash
+export COSIGN_EXPERIMENTAL=1
+TAG=v1.0.1
+cosign verify "ghcr.io/direktorbani/datasafe-storage-server:${TAG}" \
+  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+cosign verify "ghcr.io/direktorbani/datasafe-console:${TAG}" \
+  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+```
+
+SBOM files are attached to each [GitHub Release](https://github.com/DirektorBani/DataSafeS3/releases).
+
 ## Checklist
 
 - [ ] Backup metadata and objects

@@ -22,6 +22,7 @@ coverage.out
 
 # Local runtime data
 data/
+.datasafe-data/
 **/metadata.db
 
 # License / secrets
@@ -58,6 +59,10 @@ docs/specs/roadmap/
 # --- Legacy dev context mirror (public copies under docs/en|ru/context/) ---
 docs/context/
 
+# --- Local-only architecture summaries (not for release commit) ---
+docs/en/context/architecture-summary-v1.0.1.md
+docs/ru/context/architecture-summary-v1.0.1.md
+
 # --- QA / audit artifacts (not product documentation) ---
 docs/testing/
 
@@ -84,3 +89,6 @@ README.zip
 
 # --- Build / coverage ---
 web/console/coverage/
+
+# --- Figma plugins ---
+tools/figma/

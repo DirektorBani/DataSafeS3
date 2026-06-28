@@ -38,6 +38,7 @@
   "descriptionFiles": "Your personal storage and files shared with you.",
   "homeReady": "Your personal storage is ready — open",
   "loading": "Loading buckets...",
+  "listError": "Could not load buckets:",
   "searchPlaceholder": "Search buckets...",
   "empty": {
     "owned": "No buckets yet. Create one to get started.",

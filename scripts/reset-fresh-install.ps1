@@ -30,12 +30,21 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+if (-not (Test-Path (Join-Path $root ".env")) -and (Test-Path (Join-Path $root ".env.example"))) {
+    Copy-Item (Join-Path $root ".env.example") (Join-Path $root ".env")
+}
+if (-not $env:DATASAFE_DATA_ROOT) { $env:DATASAFE_DATA_ROOT = "D:/datasafe-data" }
+
 Write-Host "==> DataSafeS3 fresh install reset" -ForegroundColor Cyan
 Write-Host "    Data dir: $DataDir"
 
 function Get-ComposeBaseArgs {
     param([string]$Project)
     $args = @("-f", "docker-compose.yml")
+    $localData = Join-Path $root "docker-compose.local-data.yml"
+    if (Test-Path $localData) {
+        $args += @("-f", "docker-compose.local-data.yml")
+    }
     $localBinary = Join-Path $root "docker-compose.local-binary.yml"
     if (-not $NoLocalBinary -and (Test-Path $localBinary)) {
         $args += @("-f", "docker-compose.local-binary.yml")

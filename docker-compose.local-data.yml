@@ -1,0 +1,23 @@
+# Optional overlay: bind-mount persistent data to a host directory.
+# Default (when DATASAFE_DATA_ROOT is unset): ./.datasafe-data under the repo.
+#
+# Windows example — keep large object/Bolt/Postgres data on D::
+#   DATASAFE_DATA_ROOT=D:/datasafe-data
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.local-data.yml --profile postgres up -d
+#
+# Combine with local-binary overlay on Windows:
+#   docker compose -f docker-compose.yml -f docker-compose.local-data.yml -f docker-compose.local-binary.yml --profile postgres up -d
+#
+# Compose merges volume lists by container target; named volumes from docker-compose.yml
+# are replaced for /data and /var/lib/postgresql/data.
+
+services:
+  postgres:
+    volumes:
+      - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/postgres:/var/lib/postgresql/data
+
+  storage-server:
+    volumes:
+      - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage:/data

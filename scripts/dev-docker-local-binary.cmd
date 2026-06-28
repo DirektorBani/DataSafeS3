@@ -4,6 +4,13 @@ cd /d "%~dp0.."
 
 call scripts\ensure-docker-pull-proxy.cmd
 
+if not exist .env (
+  if exist .env.example copy /Y .env.example .env >nul
+)
+if not defined DATASAFE_DATA_ROOT set DATASAFE_DATA_ROOT=D:/datasafe-data
+
+set COMPOSE_ARGS=-p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml -f docker-compose.local-binary.yml
+
 echo Building Linux storage-server binary from current source...
 set CGO_ENABLED=0
 set GOOS=linux
@@ -16,16 +23,16 @@ call scripts\build-console.cmd
 if errorlevel 1 exit /b 1
 
 echo Rebuilding storage-server image (entrypoint fixes /data permissions for UID 65532)...
-docker compose --profile postgres -f docker-compose.yml -f docker-compose.local-binary.yml build storage-server
+docker compose %COMPOSE_ARGS% build storage-server
 if errorlevel 1 exit /b 1
 
-echo Ensuring /data volume is owned by UID 65532 (matches runtime user; was mismatched with USER nobody / 65534)...
-docker run --rm -v datasafe_storage-data:/data --user root alpine:3.20 chown -R 65532:65532 /data
+echo Ensuring storage data dir is owned by UID 65532 (matches runtime user; was mismatched with USER nobody / 65534)...
+docker run --rm -v "%DATASAFE_DATA_ROOT%/storage:/data" --user root alpine:3.20 chown -R 65532:65532 /data
 
 echo Starting stack with postgres profile and locally built binary...
-docker compose --profile postgres -f docker-compose.yml -f docker-compose.local-binary.yml up -d postgres storage-server --no-deps
+docker compose %COMPOSE_ARGS% up -d postgres storage-server --no-deps
 if errorlevel 1 exit /b 1
-docker compose --profile postgres -f docker-compose.yml -f docker-compose.local-binary.yml up -d caddy prometheus grafana --no-deps
+docker compose %COMPOSE_ARGS% up -d caddy prometheus grafana --no-deps
 if errorlevel 1 exit /b 1
 
 echo.
@@ -37,7 +44,7 @@ if not errorlevel 1 goto done
 set /a tries+=1
 if %tries% geq 30 (
   echo Admin login did not become ready in time.
-  docker compose ps
+  docker compose %COMPOSE_ARGS% ps
   exit /b 1
 )
 timeout /t 2 /nobreak >nul
@@ -45,7 +52,7 @@ goto wait_loop
 
 :done
 echo.
-docker compose ps
+docker compose %COMPOSE_ARGS% ps
 echo.
 echo Admin login URL: http://localhost:8080/api/v1/admin/login
 echo Console:         http://localhost:8080/

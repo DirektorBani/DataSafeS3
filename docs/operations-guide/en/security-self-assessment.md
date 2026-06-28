@@ -17,7 +17,7 @@ DataSafeS3 Community Edition `storage-server` + console, Apache-2.0, single-tena
 | Audit trail | Activity log, share audit events | Admin → Activity |
 | Transport | TLS via ingress/Caddy (operator-provided) | deployment docs |
 | Secrets | Env / K8s secrets, no keys in image layers | Helm secrets |
-| Supply chain | SBOM + Cosign on release tags | `.github/workflows/release.yml` |
+| Supply chain | SBOM + Cosign on release tags (both images) | `.github/workflows/release.yml`, [SECURITY.md](../../../SECURITY.md) |
 | Vulnerability scanning | `govulncheck` in CI | `.github/workflows/ci.yml` |
 | Disclosure process | SECURITY.md | repository root |
 
