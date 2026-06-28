@@ -55,6 +55,23 @@ func TestTOTPEncryptionRoundTrip(t *testing.T) {
 	}
 }
 
+func TestTOTPEncryptionKeyFallback(t *testing.T) {
+	jwtSecret := "jwt-key"
+	mfaKey := "dedicated-mfa-key"
+	plain := "JBSWY3DPEHPK3PXP"
+	enc, err := EncryptTOTPSecret(jwtSecret, plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DecryptTOTPSecretWithFallback(mfaKey, jwtSecret, enc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != plain {
+		t.Fatalf("fallback decrypt: %q", got)
+	}
+}
+
 func TestRecoveryCodeSingleUse(t *testing.T) {
 	codes, err := GenerateRecoveryCodes(3)
 	if err != nil {

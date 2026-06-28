@@ -44,9 +44,9 @@
 http://localhost:8080/api/v1/auth/oidc/callback
 ```
 
-**Поток SSO:** `/login` → `GET /api/v1/auth/oidc/login` → IdP → callback → JWT в query `?token=…&auth_source=oidc`.
+**Поток SSO (v1.0.2+):** `/login` → `GET /api/v1/auth/oidc/login` → IdP → callback сервера → редирект на `/login?exchange_code=…&auth_source=oidc` → консоль вызывает `POST /api/v1/auth/oidc/exchange` → JWT в теле ответа. Старый query-параметр `?token=` устарел и удалён в v1.0.2.
 
-**Автотест (ROPC):** `POST /api/v1/auth/oidc/password-login` с `{"username":"ssouser","password":"password"}` — тот же путь синхронизации групп, что и callback (требует `directAccessGrantsEnabled` у client в Keycloak).
+**Автотест (ROPC):** `POST /api/v1/auth/oidc/password-login` с `{"username":"ssouser","password":"password"}` — по умолчанию отключён в production (`STORAGE_OIDC_ROPC_ENABLED=false`); включайте только на test IdP с `directAccessGrantsEnabled` в Keycloak.
 
 **Тестовая группа Keycloak:** realm import включает группу `datasafe-users` и mapper **Group Membership** → claim `groups`; пользователь `ssouser` состоит в этой группе. После изменения `datasafe-realm.json` удалите volume: `docker volume rm datasafe-keycloak-data` и пересоздайте контейнер.
 

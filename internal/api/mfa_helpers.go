@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"os"
 )
 
 func (s *Server) jwtSecret() string {
@@ -12,8 +13,15 @@ func (s *Server) jwtSecret() string {
 	return "datasafe-jwt-secret"
 }
 
+func (s *Server) mfaEncryptionKey() string {
+	if k := os.Getenv("STORAGE_MFA_ENCRYPTION_KEY"); k != "" {
+		return k
+	}
+	return s.jwtSecret()
+}
+
 func (s *Server) userTOTPSecret(user metadata.UserRecord) (string, error) {
-	return auth.DecryptTOTPSecret(s.jwtSecret(), user.TOTPSecret)
+	return auth.DecryptTOTPSecretWithFallback(s.mfaEncryptionKey(), s.jwtSecret(), user.TOTPSecret)
 }
 
 func (s *Server) validateUserMFACode(user *metadata.UserRecord, code string) bool {

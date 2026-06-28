@@ -185,6 +185,23 @@ func TestCopyObject(t *testing.T) {
 	}
 }
 
+func TestS3PutObject_rejectsTraversalKey(t *testing.T) {
+	srv, creds := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/mybucket/../../etc/passwd", strings.NewReader("x"))
+	signRequest(t, req, creds, "us-east-1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+}
+
 func init() {
 	_ = context.Background()
 	_ = filepath.Join

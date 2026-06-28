@@ -16,7 +16,10 @@ DataSafeS3 Community Edition `storage-server` + console, Apache-2.0, single-tena
 | Authorization | RBAC, bucket policies, tenant grants | feature-audit C12–C16 |
 | Audit trail | Activity log, share audit events | Admin → Activity |
 | Transport | TLS via ingress/Caddy (operator-provided) | deployment docs |
-| Secrets | Env / K8s secrets, no keys in image layers | Helm secrets |
+| Secrets | Env / K8s secrets, `STORAGE_STRICT_SECRETS`, security-status API | Helm `values-production.yaml` |
+| SSRF / outbound URLs | urlpolicy on sinks, hooks, notifications | `STORAGE_DEV`, `STORAGE_OUTBOUND_HTTP_ALLOW` |
+| OIDC session | Exchange code (no JWT in browser URL) | `POST /auth/oidc/exchange` |
+| Rate limiting | Login endpoints per IP | `STORAGE_RATE_LIMIT_LOGIN` |
 | Supply chain | SBOM + Cosign on release tags (both images) | `.github/workflows/release.yml`, [SECURITY.md](../../../SECURITY.md) |
 | Vulnerability scanning | `govulncheck` in CI | `.github/workflows/ci.yml` |
 | Disclosure process | SECURITY.md | repository root |

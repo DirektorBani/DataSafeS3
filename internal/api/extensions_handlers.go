@@ -42,6 +42,12 @@ func (s *Server) handlePutSystemConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
+	if cfg.LDAP.Enabled || cfg.LDAP.URL != "" {
+		if err := validateLDAPTLS(cfg.LDAP.URL); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+	}
 	if existing, err := s.meta.GetSystemConfig(); err == nil {
 		cfg.InitialSetupCompleted = existing.InitialSetupCompleted
 		cfg.AdminFirstLoginCompleted = existing.AdminFirstLoginCompleted
@@ -251,6 +257,10 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "url required"})
 		return
 	}
+	if err := validateOutboundURL(req.URL); err != nil {
+		writeOutboundURLError(w, err)
+		return
+	}
 	if len(req.Events) == 0 {
 		req.Events = []string{metadata.EventObjectCreated, metadata.EventObjectDeleted}
 	}
@@ -289,6 +299,10 @@ func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
 		rec.Name = *req.Name
 	}
 	if req.URL != nil {
+		if err := validateOutboundURL(*req.URL); err != nil {
+			writeOutboundURLError(w, err)
+			return
+		}
 		rec.URL = *req.URL
 	}
 	if req.Events != nil {
@@ -372,6 +386,9 @@ func validateLoggingConfig(cfg metadata.LoggingConfig) error {
 		if name == "elasticsearch" && ep.Username != "" && ep.Password == "" && ep.Token == "" {
 			return fmt.Errorf("elasticsearch: password or API key required when username is set")
 		}
+		if err := validateOutboundURL(ep.Address); err != nil {
+			return err
+		}
 		return nil
 	}
 	if err := check("syslog", cfg.Syslog); err != nil {
@@ -401,6 +418,10 @@ func (s *Server) handleHooksTest(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.URL) == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "url required"})
+		return
+	}
+	if err := validateOutboundURL(req.URL); err != nil {
+		writeOutboundURLError(w, err)
 		return
 	}
 	event := strings.TrimSpace(req.Event)

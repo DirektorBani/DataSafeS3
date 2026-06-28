@@ -2,8 +2,8 @@
 .idea/
 .vscode/
 
-# --- IDE / editor (local) ---
-.cursor/
+# --- Local workspace (analysis, testing, cursor, runtime) ---
+_local/
 
 # Go
 bin/
@@ -17,10 +17,10 @@ dist/
 *.out
 coverage.out
 
-# Env / secrets
+# Env / secrets (working copy stays at repo root for compose)
 .env
 
-# Local runtime data
+# Local runtime data (legacy paths; prefer _local/data/)
 data/
 .datasafe-data/
 **/metadata.db
@@ -28,7 +28,7 @@ data/
 # License / secrets
 LICENSE.local
 
-# Node
+# Node (stay at canonical paths — see _local/README.md)
 node_modules/
 web/console/node_modules/
 web/console/dist/
@@ -50,27 +50,17 @@ deploy/docker/storage-server-linux
 # --- Local test data ---
 data-local-test/
 
-# --- Internal analysis (local / not for public repo) ---
+# --- Legacy gitignored paths (content moved to _local/; keep patterns for stray files) ---
 docs/analysis/
-
-# --- Internal roadmap phase TZs (keep en/ru product specs) ---
 docs/specs/roadmap/
-
-# --- Legacy dev context mirror (public copies under docs/en|ru/context/) ---
 docs/context/
-
-# --- Local-only architecture summaries (not for release commit) ---
 docs/en/context/architecture-summary-v1.0.1.md
 docs/ru/context/architecture-summary-v1.0.1.md
-
-# --- QA / audit artifacts (not product documentation) ---
 docs/testing/
-
-# --- Publishing drafts (Habr, blog posts; not product documentation) ---
 docs/publishing/
-
-# --- Brand assets draft (logos, favicons; not ready for repo) ---
 docs/images/brand/
+.cursor/
+tools/figma/
 
 # --- Screenshot capture local summary (machine-specific paths) ---
 **/capture-summary.json
@@ -89,6 +79,3 @@ README.zip
 
 # --- Build / coverage ---
 web/console/coverage/
-
-# --- Figma plugins ---
-tools/figma/

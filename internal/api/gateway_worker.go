@@ -20,6 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/DirektorBani/datasafe/internal/security/urlpolicy"
 )
 
 const (
@@ -41,6 +42,9 @@ func (s *Server) wireReplicationHooks() {
 }
 
 func (s *Server) deliverBucketNotification(webhookURL, event, bucket, key string, size int64) {
+	if err := urlpolicy.ValidateOutboundURL(webhookURL, urlpolicy.DefaultOptions()); err != nil {
+		return
+	}
 	payload := map[string]any{
 		"event":  event,
 		"bucket": bucket,

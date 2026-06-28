@@ -141,6 +141,18 @@ func DecryptTOTPSecret(jwtSecret, stored string) (string, error) {
 	return string(plain), nil
 }
 
+// DecryptTOTPSecretWithFallback tries primary key then fallback (JWT secret) for key rotation.
+func DecryptTOTPSecretWithFallback(primary, fallback, stored string) (string, error) {
+	plain, err := DecryptTOTPSecret(primary, stored)
+	if err == nil {
+		return plain, nil
+	}
+	if fallback != "" && fallback != primary {
+		return DecryptTOTPSecret(fallback, stored)
+	}
+	return "", err
+}
+
 func GenerateRecoveryCodes(n int) ([]string, error) {
 	out := make([]string, n)
 	for i := 0; i < n; i++ {

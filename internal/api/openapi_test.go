@@ -304,10 +304,11 @@ func TestOpenAPIFullTierAP0P1(t *testing.T) {
 func tierAP0P1Paths() []string {
 	return []string{
 		"/health", "/me", "/me/password", "/me/mfa/webauthn/register/begin", "/me/mfa/webauthn/register/finish",
-		"/admin/login", "/admin/logout", "/mfa/login", "/buckets", "/buckets/{bucket}/objects",
+		"/admin/login", "/admin/logout", "/mfa/login", "/auth/oidc/exchange",
+		"/buckets", "/buckets/{bucket}/objects",
 		"/buckets/{bucket}/shares", "/keys", "/presign", "/usage", "/tokens",
 		"/public/share/{token}", "/webhooks", "/hooks/test", "/federation/clusters",
-		"/settings/system", "/users", "/activity", "/trash",
+		"/settings/system", "/settings/security-status", "/users", "/activity", "/trash",
 	}
 }
 

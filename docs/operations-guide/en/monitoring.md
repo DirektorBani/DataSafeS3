@@ -27,4 +27,12 @@ English | **[Русский](../ru/monitoring.md)**
 
 Forward JSON logs to Loki/Elasticsearch for correlation with audit events.
 
+### Outbound URL policy (v1.0.2+)
+
+Admin-configured sink, webhook, and hook-test URLs are validated against SSRF rules (`internal/security/urlpolicy`):
+
+- **Production** (`STORAGE_DEV=false`): only public `https://` targets (private IPs, `localhost`, and metadata IPs blocked).
+- **Local dev**: set `STORAGE_DEV=true` or `STORAGE_OUTBOUND_HTTP_ALLOW=true` to allow `http://127.0.0.1` / `host.docker.internal` for Loki.
+- Invalid URLs return `400` with `outbound url not allowed: …` when saving settings or testing hooks.
+
 Full guide: [../../en/user-guide/07-monitoring-and-databases.md](../../en/user-guide/07-monitoring-and-databases.md)

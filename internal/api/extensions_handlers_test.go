@@ -7,6 +7,7 @@ import (
 )
 
 func TestValidateLoggingConfigElasticsearch(t *testing.T) {
+	t.Setenv("STORAGE_DEV", "true")
 	err := validateLoggingConfig(metadata.LoggingConfig{
 		Elasticsearch: metadata.LogSinkEndpoint{
 			Enabled:  true,

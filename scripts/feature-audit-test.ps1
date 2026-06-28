@@ -1,4 +1,12 @@
 # DataSafeS3 Feature Audit - automated API tests (corrected API contracts)
+#
+# Compose (Windows local dev): use docker-compose.audit.yml overlay so login rate limit
+# and outbound HTTP allowlist do not block the ~15+ logins and Loki/webhook sink tests.
+#   docker compose -p datasafe --profile postgres `
+#     -f docker-compose.yml -f docker-compose.local-data.yml `
+#     -f docker-compose.local-binary.yml -f docker-compose.audit.yml `
+#     up -d postgres storage-server caddy
+# Optional: AUDIT_RESET_ADMIN=1 runs feature-audit-preflight.ps1 before tests.
 param(
     [string]$BaseUrl = 'http://localhost:8080',
     [string]$S3Url = 'http://localhost:9000',
@@ -42,9 +50,17 @@ function Invoke-DS {
     return @{ Code=$code; Body=$text; Json=$json }
 }
 
-function Login($user, $pass) {
-    $r = Invoke-DS POST "$BaseUrl/api/v1/admin/login" -Body "{`"username`":`"$user`",`"password`":`"$pass`"}"
-    if ($r.Json.token) { return $r.Json.token }
+function Login($user, $pass, [int]$MaxRetries = 3) {
+    for ($attempt = 0; $attempt -lt $MaxRetries; $attempt++) {
+        $r = Invoke-DS POST "$BaseUrl/api/v1/admin/login" -Body "{`"username`":`"$user`",`"password`":`"$pass`"}"
+        if ($r.Json.token) { return $r.Json.token }
+        if ($r.Code -eq 429 -and $attempt -lt ($MaxRetries - 1)) {
+            Write-Host "Login rate-limited for $user (HTTP 429); waiting 65s..." -ForegroundColor Yellow
+            Start-Sleep -Seconds 65
+            continue
+        }
+        return $null
+    }
     return $null
 }
 
@@ -53,7 +69,9 @@ function Create-User($adminH, $username, $pass, $role='user') {
     if ($r.Code -eq 201) {
         $id = $r.Json.id
         if (-not $id) { $id = $r.Json.user_id }
-        return @{ Id=$id; Token=(Login $username $pass) }
+        $tok = Login $username $pass
+        if (-not $tok) { return $null }
+        return @{ Id=$id; Token=$tok }
     }
     return $null
 }
@@ -535,6 +553,19 @@ if ($tadminU -and $tmemberU -and $tviewerU) {
     Invoke-DS POST "$BaseUrl/api/v1/tenants/$grantTenant/members" -Headers $adminH -Body "{`"user_id`":`"$($tadminU.Id)`",`"role`":`"tenant_admin`"}" | Out-Null
     Invoke-DS POST "$BaseUrl/api/v1/tenants/$grantTenant/members" -Headers $adminH -Body "{`"user_id`":`"$($tmemberU.Id)`",`"role`":`"member`"}" | Out-Null
     Invoke-DS POST "$BaseUrl/api/v1/tenants/$grantTenant/members" -Headers $adminH -Body "{`"user_id`":`"$($tviewerU.Id)`",`"role`":`"viewer`"}" | Out-Null
+    $tadminU.Token = Login "audit-tadmin-$ts" 'pass123'
+    $tmemberU.Token = Login "audit-tmember-$ts" 'pass123'
+    $tviewerU.Token = Login "audit-tviewer-$ts" 'pass123'
+    if (-not ($tadminU.Token -and $tmemberU.Token -and $tviewerU.Token)) {
+        Record 'Tenant' 'tenant_admin is_tenant_admin flag' 'FAIL' 'login after tenant assign failed'
+        Record 'Tenant' 'tenant_admin create user' 'FAIL' 'login after tenant assign failed'
+        Record 'Tenant' 'Member write before grants' 'FAIL' 'login after tenant assign failed'
+        Record 'Tenant' 'Bucket access grants PUT' 'FAIL' 'login after tenant assign failed'
+        Record 'Tenant' 'Viewer read with grant' 'FAIL' 'login after tenant assign failed'
+        Record 'Tenant' 'Viewer write blocked' 'FAIL' 'login after tenant assign failed'
+        Record 'Tenant' 'Member write blocked after grants' 'FAIL' 'login after tenant assign failed'
+        Record 'Tenant' 'Member blocked after grants' 'FAIL' 'login after tenant assign failed'
+    } else {
     $tadminH = Auth $tadminU.Token
     $tmemberH = Auth $tmemberU.Token
     $tviewerH = Auth $tviewerU.Token
@@ -559,6 +590,7 @@ if ($tadminU -and $tmemberU -and $tviewerU) {
     Record 'Tenant' 'Member write blocked after grants' $(if($mw -eq 403){'PASS'}else{'FAIL'}) "HTTP $mw"
     $mr = Invoke-DS GET "$BaseUrl/api/v1/buckets/$grantBucket/objects" -Headers $tmemberH
     Record 'Tenant' 'Member blocked after grants' $(if($mr.Code -eq 403){'PASS'}else{'FAIL'}) "HTTP $($mr.Code)"
+    }
 }
 
 # Tenant CRUD (basic)
@@ -597,8 +629,11 @@ Record 'Users/Auth' 'MFA TOTP enroll endpoint' $(if($r.Code -eq 200 -and $r.Json
 if ($userTok) {
     $pwBody = '{"current_password":"pass123","new_password":"pass456"}'
     $r = Invoke-DS POST "$BaseUrl/api/v1/me/password" -Headers (Auth $userTok) -Body $pwBody
+    $pwChangeOk = ($r.Code -eq 200)
     $loginOk = Login $testUser 'pass456'
-    Record 'Users/Auth' 'Local password change' $(if($loginOk){'PASS'}else{'FAIL'}) $(if($loginOk){'new password works'}else{"HTTP $($r.Code)"})
+    if ($loginOk) { $userTok = $loginOk }
+    $notes = if ($loginOk) { 'new password works' } elseif (-not $pwChangeOk) { "change HTTP $($r.Code)" } else { "change OK but re-login failed (HTTP 429?)" }
+    Record 'Users/Auth' 'Local password change' $(if($loginOk){'PASS'}else{'FAIL'}) $notes
 }
 
 # Admin features
@@ -916,12 +951,18 @@ if ($tenantId -and $tadminId) {
     $tbCount = @($tb.Json.buckets).Count
     Record 'Tenants' 'List tenant buckets for groups' $(if($tb.Code -eq 200 -and $tbCount -gt 0){'PASS'}else{'FAIL'}) "count=$tbCount"
 
-    if ($groupId -and $tbCount -gt 0) {
-        $bkey = $tb.Json.buckets[0].storage_key
-        if (-not $bkey) { $bkey = $tb.Json.buckets[0].name }
+    if ($groupId -and $tbCount -gt 0 -and $tb.Json -and $tb.Json.buckets) {
+        $firstBucket = @($tb.Json.buckets) | Select-Object -First 1
+        $bkey = $null
+        if ($firstBucket) {
+            $bkey = $firstBucket.storage_key
+            if (-not $bkey) { $bkey = $firstBucket.name }
+        }
+        if ($bkey) {
         $assignBkt = "{`"bucket_keys`":[`"$bkey`"]}"
         $gb = Invoke-DS PUT "$BaseUrl/api/v1/tenants/$tenantId/groups/$groupId/buckets" -Headers $tadminH -Body $assignBkt
         Record 'Tenants' 'Assign bucket to group' $(if($gb.Code -eq 200){'PASS'}else{'FAIL'}) "HTTP $($gb.Code)"
+        }
     }
 
     if ($groupId) {

@@ -1,7 +1,7 @@
 # Default values for DataSafeS3 Helm chart.
-# Release images on GHCR — pin a tag in production (e.g. v1.0.1):
-#   storageServer.image.tag: v1.0.1
-#   console.image.tag: v1.0.1
+# Release images on GHCR — pin a tag in production (e.g. v1.0.2):
+#   storageServer.image.tag: v1.0.2
+#   console.image.tag: v1.0.2
 # Local build: docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .
 
 global:

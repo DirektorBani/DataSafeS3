@@ -44,9 +44,9 @@ Additional API fields: `user_attr` (default `cn`), `group_role_map`, `sync_on_lo
 http://localhost:8080/api/v1/auth/oidc/callback
 ```
 
-**SSO flow:** `/login` → `GET /api/v1/auth/oidc/login` → IdP → callback → JWT in query `?token=…&auth_source=oidc`.
+**SSO flow (v1.0.2+):** `/login` → `GET /api/v1/auth/oidc/login` → IdP → server callback → redirect to `/login?exchange_code=…&auth_source=oidc` → console calls `POST /api/v1/auth/oidc/exchange` → JWT in response body. The old `?token=` query parameter is deprecated and removed in v1.0.2.
 
-**Automated test (ROPC):** `POST /api/v1/auth/oidc/password-login` with `{"username":"ssouser","password":"password"}` — same group sync path as callback (requires `directAccessGrantsEnabled` on client in Keycloak).
+**Automated test (ROPC):** `POST /api/v1/auth/oidc/password-login` with `{"username":"ssouser","password":"password"}` — disabled by default in production (`STORAGE_OIDC_ROPC_ENABLED=false`); enable only on test IdPs with `directAccessGrantsEnabled` in Keycloak.
 
 **Keycloak test group:** realm import includes group `datasafe-users` and mapper **Group Membership** → claim `groups`; user `ssouser` is a member. After changing `datasafe-realm.json`, delete volume: `docker volume rm datasafe-keycloak-data` and recreate the container.
 

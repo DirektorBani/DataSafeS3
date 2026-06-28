@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,11 +43,15 @@ type Server struct {
 	s3                *s3.Handler
 	jwt               *auth.JWTManager
 	oidcSessions      *auth.OIDCSessionStore
+	oidcExchange      *auth.OIDCExchangeStore
+	loginRateLimit    *ipRateLimiter
 	webauthnSessions  *webauthnSessionStore
 	mux               *http.ServeMux
 	cluster           *clusterMonitor
 	eventSinks        []EventSink
 }
+
+var corsAllowedOrigins []string
 
 func NewServer(cfg Config) (*Server, error) {
 	if cfg.DataDir == "" {
@@ -130,9 +135,12 @@ func NewServer(cfg Config) (*Server, error) {
 		s3:               s3.NewHandler(svc),
 		jwt:              auth.NewJWTManager(cfg.JWTSecret, 24*time.Hour),
 		oidcSessions:     auth.NewOIDCSessionStore(),
+		oidcExchange:     auth.NewOIDCExchangeStore(60 * time.Second),
+		loginRateLimit:   newLoginRateLimiter(),
 		webauthnSessions: newWebAuthnSessionStore(),
 		mux:              http.NewServeMux(),
 	}
+	initCORSFromEnv()
 	if err := s.seedAdminUser(); err != nil {
 		meta.Close()
 		return nil, err
@@ -256,9 +264,54 @@ func (s *Server) Handler() http.Handler {
 }
 
 func setCORS(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	origin := r.Header.Get("Origin")
+	if len(corsAllowedOrigins) == 0 {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+	} else if origin != "" {
+		for _, allowed := range corsAllowedOrigins {
+			if origin == allowed {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+				break
+			}
+		}
+	}
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, HEAD, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Amz-Date, X-Amz-Content-Sha256")
+}
+
+func initCORSFromEnv() {
+	corsAllowedOrigins = nil
+	v := os.Getenv("STORAGE_CORS_ALLOWED_ORIGINS")
+	if v == "" {
+		return
+	}
+	for _, o := range strings.Split(v, ",") {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			corsAllowedOrigins = append(corsAllowedOrigins, o)
+		}
+	}
+}
+
+func newLoginRateLimiter() *ipRateLimiter {
+	limit := 10
+	if os.Getenv("STORAGE_RATE_LIMIT_LOGIN") == "" && storageDevMode() {
+		// Dev/audit stacks issue many login calls (feature-audit-test.ps1); keep prod default strict.
+		limit = 200
+	}
+	if v := os.Getenv("STORAGE_RATE_LIMIT_LOGIN"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	window := time.Minute
+	if v := os.Getenv("STORAGE_RATE_LIMIT_WINDOW"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			window = d
+		}
+	}
+	return newIPRateLimiter(limit, window)
 }
 
 func (s *Server) seedAdminUser() error {
@@ -313,12 +366,13 @@ func (s *Server) routes() {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 	})
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
-	mux.HandleFunc("POST /api/v1/admin/login", s.handleAdminLogin)
-	mux.HandleFunc("POST /api/v1/mfa/login", s.handleMFALogin)
-	mux.HandleFunc("POST /api/v1/auth/login/mfa", s.handleMFALogin)
+	mux.HandleFunc("POST /api/v1/admin/login", rateLimitByIP(s.loginRateLimit, s.handleAdminLogin))
+	mux.HandleFunc("POST /api/v1/mfa/login", rateLimitByIP(s.loginRateLimit, s.handleMFALogin))
+	mux.HandleFunc("POST /api/v1/auth/login/mfa", rateLimitByIP(s.loginRateLimit, s.handleMFALogin))
 	mux.HandleFunc("GET /api/v1/auth/oidc/config", s.handleOIDCPublicConfig)
 	mux.HandleFunc("GET /api/v1/auth/oidc/login", s.handleOIDCLogin)
 	mux.HandleFunc("GET /api/v1/auth/oidc/callback", s.handleOIDCCallback)
+	mux.HandleFunc("POST /api/v1/auth/oidc/exchange", s.handleOIDCExchange)
 	mux.HandleFunc("POST /api/v1/auth/oidc/password-login", s.handleOIDCPasswordLogin)
 
 	mux.HandleFunc("GET /api/v1/setup/status", s.handleSetupStatus)
@@ -636,6 +690,10 @@ func (s *Server) handleDeleteBucketJSON(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleUploadObjectJSON(w http.ResponseWriter, r *http.Request) {
 	bucket := r.PathValue("bucket")
 	key := r.PathValue("key")
+	if err := storage.ValidateObjectKey(key); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
 	info, _ := authFrom(r)
 	if !s.canWriteObjectKey(info, bucket, key) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})

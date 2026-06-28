@@ -68,10 +68,18 @@
 
 | Задача | Где |
 |--------|-----|
+| Ротация секретов | `STORAGE_JWT_SECRET`, `STORAGE_SECRET_KEY`, `STORAGE_ADMIN_PASSWORD`; `STORAGE_STRICT_SECRETS=true` |
+| Проверка слабых значений | `GET /api/v1/settings/security-status` или баннер в консоли |
+| Исходящие URL (логи, webhooks) | В prod — только публичный HTTPS; `STORAGE_DEV=true` для локального Loki |
+| LDAP TLS | `ldaps://`; опционально `STORAGE_LDAP_REQUIRE_TLS=true` |
+| OIDC ROPC | Отключить `STORAGE_OIDC_ROPC_ENABLED` в production |
+| CORS | `STORAGE_CORS_ALLOWED_ORIGINS` (через запятую) |
 | LDAP | Администрирование → Настройки → LDAP |
 | OIDC / SSO | Администрирование → Настройки → OIDC |
 | MFA | Профиль → Включить MFA |
 | Смена S3 bootstrap key | Настройки или env `STORAGE_ACCESS_KEY` |
+
+Перед production задайте `STORAGE_STRICT_SECRETS=true` — сервер не стартует, пока `STORAGE_JWT_SECRET`, `STORAGE_SECRET_KEY` или `STORAGE_ADMIN_PASSWORD` совпадают с dev-дефолтами. В v1.0.2 также доступен `GET /api/v1/settings/security-status` (admin token) для pre-flight списка слабых переменных — то же предупреждение показывает баннер в консоли.
 
 ## Фаза 8 — Эксплуатация
 

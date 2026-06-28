@@ -684,6 +684,25 @@ export async function login(username: string, password: string): Promise<{ mfa_r
   return {};
 }
 
+export async function exchangeOidcCode(exchangeCode: string): Promise<{ token: string; auth_source?: string }> {
+  const res = await fetch(`${API_BASE}/auth/oidc/exchange`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ exchange_code: exchangeCode }),
+  });
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(text);
+  } catch {
+    /* */
+  }
+  if (!res.ok) {
+    throw new ApiError((data.error as string) || text || "OIDC exchange failed", res.status);
+  }
+  return { token: data.token as string, auth_source: data.auth_source as string | undefined };
+}
+
 export async function loginMFA(mfaToken: string, code: string): Promise<void> {
   const res = await fetch(`${API_BASE}/mfa/login`, {
     method: "POST",
@@ -1232,6 +1251,7 @@ export const api = {
     fetchJSON<{ enabled: boolean; issuer?: string; issuer_reachable?: boolean; issuer_error?: string }>(
       "/auth/oidc/config"
     ),
+  exchangeOidcCode: (exchangeCode: string) => exchangeOidcCode(exchangeCode),
   testLDAP: (body: LDAPConfig) =>
     fetchJSON<{ ok: boolean; message?: string; error?: string }>("/settings/ldap/test", {
       method: "POST",

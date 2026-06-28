@@ -26,7 +26,7 @@ services:
 
   storage-server:
 
-    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.0.1}
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.0.2}
 
     restart: unless-stopped
 

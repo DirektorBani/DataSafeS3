@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -45,6 +46,10 @@ func (s *Server) handleLDAPTest(w http.ResponseWriter, r *http.Request) {
 	}
 	if cfg.LDAP.URL == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "ldap url required"})
+		return
+	}
+	if err := validateLDAPTLS(cfg.LDAP.URL); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 	if err := auth.TestLDAPConn(s.ldapSettingsFrom(cfg)); err != nil {
@@ -185,13 +190,38 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	redirect := "/login?token=" + url.QueryEscape(jwtToken) + "&auth_source=oidc"
+	exchangeCode, err := s.oidcExchange.Issue(jwtToken)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "exchange code failed"})
+		return
+	}
+	redirect := "/login?exchange_code=" + url.QueryEscape(exchangeCode) + "&auth_source=oidc"
 	http.Redirect(w, r, redirect, http.StatusFound)
+}
+
+func (s *Server) handleOIDCExchange(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ExchangeCode string `json:"exchange_code"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.ExchangeCode) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "exchange_code required"})
+		return
+	}
+	jwtToken, ok := s.oidcExchange.Redeem(req.ExchangeCode)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid or expired exchange code"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"token": jwtToken, "auth_source": "oidc"})
 }
 
 // handleOIDCPasswordLogin exchanges username/password via OIDC ROPC (Keycloak direct access grants).
 // Intended for automated tests; production clients should use the authorization code flow.
 func (s *Server) handleOIDCPasswordLogin(w http.ResponseWriter, r *http.Request) {
+	if !oidcROPCEnabled() {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "oidc resource-owner password grant disabled"})
+		return
+	}
 	cfg, err := s.meta.GetSystemConfig()
 	if err != nil || !cfg.OIDC.Enabled {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "oidc not enabled"})
@@ -313,7 +343,7 @@ func (s *Server) handleMFAEnroll(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	enc, err := auth.EncryptTOTPSecret(s.jwtSecret(), secret)
+	enc, err := auth.EncryptTOTPSecret(s.mfaEncryptionKey(), secret)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return

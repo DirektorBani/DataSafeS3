@@ -36,6 +36,7 @@ helm install datasafe deploy/helm/datasafe \
   --namespace datasafe --create-namespace
 
 # Production-like with bundled PostgreSQL
+# Hardened production overrides (secrets placeholders, STORAGE_STRICT_SECRETS): values-production.yaml
 helm install datasafe deploy/helm/datasafe \
   --set postgres.enabled=true \
   --set storageServer.metadataBackend=postgres \

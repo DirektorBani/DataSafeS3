@@ -10,7 +10,7 @@ info:
     | Scheme | Use |
     |--------|-----|
     | **BearerAPIToken** | Integration tokens ds_* (recommended for automation) |
-    | **BearerJWT** | JWT from POST /admin/login or OIDC callback (console sessions) |
+    | **BearerJWT** | JWT from POST /admin/login, MFA completion, or POST /auth/oidc/exchange (console sessions) |
 
     Public endpoints: GET /health, POST /admin/login, OIDC bootstrap, GET /public/share/*.
 
@@ -140,6 +140,31 @@ components:
       properties:
         mfa_token: { type: string }
         mfa_code: { type: string }
+
+    OIDCExchangeRequest:
+      type: object
+      required: [exchange_code]
+      properties:
+        exchange_code:
+          type: string
+          description: One-time code from OIDC callback redirect (?exchange_code=)
+
+    OIDCExchangeResponse:
+      type: object
+      properties:
+        token: { type: string, description: HS256 JWT for console session }
+        auth_source: { type: string, example: oidc }
+
+    SecurityStatusResponse:
+      type: object
+      properties:
+        weak_secrets:
+          type: array
+          items: { type: string }
+          description: Env var names still using insecure defaults (empty when STORAGE_DEV=true)
+        doc:
+          type: string
+          description: Documentation path for secret rotation
 
     MeResponse:
       type: object
@@ -482,6 +507,29 @@ paths:
       security: []
       responses:
         '200': { description: JWT }
+
+  /auth/oidc/exchange:
+    post:
+      operationId: oidcExchange
+      summary: Redeem OIDC one-time exchange code for JWT
+      description: |
+        After OIDC callback, the browser lands on `/login?exchange_code=…`. The console
+        posts the code here (single use, ~60 s TTL). Replaces the deprecated `?token=` query flow (v1.0.2+).
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OIDCExchangeRequest' }
+      responses:
+        '200':
+          description: JWT issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OIDCExchangeResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { description: Invalid or expired exchange code }
 
   /me:
     get:
@@ -1298,6 +1346,27 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /settings/security-status:
+    get:
+      operationId: getSecurityStatus
+      summary: List weak default secrets (admin)
+      description: |
+        Returns environment variable names still using dev defaults when not in `STORAGE_DEV` mode.
+        Use before go-live or after upgrade to v1.0.2 to verify secret rotation.
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200':
+          description: Security posture summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SecurityStatusResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /settings/system:
     get:

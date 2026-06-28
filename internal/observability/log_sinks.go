@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/DirektorBani/datasafe/internal/security/urlpolicy"
 )
 
 // LogSink delivers structured log records to an external system.
@@ -124,6 +125,9 @@ const (
 )
 
 func postJSON(url string, body []byte, cfg metadata.LogSinkEndpoint, style sinkAuthStyle) error {
+	if err := urlpolicy.ValidateOutboundURL(url, urlpolicy.DefaultOptions()); err != nil {
+		return fmt.Errorf("%s", urlpolicy.OutboundURLError(err))
+	}
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return err

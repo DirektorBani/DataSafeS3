@@ -2,7 +2,7 @@ English | **[Русский](../../ru/api/swagger.md)**
 
 # Swagger UI — Community Integration API
 
-**Author:** Ilya Trachuk · **Last updated:** 2026-06-22
+**Author:** Ilya Trachuk · **Last updated:** 2026-06-28
 
 ## What Swagger UI is (and is not)
 
@@ -74,6 +74,17 @@ Public endpoints (`GET /health`, public share metadata/download) require **no** 
 - **Community Integration API (this spec):** buckets, objects, keys, presign, usage, shares, tokens, search, trash, etc. — served at Swagger UI `/api/v1/docs`.
 - **Admin-only routes** (users, system settings, webhooks, tenants, gateway, federation): shipped in **Community** self-hosted builds; documented in [`openapi-full.yaml`](../../api/openapi-full.yaml), managed via web console or full spec — **not** in Swagger UI.
 - **S3 XML API:** AWS SigV4 on port 9000 — use AWS SDKs; not in OpenAPI.
+
+## v1.0.2 security endpoints (full spec)
+
+Swagger UI intentionally documents the **Integration API** only (no `/auth/*` or admin settings). Two routes added in v1.0.2 live in [`openapi-full.yaml`](../../api/openapi-full.yaml):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/auth/oidc/exchange` | Redeem one-time `exchange_code` from OIDC callback for a session JWT (replaces `?token=` in URL) |
+| `GET` | `/settings/security-status` | Admin diagnostic: lists env vars still on insecure defaults (`weak_secrets`) |
+
+Use the full spec or curl for pre-flight checks after upgrade. Console SSO uses the exchange flow automatically once server and console are both v1.0.2+.
 
 ## Export for Postman / Insomnia
 

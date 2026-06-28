@@ -12,6 +12,10 @@
 | Авторизация | RBAC, policies, tenants | feature-audit C12–C16 |
 | Аудит | Activity log, share events | Admin → Activity |
 | Supply chain | SBOM + Cosign на тегах (оба образа) | release workflow, [SECURITY.md](../../../SECURITY.md) |
+| Секреты | Env / K8s, `STORAGE_STRICT_SECRETS`, security-status API | Helm `values-production.yaml` |
+| SSRF / исходящие URL | urlpolicy для sinks, hooks, notifications | `STORAGE_DEV`, `STORAGE_OUTBOUND_HTTP_ALLOW` |
+| OIDC сессия | Exchange code (без JWT в URL браузера) | `POST /auth/oidc/exchange` |
+| Rate limiting | Login по IP | `STORAGE_RATE_LIMIT_LOGIN` |
 | Сканирование | govulncheck в CI | ci.yml |
 | Раскрытие уязвимостей | SECURITY.md | корень репозитория |
 

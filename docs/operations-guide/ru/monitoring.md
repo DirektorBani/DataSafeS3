@@ -27,4 +27,12 @@
 
 Пересылка JSON-логов в Loki/Elasticsearch для корреляции с audit.
 
+### Политика исходящих URL (v1.0.2+)
+
+URL sink'ов, webhooks и hook-test проверяются на SSRF (`internal/security/urlpolicy`):
+
+- **Production** (`STORAGE_DEV=false`): только публичные `https://` (private IP, `localhost`, metadata IP запрещены).
+- **Локальная разработка**: `STORAGE_DEV=true` или `STORAGE_OUTBOUND_HTTP_ALLOW=true` для `http://127.0.0.1` / `host.docker.internal`.
+- Невалидный URL → `400` с `outbound url not allowed: …` при сохранении настроек или тесте hook.
+
 Полное руководство: [../../ru/user-guide/07-monitoring-i-bazy.md](../../ru/user-guide/07-monitoring-i-bazy.md)

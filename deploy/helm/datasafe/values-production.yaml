@@ -41,6 +41,21 @@ ingress:
       hosts:
         - datasafe.example.com
 
+# Required secrets — replace placeholders before deploy (see values.yaml storageServer.secrets).
+storageServer:
+  secrets:
+    jwtSecret: ""          # required — min 32 random chars
+    secretKey: ""          # required — S3 SigV4 secret
+    adminPassword: ""      # required — console admin password
+    sseMasterKey: ""       # optional — SSE-S3 master key
+  env:
+    STORAGE_DEV: "false"
+    STORAGE_STRICT_SECRETS: "true"
+    STORAGE_OIDC_ROPC_ENABLED: "false"
+    STORAGE_LDAP_REQUIRE_TLS: "true"
+    # STORAGE_CORS_ALLOWED_ORIGINS: "https://datasafe.example.com"
+    # STORAGE_MFA_ENCRYPTION_KEY: ""
+
 affinity:
   podAntiAffinity:
     preferredDuringSchedulingIgnoredDuringExecution:

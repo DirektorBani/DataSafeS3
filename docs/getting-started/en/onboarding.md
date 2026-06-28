@@ -68,10 +68,18 @@ Alternative: [S3 CLI first bucket](first-bucket.md#via-s3-cli).
 
 | Task | Where |
 |------|-------|
+| Rotate secrets | `STORAGE_JWT_SECRET`, `STORAGE_SECRET_KEY`, `STORAGE_ADMIN_PASSWORD`; set `STORAGE_STRICT_SECRETS=true` |
+| Check weak defaults | `GET /api/v1/settings/security-status` or console security banner |
+| Outbound URLs (log sinks, webhooks) | Public HTTPS only in production; `STORAGE_DEV=true` for local Loki |
+| LDAP TLS | Use `ldaps://`; optional `STORAGE_LDAP_REQUIRE_TLS=true` |
+| OIDC ROPC | Disable `STORAGE_OIDC_ROPC_ENABLED` in production |
+| CORS | `STORAGE_CORS_ALLOWED_ORIGINS` (comma-separated) |
 | LDAP | Admin → Settings → LDAP |
 | OIDC / SSO | Admin → Settings → OIDC |
 | MFA | Profile → Enable MFA |
 | Change S3 bootstrap key | Settings or env `STORAGE_ACCESS_KEY` |
+
+Before go-live, set `STORAGE_STRICT_SECRETS=true` so the server refuses to start while `STORAGE_JWT_SECRET`, `STORAGE_SECRET_KEY`, or `STORAGE_ADMIN_PASSWORD` still match dev defaults. In v1.0.2 you can also call `GET /api/v1/settings/security-status` (admin token) for a pre-flight list of weak variables — the console shows the same warning in the security banner.
 
 ## Phase 8 — Operations
 

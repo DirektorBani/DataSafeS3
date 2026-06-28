@@ -513,9 +513,20 @@ func (h *Handler) listObjectVersions(w http.ResponseWriter, r *http.Request, buc
 	writeXML(w, http.StatusOK, resp)
 }
 
+func (h *Handler) validObjectKey(w http.ResponseWriter, r *http.Request, key string) bool {
+	if err := storage.ValidateObjectKey(key); err != nil {
+		writeError(w, r, http.StatusBadRequest, "InvalidArgument", err.Error())
+		return false
+	}
+	return true
+}
+
 func (h *Handler) putObject(w http.ResponseWriter, r *http.Request, bucket, key string) {
 	creds, ok := h.authenticate(w, r)
 	if !ok {
+		return
+	}
+	if !h.validObjectKey(w, r, key) {
 		return
 	}
 	if !h.authorize(w, r, creds, bucket, key, "s3:PutObject") {
@@ -544,6 +555,9 @@ func (h *Handler) putObject(w http.ResponseWriter, r *http.Request, bucket, key 
 }
 
 func (h *Handler) getObject(w http.ResponseWriter, r *http.Request, bucket, key string) {
+	if !h.validObjectKey(w, r, key) {
+		return
+	}
 	creds, authErr := h.Svc.Signer.Authenticate(r)
 	if authErr != nil {
 		if errors.Is(authErr, auth.ErrMissingAuth) && h.Svc.IsPublicReadBucket(bucket) {
@@ -625,6 +639,9 @@ func (h *Handler) writeAuthError(w http.ResponseWriter, r *http.Request, err err
 }
 
 func (h *Handler) headObject(w http.ResponseWriter, r *http.Request, bucket, key string) {
+	if !h.validObjectKey(w, r, key) {
+		return
+	}
 	creds, authErr := h.Svc.Signer.Authenticate(r)
 	if authErr != nil {
 		if errors.Is(authErr, auth.ErrMissingAuth) && h.Svc.IsPublicReadBucket(bucket) {
@@ -670,6 +687,9 @@ func (h *Handler) serveHeadObject(w http.ResponseWriter, r *http.Request, storag
 }
 
 func (h *Handler) deleteObject(w http.ResponseWriter, r *http.Request, bucket, key string) {
+	if !h.validObjectKey(w, r, key) {
+		return
+	}
 	creds, ok := h.authenticate(w, r)
 	if !ok {
 		return

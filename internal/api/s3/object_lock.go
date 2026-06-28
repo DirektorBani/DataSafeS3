@@ -2,11 +2,13 @@ package s3
 
 import (
 	"encoding/xml"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/DirektorBani/datasafe/internal/security/urlpolicy"
 )
 
 func (h *Handler) getBucketObjectLock(w http.ResponseWriter, r *http.Request, bucket string) {
@@ -184,6 +186,10 @@ func (h *Handler) putBucketNotification(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	if err := h.Svc.PutBucketNotificationConfiguration(sk, cfg); err != nil {
+		if strings.Contains(err.Error(), "outbound url not allowed") {
+			writeError(w, r, http.StatusBadRequest, "InvalidArgument", err.Error())
+			return
+		}
 		mapErr(w, r, err)
 		return
 	}
@@ -347,12 +353,18 @@ func (s *Service) PutBucketNotificationConfiguration(bucket string, xmlCfg Notif
 	var events []string
 	for _, t := range xmlCfg.TopicConfiguration {
 		if t.Topic != "" {
+			if err := urlpolicy.ValidateOutboundURL(t.Topic, urlpolicy.DefaultOptions()); err != nil {
+				return fmt.Errorf("%s", urlpolicy.OutboundURLError(err))
+			}
 			webhookURL = t.Topic
 			events = append(events, t.Events...)
 		}
 	}
 	for _, q := range xmlCfg.QueueConfiguration {
 		if q.Queue != "" {
+			if err := urlpolicy.ValidateOutboundURL(q.Queue, urlpolicy.DefaultOptions()); err != nil {
+				return fmt.Errorf("%s", urlpolicy.OutboundURLError(err))
+			}
 			webhookURL = q.Queue
 			events = append(events, q.Events...)
 		}

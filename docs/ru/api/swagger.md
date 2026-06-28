@@ -2,7 +2,7 @@
 
 # Swagger UI — Community Integration API
 
-**Автор:** Трачук Илья · **Обновлено:** 2026-06-22
+**Автор:** Трачук Илья · **Обновлено:** 2026-06-28
 
 ## Что такое Swagger UI (и чем не является)
 
@@ -74,6 +74,17 @@ Authorization: Bearer ds_xxxxxxxx
 - **Community Integration API (эта спека):** бакеты, объекты, ключи, presign, usage, shares, tokens, search, trash и т.д. — Swagger UI `/api/v1/docs`.
 - **Admin-only маршруты** (пользователи, системные настройки, webhooks, tenants, gateway, federation): входят в **Community** self-hosted; описаны в [`openapi-full.yaml`](../../api/openapi-full.yaml), управление через консоль или полную спеку — **не** в Swagger UI.
 - **S3 XML API:** AWS SigV4 на порту 9000 — AWS SDK; вне OpenAPI.
+
+## Эндпоинты безопасности v1.0.2 (full spec)
+
+Swagger UI намеренно описывает только **Integration API** (без `/auth/*` и admin settings). Два маршрута v1.0.2 — в [`openapi-full.yaml`](../../api/openapi-full.yaml):
+
+| Метод | Путь | Назначение |
+|-------|------|------------|
+| `POST` | `/auth/oidc/exchange` | Обмен одноразового `exchange_code` после OIDC callback на JWT сессии (вместо `?token=` в URL) |
+| `GET` | `/settings/security-status` | Admin-диагностика: env vars на небезопасных дефолтах (`weak_secrets`) |
+
+Для pre-flight после обновления используйте full spec или curl. SSO в консоли работает через exchange автоматически, когда server и console оба v1.0.2+.
 
 ## Экспорт в Postman / Insomnia
 

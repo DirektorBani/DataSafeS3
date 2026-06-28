@@ -5,12 +5,18 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/metadata"
 )
+
+func TestMain(m *testing.M) {
+	_ = os.Setenv("STORAGE_DEV", "true")
+	os.Exit(m.Run())
+}
 
 func TestLokiSinkPushTimestampFormat(t *testing.T) {
 	var gotBody map[string]any

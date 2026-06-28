@@ -6,7 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Database, Loader2, ShieldCheck } from "lucide-react";
-import { api, login, loginMFA, setSessionProfile } from "@/lib/api";
+import { api, getToken, login, loginMFA, setSessionProfile } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,8 +49,26 @@ export function LoginPage() {
   );
 
   useEffect(() => {
-    const token = searchParams.get("token");
+    const exchangeCode = searchParams.get("exchange_code");
     const authSource = searchParams.get("auth_source") ?? undefined;
+    if (exchangeCode) {
+      api.exchangeOidcCode(exchangeCode).then((data) => {
+        setSessionProfile(data.token, "user", "", { authSource: data.auth_source ?? authSource });
+        setSearchParams({}, { replace: true });
+        onLogin();
+        return api.getMe();
+      }).then((me) => {
+        if (!me) return;
+        setSessionProfile(getToken() ?? "", me.role, me.username, {
+          authSource: me.auth_source ?? authSource,
+          tenantMemberships: me.tenant_memberships,
+          isTenantAdmin: me.is_tenant_admin,
+        });
+        onLogin();
+      }).catch(() => setError(t("error.loginFailed")));
+      return;
+    }
+    const token = searchParams.get("token");
     if (!token) return;
 
     setSessionProfile(token, "user", "", { authSource });
