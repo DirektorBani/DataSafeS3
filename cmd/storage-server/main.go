@@ -14,6 +14,7 @@ import (
 	_ "github.com/DirektorBani/datasafe/internal/metadata/postgres"
 	"github.com/DirektorBani/datasafe/internal/observability"
 	"github.com/DirektorBani/datasafe/internal/security"
+	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
 )
 
 func main() {
@@ -40,19 +41,26 @@ func main() {
 	slog.SetDefault(logger)
 	security.ValidateStartupSecrets(logger)
 
+	fieldEnc, err := fieldenc.NewFromEnv()
+	if err != nil {
+		logger.Error("field encryption config", "err", err)
+		os.Exit(1)
+	}
+
 	metaCfg := metadata.ConfigFromEnv(dataDir)
 	logger.Info("metadata backend", "backend", metaCfg.Backend)
 
 	srv, err := api.NewServer(api.Config{
-		DataDir:       dataDir,
-		Region:        region,
-		AccessKey:     accessKey,
-		SecretKey:     secretKey,
-		AdminUser:     adminUser,
-		AdminPassword: adminPassword,
-		JWTSecret:     jwtSecret,
-		Metadata:      metaCfg,
-		SSEMasterKey:  sseKey,
+		DataDir:         dataDir,
+		Region:          region,
+		AccessKey:       accessKey,
+		SecretKey:       secretKey,
+		AdminUser:       adminUser,
+		AdminPassword:   adminPassword,
+		JWTSecret:       jwtSecret,
+		Metadata:        metaCfg,
+		SSEMasterKey:    sseKey,
+		FieldEncryption: fieldEnc,
 	})
 	if err != nil {
 		logger.Error("failed to start server", "err", err)

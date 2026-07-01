@@ -50,7 +50,8 @@
     "selectConnection": "Select connection",
     "addAction": "Add Rule",
     "empty": "No replication rules yet.",
-    "syncNow": "Sync now"
+    "syncNow": "Sync now",
+    "publicReadWarning": "Source bucket is public-read — Gateway applies the same policy on the remote bucket."
   },
   "jobs": {
     "empty": "No manual sync jobs yet. Use Sync now on a replication rule."
@@ -65,6 +66,7 @@
     "replicated": "Replicated",
     "replicationErrors": "replication errors",
     "missingConnections": "rule(s) reference missing connections",
+    "publicReadPolicyWarning": "{{count}} replication rule(s) use public-read source buckets — the gateway may apply a public GetObject policy on the remote bucket.",
     "retryFailed": "Retry failed",
     "clearErrors": "Clear errors"
   },

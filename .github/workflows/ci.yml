@@ -20,12 +20,28 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: datasafe
+          POSTGRES_PASSWORD: datasafe
+          POSTGRES_DB: datasafe
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U datasafe"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.x"
       - name: go test
+        env:
+          TEST_POSTGRES_DSN: postgres://datasafe:datasafe@localhost:5432/datasafe?sslmode=disable
         run: go test ./...
       - name: govulncheck
         run: |
@@ -60,24 +76,41 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Start compose stack for E2E
+      - name: Build console for compose Caddy
+        working-directory: web/console
         run: |
-          docker compose up -d --wait storage-server caddy postgres 2>/dev/null || docker compose up -d
-          for i in $(seq 1 60); do
+          npm ci
+          npm run build
+      - name: Start compose stack for E2E
+        env:
+          DATASAFE_DATA_ROOT: ${{ github.workspace }}/.datasafe-data-ci
+        run: |
+          mkdir -p "$DATASAFE_DATA_ROOT/storage" "$DATASAFE_DATA_ROOT/postgres"
+          docker compose -p datasafe-ci \
+            -f docker-compose.yml \
+            -f docker-compose.local-data.yml \
+            --profile postgres up -d --build --wait storage-server caddy postgres 2>/dev/null \
+            || docker compose -p datasafe-ci \
+              -f docker-compose.yml \
+              -f docker-compose.local-data.yml \
+              --profile postgres up -d --build storage-server caddy postgres
+          for i in $(seq 1 90); do
             if curl -sf http://127.0.0.1:8080/healthz; then exit 0; fi
             sleep 2
           done
           echo "Stack did not become healthy in time"
-          docker compose ps
+          docker compose -p datasafe-ci -f docker-compose.yml -f docker-compose.local-data.yml ps
           exit 1
       - name: Install Playwright
         working-directory: web/console
-        run: |
-          npm ci
-          npx playwright install chromium --with-deps
+        run: npx playwright install chromium --with-deps
       - name: E2E smoke
         working-directory: web/console
-        run: npx playwright test
-      - name: OIDC browser smoke (optional)
-        run: node scripts/oidc-browser-e2e.mjs
-        continue-on-error: true
+        run: npx playwright test e2e/smoke.spec.ts
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose -p datasafe-ci \
+            -f docker-compose.yml \
+            -f docker-compose.local-data.yml \
+            --profile postgres down -v --remove-orphans

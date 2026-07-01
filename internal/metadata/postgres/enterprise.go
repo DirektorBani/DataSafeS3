@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -69,7 +70,14 @@ func (s *Store) DeleteTenant(id string) error {
 }
 
 func (s *Store) PutGatewayConnection(rec metadata.GatewayConnection) error {
-	_, err := s.pool.Exec(context.Background(), `
+	var err error
+	if rec.AccessKey, err = s.fieldPrepare(fieldenc.PathGatewayAccessKey, rec.AccessKey); err != nil {
+		return err
+	}
+	if rec.SecretKey, err = s.fieldPrepare(fieldenc.PathGatewaySecretKey, rec.SecretKey); err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(context.Background(), `
 		INSERT INTO gateway_connections (id, name, endpoint, region, access_key, secret_key, path_style, tls_verify, status, last_check, created_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		ON CONFLICT (id) DO UPDATE SET name=$2, endpoint=$3, region=$4, access_key=$5, secret_key=$6, path_style=$7, tls_verify=$8, status=$9, last_check=$10`,
@@ -90,6 +98,12 @@ func (s *Store) GetGatewayConnection(id string) (metadata.GatewayConnection, err
 	}
 	if last.Valid {
 		rec.LastCheck = last.Time
+	}
+	if rec.AccessKey, err = s.fieldDecrypt(fieldenc.PathGatewayAccessKey, rec.AccessKey); err != nil {
+		return rec, err
+	}
+	if rec.SecretKey, err = s.fieldDecrypt(fieldenc.PathGatewaySecretKey, rec.SecretKey); err != nil {
+		return rec, err
 	}
 	return rec, nil
 }
@@ -112,6 +126,12 @@ func (s *Store) ListGatewayConnections() ([]metadata.GatewayConnection, error) {
 		}
 		if last.Valid {
 			rec.LastCheck = last.Time
+		}
+		if rec.AccessKey, err = s.fieldDecrypt(fieldenc.PathGatewayAccessKey, rec.AccessKey); err != nil {
+			return nil, err
+		}
+		if rec.SecretKey, err = s.fieldDecrypt(fieldenc.PathGatewaySecretKey, rec.SecretKey); err != nil {
+			return nil, err
 		}
 		out = append(out, rec)
 	}

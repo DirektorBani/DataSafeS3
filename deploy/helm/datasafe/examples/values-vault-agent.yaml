@@ -1,0 +1,62 @@
+# Example: HashiCorp Vault Agent Injector annotations for storage-server.
+# Requires Vault Agent Injector webhook in the cluster (https://developer.hashicorp.com/vault/docs/platform/k8s/injector).
+# Apply on top of a production install — disables inline Helm secret values for sensitive keys.
+#
+#   helm upgrade datasafe deploy/helm/datasafe \
+#     -f deploy/helm/datasafe/values-production.yaml \
+#     -f deploy/helm/datasafe/examples/values-vault-agent.yaml \
+#     -n datasafe
+#
+# Prerequisite: Vault Kubernetes auth role "datasafe" with read policy on secret/data/datasafe/*.
+
+storageServer:
+  # Do not store bootstrap secrets in Helm when using Vault injection.
+  secrets:
+    jwtSecret: ""
+    secretKey: ""
+    adminPassword: ""
+    sseMasterKey: ""
+  env:
+    STORAGE_DEV: "false"
+    STORAGE_STRICT_SECRETS: "true"
+  podAnnotations:
+    vault.hashicorp.com/agent-inject: "true"
+    vault.hashicorp.com/agent-pre-populate: "true"
+    vault.hashicorp.com/role: "datasafe"
+    vault.hashicorp.com/agent-inject-secret-storage.env: "secret/data/datasafe/jwt"
+    vault.hashicorp.com/agent-inject-template-storage.env: |
+      {{- with secret "secret/data/datasafe/jwt" -}}
+      STORAGE_JWT_SECRET={{ .Data.data.value }}
+      {{- end }}
+      {{- with secret "secret/data/datasafe/s3-secret" }}
+      STORAGE_SECRET_KEY={{ .Data.data.value }}
+      {{- end }}
+      {{- with secret "secret/data/datasafe/admin-password" }}
+      STORAGE_ADMIN_PASSWORD={{ .Data.data.value }}
+      {{- end }}
+      {{- with secret "secret/data/datasafe/mfa-encryption" }}
+      STORAGE_MFA_ENCRYPTION_KEY={{ .Data.data.value }}
+      {{- end }}
+      {{- with secret "secret/data/datasafe/sse-master" }}
+      STORAGE_SSE_MASTER_KEY={{ .Data.data.value }}
+      {{- end }}
+      {{- with secret "secret/data/datasafe/postgres" }}
+      STORAGE_POSTGRES_PASSWORD={{ .Data.data.password }}
+      {{- end }}
+      {{- with secret "secret/data/datasafe/postgres-dsn" }}
+      STORAGE_POSTGRES_DSN={{ .Data.data.dsn }}
+      {{- end }}
+      {{- with secret "secret/data/datasafe/oidc-client-secret" }}
+      STORAGE_OIDC_CLIENT_SECRET={{ .Data.data.value }}
+      {{- end }}
+      {{- with secret "secret/data/datasafe/ldap-bind" }}
+      STORAGE_LDAP_BIND_PASSWORD={{ .Data.data.value }}
+      {{- end }}
+  # Source injected file before the stock entrypoint (same pattern as docker-compose.vault.yml).
+  command: ["/bin/sh", "-c"]
+  args:
+    - |
+      set -a
+      [ -f /vault/secrets/storage.env ] && . /vault/secrets/storage.env
+      set +a
+      exec /docker-entrypoint.sh /storage-server

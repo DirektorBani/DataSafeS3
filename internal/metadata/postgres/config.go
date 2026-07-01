@@ -19,10 +19,15 @@ func (s *Store) GetSystemConfig() (metadata.SystemConfig, error) {
 	if cfg.TrashRetentionDays == 0 {
 		cfg.TrashRetentionDays = 30
 	}
-	return cfg, nil
+	return metadata.DecryptSystemConfigPaths(s.fieldenc, cfg)
 }
 
 func (s *Store) PutSystemConfig(cfg metadata.SystemConfig) error {
+	var err error
+	cfg, err = metadata.EncryptSystemConfigPaths(s.fieldenc, cfg)
+	if err != nil {
+		return err
+	}
 	data, err := json.Marshal(cfg)
 	if err != nil {
 		return err

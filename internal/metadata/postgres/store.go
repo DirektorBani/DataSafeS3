@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -39,6 +40,7 @@ var migrationFS embed.FS
 type Store struct {
 	pool     *pgxpool.Pool
 	readPool *pgxpool.Pool
+	fieldenc *fieldenc.Service
 }
 
 // Open connects to PostgreSQL, runs migrations, and returns a Store.
@@ -71,6 +73,11 @@ func Open(dsn string, readReplicaDSN string) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// SetFieldEncryption attaches the field encryption service (injected at startup).
+func (s *Store) SetFieldEncryption(fe *fieldenc.Service) {
+	s.fieldenc = fe
 }
 
 func (s *Store) readQueryPool() *pgxpool.Pool {
@@ -133,11 +140,43 @@ func (s *Store) migrate() error {
 }
 
 func (s *Store) backfillBucketOwners(ctx context.Context) error {
+	// Backfill owner_id from username; skip rows that would violate idx_buckets_scope_owner_name.
 	_, err := s.pool.Exec(ctx, `
 		UPDATE buckets b
 		SET owner_id = u.id
 		FROM users u
-		WHERE (b.owner_id IS NULL OR b.owner_id = '') AND b.owner <> '' AND b.owner = u.username`)
+		WHERE (b.owner_id IS NULL OR b.owner_id = '')
+		  AND b.owner <> ''
+		  AND b.owner = u.username
+		  AND NOT EXISTS (
+		    SELECT 1 FROM buckets b2
+		    WHERE b2.storage_key <> b.storage_key
+		      AND COALESCE(b2.owner_id, '') = u.id
+		      AND b2.name = b.name
+		      AND (b2.tenant_id IS NULL OR b2.tenant_id = '' OR b2.tenant_id = 'default')
+		  )`)
+	if err != nil {
+		return err
+	}
+	// Drop empty legacy orphans superseded by a scoped bucket for the same owner/name.
+	_, err = s.pool.Exec(ctx, `
+		DELETE FROM buckets b
+		WHERE (b.owner_id IS NULL OR b.owner_id = '')
+		  AND b.owner <> ''
+		  AND EXISTS (
+		    SELECT 1 FROM buckets b2
+		    JOIN users u ON u.username = b.owner
+		    WHERE b2.storage_key <> b.storage_key
+		      AND COALESCE(b2.owner_id, '') = u.id
+		      AND b2.name = b.name
+		      AND (b2.tenant_id IS NULL OR b2.tenant_id = '' OR b2.tenant_id = 'default')
+		  )
+		  AND NOT EXISTS (
+		    SELECT 1 FROM objects o
+		    WHERE o.bucket = b.storage_key
+		      AND o.is_latest = TRUE
+		      AND o.is_delete_marker = FALSE
+		  )`)
 	return err
 }
 

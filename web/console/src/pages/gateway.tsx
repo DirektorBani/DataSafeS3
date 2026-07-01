@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { CheckCircle2, Plus, RefreshCw, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, Plus, RefreshCw, Trash2, XCircle, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { api, type GatewayConnection, type ReplicationRule } from "@/lib/api";
 import { formatBytes } from "@/lib/utils";
@@ -81,6 +81,8 @@ export function GatewayPage() {
   });
 
   const connName = (id: string) => connections.data?.find((c) => c.id === id)?.name ?? id.slice(0, 8);
+  const bucketVisibility = (name: string) =>
+    buckets.data?.find((b) => b.name === name)?.visibility ?? "private";
   const connList = connections.data ?? [];
   const hasConnections = connList.length > 0;
 
@@ -110,6 +112,13 @@ export function GatewayPage() {
             {t("gateway:error.load", { message: (apiError as Error).message })}
           </CardContent>
         </Card>
+      )}
+
+      {(health.data?.public_read_rules ?? 0) > 0 && (
+        <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <p>{t("gateway:health.publicReadPolicyWarning", { count: health.data?.public_read_rules ?? 0 })}</p>
+        </div>
       )}
 
       <Tabs value={tab} onValueChange={setTab}>
@@ -249,6 +258,12 @@ export function GatewayPage() {
                 <div>
                   <p className="font-medium">{r.source_bucket} → {r.dest_bucket}</p>
                   <p className="text-xs text-muted-foreground">via {connName(r.dest_connection_id)}</p>
+                  {bucketVisibility(r.source_bucket) === "public-read" && (
+                    <p className="mt-1 flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300">
+                      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+                      {t("gateway:rules.publicReadWarning")}
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" onClick={async () => {

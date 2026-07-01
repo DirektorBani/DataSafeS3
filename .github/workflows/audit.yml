@@ -7,7 +7,10 @@ on:
     paths:
       - "internal/**"
       - "scripts/feature-audit-test.ps1"
+      - "scripts/vault/**"
+      - "deploy/vault/**"
       - "docker-compose.yml"
+      - "docker-compose.vault.yml"
       - ".github/workflows/audit.yml"
   workflow_dispatch:
 
@@ -36,3 +39,35 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose -p datasafe-audit down -v --remove-orphans
+
+  vault-integration:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Vault injection integration smoke
+        run: |
+          chmod +x scripts/vault/smoke-vault-integration.sh
+          VAULT_PROFILE=1 ./scripts/vault/smoke-vault-integration.sh
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+
+      - name: Go vault-tagged tests
+        run: |
+          export TEST_VAULT_ADDR=http://127.0.0.1:8200
+          export VAULT_PROFILE=1
+          export STORAGE_URL=http://127.0.0.1:9000
+          go test -tags=vault ./internal/security/ -run VaultInjection -count=1
+
+      - name: Tear down vault stack
+        if: always()
+        run: |
+          docker compose -p datasafe-vault --profile postgres --profile vault \
+            -f docker-compose.yml -f docker-compose.vault.yml down -v --remove-orphans

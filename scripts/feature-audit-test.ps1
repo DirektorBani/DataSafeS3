@@ -230,6 +230,14 @@ $adminH = Auth $adminTok
 $r = Invoke-DS GET "$BaseUrl/api/v1/me" -Headers $adminH
 Record 'Users/Auth' 'GET /me (admin)' $(if($r.Code -eq 200 -and $r.Json.username -eq 'admin'){'PASS'}else{'FAIL'}) $r.Json.role
 
+# Security posture (v1.0.3)
+$ss = Invoke-DS GET "$BaseUrl/api/v1/settings/security-status" -Headers $adminH
+$feBlock = ($ss.Code -eq 200) -and ($null -ne $ss.Json.field_encryption) -and ($ss.Json.field_encryption.enabled -is [bool])
+Record 'Security' 'Security-status field_encryption block' $(if($feBlock){'PASS'}else{'FAIL'}) "enabled=$($ss.Json.field_encryption.enabled) registry=$($ss.Json.field_encryption.registry_count)"
+$wsList = ($ss.Code -eq 200) -and ($ss.Json.PSObject.Properties.Name -contains 'weak_secrets')
+$wsCount = if ($null -eq $ss.Json.weak_secrets) { 0 } else { @($ss.Json.weak_secrets).Count }
+Record 'Security' 'Security-status weak_secrets list' $(if($wsList){'PASS'}else{'FAIL'}) "count=$wsCount"
+
 # Create test user
 $testUser = "audit-user-$ts"
 $r = Invoke-DS POST "$BaseUrl/api/v1/users" -Headers $adminH -Body "{`"username`":`"$testUser`",`"password`":`"pass123`",`"role`":`"user`",`"email`":`"$testUser@test.com`"}"
@@ -844,7 +852,8 @@ if ($oidcEnabled) {
 
 # Gateway
 $r = Invoke-DS GET "$BaseUrl/api/v1/gateway/health" -Headers $adminH
-Record 'Gateway' 'Gateway health' $(if($r.Code -eq 200){'PASS'}else{'FAIL'}) "rules=$($r.Json.rules_total) queue=$($r.Json.queue_pending)"
+$prField = ($r.Code -eq 200) -and ($null -ne $r.Json.public_read_rules)
+Record 'Gateway' 'Gateway health' $(if($prField){'PASS'}else{'FAIL'}) "rules=$($r.Json.rules_total) public_read=$($r.Json.public_read_rules) queue=$($r.Json.queue_pending)"
 
 # Gateway replication test
 $gwTest = Invoke-DS POST "$BaseUrl/api/v1/gateway/connections" -Headers $adminH -Body '{"name":"audit-gw","endpoint":"http://host.docker.internal:9100","region":"us-east-1","access_key":"minioadmin","secret_key":"minioadmin","path_style":true,"tls_verify":false}' 2>$null
@@ -985,6 +994,22 @@ if ($tenantId -and $tadminId) {
             $po = Put-Object $memberTok $grpBucket 'grp-test.txt' 'group-access-ok'
             Record 'Tenants' 'Group member write to assigned bucket' $(if($po -eq 200){'PASS'}else{'FAIL'}) "HTTP $po"
         }
+    }
+}
+
+# Vault profile injection smoke (optional; requires compose --profile vault)
+if ($env:VAULT_PROFILE -eq '1') {
+    Write-Host "`n=== Vault injection integration ===" -ForegroundColor Cyan
+    $vaultScript = Join-Path $PSScriptRoot 'vault\test-vault-integration.mjs'
+    if (Test-Path $vaultScript) {
+        & node $vaultScript
+        if ($LASTEXITCODE -ne 0) {
+            Record 'Vault' 'Injection path smoke' 'FAIL' "exit=$LASTEXITCODE"
+        } else {
+            Record 'Vault' 'Injection path smoke' 'PASS' 'agent env healthz security-status'
+        }
+    } else {
+        Record 'Vault' 'Injection path smoke' 'SKIP' 'test-vault-integration.mjs missing'
     }
 }
 

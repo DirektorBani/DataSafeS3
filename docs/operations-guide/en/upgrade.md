@@ -32,7 +32,7 @@ Before upgrading to a tagged release, verify GHCR signatures (see [SECURITY.md](
 
 ```bash
 export COSIGN_EXPERIMENTAL=1
-TAG=v1.0.2
+TAG=v1.0.3
 cosign verify "ghcr.io/direktorbani/datasafe-storage-server:${TAG}" \
   --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com
@@ -59,7 +59,19 @@ The IdP redirect URI is unchanged (`/api/v1/auth/oidc/callback`). After login, t
 
 In production (`STORAGE_DEV` unset or false), server-initiated HTTP must use **public HTTPS** endpoints. Plain `http://`, loopback, and RFC1918 targets are rejected unless you explicitly relax policy.
 
-For local Loki on `http://localhost:3100`, either keep `STORAGE_DEV=true` or set `STORAGE_OUTBOUND_HTTP_ALLOW=true` (temporary — review before v1.1.0). The `docker-compose.audit.yml` overlay sets relaxed outbound and higher login limits for feature-audit runs; use it only in dev/CI, not in production.
+For local Loki on `http://localhost:3100`, either keep `STORAGE_DEV=true` or set `STORAGE_OUTBOUND_HTTP_ALLOW=true` (temporary escape hatch — see [planned deprecation](#planned-deprecation-storage_outbound_http_allow) below). The `docker-compose.audit.yml` overlay sets relaxed outbound and higher login limits for feature-audit runs; use it only in dev/CI, not in production.
+
+### Planned deprecation: `STORAGE_OUTBOUND_HTTP_ALLOW`
+
+| Release | Change |
+|---------|--------|
+| **v1.0.2** | Strict outbound URL policy (`internal/security/urlpolicy`); escape hatch via `STORAGE_OUTBOUND_HTTP_ALLOW=true` |
+| **v1.0.3** | Documented sunset timeline (this section); default remains `false` in production |
+| **v1.1.0** | **`STORAGE_OUTBOUND_HTTP_ALLOW` removed** — use `STORAGE_DEV=true` only on non-production stacks, or point integrations at public **HTTPS** endpoints |
+
+**Before v1.1.0:** audit compose, Helm values, and `.env` for `STORAGE_OUTBOUND_HTTP_ALLOW=true`. Replace with HTTPS URLs where possible; for local Loki/Elasticsearch use `STORAGE_DEV=true` on dev/CI overlays only (`docker-compose.audit.yml`, not production).
+
+**Production checklist:** unset `STORAGE_OUTBOUND_HTTP_ALLOW` (or leave at default `false`); confirm log sinks and webhooks use `https://` public endpoints; run `GET /api/v1/settings/security-status` after upgrade.
 
 ### Login rate limits
 
@@ -86,14 +98,54 @@ Pre-flight check after upgrade: `GET /api/v1/settings/security-status` (admin JW
 
 ```bash
 git pull
-export TAG=v1.0.2   # or build from source
+export TAG=v1.0.3   # or build from source
 docker compose --profile postgres pull   # if using GHCR images
 docker compose --profile postgres build storage-server
-scripts/build-console.cmd                # or pull datasafe-console:v1.0.2
+scripts/build-console.cmd                # or pull datasafe-console:v1.0.3
 docker compose --profile postgres up -d
 ```
 
-Verify cosign signatures with `TAG=v1.0.2` (see below), then smoke-test local login, OIDC (if used), and one outbound integration (webhook or log sink).
+Verify cosign signatures with `TAG=v1.0.3` (see below), then smoke-test local login, OIDC (if used), and one outbound integration (webhook or log sink).
+
+## Upgrading to v1.0.3
+
+Release **v1.0.3** is a trust-and-quality patch (CI smoke, Postgres FK regression, SSRF tests, optional Vault ops pattern). **Field encryption** is new but **opt-in** — default behaviour matches v1.0.2 until you enable it.
+
+### Field encryption (optional)
+
+| Topic | Action |
+|-------|--------|
+| Default | `STORAGE_FIELD_ENCRYPTION_ENABLED=false` — no change required on upgrade |
+| Postgres | Migration `012_field_encryption` runs automatically (`encryption_key_registry` table) |
+| Enable | Generate KEK → set env → restart; see [field-encryption.md](field-encryption.md) |
+| Verify | `GET /api/v1/settings/security-status` → `field_encryption` block; Admin → Settings → Security |
+| Vault | Agent can inject `STORAGE_FIELD_ENCRYPTION_KEK_PRIVATE_KEY` like other bootstrap secrets ([secrets-vault.md](secrets-vault.md)) |
+
+**Community Edition:** env/file KEK, no license gate. Vault Transit / HSM for KEK — Enterprise phase 2.
+
+Local key tooling: [scripts/crypto/README.md](../../../scripts/crypto/README.md).
+
+### v1.0.3 environment variables (field encryption)
+
+| Variable | Default | Operator note |
+|----------|---------|---------------|
+| `STORAGE_FIELD_ENCRYPTION_ENABLED` | `false` | `true` = encrypt selected metadata secrets at rest |
+| `STORAGE_FIELD_ENCRYPTION_ACTIVE_KEK_ID` | (unset) | Required when enabled; must match active registry row |
+| `STORAGE_FIELD_ENCRYPTION_KEK_PRIVATE_KEY` | (unset) | Base64 raw X25519 private seed |
+| `STORAGE_FIELD_ENCRYPTION_KEK_PRIVATE_KEYS` | (unset) | JSON map for rotation (multiple private keys) |
+
+### Upgrade steps (v1.0.3)
+
+```bash
+git pull
+export TAG=v1.0.3
+docker compose --profile postgres pull   # if using GHCR images
+docker compose --profile postgres build storage-server
+scripts/build-console.cmd                # or pull datasafe-console:v1.0.3
+docker compose --profile postgres up -d
+```
+
+Verify cosign with `TAG=v1.0.3` (see [Verify release images](#verify-release-images-cosign)), then `GET /api/v1/settings/security-status` and Admin → Settings → Security. Enable field encryption only after [field-encryption.md](field-encryption.md) checklist.
 
 ## Checklist
 
@@ -103,3 +155,4 @@ Verify cosign signatures with `TAG=v1.0.2` (see below), then smoke-test local lo
 - [ ] Rebuild console if UI changed: `scripts\build-console.cmd`
 - [ ] v1.0.2: upgrade server **and** console together for OIDC
 - [ ] v1.0.2: review outbound URLs and `STORAGE_RATE_LIMIT_LOGIN` for automation
+- [ ] v1.0.3 (optional): enable [field encryption](field-encryption.md) — generate KEK, set env, verify security-status

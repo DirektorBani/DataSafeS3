@@ -1,0 +1,14 @@
+# QA overlay: pass security remediation env vars into storage-server (local only).
+# For feature-audit runs, also apply docker-compose.audit.yml (raises STORAGE_RATE_LIMIT_LOGIN to 500).
+services:
+  storage-server:
+    environment:
+      - STORAGE_STRICT_SECRETS=${STORAGE_STRICT_SECRETS:-false}
+      - STORAGE_OUTBOUND_HTTP_ALLOW=${STORAGE_OUTBOUND_HTTP_ALLOW:-false}
+      - STORAGE_RATE_LIMIT_LOGIN=${STORAGE_RATE_LIMIT_LOGIN:-5}
+      - STORAGE_RATE_LIMIT_WINDOW=${STORAGE_RATE_LIMIT_WINDOW:-1m}
+      - STORAGE_CORS_ALLOWED_ORIGINS=${STORAGE_CORS_ALLOWED_ORIGINS:-}
+      - STORAGE_METRICS_TOKEN=${STORAGE_METRICS_TOKEN:-}
+      - STORAGE_OIDC_ROPC_ENABLED=${STORAGE_OIDC_ROPC_ENABLED:-true}
+      - STORAGE_MFA_ENCRYPTION_KEY=${STORAGE_MFA_ENCRYPTION_KEY:-}
+      - STORAGE_LDAP_REQUIRE_TLS=${STORAGE_LDAP_REQUIRE_TLS:-false}

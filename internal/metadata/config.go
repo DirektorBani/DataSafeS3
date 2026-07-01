@@ -102,10 +102,18 @@ func (s *Store) GetSystemConfig() (SystemConfig, error) {
 		}
 		return json.Unmarshal(data, &cfg)
 	})
-	return cfg, err
+	if err != nil {
+		return cfg, err
+	}
+	return DecryptSystemConfigPaths(s.fieldenc, cfg)
 }
 
 func (s *Store) PutSystemConfig(cfg SystemConfig) error {
+	var err error
+	cfg, err = EncryptSystemConfigPaths(s.fieldenc, cfg)
+	if err != nil {
+		return err
+	}
 	return s.db.Update(func(tx *bolt.Tx) error {
 		data, err := json.Marshal(cfg)
 		if err != nil {

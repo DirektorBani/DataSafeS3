@@ -122,15 +122,26 @@ jobs:
           name: sbom-${{ github.ref_name }}
           path: sbom
 
+      - name: Extract CHANGELOG section for release body
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          chmod +x scripts/extract-changelog-section.sh
+          ./scripts/extract-changelog-section.sh "$VERSION" CHANGELOG.md release-body.md
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Container images"
+            echo ""
+            echo "- \`${{ env.SERVER_IMAGE }}:${{ github.ref_name }}\`"
+            echo "- \`${{ env.CONSOLE_IMAGE }}:${{ github.ref_name }}\`"
+            echo ""
+            echo "CycloneDX SBOM files and cosign signatures are attached. See [SECURITY.md](https://github.com/${{ github.repository }}/blob/main/SECURITY.md) for \`cosign verify\` instructions."
+          } >> release-body.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: sbom/*
-          generate_release_notes: true
-          body: |
-            ## Container images
-
-            - `${{ env.SERVER_IMAGE }}:${{ github.ref_name }}`
-            - `${{ env.CONSOLE_IMAGE }}:${{ github.ref_name }}`
-
-            CycloneDX SBOM files and cosign signatures are attached. See [SECURITY.md](https://github.com/${{ github.repository }}/blob/main/SECURITY.md) for `cosign verify` instructions.
+          generate_release_notes: false
+          body_path: release-body.md

@@ -13,6 +13,10 @@ spec:
       app.kubernetes.io/component: storage-server
   template:
     metadata:
+      {{- with .Values.storageServer.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       labels:
         {{- include "datasafe.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: storage-server
@@ -39,6 +43,14 @@ spec:
         - name: storage-server
           image: {{ include "datasafe.image" (dict "global" .Values.global "image" .Values.storageServer.image) }}
           imagePullPolicy: {{ .Values.storageServer.image.pullPolicy }}
+          {{- with .Values.storageServer.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.storageServer.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: http
               containerPort: 9000

@@ -1,0 +1,16 @@
+# Product-like overlay for Vault testing: strict startup secret checks (no dev defaults).
+# Combine with docker-compose.vault.yml and optional postgres profile.
+#
+#   docker compose -p datasafe -f docker-compose.yml -f docker-compose.local-data.yml \
+#     -f docker-compose.vault.yml -f docker-compose.vault-product.yml --profile vault --profile postgres up -d
+#
+# Secrets must be injected by Vault Agent (see deploy/vault/) or set explicitly in .env.
+
+services:
+  storage-server:
+    environment:
+      - STORAGE_DEV=false
+      - STORAGE_STRICT_SECRETS=true
+      - STORAGE_OUTBOUND_HTTP_ALLOW=false
+      - STORAGE_OIDC_ROPC_ENABLED=false
+      - STORAGE_LDAP_REQUIRE_TLS=true

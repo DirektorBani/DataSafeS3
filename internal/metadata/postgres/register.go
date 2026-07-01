@@ -1,8 +1,6 @@
 package postgres
 
 import (
-	"fmt"
-
 	"github.com/DirektorBani/datasafe/internal/metadata"
 )
 
@@ -15,7 +13,14 @@ func openFromConfig(cfg metadata.Config) (metadata.MetadataStore, error) {
 	if dsn == "" {
 		dsn = metadata.PostgresDSN(cfg)
 	}
-	return Open(dsn, cfg.PostgresReadReplicaDSN)
+	s, err := Open(dsn, cfg.PostgresReadReplicaDSN)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.FieldEncryption != nil {
+		s.SetFieldEncryption(cfg.FieldEncryption)
+	}
+	return s, nil
 }
 
 // DSNFromConfig returns the resolved PostgreSQL connection string.
@@ -41,9 +46,5 @@ func mustDSN(cfg metadata.Config) string {
 
 // ResolveDSN is exported for CLI tools.
 func ResolveDSN(cfg metadata.Config) string {
-	if cfg.PostgresDSN != "" {
-		return cfg.PostgresDSN
-	}
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		cfg.PostgresUser, cfg.PostgresPassword, cfg.PostgresHost, cfg.PostgresPort, cfg.PostgresDB)
+	return metadata.PostgresDSN(cfg)
 }

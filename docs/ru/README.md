@@ -2,6 +2,8 @@
 
 # Документация DataSafeS3 (русский)
 
+**Текущий релиз:** [v1.0.3](../../CHANGELOG.md#103---2026-06-30)
+
 Хаб документации по жизненному циклу продукта: **Learn → Deploy → Configure → Manage → Operate → Reference → API**.
 
 **Полный двуязычный хаб:** [../README.md](../README.md)

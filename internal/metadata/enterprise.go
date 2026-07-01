@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -270,6 +271,13 @@ func (s *Store) DeleteTenant(id string) error {
 }
 
 func (s *Store) PutGatewayConnection(rec GatewayConnection) error {
+	var err error
+	if rec.AccessKey, err = s.fieldPrepare(fieldenc.PathGatewayAccessKey, rec.AccessKey); err != nil {
+		return err
+	}
+	if rec.SecretKey, err = s.fieldPrepare(fieldenc.PathGatewaySecretKey, rec.SecretKey); err != nil {
+		return err
+	}
 	return s.db.Update(func(tx *bolt.Tx) error {
 		data, err := json.Marshal(rec)
 		if err != nil {
@@ -288,7 +296,17 @@ func (s *Store) GetGatewayConnection(id string) (GatewayConnection, error) {
 		}
 		return json.Unmarshal(data, &rec)
 	})
-	return rec, err
+	if err != nil {
+		return rec, err
+	}
+	var decErr error
+	if rec.AccessKey, decErr = s.fieldDecrypt(fieldenc.PathGatewayAccessKey, rec.AccessKey); decErr != nil {
+		return rec, decErr
+	}
+	if rec.SecretKey, decErr = s.fieldDecrypt(fieldenc.PathGatewaySecretKey, rec.SecretKey); decErr != nil {
+		return rec, decErr
+	}
+	return rec, nil
 }
 
 func (s *Store) ListGatewayConnections() ([]GatewayConnection, error) {
@@ -298,6 +316,13 @@ func (s *Store) ListGatewayConnections() ([]GatewayConnection, error) {
 			var rec GatewayConnection
 			if err := json.Unmarshal(v, &rec); err != nil {
 				return err
+			}
+			var decErr error
+			if rec.AccessKey, decErr = s.fieldDecrypt(fieldenc.PathGatewayAccessKey, rec.AccessKey); decErr != nil {
+				return decErr
+			}
+			if rec.SecretKey, decErr = s.fieldDecrypt(fieldenc.PathGatewaySecretKey, rec.SecretKey); decErr != nil {
+				return decErr
 			}
 			out = append(out, rec)
 			return nil

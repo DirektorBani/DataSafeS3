@@ -19,20 +19,22 @@ import (
 	_ "github.com/DirektorBani/datasafe/internal/metadata/postgres"
 	"github.com/DirektorBani/datasafe/internal/observability"
 	"github.com/DirektorBani/datasafe/internal/openapi"
+	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
 	"github.com/DirektorBani/datasafe/internal/storage"
 )
 
 type Config struct {
-	DataDir       string
-	Region        string
-	AccessKey     string
-	SecretKey     string
-	AdminUser     string
-	AdminPassword string
-	JWTSecret     string
-	Metadata      metadata.Config
-	SSEMasterKey  string
-	ReadOnly      bool
+	DataDir         string
+	Region          string
+	AccessKey       string
+	SecretKey       string
+	AdminUser       string
+	AdminPassword   string
+	JWTSecret       string
+	Metadata        metadata.Config
+	SSEMasterKey    string
+	ReadOnly        bool
+	FieldEncryption *fieldenc.Service
 }
 
 type Server struct {
@@ -85,9 +87,18 @@ func NewServer(cfg Config) (*Server, error) {
 	if metaCfg.Backend == "" {
 		metaCfg = metadata.ConfigFromEnv(cfg.DataDir)
 	}
+	if cfg.FieldEncryption != nil {
+		metaCfg.FieldEncryption = cfg.FieldEncryption
+	}
 	meta, err := metadata.Open(metaCfg)
 	if err != nil {
 		return nil, err
+	}
+	if cfg.FieldEncryption != nil {
+		if err := metadata.BootstrapFieldEncryption(context.Background(), cfg.FieldEncryption, meta); err != nil {
+			meta.Close()
+			return nil, err
+		}
 	}
 	backend, err := storage.NewFSBackend(filepath.Join(cfg.DataDir, "objects"))
 	if err != nil {

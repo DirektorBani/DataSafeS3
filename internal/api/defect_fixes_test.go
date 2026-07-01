@@ -187,6 +187,63 @@ func TestGatewayHealthEndpoint(t *testing.T) {
 	if _, ok := resp["connections_total"]; !ok {
 		t.Fatalf("missing connections_total: %+v", resp)
 	}
+	if _, ok := resp["public_read_rules"]; !ok {
+		t.Fatalf("missing public_read_rules (v1.0.3): %+v", resp)
+	}
+}
+
+func TestGatewayHealth_publicReadRulesCount(t *testing.T) {
+	s := testServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+
+	body, _ := json.Marshal(map[string]string{"visibility": "public-read"})
+	req := authReq(http.MethodPost, "/api/v1/buckets/gw-pub-src", tok, body)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create public-read bucket %d %s", rec.Code, rec.Body.String())
+	}
+
+	conn := metadata.GatewayConnection{
+		ID:        "gw-conn-pr",
+		Name:      "test-conn",
+		Endpoint:  "http://127.0.0.1:9",
+		Region:    "us-east-1",
+		AccessKey: "k",
+		SecretKey: "s",
+		PathStyle: true,
+	}
+	if err := s.Meta().PutGatewayConnection(conn); err != nil {
+		t.Fatal(err)
+	}
+	rule := metadata.ReplicationRule{
+		ID:             "gw-rule-pr",
+		SourceBucket:   "gw-pub-src",
+		DestConnection: conn.ID,
+		DestBucket:     "remote",
+		Enabled:        true,
+	}
+	if err := s.Meta().PutReplicationRule(rule); err != nil {
+		t.Fatal(err)
+	}
+
+	req = authReq(http.MethodGet, "/api/v1/gateway/health", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("gateway health %d %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		PublicReadRules int `json:"public_read_rules"`
+		RulesTotal      int `json:"rules_total"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp.RulesTotal < 1 {
+		t.Fatalf("rules_total %d", resp.RulesTotal)
+	}
+	if resp.PublicReadRules < 1 {
+		t.Fatalf("public_read_rules %d want >= 1 for enabled public-read source", resp.PublicReadRules)
+	}
 }
 
 func TestSoftDeleteObjectWithOrphanTrashBucketDir(t *testing.T) {

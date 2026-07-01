@@ -2,6 +2,33 @@
 
 All notable changes to DataSafeS3 are documented in this file.
 
+## [Unreleased]
+
+_Nothing yet._
+
+## [1.0.3] - 2026-06-30
+
+Trust-and-quality release: optional metadata field encryption (CE), Vault env-injection ops pattern, CI/Postgres regression hardening, security console panel, and `STORAGE_OUTBOUND_HTTP_ALLOW` sunset timeline.
+
+### Added
+
+- **Field encryption (metadata at rest)** — opt-in X25519 envelope for access keys, gateway credentials, and system-config secrets (`enc:v1:`). **Community Edition**, no license gate. Ops guide ([EN](docs/operations-guide/en/field-encryption.md), [RU](docs/operations-guide/ru/field-encryption.md)), spec [field-encryption-1.0.3-tz.md](docs/specs/field-encryption-1.0.3-tz.md), Postgres migration `012_field_encryption`, [scripts/crypto/](scripts/crypto/README.md). Vault Transit / HSM for KEK — Enterprise phase 2+.
+- **HashiCorp Vault (env injection)** — optional Agent / Injector pattern; maps KV v2 to existing `STORAGE_*` env (no in-app Vault SDK). Guide ([EN](docs/operations-guide/en/secrets-vault.md), [RU](docs/operations-guide/ru/secrets-vault.md)), Compose overlays (`docker-compose.vault.yml`, `docker-compose.vault-product.yml`), [deploy/vault/](deploy/vault/README.md), Helm [values-vault-agent.yaml](deploy/helm/datasafe/examples/values-vault-agent.yaml).
+- **Console** — Admin → Settings → **Security** posture panel (`GET /api/v1/settings/security-status`, including `field_encryption` block); gateway health shows `public_read_rules` count.
+
+### Changed
+
+- **CI** — `e2e-smoke` mirrors feature-audit compose (`--profile postgres`, health wait); gates `e2e/smoke.spec.ts` only.
+- **CI** — Postgres 16 service for `go test` with `TEST_POSTGRES_DSN`; nullable `team_id` FK integration test.
+- **SSRF** — regression matrix for `STORAGE_OUTBOUND_HTTP_ALLOW` in prod vs dev.
+- **Release workflow** — GitHub Release body from CHANGELOG `[version]` section (`body_path`).
+
+### Deprecated
+
+- **`STORAGE_OUTBOUND_HTTP_ALLOW`** — scheduled removal in **v1.1.0**; migration timeline in upgrade guide.
+
+Container images (on tag): `ghcr.io/direktorbani/datasafe-storage-server:v1.0.3`, `ghcr.io/direktorbani/datasafe-console:v1.0.3`.
+
 ## [1.0.2] - 2026-06-28
 
 Security patch: SSRF hardening, production secrets guidance, object key validation, OIDC exchange flow, rate limiting, and supply-chain updates.
@@ -70,6 +97,7 @@ First public **DataSafeS3 Community Edition** release.
 
 Container images: `ghcr.io/direktorbani/datasafe-storage-server:v1.0.0`, `ghcr.io/direktorbani/datasafe-console:v1.0.0`.
 
+[1.0.3]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.0.3
 [1.0.2]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.0.2
 [1.0.1]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.0.1
 [1.0.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.0.0

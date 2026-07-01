@@ -79,7 +79,7 @@ Alternative: [S3 CLI first bucket](first-bucket.md#via-s3-cli).
 | MFA | Profile → Enable MFA |
 | Change S3 bootstrap key | Settings or env `STORAGE_ACCESS_KEY` |
 
-Before go-live, set `STORAGE_STRICT_SECRETS=true` so the server refuses to start while `STORAGE_JWT_SECRET`, `STORAGE_SECRET_KEY`, or `STORAGE_ADMIN_PASSWORD` still match dev defaults. In v1.0.2 you can also call `GET /api/v1/settings/security-status` (admin token) for a pre-flight list of weak variables — the console shows the same warning in the security banner.
+Before go-live, set `STORAGE_STRICT_SECRETS=true` so the server refuses to start while `STORAGE_JWT_SECRET`, `STORAGE_SECRET_KEY`, or `STORAGE_ADMIN_PASSWORD` still match dev defaults. In v1.0.2+ call `GET /api/v1/settings/security-status` (admin token) for a pre-flight list of weak variables — the console shows the same in **Admin → Settings → Security** (v1.0.3). Optional [field encryption](../operations-guide/en/field-encryption.md) (v1.0.3) encrypts selected metadata secrets when `STORAGE_FIELD_ENCRYPTION_ENABLED=true`.
 
 ## Phase 8 — Operations
 

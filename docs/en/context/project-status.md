@@ -1,14 +1,16 @@
-English | **[???????](../../ru/context/project-status.md)**
+English | **[Русский](../../ru/context/project-status.md)**
 
 # Project Status
 
-**Last updated:** 2026-06-28 ? **Current release:** v1.0.2 (tagged; security patch)
+**Last updated:** 2026-06-30 · **Current release:** [v1.0.3](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.0.3)
 
 ## Summary
 
-DataSafeS3 **Community Edition v1.0.2** is the current release (security patch after v1.0.1): S3-compatible API, web console (EN/RU/DE/FR), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, HA tooling, and supply-chain artifacts (GHCR images, SBOM, cosign).
+DataSafeS3 **Community Edition v1.0.3** is the current release: S3-compatible API, web console (EN/RU/DE/FR), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, HA tooling, and supply-chain artifacts (GHCR images, SBOM, cosign).
 
-Patch **v1.0.2** closes Community security remediation (SSRF outbound policy, OIDC exchange_code flow, login rate limits, secrets diagnostics) ? no new product capabilities beyond hardening and operator UX.
+**v1.0.3** adds **opt-in metadata field encryption** (CE, no license gate), optional **Vault Agent env injection** ops pattern, CI/Postgres regression hardening, and a **Security** panel in admin Settings. Default installs behave like v1.0.2 until field encryption is enabled.
+
+Prior patch **v1.0.2** (security): SSRF outbound policy, OIDC `exchange_code` flow, login rate limits, `security-status` API for weak secrets.
 
 ## Feature maturity (CE)
 
@@ -17,7 +19,7 @@ Patch **v1.0.2** closes Community security remediation (SSRF outbound policy, OI
 | S3 API (SigV4, multipart, versioning, presign) | **Shipped** | Port 9000 |
 | Web console + Admin JSON API | **Shipped** | Caddy :8080 |
 | PostgreSQL metadata + read replica routing | **Shipped** | Compose `--profile postgres` |
-| LDAP / OIDC SSO | **Shipped** | OIDC exchange flow (v1.0.2); issuer unreachable warning (AUD-09) |
+| LDAP / OIDC SSO | **Shipped** | OIDC exchange flow (v1.0.2+); issuer unreachable warning (AUD-09) |
 | MFA / WebAuthn | **Shipped** | TOTP + passkeys |
 | Object Lock (WORM) | **Shipped** | XML API + console |
 | Gateway replication | **Shipped** | External S3 target |
@@ -26,28 +28,30 @@ Patch **v1.0.2** closes Community security remediation (SSRF outbound policy, OI
 | Erasure coding | **Lab MVP** | Not production multi-AZ |
 | Supply chain (SBOM + cosign) | **Shipped** | Both images on release tags (v1.0.1+) |
 | OpenAPI 3.1 + Swagger UI | **Shipped** | Community Integration API scope |
-| File collaboration (phases 1?3) | **Shipped** | Home bucket, grants, share links |
-| Security hardening (v1.0.2) | **Shipped** | SSRF policy, rate limits, security-status API |
+| File collaboration (phases 1–3) | **Shipped** | Home bucket, grants, share links, desktop sync |
+| Security hardening (v1.0.2+) | **Shipped** | SSRF policy, rate limits, security-status API |
+| Metadata field encryption (v1.0.3) | **Shipped (opt-in)** | `STORAGE_FIELD_ENCRYPTION_*`, migration `012` — [field-encryption.md](../operations-guide/en/field-encryption.md) |
+| Vault secrets injection (v1.0.3) | **Shipped (ops)** | Agent sidecar → `STORAGE_*` env — [secrets-vault.md](../operations-guide/en/secrets-vault.md) |
 
 ## Test gates (last verified)
 
 | Gate | Result | When |
 |------|--------|------|
-| `go test ./...` | PASS | 2026-06-28 v1.0.2 campaign |
-| Feature-audit | 101 PASS / 0 FAIL / 2 SKIP | 2026-06-28 regression |
-| Playwright E2E (security) | 2/2 PASS | 2026-06-28 post console build |
+| `go test ./...` | PASS | 2026-06-30 v1.0.3 campaign |
+| Feature-audit | PASS | 2026-06-30 regression |
+| Playwright e2e-smoke | PASS | CI `smoke.spec.ts` on Postgres profile |
+| Postgres FK integration | PASS | `TestNullableFK_team_id` with `TEST_POSTGRES_DSN` |
 
 ## Documentation
 
-- Bilingual guides: 35 EN = 35 RU markdown files under `docs/`.
-- v1.0.2 upgrade guide (EN/RU), OpenAPI full spec sync, CHANGELOG migration section ? completed 2026-06-28.
-- Roadmap audit items: [roadmap.md](./roadmap.md) ? AUD-08/09 closed in v1.0.1 scope.
-- Architecture: [architecture.md](./architecture.md) ? [competitiveness roadmap](../../specs/roadmap/README.md).
+- Bilingual guides under `docs/`; **v1.0.3** upgrade (EN/RU), field encryption, Vault injection, CHANGELOG — 2026-06-30.
+- Roadmap audit items: [roadmap.md](./roadmap.md).
+- Architecture: [architecture.md](./architecture.md).
 
 ## Out of scope for CE (planned 1.1.0+)
 
-Mobile (Flutter/PWA), Kafka event sink, automatic failover orchestrator, production erasure tier, full de/fr documentation, CI publish on every `main` push.
+Removal of `STORAGE_OUTBOUND_HTTP_ALLOW` escape hatch (scheduled v1.1.0), mobile (Flutter/PWA), Kafka event sink, automatic failover orchestrator, production erasure tier, Vault Transit in-process KEK (Enterprise phase 2).
 
 ---
 
-[Documentation index](../README.md) ? [Roadmap](./roadmap.md) ? [Architecture](./architecture.md)
+[Documentation index](../README.md) · [Roadmap](./roadmap.md) · [CHANGELOG](../../../CHANGELOG.md)

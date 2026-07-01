@@ -16,6 +16,7 @@ import { WebhooksPage } from "@/pages/webhooks";
 import { SettingsLayout } from "@/components/settings/SettingsLayout";
 import { BucketSettingsPage } from "@/pages/settings-buckets";
 import { AdministratorSettingsPage } from "@/pages/settings-system";
+import { SecuritySettingsPage } from "@/pages/settings-security";
 import { ProfilePage } from "@/pages/profile";
 import { GatewayPage } from "@/pages/gateway";
 import { FederationPage } from "@/pages/federation";
@@ -196,6 +197,7 @@ export function App() {
           <Route index element={<Navigate to="buckets" replace />} />
           <Route path="buckets" element={<BucketSettingsPage />} />
           <Route path="system" element={<AdministratorSettingsPage />} />
+          <Route path="security" element={<SecuritySettingsPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

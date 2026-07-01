@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -91,7 +92,8 @@ type AccessKeyRecord struct {
 }
 
 type Store struct {
-	db *bolt.DB
+	db       *bolt.DB
+	fieldenc *fieldenc.Service
 }
 
 func boltOpen(path string) (*bolt.DB, error) {
@@ -359,6 +361,13 @@ func (s *Store) ListMultipart(bucket string) ([]MultipartRecord, error) {
 }
 
 func (s *Store) PutAccessKey(rec AccessKeyRecord) error {
+	var err error
+	if rec.SecretKey, err = s.fieldPrepare(fieldenc.PathAccessKeySecretKey, rec.SecretKey); err != nil {
+		return err
+	}
+	if rec.SessionToken, err = s.fieldPrepare(fieldenc.PathAccessKeySessionToken, rec.SessionToken); err != nil {
+		return err
+	}
 	return s.db.Update(func(tx *bolt.Tx) error {
 		data, err := json.Marshal(rec)
 		if err != nil {
@@ -377,7 +386,17 @@ func (s *Store) GetAccessKey(accessKey string) (AccessKeyRecord, error) {
 		}
 		return json.Unmarshal(data, &rec)
 	})
-	return rec, err
+	if err != nil {
+		return rec, err
+	}
+	var decErr error
+	if rec.SecretKey, decErr = s.fieldDecrypt(fieldenc.PathAccessKeySecretKey, rec.SecretKey); decErr != nil {
+		return rec, decErr
+	}
+	if rec.SessionToken, decErr = s.fieldDecrypt(fieldenc.PathAccessKeySessionToken, rec.SessionToken); decErr != nil {
+		return rec, decErr
+	}
+	return rec, nil
 }
 
 func (s *Store) ListAccessKeys() ([]AccessKeyRecord, error) {
@@ -387,6 +406,10 @@ func (s *Store) ListAccessKeys() ([]AccessKeyRecord, error) {
 			var rec AccessKeyRecord
 			if err := json.Unmarshal(v, &rec); err != nil {
 				return err
+			}
+			var decErr error
+			if rec.SecretKey, decErr = s.fieldDecrypt(fieldenc.PathAccessKeySecretKey, rec.SecretKey); decErr != nil {
+				return decErr
 			}
 			out = append(out, rec)
 			return nil

@@ -1,6 +1,9 @@
 package metadata
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // MetadataStore is the backend-agnostic metadata persistence contract.
 // Implemented by BoltDB (*Store) and PostgreSQL (postgres.Store).
@@ -211,6 +214,13 @@ type MetadataStore interface {
 
 	// HA / Postgres monitoring
 	ReplicationLagSeconds() (float64, bool)
+
+	// Field encryption KEK registry
+	ListEncryptionKeys(ctx context.Context) ([]EncryptionKeyRecord, error)
+	GetEncryptionKey(ctx context.Context, kekID string) (EncryptionKeyRecord, error)
+	GetActiveEncryptionKey(ctx context.Context) (EncryptionKeyRecord, error)
+	InsertEncryptionKey(ctx context.Context, rec EncryptionKeyRecord) error
+	SetEncryptionKeyActive(ctx context.Context, kekID string) error
 }
 
 // Compile-time check: BoltDB Store implements MetadataStore.

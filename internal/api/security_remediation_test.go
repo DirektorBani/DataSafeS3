@@ -30,6 +30,7 @@ func TestHooksTest_blocksPrivateIP(t *testing.T) {
 
 func TestPutLoggingConfig_blocksLoopbackLoki(t *testing.T) {
 	t.Setenv("STORAGE_DEV", "false")
+	t.Setenv("STORAGE_OUTBOUND_HTTP_ALLOW", "")
 	s := testServer(t)
 	tok := loginToken(t, s, "admin", "admin")
 	cfg, _ := s.Meta().GetSystemConfig()
@@ -39,6 +40,22 @@ func TestPutLoggingConfig_blocksLoopbackLoki(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPutLoggingConfig_allowsLoopbackWhenOutboundHTTPAllow(t *testing.T) {
+	t.Setenv("STORAGE_DEV", "false")
+	t.Setenv("STORAGE_OUTBOUND_HTTP_ALLOW", "true")
+	s := testServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+	cfg, _ := s.Meta().GetSystemConfig()
+	cfg.Logging.Loki = metadata.LogSinkEndpoint{Enabled: true, Address: "http://127.0.0.1:3100"}
+	raw, _ := json.Marshal(cfg)
+	req := authReq(http.MethodPut, "/api/v1/settings/system", tok, raw)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
 	}
 }
@@ -94,11 +111,17 @@ func TestSecurityStatus_listsWeakSecrets(t *testing.T) {
 		t.Fatalf("status %d", rec.Code)
 	}
 	var resp struct {
-		WeakSecrets []string `json:"weak_secrets"`
+		WeakSecrets     []string `json:"weak_secrets"`
+		FieldEncryption struct {
+			Enabled bool `json:"enabled"`
+		} `json:"field_encryption"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
 	if len(resp.WeakSecrets) == 0 {
 		t.Fatal("expected weak secrets in non-dev mode")
+	}
+	if resp.FieldEncryption.Enabled {
+		t.Fatal("expected field_encryption.enabled false by default")
 	}
 }
 

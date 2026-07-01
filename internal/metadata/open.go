@@ -2,9 +2,12 @@ package metadata
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
 )
 
 // Backend selects the metadata persistence engine.
@@ -27,6 +30,8 @@ type Config struct {
 	PostgresUser           string
 	PostgresPassword       string
 	PostgresDB             string
+
+	FieldEncryption *fieldenc.Service
 }
 
 // ConfigFromEnv builds Config from environment variables.
@@ -70,7 +75,14 @@ func Open(cfg Config) (MetadataStore, error) {
 		if cfg.DataDir == "" {
 			cfg.DataDir = "./data"
 		}
-		return OpenBolt(filepath.Join(cfg.DataDir, "metadata.db"))
+		s, err := OpenBolt(filepath.Join(cfg.DataDir, "metadata.db"))
+		if err != nil {
+			return nil, err
+		}
+		if cfg.FieldEncryption != nil {
+			s.fieldenc = cfg.FieldEncryption
+		}
+		return s, nil
 	case BackendPostgres:
 		if PostgresOpener == nil {
 			return nil, fmt.Errorf("postgres backend not available (import postgres package)")
@@ -104,9 +116,8 @@ func PostgresDSN(cfg Config) string {
 	if cfg.PostgresDSN != "" {
 		return cfg.PostgresDSN
 	}
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		cfg.PostgresUser,
-		cfg.PostgresPassword,
+	return fmt.Sprintf("postgres://%s@%s:%s/%s?sslmode=disable",
+		url.UserPassword(cfg.PostgresUser, cfg.PostgresPassword).String(),
 		cfg.PostgresHost,
 		cfg.PostgresPort,
 		cfg.PostgresDB,

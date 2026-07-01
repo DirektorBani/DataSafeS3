@@ -165,6 +165,14 @@ components:
         doc:
           type: string
           description: Documentation path for secret rotation
+        field_encryption:
+          type: object
+          properties:
+            enabled: { type: boolean }
+            active_kek_id: { type: string }
+            registry_count: { type: integer }
+            legacy_plaintext_fields_estimate: { type: integer }
+          description: Field encryption status (no secret material)
 
     MeResponse:
       type: object

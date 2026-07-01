@@ -422,6 +422,7 @@ export type GatewayHealth = {
   connections_ok: number;
   rules_total: number;
   rules_broken?: number;
+  public_read_rules?: number;
   recent_jobs: SyncJob[];
   recent_errors?: ReplicationError[];
   queue_pending: number;

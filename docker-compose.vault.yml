@@ -1,0 +1,92 @@
+# Vault profile overlay — Agent → rendered env file → storage-server entrypoint.
+# Tests the injection path (no in-app Vault SDK required).
+#
+# Usage (Windows local dev — bind data to D: via local-data overlay):
+#   docker compose -p datasafe --profile postgres --profile vault \
+#     -f docker-compose.yml \
+#     -f docker-compose.local-data.yml \
+#     -f docker-compose.local-binary.yml \
+#     -f docker-compose.vault.yml \
+#     up -d vault vault-init vault-agent postgres storage-server
+#
+# Linux / CI (repo-local data):
+#   docker compose -p datasafe-vault --profile postgres --profile vault \
+#     -f docker-compose.yml \
+#     -f docker-compose.vault.yml \
+#     up -d --wait vault vault-init vault-agent postgres storage-server
+#
+# Run integration tests: see deploy/vault/README.md
+
+services:
+  vault:
+    image: hashicorp/vault:1.17
+    profiles: [vault]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN:-root}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      VAULT_ADDR: http://127.0.0.1:8200
+    cap_add:
+      - IPC_LOCK
+    command: server -dev
+    ports:
+      - "${VAULT_PUBLISH_PORT:-8200}:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  vault-init:
+    image: hashicorp/vault:1.17
+    profiles: [vault]
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_DEV_ROOT_TOKEN:-root}
+    volumes:
+      - ./deploy/vault/init-kv.sh:/init-kv.sh:ro
+      - ./deploy/vault/test-fixtures.env:/vault/config/test-fixtures.env:ro
+    entrypoint: ["/bin/sh", "/init-kv.sh"]
+    restart: "no"
+
+  vault-agent:
+    image: hashicorp/vault:1.17
+    profiles: [vault]
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_DEV_ROOT_TOKEN:-root}
+    command: ["agent", "-config=/vault/config/agent.hcl"]
+    volumes:
+      - ./deploy/vault/agent.hcl:/vault/config/agent.hcl:ro
+      - ./deploy/vault/dev-token:/vault/config/dev-token:ro
+      - ./deploy/vault/templates:/vault/config/templates:ro
+      - vault-rendered:/rendered
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /rendered/datasafe.env"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  storage-server:
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+        required: false
+    entrypoint: ["/vault/entrypoint-with-vault-env.sh"]
+    volumes:
+      - vault-rendered:/rendered:ro
+      - ./deploy/vault/entrypoint-with-vault-env.sh:/vault/entrypoint-with-vault-env.sh:ro
+    environment:
+      - DATASAFE_VAULT_REQUIRED=true
+      - VAULT_RENDERED_ENV=/rendered/datasafe.env
+      - STORAGE_METADATA_BACKEND=${STORAGE_METADATA_BACKEND:-bolt}
+
+volumes:
+  vault-rendered:

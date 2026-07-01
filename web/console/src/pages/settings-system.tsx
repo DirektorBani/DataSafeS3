@@ -7,6 +7,7 @@ import { api, type SystemConfig } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { AdministratorSettings } from "@/components/settings/AdministratorSettings";
+import { SecurityStatusPanel } from "@/components/settings/SecurityStatusPanel";
 import {
   initTrashRetentionFromDays,
   trashRetentionDays,
@@ -75,6 +76,8 @@ export function AdministratorSettingsPage() {
           </Button>
         }
       />
+
+      <SecurityStatusPanel />
 
       <AdministratorSettings
         draft={systemDraft}

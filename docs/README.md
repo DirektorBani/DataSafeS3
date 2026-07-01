@@ -4,6 +4,8 @@
 
 Product documentation for DataSafeS3 — a self-hosted storage platform for secure and governed data management. Documentation focuses on **product value**, not comparisons with other products.
 
+**Current Community release:** [v1.0.3](../CHANGELOG.md#103---2026-06-30) (2026-06-30)
+
 ---
 
 ## Learn — понять продукт
@@ -81,6 +83,8 @@ Environment variables and system settings: [User guide — Administrator setting
 | **Monitoring** | [operations-guide/en/monitoring.md](operations-guide/en/monitoring.md) | [operations-guide/ru/monitoring.md](operations-guide/ru/monitoring.md) |
 | **Troubleshooting** | [operations-guide/en/troubleshooting.md](operations-guide/en/troubleshooting.md) | [operations-guide/ru/troubleshooting.md](operations-guide/ru/troubleshooting.md) |
 | **Security self-assessment** | [operations-guide/en/security-self-assessment.md](operations-guide/en/security-self-assessment.md) | [operations-guide/ru/security-self-assessment.md](operations-guide/ru/security-self-assessment.md) |
+| **Field encryption (metadata)** | [operations-guide/en/field-encryption.md](operations-guide/en/field-encryption.md) | [operations-guide/ru/field-encryption.md](operations-guide/ru/field-encryption.md) |
+| **Vault secrets injection** | [operations-guide/en/secrets-vault.md](operations-guide/en/secrets-vault.md) | [operations-guide/ru/secrets-vault.md](operations-guide/ru/secrets-vault.md) |
 | **Extension hooks (example)** | [../examples/extension-hook/README.md](../examples/extension-hook/README.md) | same |
 
 ---
@@ -96,6 +100,7 @@ Environment variables and system settings: [User guide — Administrator setting
 | **File collaboration (status)** | [en/specs/file-collaboration-status.md](en/specs/file-collaboration-status.md) | [ru/specs/file-collaboration-status.md](ru/specs/file-collaboration-status.md) |
 | **File collaboration (TZ)** | [en/specs/file-collaboration-tz.md](en/specs/file-collaboration-tz.md) | [ru/specs/file-collaboration-tz.md](ru/specs/file-collaboration-tz.md) |
 | **File collaboration Phase 4 backlog** | [en/specs/file-collaboration-phase4-backlog.md](en/specs/file-collaboration-phase4-backlog.md) | [ru/specs/file-collaboration-phase4-backlog.md](ru/specs/file-collaboration-phase4-backlog.md) |
+| **Field encryption (v1.0.3 TZ)** | [specs/field-encryption-1.0.3-tz.md](specs/field-encryption-1.0.3-tz.md) | same |
 | **UI screenshots** | [images/screenshots/](images/screenshots/) | same |
 | **Diagrams (Mermaid)** | [diagrams/README.md](diagrams/README.md) | same |
 

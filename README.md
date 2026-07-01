@@ -2,7 +2,7 @@
 
 **[English](docs/en/README.md)** · **[Русский](docs/ru/README.md)** · **[Documentation](docs/README.md)**
 
-**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE)
+**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.0.3](CHANGELOG.md#103---2026-06-30)
 
 ---
 

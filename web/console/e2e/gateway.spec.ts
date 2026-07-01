@@ -12,3 +12,25 @@ test("gateway page loads connections tab without error", async ({ page }) => {
     /no gateway connections|add connection|нет подключений|добавить подключение/i
   );
 });
+
+test("gateway shows public-read policy warning when health reports rules", async ({ page }) => {
+  await page.route("**/api/v1/gateway/health", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "ok",
+        pending_tasks: 0,
+        failed_tasks: 0,
+        public_read_rules: 2,
+      }),
+    });
+  });
+
+  await loginAsAdmin(page);
+  await page.goto("/gateway");
+
+  await expect(page.locator("body")).toContainText(
+    /public-read|public read|публичн/i
+  );
+});

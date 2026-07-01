@@ -1,7 +1,8 @@
 {
   "tabs": {
     "buckets": "Bucket settings",
-    "system": "Administrator settings"
+    "system": "Administrator settings",
+    "security": "Security posture"
   },
   "buckets": {
     "confirmDiscard": "Discard unsaved changes?",
@@ -27,6 +28,18 @@
       "title": "Apply to {{count}} buckets?",
       "description": "Existing settings on selected buckets will be replaced.",
       "apply": "Apply"
+    }
+  },
+  "security": {
+    "title": "Security status",
+    "description": "Pre-flight check for default secrets before production.",
+    "loading": "Checking security posture…",
+    "loadError": "Unable to load security status.",
+    "ok": "No weak default secrets detected.",
+    "weakSecrets": "Default secrets in use: {{vars}}.",
+    "recommendations": {
+      "rotate": "Rotate listed variables and restart the storage server.",
+      "strict": "Set STORAGE_STRICT_SECRETS=true to fail fast on insecure defaults."
     }
   },
   "system": {

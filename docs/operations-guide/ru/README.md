@@ -14,6 +14,8 @@
 | Аварийное восстановление | [disaster-recovery.md](disaster-recovery.md) |
 | Мониторинг | [monitoring.md](monitoring.md) |
 | Security self-assessment | [security-self-assessment.md](security-self-assessment.md) |
+| Field encryption (метаданные) | [field-encryption.md](field-encryption.md) |
+| Vault (инъекция секретов) | [secrets-vault.md](secrets-vault.md) |
 | Устранение неполадок | [troubleshooting.md](troubleshooting.md) |
 
 Helm: [../../../deploy/helm/datasafe/README.md](../../../deploy/helm/datasafe/README.md)

@@ -10,16 +10,16 @@ Helm chart for deploying **DataSafeS3** — self-hosted S3-compatible object sto
 - Helm 3.10+
 - PersistentVolume provisioner (for object data and optional PostgreSQL)
 - Built images (or pull from GHCR):
-  - `ghcr.io/direktorbani/datasafe-storage-server:v1.0.2` — release tag (or build locally: `docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .`)
-  - `ghcr.io/direktorbani/datasafe-console:v1.0.2` — release tag (or build via `deploy/docker/Dockerfile.console`)
+  - `ghcr.io/direktorbani/datasafe-storage-server:v1.0.3` — release tag (or build locally: `docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .`)
+  - `ghcr.io/direktorbani/datasafe-console:v1.0.3` — release tag (or build via `deploy/docker/Dockerfile.console`)
 
 ## Quick install (GHCR release tags)
 
 ```bash
-# Minimal BoltDB stack with published v1.0.2 images
+# Minimal BoltDB stack with published v1.0.3 images
 helm install datasafe deploy/helm/datasafe \
-  --set storageServer.image.tag=v1.0.2 \
-  --set console.image.tag=v1.0.2 \
+  --set storageServer.image.tag=v1.0.3 \
+  --set console.image.tag=v1.0.3 \
   --namespace datasafe --create-namespace
 ```
 
@@ -37,6 +37,7 @@ helm install datasafe deploy/helm/datasafe \
 
 # Production-like with bundled PostgreSQL
 # Hardened production overrides (secrets placeholders, STORAGE_STRICT_SECRETS): values-production.yaml
+# HashiCorp Vault Agent Injector (optional): examples/values-vault-agent.yaml
 helm install datasafe deploy/helm/datasafe \
   --set postgres.enabled=true \
   --set storageServer.metadataBackend=postgres \
@@ -191,6 +192,19 @@ monitoring:
   grafana:
     enabled: false
 ```
+
+**HashiCorp Vault (env injection, optional):**
+
+See [operations guide — Vault](../../../docs/operations-guide/en/secrets-vault.md). Example overlay:
+
+```bash
+helm upgrade datasafe deploy/helm/datasafe \
+  -f deploy/helm/datasafe/values-production.yaml \
+  -f deploy/helm/datasafe/examples/values-vault-agent.yaml \
+  -n datasafe
+```
+
+Requires Vault Agent Injector in the cluster. Clears inline Helm secret values; pod annotations render `STORAGE_*` via Agent templates.
 
 ## Validation
 

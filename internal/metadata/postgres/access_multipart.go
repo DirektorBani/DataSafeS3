@@ -4,11 +4,19 @@ import (
 	"context"
 
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func (s *Store) PutAccessKey(rec metadata.AccessKeyRecord) error {
-	_, err := s.pool.Exec(context.Background(), `
+	var err error
+	if rec.SecretKey, err = s.fieldPrepare(fieldenc.PathAccessKeySecretKey, rec.SecretKey); err != nil {
+		return err
+	}
+	if rec.SessionToken, err = s.fieldPrepare(fieldenc.PathAccessKeySessionToken, rec.SessionToken); err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(context.Background(), `
 		INSERT INTO access_keys (access_key, secret_key, label, owner_id, owner, created_at, session_token, expires_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		ON CONFLICT (access_key) DO UPDATE SET secret_key=$2, label=$3, owner_id=$4, owner=$5,
@@ -34,6 +42,12 @@ func (s *Store) GetAccessKey(accessKey string) (metadata.AccessKeyRecord, error)
 		rec.SessionToken = *sess
 	}
 	rec.ExpiresAt = timePtr(exp)
+	if rec.SecretKey, err = s.fieldDecrypt(fieldenc.PathAccessKeySecretKey, rec.SecretKey); err != nil {
+		return rec, err
+	}
+	if rec.SessionToken, err = s.fieldDecrypt(fieldenc.PathAccessKeySessionToken, rec.SessionToken); err != nil {
+		return rec, err
+	}
 	return rec, nil
 }
 
@@ -49,6 +63,9 @@ func (s *Store) ListAccessKeys() ([]metadata.AccessKeyRecord, error) {
 	for rows.Next() {
 		var rec metadata.AccessKeyRecord
 		if err := rows.Scan(&rec.AccessKey, &rec.SecretKey, &rec.Label, &rec.OwnerID, &rec.Owner, &rec.CreatedAt); err != nil {
+			return nil, err
+		}
+		if rec.SecretKey, err = s.fieldDecrypt(fieldenc.PathAccessKeySecretKey, rec.SecretKey); err != nil {
 			return nil, err
 		}
 		out = append(out, rec)

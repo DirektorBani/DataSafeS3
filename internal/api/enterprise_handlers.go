@@ -889,6 +889,15 @@ func (s *Server) handleGatewayHealth(w http.ResponseWriter, r *http.Request) {
 			okCount++
 		}
 	}
+	publicReadRules := 0
+	for _, r := range rules {
+		if !r.Enabled {
+			continue
+		}
+		if s.sourceBucketVisibility(r.SourceBucket) == "public-read" {
+			publicReadRules++
+		}
+	}
 	lagSeconds := 0.0
 	if !stats.OldestPending.IsZero() {
 		lagSeconds = time.Since(stats.OldestPending).Seconds()
@@ -898,6 +907,7 @@ func (s *Server) handleGatewayHealth(w http.ResponseWriter, r *http.Request) {
 		"connections_ok":     okCount,
 		"rules_total":        len(rules),
 		"rules_broken":       brokenRules,
+		"public_read_rules":  publicReadRules,
 		"recent_jobs":        jobs,
 		"recent_errors":      recentErrors,
 		"queue_pending":      stats.PendingCount,

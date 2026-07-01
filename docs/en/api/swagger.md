@@ -2,7 +2,7 @@ English | **[Русский](../../ru/api/swagger.md)**
 
 # Swagger UI — Community Integration API
 
-**Author:** Ilya Trachuk · **Last updated:** 2026-06-28
+**Author:** Ilya Trachuk · **Last updated:** 2026-06-30
 
 ## What Swagger UI is (and is not)
 
@@ -75,16 +75,17 @@ Public endpoints (`GET /health`, public share metadata/download) require **no** 
 - **Admin-only routes** (users, system settings, webhooks, tenants, gateway, federation): shipped in **Community** self-hosted builds; documented in [`openapi-full.yaml`](../../api/openapi-full.yaml), managed via web console or full spec — **not** in Swagger UI.
 - **S3 XML API:** AWS SigV4 on port 9000 — use AWS SDKs; not in OpenAPI.
 
-## v1.0.2 security endpoints (full spec)
+## v1.0.2+ security endpoints (full spec)
 
-Swagger UI intentionally documents the **Integration API** only (no `/auth/*` or admin settings). Two routes added in v1.0.2 live in [`openapi-full.yaml`](../../api/openapi-full.yaml):
+Swagger UI intentionally documents the **Integration API** only (no `/auth/*` or admin settings). Security-related admin routes live in [`openapi-full.yaml`](../../api/openapi-full.yaml):
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| `POST` | `/auth/oidc/exchange` | Redeem one-time `exchange_code` from OIDC callback for a session JWT (replaces `?token=` in URL) |
-| `GET` | `/settings/security-status` | Admin diagnostic: lists env vars still on insecure defaults (`weak_secrets`) |
+| Method | Path | Since | Purpose |
+|--------|------|-------|---------|
+| `POST` | `/auth/oidc/exchange` | v1.0.2 | Redeem one-time `exchange_code` from OIDC callback for a session JWT (replaces `?token=` in URL) |
+| `GET` | `/settings/security-status` | v1.0.2 | Admin diagnostic: `weak_secrets` env list |
+| `GET` | `/settings/security-status` | v1.0.3 | Same route; response adds `field_encryption` (`enabled`, `active_kek_id`, `registry_count`) |
 
-Use the full spec or curl for pre-flight checks after upgrade. Console SSO uses the exchange flow automatically once server and console are both v1.0.2+.
+Use the full spec or curl for pre-flight checks after upgrade. Console SSO uses the exchange flow automatically once server and console are both v1.0.2+. **v1.0.3:** Admin → Settings → **Security** mirrors `security-status` (including field encryption posture).
 
 ## Export for Postman / Insomnia
 

@@ -75,16 +75,17 @@ Authorization: Bearer ds_xxxxxxxx
 - **Admin-only маршруты** (пользователи, системные настройки, webhooks, tenants, gateway, federation): входят в **Community** self-hosted; описаны в [`openapi-full.yaml`](../../api/openapi-full.yaml), управление через консоль или полную спеку — **не** в Swagger UI.
 - **S3 XML API:** AWS SigV4 на порту 9000 — AWS SDK; вне OpenAPI.
 
-## Эндпоинты безопасности v1.0.2 (full spec)
+## Эндпоинты безопасности v1.0.2+ (full spec)
 
-Swagger UI намеренно описывает только **Integration API** (без `/auth/*` и admin settings). Два маршрута v1.0.2 — в [`openapi-full.yaml`](../../api/openapi-full.yaml):
+Swagger UI намеренно описывает только **Integration API** (без `/auth/*` и admin settings). Маршруты безопасности — в [`openapi-full.yaml`](../../api/openapi-full.yaml):
 
-| Метод | Путь | Назначение |
-|-------|------|------------|
-| `POST` | `/auth/oidc/exchange` | Обмен одноразового `exchange_code` после OIDC callback на JWT сессии (вместо `?token=` в URL) |
-| `GET` | `/settings/security-status` | Admin-диагностика: env vars на небезопасных дефолтах (`weak_secrets`) |
+| Метод | Путь | С | Назначение |
+|-------|------|---|------------|
+| `POST` | `/auth/oidc/exchange` | v1.0.2 | Обмен `exchange_code` на JWT сессии (вместо `?token=` в URL) |
+| `GET` | `/settings/security-status` | v1.0.2 | Диагностика: `weak_secrets` |
+| `GET` | `/settings/security-status` | v1.0.3 | Тот же маршрут; в ответе блок `field_encryption` |
 
-Для pre-flight после обновления используйте full spec или curl. SSO в консоли работает через exchange автоматически, когда server и console оба v1.0.2+.
+Для pre-flight после обновления — full spec или curl. SSO через exchange при server и console v1.0.2+. **v1.0.3:** Admin → Settings → **Security** дублирует posture из `security-status`.
 
 ## Экспорт в Postman / Insomnia
 

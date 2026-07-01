@@ -16,7 +16,8 @@ DataSafeS3 Community Edition `storage-server` + console, Apache-2.0, single-tena
 | Authorization | RBAC, bucket policies, tenant grants | feature-audit C12–C16 |
 | Audit trail | Activity log, share audit events | Admin → Activity |
 | Transport | TLS via ingress/Caddy (operator-provided) | deployment docs |
-| Secrets | Env / K8s secrets, `STORAGE_STRICT_SECRETS`, security-status API | Helm `values-production.yaml` |
+| Secrets | Env / K8s secrets, optional [Vault Agent injection](secrets-vault.md), `STORAGE_STRICT_SECRETS`, security-status API | Helm `values-production.yaml`, `examples/values-vault-agent.yaml` |
+| Metadata field encryption | Opt-in X25519 envelope for access keys, gateway, config secrets ([field-encryption.md](field-encryption.md)) | `STORAGE_FIELD_ENCRYPTION_*`, migration `012_field_encryption`, [scripts/crypto/](../../../scripts/crypto/README.md) |
 | SSRF / outbound URLs | urlpolicy on sinks, hooks, notifications | `STORAGE_DEV`, `STORAGE_OUTBOUND_HTTP_ALLOW` |
 | OIDC session | Exchange code (no JWT in browser URL) | `POST /auth/oidc/exchange` |
 | Rate limiting | Login endpoints per IP | `STORAGE_RATE_LIMIT_LOGIN` |

@@ -79,7 +79,7 @@
 | MFA | Профиль → Включить MFA |
 | Смена S3 bootstrap key | Настройки или env `STORAGE_ACCESS_KEY` |
 
-Перед production задайте `STORAGE_STRICT_SECRETS=true` — сервер не стартует, пока `STORAGE_JWT_SECRET`, `STORAGE_SECRET_KEY` или `STORAGE_ADMIN_PASSWORD` совпадают с dev-дефолтами. В v1.0.2 также доступен `GET /api/v1/settings/security-status` (admin token) для pre-flight списка слабых переменных — то же предупреждение показывает баннер в консоли.
+Перед production задайте `STORAGE_STRICT_SECRETS=true` — сервер не стартует, пока `STORAGE_JWT_SECRET`, `STORAGE_SECRET_KEY` или `STORAGE_ADMIN_PASSWORD` совпадают с dev-дефолтами. В v1.0.2+ доступен `GET /api/v1/settings/security-status` (admin token) — то же в **Admin → Settings → Security** (v1.0.3). Опционально [field encryption](../operations-guide/ru/field-encryption.md) (v1.0.3) шифрует выбранные секреты метаданных при `STORAGE_FIELD_ENCRYPTION_ENABLED=true`.
 
 ## Фаза 8 — Эксплуатация
 
