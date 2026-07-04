@@ -1,7 +1,7 @@
 # Default values for DataSafeS3 Helm chart.
-# Release images on GHCR — pin a tag in production (e.g. v1.0.3):
-#   storageServer.image.tag: v1.0.3
-#   console.image.tag: v1.0.3
+# Release images on GHCR — pin a tag in production (e.g. v1.1.0):
+#   storageServer.image.tag: v1.1.0
+#   console.image.tag: v1.1.0
 # Local build: docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .
 
 global:
@@ -20,7 +20,7 @@ storageServer:
   # Published image: ghcr.io/direktorbani/datasafe-storage-server (build locally via deploy/docker/Dockerfile).
   image:
     repository: ghcr.io/direktorbani/datasafe-storage-server
-    tag: latest
+    tag: v1.1.0
     pullPolicy: IfNotPresent
   replicaCount: 1
   podAnnotations: {}
@@ -46,6 +46,7 @@ storageServer:
     adminPassword: admin
     jwtSecret: datasafe-jwt-secret
     sseMasterKey: ""
+    metricsToken: ""  # STORAGE_METRICS_TOKEN — bearer for GET /metrics when non-empty
     # Postgres connection (used when metadataBackend=postgres or postgres.enabled).
     postgres:
       host: ""  # auto-set to release-postgres service when postgres.enabled
@@ -140,7 +141,7 @@ minio:
   enabled: false
   image:
     repository: minio/minio
-    tag: latest
+    tag: v1.1.0
     pullPolicy: IfNotPresent
   rootUser: minioadmin
   rootPassword: minioadmin
@@ -159,13 +160,26 @@ caddy:
     tag: 2-alpine
     pullPolicy: IfNotPresent
   resources: {}
+  # Optional multi-cluster LB overlay (write=leader, read=any). Requires HA upstreams.
+  multiClusterLB:
+    enabled: false
+    listenPort: 8443
+    writeUpstreams:
+      - storage-server-0:9000
+      - storage-server-1:9000
+    readUpstreams:
+      - storage-server-0:9000
+      - storage-server-1:9000
+    service:
+      type: ClusterIP
+      port: 8443
 
 console:
   # Pre-built static console image (copy to shared volume for Caddy).
   # Build: docker build -f deploy/docker/Dockerfile.console -t ghcr.io/direktorbani/datasafe-console:latest .
   image:
     repository: ghcr.io/direktorbani/datasafe-console
-    tag: latest
+    tag: v1.1.0
     pullPolicy: IfNotPresent
   # When false, Caddy serves an emptyDir populated by initContainer from console.image.
   existingConfigMap: ""
@@ -175,14 +189,14 @@ monitoring:
     enabled: true
     image:
       repository: prom/prometheus
-      tag: latest
+      tag: v1.1.0
       pullPolicy: IfNotPresent
     resources: {}
   grafana:
     enabled: true
     image:
       repository: grafana/grafana
-      tag: latest
+      tag: v1.1.0
       pullPolicy: IfNotPresent
     adminUser: admin
     adminPassword: admin

@@ -147,6 +147,114 @@ docker compose --profile postgres up -d
 
 Verify cosign with `TAG=v1.0.3` (see [Verify release images](#verify-release-images-cosign)), then `GET /api/v1/settings/security-status` and Admin → Settings → Security. Enable field encryption only after [field-encryption.md](field-encryption.md) checklist.
 
+## Upgrading to v1.1.0
+
+Release **v1.1.0** is a **trust-debt** minor: closes scheduled SSRF escape hatch removal and adds optional **metrics endpoint authentication**. Upgrade **storage-server and console together** (console has no breaking API changes, but paired releases simplify support).
+
+### Outbound URLs (breaking)
+
+| Before (v1.0.x) | After (v1.1.0) |
+|-----------------|----------------|
+| `STORAGE_OUTBOUND_HTTP_ALLOW=true` allowed loopback HTTP in production | **Variable removed** — ignored if still set in `.env` |
+| Production Loki at `http://127.0.0.1:3100` with allow flag | Use **HTTPS** public endpoint, or `STORAGE_DEV=true` **only** on dev/CI overlays |
+
+**Dev/CI:** `docker-compose.audit.yml` sets `STORAGE_DEV=true` for feature-audit and local Loki loops — do **not** use this overlay in production.
+
+**Checklist:**
+
+1. Remove `STORAGE_OUTBOUND_HTTP_ALLOW` from compose, Helm, and `.env`.
+2. Audit log sinks, webhooks, and hook tests — switch to `https://` where they pointed at private HTTP.
+3. For local stacks, confirm `STORAGE_DEV=true` only on non-production hosts.
+
+### Metrics authentication (breaking when token set)
+
+| `STORAGE_METRICS_TOKEN` | Behaviour |
+|-------------------------|-----------|
+| Unset or empty | `/metrics` remains open (legacy); server logs a **warning** when `STORAGE_DEV=false` |
+| Non-empty | `GET /metrics` requires `Authorization: Bearer <token>` |
+
+**Prometheus scrape example:**
+
+```yaml
+scrape_configs:
+  - job_name: storage-server
+    static_configs:
+      - targets: ["storage-server:9000"]
+    authorization:
+      type: Bearer
+      credentials: "<STORAGE_METRICS_TOKEN>"
+```
+
+**Helm:** set `storageServer.config.metricsToken` in values (stored in the storage-server Secret).
+
+**Console dashboard:** when metrics are token-protected, the console may show zero bucket/storage gauges (it does not send the bearer token). Use Grafana/Prometheus for operational metrics.
+
+### Share link tokens (metadata)
+
+| Backend | Behaviour after upgrade |
+|---------|----------------------|
+| **PostgreSQL** | Migration `013_share_token_hash` backfills `token_hash` for existing rows; plaintext `token` column dropped after backfill |
+| **Bolt** | New links stored as hash only; server keeps a **legacy plaintext index fallback** so pre-upgrade share URLs keep working until links are recreated |
+
+No operator action required for existing Postgres links. Bolt dev installs: old plaintext-indexed links remain valid; newly created links use hash storage only.
+
+### New and changed environment variables
+
+| Variable | Change |
+|----------|--------|
+| `STORAGE_OUTBOUND_HTTP_ALLOW` | **Removed** |
+| `STORAGE_METRICS_TOKEN` | **Enforced** on `/metrics` when non-empty |
+
+### Upgrade steps (v1.1.0)
+
+```bash
+git pull
+export TAG=v1.1.0   # or build from source
+docker compose --profile postgres pull
+docker compose --profile postgres build storage-server
+scripts/build-console.cmd
+docker compose --profile postgres up -d
+```
+
+1. Apply migration checklist above **before** or immediately after restart.
+2. Update Prometheus scrape config if using `STORAGE_METRICS_TOKEN`.
+3. Run `GET /api/v1/settings/security-status` and feature-audit on staging.
+
+**Not in v1.1.0:** field encryption v2, mobile GA, Vault Transit in-process KEK — see [project status](../../en/context/project-status.md).
+
+## Trusted clusters (post-v1.1.0)
+
+Included in **v1.1.0**. Adds mTLS pairing, trusted remote clusters, and replication rules scoped to paired sites.
+
+### PostgreSQL migrations
+
+| Migration | Content |
+|-----------|---------|
+| `017` | `trusted_clusters`, pairing sessions, cluster certificates |
+| `018` | `federation_clusters.cluster_id` |
+| `019` | `site_replication_rules.trusted_cluster_id` |
+
+Migrations apply automatically on `storage-server` start. No manual SQL required.
+
+### New environment variables
+
+| Variable | Default | Note |
+|----------|---------|------|
+| `STORAGE_CLUSTER_ID` | `local` | Unique site id |
+| `STORAGE_CLUSTER_ENDPOINT` | — | Must be reachable **from remote site** (see Docker note below) |
+| `STORAGE_CLUSTER_CERT_DIR` | `{data}/cluster-certs` | Backup with TLS material |
+| `STORAGE_TRUSTED_CLUSTER_REPL_ENABLED` | `true` | Trusted-cluster replication worker |
+
+### Operator checklist
+
+1. Set `STORAGE_CLUSTER_ID` and `STORAGE_CLUSTER_ENDPOINT` on **both** sites before pairing.
+2. On Docker: use `host.docker.internal` (or real DNS), not `127.0.0.1`, for cross-container pairing.
+3. Pair via console **Clusters** or API; verify both sides show **healthy**.
+4. Add replication rules on initiator; test PUT/DELETE.
+5. Backup `cluster-certs` directory.
+
+Full guide: [trusted-clusters.md](trusted-clusters.md) (EN) · [RU](../ru/trusted-clusters.md)
+
 ## Checklist
 
 - [ ] Backup metadata and objects
@@ -156,3 +264,4 @@ Verify cosign with `TAG=v1.0.3` (see [Verify release images](#verify-release-ima
 - [ ] v1.0.2: upgrade server **and** console together for OIDC
 - [ ] v1.0.2: review outbound URLs and `STORAGE_RATE_LIMIT_LOGIN` for automation
 - [ ] v1.0.3 (optional): enable [field encryption](field-encryption.md) — generate KEK, set env, verify security-status
+- [ ] v1.1.0: remove `STORAGE_OUTBOUND_HTTP_ALLOW`; configure `STORAGE_METRICS_TOKEN` + Prometheus bearer if used

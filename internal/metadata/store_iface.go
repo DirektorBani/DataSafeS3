@@ -93,9 +93,11 @@ type MetadataStore interface {
 	GetTeam(id string) (TeamRecord, error)
 	ListTeams() ([]TeamRecord, error)
 	DeleteTeam(id string) error
+	UpdateTeam(rec TeamRecord) error
 	AddUserTeam(userID, teamID string) error
 	RemoveUserTeam(userID, teamID string) error
 	ListUserTeamIDs(userID string) ([]string, error)
+	ListTeamMemberUserIDs(teamID string) ([]string, error)
 
 	// Tenants
 	EnsureDefaultTenant() error
@@ -181,6 +183,19 @@ type MetadataStore interface {
 	ListFederationClusters() ([]FederationCluster, error)
 	DeleteFederationCluster(id string) error
 
+	// Trusted clusters (multi-cluster mTLS pairing)
+	PutTrustedCluster(rec TrustedCluster) error
+	GetTrustedCluster(id string) (TrustedCluster, error)
+	ListTrustedClusters(activeOnly bool) ([]TrustedCluster, error)
+	DeactivateTrustedCluster(id string) error
+	PutClusterPairingSession(rec ClusterPairingSession) error
+	GetClusterPairingSession(tokenHash string) (ClusterPairingSession, error)
+	MarkClusterPairingSessionUsed(tokenHash string, usedAt time.Time) error
+	PutClusterCertificate(rec ClusterCertificate) error
+	ListClusterCertificates(clusterID string) ([]ClusterCertificate, error)
+	RevokeClusterCertificate(serial string, revokedAt time.Time) error
+	ListRevokedClusterCertSerials() ([]string, error)
+
 	// Shared links
 	PutSharedLink(rec SharedLinkRecord) error
 	GetSharedLink(id string) (SharedLinkRecord, error)
@@ -214,6 +229,20 @@ type MetadataStore interface {
 
 	// HA / Postgres monitoring
 	ReplicationLagSeconds() (float64, bool)
+
+	// Site replication (Postgres)
+	PutSiteReplicationPeer(rec SiteReplicationPeer) error
+	GetSiteReplicationPeer(id string) (SiteReplicationPeer, error)
+	ListSiteReplicationPeers() ([]SiteReplicationPeer, error)
+	DeleteSiteReplicationPeer(id string) error
+	PutSiteReplicationRule(rec SiteReplicationRule) error
+	ListSiteReplicationRules() ([]SiteReplicationRule, error)
+	DeleteSiteReplicationRule(id string) error
+	ListSiteReplicationRulesForBucket(bucket string) ([]SiteReplicationRule, error)
+	ListSiteReplicationRulesForTrustedCluster(clusterID string) ([]SiteReplicationRule, error)
+	PutSiteReplicationTask(rec SiteReplicationTask) error
+	ListDueSiteReplicationTasks(limit int, now time.Time) ([]SiteReplicationTask, error)
+	SiteReplicationStatus() (SiteReplicationStatus, error)
 
 	// Field encryption KEK registry
 	ListEncryptionKeys(ctx context.Context) ([]EncryptionKeyRecord, error)

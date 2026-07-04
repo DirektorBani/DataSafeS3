@@ -13,6 +13,7 @@ DataSafeS3 предоставляет два API из `storage-server`:
 
 - [Аутентификация](authentication.md)
 - [Примеры curl](curl-examples.md)
+- **Примеры кода:** [Go (S3 SDK)](examples/go/list_buckets.go) · [Python (Admin JWT)](../en/examples/python/admin_list_buckets.py)
 - [Swagger UI](http://localhost:8080/api/v1/docs) (Integration API)
 - [OpenAPI community](../../api/openapi.yaml)
 - [OpenAPI full Admin](../../api/openapi-full.yaml)

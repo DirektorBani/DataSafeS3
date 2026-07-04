@@ -1,0 +1,54 @@
+name: e2e-oidc
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+jobs:
+  oidc-keycloak:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Start Keycloak test container
+        run: |
+          docker run -d --name datasafe-keycloak-ci -p 8180:8080 \
+            -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin \
+            -v "${{ github.workspace }}/docs/integrations/keycloak-test/datasafe-realm.json:/opt/keycloak/data/import/datasafe-realm.json:ro" \
+            quay.io/keycloak/keycloak:26.0.7 start-dev --import-realm
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8180/realms/datasafe; then exit 0; fi
+            sleep 3
+          done
+          exit 1
+      - name: Build console
+        working-directory: web/console
+        run: npm ci && npm run build
+      - name: Start DataSafe stack
+        env:
+          DATASAFE_DATA_ROOT: ${{ github.workspace }}/.datasafe-data-oidc
+        run: |
+          mkdir -p "$DATASAFE_DATA_ROOT/storage" "$DATASAFE_DATA_ROOT/postgres"
+          docker compose -p datasafe-oidc -f docker-compose.yml -f docker-compose.local-data.yml --profile postgres up -d --build storage-server caddy postgres
+          for i in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:8080/healthz; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - name: Playwright OIDC Keycloak
+        working-directory: web/console
+        env:
+          KEYCLOAK_URL: http://127.0.0.1:8180
+          E2E_OIDC_KEYCLOAK: "1"
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8080
+        run: |
+          npx playwright install chromium --with-deps
+          npx playwright test e2e/security-oidc-keycloak.spec.ts
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose -p datasafe-oidc -f docker-compose.yml -f docker-compose.local-data.yml --profile postgres down -v --remove-orphans || true
+          docker rm -f datasafe-keycloak-ci || true

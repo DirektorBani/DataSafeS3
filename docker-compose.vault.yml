@@ -86,7 +86,16 @@ services:
     environment:
       - DATASAFE_VAULT_REQUIRED=true
       - VAULT_RENDERED_ENV=/rendered/datasafe.env
-      - STORAGE_METADATA_BACKEND=${STORAGE_METADATA_BACKEND:-bolt}
+    ports:
+      - "${VAULT_INTEGRATION_STORAGE_PORT:-9001}:9000"
+
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${VAULT_TEST_PG_PASSWORD:-VaultIntegPg9!}
+      POSTGRES_USER: ${STORAGE_POSTGRES_USER:-datasafe}
+      POSTGRES_DB: ${STORAGE_POSTGRES_DB:-datasafe}
+    ports:
+      - "${VAULT_INTEGRATION_POSTGRES_PORT:-5434}:5432"
 
 volumes:
   vault-rendered:

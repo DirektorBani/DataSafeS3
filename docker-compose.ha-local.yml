@@ -1,0 +1,87 @@
+# Windows / lab HA overlay — use with docker-compose.ha.yml on D: data root.
+#
+#   scripts\ha\start-ha-stack.ps1
+#
+# Each storage-server has its own object volume. object-replicator rsyncs
+# primary -> standby volumes (simulates multi-node object replication on one host).
+
+services:
+  postgres-standby:
+    volumes:
+      - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/postgres-standby:/var/lib/postgresql/data
+
+  storage-server:
+    environment:
+      STORAGE_METADATA_BACKEND: postgres
+      STORAGE_POSTGRES_READ_REPLICA_DSN: ${STORAGE_POSTGRES_READ_REPLICA_DSN:-postgres://datasafe:datasafe@postgres-standby:5432/datasafe?sslmode=disable}
+      STORAGE_CLUSTER_ID: ${STORAGE_CLUSTER_ID:-ha-primary}
+      STORAGE_CLUSTER_ENDPOINT: ${STORAGE_CLUSTER_ENDPOINT:-http://host.docker.internal:9002}
+      STORAGE_TRUSTED_CLUSTER_REPL_ENABLED: ${STORAGE_TRUSTED_CLUSTER_REPL_ENABLED:-true}
+    volumes: !override
+      - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-primary:/data
+      - ./deploy/docker/storage-server-linux:/storage-server-bin:ro
+    ports: !override
+      - "${HA_PRIMARY_STORAGE_PORT:-9002}:9000"
+    healthcheck:
+      start_period: 90s
+      retries: 12
+
+  object-replicator:
+    profiles: ["ha-standby"]
+    image: alpine:3.20
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/replicate.sh"]
+    volumes:
+      - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-primary:/source:ro
+      - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-standby-1:/dest1
+      - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-standby-2:/dest2
+      - ./deploy/docker/object-replicator.sh:/replicate.sh:ro
+    environment:
+      SYNC_INTERVAL_SEC: ${HA_OBJECT_SYNC_INTERVAL_SEC:-3}
+    depends_on:
+      storage-server:
+        condition: service_healthy
+
+  storage-server-standby:
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.1.0}
+    pull_policy: if_not_present
+    volumes:
+      - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-standby-1:/data:ro
+      - ./deploy/docker/storage-server-linux:/storage-server-bin:ro
+      - ./deploy/docker/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      postgres-standby:
+        condition: service_healthy
+        required: false
+      storage-server:
+        condition: service_healthy
+      object-replicator:
+        condition: service_started
+    healthcheck:
+      start_period: 60s
+      retries: 10
+
+  storage-server-standby-2:
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.1.0}
+    pull_policy: if_not_present
+    volumes:
+      - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-standby-2:/data:ro
+      - ./deploy/docker/storage-server-linux:/storage-server-bin:ro
+      - ./deploy/docker/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      postgres-standby:
+        condition: service_healthy
+        required: false
+      storage-server:
+        condition: service_healthy
+      object-replicator:
+        condition: service_started
+    healthcheck:
+      start_period: 60s
+      retries: 10

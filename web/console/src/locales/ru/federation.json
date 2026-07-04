@@ -6,7 +6,11 @@
   "description": "Зарегистрированные удалённые кластеры {{brand}} (MVP конфигурации).",
   "fields": {
     "name": "Имя",
-    "endpoint": "Endpoint"
+    "endpoint": "Endpoint",
+    "cluster": "Кластер"
+  },
+  "cluster": {
+    "local": "Локальный кластер"
   },
   "placeholder": {
     "endpoint": "https://remote:9000"

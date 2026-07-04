@@ -2,7 +2,7 @@
 
 **[English](docs/en/README.md)** · **[Русский](docs/ru/README.md)** · **[Documentation](docs/README.md)**
 
-**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.0.3](CHANGELOG.md#103---2026-06-30)
+**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.1.0](CHANGELOG.md#110---2026-07-05)
 
 ---
 
@@ -27,7 +27,7 @@ The product combines **S3-compatible storage**, a **web console**, **enterprise 
 | **Collaboration** | Personal web workspace, bucket/folder sharing, presigned links; desktop sync (`datasafe-sync` CLI + optional Tauri UI) |
 | **Observability** | Prometheus metrics and Grafana dashboards |
 | **Production trust** | GHCR release images, SBOM, cosign signing, nightly regression CI |
-| **High availability** | PostgreSQL replication, read-only standby, failover scripts — [2-node reference](docs/operations-guide/en/reference-deployment-2node.md) |
+| **High availability lab** | Erasure object backend, Postgres metadata HA + leader lock, site replication, **trusted cluster pairing**, failover scripts. CE lab foundation, not production multi-AZ — [HA reference](docs/operations-guide/en/reference-deployment-2node.md) |
 
 Подробнее о ценности продукта: [Why DataSafeS3](docs/why-datasafe.md) · [RU](docs/ru/why-datasafe.md)
 
@@ -98,12 +98,14 @@ flowchart TB
 
 ```cmd
 copy .env.example .env
-docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-binary.yml up -d --build
+docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml -f docker-compose.local-binary.yml up -d --build
 ```
 
 Production console is served from `web/console/dist` (build with `cd web/console && npm run build`). For Vite HMR during UI work: add `-f docker-compose.dev.yml --profile dev`.
 
-Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server` and `ghcr.io/direktorbani/datasafe-console`.
+Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.1.0` and `ghcr.io/direktorbani/datasafe-console:v1.1.0`.
+
+**Rolling `main` builds** (for testers, not cosign/SBOM): on each push to `main`, [`.github/workflows/publish-main.yml`](.github/workflows/publish-main.yml) publishes `:main` and `:sha-<commit>` tags for both images, e.g. `ghcr.io/direktorbani/datasafe-storage-server:main`. Versioned releases (`v*`) remain the supported production path with SBOM and cosign signatures.
 
 1. Open **http://localhost:8080** → sign in `admin` / `admin`
 2. Change the administrator password

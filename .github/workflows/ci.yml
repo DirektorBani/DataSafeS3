@@ -43,6 +43,10 @@ jobs:
         env:
           TEST_POSTGRES_DSN: postgres://datasafe:datasafe@localhost:5432/datasafe?sslmode=disable
         run: go test ./...
+      - name: Compile API guide Go examples
+        run: |
+          go build -o /dev/null docs/api-guide/en/examples/go/list_buckets.go
+          go build -o /dev/null docs/api-guide/en/examples/go/put_object.go
       - name: govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -104,9 +108,17 @@ jobs:
       - name: Install Playwright
         working-directory: web/console
         run: npx playwright install chromium --with-deps
-      - name: E2E smoke
+      - name: E2E regression (6 specs)
         working-directory: web/console
-        run: npx playwright test e2e/smoke.spec.ts
+        run: >
+          npx playwright test
+          e2e/smoke.spec.ts
+          e2e/buckets.spec.ts
+          e2e/settings.spec.ts
+          e2e/files.spec.ts
+          e2e/share.spec.ts
+          e2e/security-mfa.spec.ts
+          e2e/teams.spec.ts
       - name: Tear down
         if: always()
         run: |

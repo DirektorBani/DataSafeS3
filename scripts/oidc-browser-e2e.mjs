@@ -43,10 +43,16 @@ async function main() {
     await page.fill("#username", OIDC_USER);
     await page.fill("#password", OIDC_PASS);
     await page.click("#kc-login, input[type=submit], button[type=submit]");
-    await page.waitForURL(/localhost:8080\/login\?token=/, { timeout: 30000 });
-    const token = await page.evaluate(() => localStorage.getItem("datasafe_token"));
+    await page.waitForURL(
+      (url) => url.pathname.startsWith("/login") && (url.searchParams.has("exchange_code") || !url.hostname.includes("8180")),
+      { timeout: 30000 }
+    );
+    if (page.url().includes("exchange_code=")) {
+      await page.waitForURL((url) => !url.searchParams.has("exchange_code"), { timeout: 30000 });
+    }
+    const token = await page.evaluate(() => sessionStorage.getItem("datasafe_admin_token"));
     if (!token) {
-      throw new Error("No datasafe_token in localStorage after OIDC callback");
+      throw new Error("No datasafe_admin_token in sessionStorage after OIDC callback");
     }
     console.log("PASS: OIDC browser login completed");
   } finally {

@@ -18,7 +18,8 @@ DataSafeS3 Community Edition `storage-server` + console, Apache-2.0, single-tena
 | Transport | TLS via ingress/Caddy (operator-provided) | deployment docs |
 | Secrets | Env / K8s secrets, optional [Vault Agent injection](secrets-vault.md), `STORAGE_STRICT_SECRETS`, security-status API | Helm `values-production.yaml`, `examples/values-vault-agent.yaml` |
 | Metadata field encryption | Opt-in X25519 envelope for access keys, gateway, config secrets ([field-encryption.md](field-encryption.md)) | `STORAGE_FIELD_ENCRYPTION_*`, migration `012_field_encryption`, [scripts/crypto/](../../../scripts/crypto/README.md) |
-| SSRF / outbound URLs | urlpolicy on sinks, hooks, notifications | `STORAGE_DEV`, `STORAGE_OUTBOUND_HTTP_ALLOW` |
+| SSRF / outbound URLs | urlpolicy on sinks, hooks, notifications | `STORAGE_DEV` (v1.1.0+: `STORAGE_OUTBOUND_HTTP_ALLOW` removed) |
+| Metrics endpoint | Optional bearer when `STORAGE_METRICS_TOKEN` set (v1.1.0+) | `GET /metrics`, [monitoring.md](monitoring.md) |
 | OIDC session | Exchange code (no JWT in browser URL) | `POST /auth/oidc/exchange` |
 | Rate limiting | Login endpoints per IP | `STORAGE_RATE_LIMIT_LOGIN` |
 | Supply chain | SBOM + Cosign on release tags (both images) | `.github/workflows/release.yml`, [SECURITY.md](../../../SECURITY.md) |

@@ -32,6 +32,7 @@ const (
 func (s *Server) wireReplicationHooks() {
 	s.svc.OnObjectEvent = func(event, bucket, key string) {
 		s.enqueueObjectReplication(event, bucket, key)
+		s.enqueueSiteReplication(event, bucket, key)
 		var size int64
 		if obj, err := s.meta.GetObject(bucket, key); err == nil {
 			size = obj.Size

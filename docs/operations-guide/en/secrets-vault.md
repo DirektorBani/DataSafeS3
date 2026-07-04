@@ -125,7 +125,7 @@ There is no separate `product` Compose profile. Production-like behaviour uses:
 |----------|----------------|
 | `STORAGE_DEV=false` | No dev shortcuts |
 | `STORAGE_STRICT_SECRETS=true` | Refuse default JWT / S3 secret / admin password |
-| `STORAGE_OUTBOUND_HTTP_ALLOW=false` | HTTPS-only outbound URL policy |
+| `STORAGE_DEV=false` | HTTPS-only outbound URL policy (v1.1.0+: `STORAGE_OUTBOUND_HTTP_ALLOW` removed) |
 | `STORAGE_OIDC_ROPC_ENABLED=false` | Disable ROPC grant |
 | `STORAGE_LDAP_REQUIRE_TLS=true` | Reject `ldap://` |
 

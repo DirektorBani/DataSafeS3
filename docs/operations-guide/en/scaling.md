@@ -11,11 +11,12 @@ DataSafeS3 Community Edition is **single-node by default**. This page describes 
 | One `storage-server` + local/Postgres metadata | **Implemented** | Default deployment model |
 | Vertical scaling (CPU/RAM/disk) | **Implemented** | Primary scaling path today |
 | Gateway replication to external S3 | **Implemented** | Off-site copies, not active-active HA |
-| Federation (multi-cluster awareness) | **Partial** | Cross-node GetObject proxy when peers registered |
+| Federation (multi-cluster awareness) | **Partial** | GetObject/List proxy; peers scoped by **cluster** — [trusted clusters](./trusted-clusters.md) |
+| Trusted cluster pairing + repl | **Lab (v1.1.0)** | mTLS join token, auto cert rotation — [guide](./trusted-clusters.md) |
 | PostgreSQL read replicas for metadata | **Implemented** | `STORAGE_POSTGRES_READ_REPLICA_DSN` routes list queries |
-| Multi-AZ / erasure-coded storage tier | **Partial** | Erasure 2+1 MVP in `internal/storage/erasure/`; not petabyte parity |
+| Multi-AZ / erasure-coded storage tier | **Lab foundation (v1.1)** | `STORAGE_OBJECT_BACKEND=erasure`; local lab only, not production multi-AZ |
 
-Do **not** assume automatic failover or multi-AZ durability — verify against the table above and [architecture](../../en/context/architecture.md).
+Do **not** assume automatic failover or production multi-AZ durability — verify against the table above and [architecture](../../en/context/architecture.md). HA v2 in v1.1.0 is a **CE lab foundation**, not a production Patroni/auto-failover cluster.
 
 ## Vertical scaling
 
@@ -66,8 +67,33 @@ Set `STORAGE_READ_ONLY=true` on a secondary `storage-server` sharing the same me
 | Approach | Status | Notes |
 |----------|--------|-------|
 | **Gateway replication** | Implemented | Offload copies to external S3 |
-| **Federation (MVP)** | Implemented | Register peers; S3 GetObject + **ListObjectsV2** prefix proxy — [federation docs](../../en/user-guide/08-federation-and-cluster.md) |
+| **Federation (MVP)** | Implemented | Register peers with **cluster_id**; S3 GetObject + **ListObjectsV2** proxy — [user guide](../../en/user-guide/08-federation-and-cluster.md) |
+| **Trusted clusters** | Lab (v1.1.0) | mTLS pairing, repl rules, revoke — [trusted-clusters.md](./trusted-clusters.md) |
 | **Read replicas** | Implemented | Postgres list routing via `STORAGE_POSTGRES_READ_REPLICA_DSN` |
+| **Erasure object backend** | Implemented (v1.1) | `STORAGE_OBJECT_BACKEND=erasure`, paths via `STORAGE_ERASURE_DATA_PATHS` |
+| **Site replication (peer)** | Implemented (v1.1) | DataSafeS3↔DataSafeS3 async; `STORAGE_SITE_REPLICATION_ENABLED=true` |
+| **Leader lock (single writer)** | Implemented (v1.1) | `STORAGE_HA_ENABLED=true` + Postgres `ha_leader_lock` table |
+
+## Erasure object backend (v1.1)
+
+Set on `storage-server`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STORAGE_OBJECT_BACKEND` | `fs` | `fs` or `erasure` |
+| `STORAGE_ERASURE_LAYOUT` | `dev` | `dev` (2+1 XOR) or `production` (4+2 Reed-Solomon) |
+| `STORAGE_ERASURE_DATA_PATHS` | — | Comma-separated shard roots (min = data+parity count) |
+| `STORAGE_ERASURE_HEAL_INTERVAL` | `5m` | Background shard rebuild interval |
+
+Lab compose: `docker-compose.ha-erasure.yml` + `scripts/ha/test-erasure-backend.ps1`. The `production` 4+2 layout is an implementation profile for future hardening; validate it with your own failure drills before using it for production data.
+
+Prometheus: `datasafe_erasure_degraded_shard_sets`, `datasafe_erasure_heal_bytes_total`.
+
+Legacy **storage-server-standby** (shared FS + read-only API) is deprecated for new HA installs — prefer erasure + metadata failover.
+
+## Site replication
+
+Gateway replication targets **external S3**. Site replication targets another **DataSafeS3** peer (`POST /api/v1/site-replication/peers`). Enable worker with `STORAGE_SITE_REPLICATION_ENABLED=true`.
 
 ## Kubernetes
 

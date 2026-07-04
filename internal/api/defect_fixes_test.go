@@ -301,3 +301,65 @@ func TestSoftDeleteObjectWithOrphanTrashBucketDir(t *testing.T) {
 		t.Fatal("trash bucket dir missing on backend")
 	}
 }
+
+func TestSoftDeleteTrashRestoreCycle(t *testing.T) {
+	s := testServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+
+	body, _ := json.Marshal(map[string]any{
+		"soft_delete_enabled":  true,
+		"trash_retention_days": 7,
+	})
+	req := authReq(http.MethodPut, "/api/v1/settings/system", tok, body)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("enable soft delete: %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = authReq(http.MethodPost, "/api/v1/buckets/restore-cycle", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create bucket: %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = authReq(http.MethodPut, "/api/v1/buckets/restore-cycle/objects/soft-del.txt", tok, []byte("restore-body"))
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("upload object: %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = authReq(http.MethodDelete, "/api/v1/buckets/restore-cycle/objects/soft-del.txt", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("soft delete object: %d %s", rec.Code, rec.Body.String())
+	}
+	var delResp struct {
+		Trashed bool   `json:"trashed"`
+		TrashID string `json:"trash_id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &delResp)
+	if !delResp.Trashed || delResp.TrashID == "" {
+		t.Fatalf("expected trash_id, got %s", rec.Body.String())
+	}
+
+	req = authReq(http.MethodPost, "/api/v1/trash/"+delResp.TrashID+"/restore", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("restore trash item: %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = authReq(http.MethodGet, "/api/v1/buckets/restore-cycle/objects/soft-del.txt", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get restored object: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != "restore-body" {
+		t.Fatalf("restored body = %q", rec.Body.String())
+	}
+}

@@ -22,10 +22,9 @@ type Options struct {
 // DefaultOptions returns production-safe defaults. Dev mode relaxes private IP and HTTP checks.
 func DefaultOptions() Options {
 	dev := isDevMode()
-	allowHTTP := dev || os.Getenv("STORAGE_OUTBOUND_HTTP_ALLOW") == "true"
 	return Options{
-		AllowHTTP:      allowHTTP,
-		AllowPrivate:   dev || allowHTTP,
+		AllowHTTP:      dev,
+		AllowPrivate:   dev,
 		BlockLocalhost: !dev,
 	}
 }

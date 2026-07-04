@@ -114,10 +114,12 @@ func isCommunityOp(op opDef) bool {
 		"/admin/",
 		"/settings/",
 		"/users",
+		"/teams",
 		"/webhooks",
 		"/activity",
 		"/tenants",
 		"/gateway/",
+		"/site-replication/",
 		"/federation/",
 		"/cluster/",
 		"/auth/",
@@ -146,7 +148,7 @@ type opDef struct {
 const communityHeader = `openapi: 3.1.0
 info:
   title: DataSafeS3 Community Integration API
-  version: 1.0.0
+  version: 1.1.0
   summary: Machine-facing JSON REST API for integrators (subset of /api/v1)
   description: |
     **DataSafeS3 Community edition** — JSON REST Integration API for machine clients and integrators.
@@ -185,7 +187,7 @@ security:
 const fullHeader = `openapi: 3.1.0
 info:
   title: DataSafeS3 REST Admin API
-  version: 1.0.0
+  version: 1.1.0
   summary: Complete JSON REST API served at /api/v1 (excluding S3 XML)
   description: |
     **Full hand-written OpenAPI 3.1** for all Admin JSON routes registered in internal/api/server.go.
@@ -437,7 +439,29 @@ const components = `components:
         role: { type: string, enum: [administrator, operator, user] }
         status: { type: string }
         tenant_id: { type: string }
+        team_id: { type: string, description: Primary legacy team assignment }
         mfa_enabled: { type: boolean }
+
+    Team:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+
+    TeamMember:
+      type: object
+      properties:
+        user_id: { type: string }
+        username: { type: string }
+        email: { type: string }
+
+    PutTeamMembersRequest:
+      type: object
+      properties:
+        user_ids:
+          type: array
+          items: { type: string }
 
     CreateShareRequest:
       type: object
@@ -600,6 +624,11 @@ var operations = []opDef{
 
 	{"get", "/auth/oidc/config", "oidcConfig", "OIDC public config", "P2 Enterprise", "", "P2", "", `        '200': { description: OIDC client config }`, ""},
 	{"get", "/auth/oidc/login", "oidcLogin", "Start OIDC redirect", "P2 Enterprise", "", "P2", "", `        '302': { description: Redirect to IdP }`, ""},
+	{"post", "/auth/oidc/exchange", "oidcExchange", "Exchange OIDC authorization code for JWT", "P2 Enterprise", "", "P2", "", `        '200':
+          description: JWT issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }`, ""},
 	{"post", "/auth/oidc/password-login", "oidcPasswordLogin", "OIDC resource-owner password (test)", "P2 Enterprise", "", "P2", "", `        '200': { description: JWT }`, ""},
 
 	{"get", "/me", "getMe", "Current user profile", "P0 Auth", "jwt", "P0", "", `        '200':
@@ -723,6 +752,56 @@ var operations = []opDef{
 	{"delete", "/users/{id}", "deleteUser", "Delete user", "P1 Admin", "admin", "P1", "", `        '204': { description: Deleted }`, "    - name: id\n      in: path\n      required: true\n      schema: { type: string }\n"},
 	{"post", "/users/{id}/reset-password", "resetPassword", "Reset user password", "P1 Admin", "admin", "P1", "", `        '200': { description: New password }`, "    - name: id\n      in: path\n      required: true\n      schema: { type: string }\n"},
 
+	{"get", "/teams", "listTeams", "List legacy teams", "P1 Admin", "admin", "P1", "", `        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  teams:
+                    type: array
+                    items: { $ref: '#/components/schemas/Team' }`, ""},
+	{"post", "/teams", "createTeam", "Create legacy team", "P1 Admin", "admin", "P1", "", `        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  team: { $ref: '#/components/schemas/Team' }`, ""},
+	{"get", "/teams/{id}", "getTeam", "Get team", "P1 Admin", "admin", "P1", "", `        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  team: { $ref: '#/components/schemas/Team' }`, "    - name: id\n      in: path\n      required: true\n      schema: { type: string }\n"},
+	{"put", "/teams/{id}", "updateTeam", "Rename team", "P1 Admin", "admin", "P1", "", `        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  team: { $ref: '#/components/schemas/Team' }`, "    - name: id\n      in: path\n      required: true\n      schema: { type: string }\n"},
+	{"delete", "/teams/{id}", "deleteTeam", "Delete team", "P1 Admin", "admin", "P1", "", `        '204': { description: Deleted }`, "    - name: id\n      in: path\n      required: true\n      schema: { type: string }\n"},
+	{"get", "/teams/{id}/members", "listTeamMembers", "List team members", "P1 Admin", "admin", "P1", "", `        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items: { $ref: '#/components/schemas/TeamMember' }`, "    - name: id\n      in: path\n      required: true\n      schema: { type: string }\n"},
+	{"put", "/teams/{id}/members", "putTeamMembers", "Replace team members", "P1 Admin", "admin", "P1", "PutTeamMembersRequest", `        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items: { $ref: '#/components/schemas/TeamMember' }`, "    - name: id\n      in: path\n      required: true\n      schema: { type: string }\n"},
+
 	{"get", "/settings/buckets", "listBucketSettings", "List all bucket settings", "P1 Admin", "admin", "P1", "", `        '200': { description: Bucket settings list }`, ""},
 	{"put", "/settings/buckets/{name}", "updateBucketSettings", "Update bucket settings by name", "P1 Admin", "admin", "P1", "", `        '200': { description: Updated }`, "    - name: name\n      in: path\n      required: true\n      schema: { type: string }\n"},
 	{"get", "/settings/system", "getSystemConfig", "Get system configuration", "P1 Admin", "admin", "P1", "", `        '200': { description: SystemConfig object }`, ""},
@@ -730,6 +809,7 @@ var operations = []opDef{
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OkResponse' }`, ""},
+	{"get", "/settings/security-status", "getSecurityStatus", "Security posture summary (weak secrets, metrics auth)", "P1 Admin", "admin", "P1", "", `        '200': { description: Security status object }`, ""},
 
 	{"get", "/trash", "listTrash", "List trashed objects", "P1 Admin", "any", "P1", "", `        '200': { description: Trash items }`, "    - name: bucket\n      in: query\n      schema: { type: string }\n"},
 	{"post", "/trash/{id}/restore", "restoreTrash", "Restore from trash", "P1 Admin", "any", "P1", "", `        '200': { description: Object restored }`, "    - name: id\n      in: path\n      required: true\n      schema: { type: string }\n"},
@@ -854,6 +934,15 @@ var operations = []opDef{
 	{"post", "/gateway/replication/retry-failed", "retryFailedReplication", "Retry failed replication tasks", "P2 Enterprise", "admin", "P2", "", `        '200': { description: Retried }`, ""},
 	{"post", "/gateway/replication/clear-errors", "clearReplicationErrors", "Clear replication errors", "P2 Enterprise", "admin", "P2", "", `        '200': { description: Cleared }`, ""},
 
+	{"get", "/site-replication/peers", "listSiteReplicationPeers", "List site replication peers", "P2 Enterprise", "admin", "P2", "", `        '200': { description: Peers }`, ""},
+	{"post", "/site-replication/peers", "createSiteReplicationPeer", "Register DataSafeS3 peer site", "P2 Enterprise", "admin", "P2", "", `        '201': { description: Created }`, ""},
+	{"delete", "/site-replication/peers/{id}", "deleteSiteReplicationPeer", "Remove site replication peer", "P2 Enterprise", "admin", "P2", "", `        '200': { description: Deleted }`, "    - name: id\n      in: path\n      required: true\n      schema: { type: string }\n"},
+	{"get", "/site-replication/rules", "listSiteReplicationRules", "List site replication rules", "P2 Enterprise", "admin", "P2", "", `        '200': { description: Rules }`, ""},
+	{"post", "/site-replication/rules", "createSiteReplicationRule", "Create site replication rule", "P2 Enterprise", "admin", "P2", "", `        '201': { description: Created }`, ""},
+	{"delete", "/site-replication/rules/{id}", "deleteSiteReplicationRule", "Delete site replication rule", "P2 Enterprise", "admin", "P2", "", `        '200': { description: Deleted }`, "    - name: id\n      in: path\n      required: true\n      schema: { type: string }\n"},
+	{"post", "/site-replication/rules/{id}/sync", "triggerSiteReplicationSync", "Queue bulk sync for site rule", "P2 Enterprise", "admin", "P2", "", `        '202': { description: Queued }`, "    - name: id\n      in: path\n      required: true\n      schema: { type: string }\n"},
+	{"get", "/site-replication/status", "siteReplicationStatus", "Site replication lag and queue", "P2 Enterprise", "admin", "P2", "", `        '200': { description: Status }`, ""},
+
 	{"get", "/federation/clusters", "listFederationClusters", "List federation clusters", "P2 Enterprise", "admin", "P2", "", `        '200': { description: Clusters }`, ""},
 	{"post", "/federation/clusters", "createFederationCluster", "Register federation cluster", "P2 Enterprise", "admin", "P2", "", `        '201': { description: Created }`, ""},
 	{"delete", "/federation/clusters/{id}", "deleteFederationCluster", "Remove federation cluster", "P2 Enterprise", "admin", "P2", "", `        '204': { description: Deleted }`, "    - name: id\n      in: path\n      required: true\n      schema: { type: string }\n"},
@@ -943,8 +1032,8 @@ func resolveTag(op opDef, full bool) string {
 		return "Keys"
 	case strings.Contains(op.path, "/share") || strings.HasPrefix(op.path, "/public/"):
 		return "Shares"
-	case strings.HasPrefix(op.path, "/users") || strings.HasPrefix(op.path, "/activity") ||
-		strings.HasPrefix(op.path, "/settings/"):
+	case strings.HasPrefix(op.path, "/users") || strings.HasPrefix(op.path, "/teams") ||
+		strings.HasPrefix(op.path, "/activity") || strings.HasPrefix(op.path, "/settings/"):
 		return "Admin"
 	case strings.HasPrefix(op.path, "/webhooks"), strings.HasPrefix(op.path, "/hooks/"):
 		return "Webhooks"

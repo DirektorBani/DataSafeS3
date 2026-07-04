@@ -30,7 +30,6 @@ func TestHooksTest_blocksPrivateIP(t *testing.T) {
 
 func TestPutLoggingConfig_blocksLoopbackLoki(t *testing.T) {
 	t.Setenv("STORAGE_DEV", "false")
-	t.Setenv("STORAGE_OUTBOUND_HTTP_ALLOW", "")
 	s := testServer(t)
 	tok := loginToken(t, s, "admin", "admin")
 	cfg, _ := s.Meta().GetSystemConfig()
@@ -44,9 +43,8 @@ func TestPutLoggingConfig_blocksLoopbackLoki(t *testing.T) {
 	}
 }
 
-func TestPutLoggingConfig_allowsLoopbackWhenOutboundHTTPAllow(t *testing.T) {
-	t.Setenv("STORAGE_DEV", "false")
-	t.Setenv("STORAGE_OUTBOUND_HTTP_ALLOW", "true")
+func TestPutLoggingConfig_allowsLoopbackWhenDevMode(t *testing.T) {
+	t.Setenv("STORAGE_DEV", "true")
 	s := testServer(t)
 	tok := loginToken(t, s, "admin", "admin")
 	cfg, _ := s.Meta().GetSystemConfig()
@@ -158,6 +156,99 @@ func TestPutSystemConfig_rejectsLDAPWithoutTLS(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(rec.Body.String()), "tls") {
 		t.Fatalf("expected TLS error, body %s", rec.Body.String())
+	}
+}
+
+func TestSSRFRegressionMatrix_v110(t *testing.T) {
+	t.Run("prod blocks loopback loki", func(t *testing.T) {
+		t.Setenv("STORAGE_DEV", "false")
+		s := testServer(t)
+		tok := loginToken(t, s, "admin", "admin")
+		cfg, _ := s.Meta().GetSystemConfig()
+		cfg.Logging.Loki = metadata.LogSinkEndpoint{Enabled: true, Address: "http://127.0.0.1:3100"}
+		raw, _ := json.Marshal(cfg)
+		req := authReq(http.MethodPut, "/api/v1/settings/system", tok, raw)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("dev allows loopback loki", func(t *testing.T) {
+		t.Setenv("STORAGE_DEV", "true")
+		s := testServer(t)
+		tok := loginToken(t, s, "admin", "admin")
+		cfg, _ := s.Meta().GetSystemConfig()
+		cfg.Logging.Loki = metadata.LogSinkEndpoint{Enabled: true, Address: "http://127.0.0.1:3100"}
+		raw, _ := json.Marshal(cfg)
+		req := authReq(http.MethodPut, "/api/v1/settings/system", tok, raw)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("prod blocks webhook private IP", func(t *testing.T) {
+		t.Setenv("STORAGE_DEV", "false")
+		s := testServer(t)
+		tok := loginToken(t, s, "admin", "admin")
+		body, _ := json.Marshal(map[string]any{
+			"name": "ssrf", "url": "http://169.254.169.254/", "events": []string{"test"},
+		})
+		req := authReq(http.MethodPost, "/api/v1/webhooks", tok, body)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status %d", rec.Code)
+		}
+	})
+}
+
+func TestMetricsEndpoint_openWhenTokenEmpty(t *testing.T) {
+	t.Setenv("STORAGE_METRICS_TOKEN", "")
+	s := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "datasafe_buckets_total") {
+		t.Fatal("expected prometheus metrics")
+	}
+}
+
+func TestMetricsEndpoint_requiresBearerWhenTokenSet(t *testing.T) {
+	t.Setenv("STORAGE_METRICS_TOKEN", "metrics-test-token")
+	s := testServer(t)
+	h := s.Handler()
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("missing bearer: status %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.Header.Set("Authorization", "Bearer wrong")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong bearer: status %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.Header.Set("Authorization", "Bearer metrics-test-token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("valid bearer: status %d body %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("healthz unaffected: status %d", rec.Code)
 	}
 }
 

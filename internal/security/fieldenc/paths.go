@@ -13,4 +13,6 @@ const (
 	PathLoggingESToken        = "system_config.logging.elasticsearch.token"
 	PathLoggingLokiToken      = "system_config.logging.loki.token"
 	PathLoggingWebhookToken   = "system_config.logging.webhook.token"
+	PathClusterPeerSecret     = "trusted_clusters.credential_secret"
+	PathSiteReplSecretKey     = "site_replication_peers.secret_key"
 )

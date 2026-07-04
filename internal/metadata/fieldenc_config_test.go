@@ -38,13 +38,13 @@ func TestEncryptSystemConfigPaths_secretLeaves(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, val := range map[string]string{
-		"ldap":       enc.LDAP.BindPassword,
-		"oidc":       enc.OIDC.ClientSecret,
+		"ldap":        enc.LDAP.BindPassword,
+		"oidc":        enc.OIDC.ClientSecret,
 		"external_s3": enc.ExternalS3.SecretAccessKey,
-		"es_pass":    enc.Logging.Elasticsearch.Password,
-		"es_token":   enc.Logging.Elasticsearch.Token,
-		"loki":       enc.Logging.Loki.Token,
-		"webhook":    enc.Logging.Webhook.Token,
+		"es_pass":     enc.Logging.Elasticsearch.Password,
+		"es_token":    enc.Logging.Elasticsearch.Token,
+		"loki":        enc.Logging.Loki.Token,
+		"webhook":     enc.Logging.Webhook.Token,
 	} {
 		if !strings.HasPrefix(val, "enc:v1:") {
 			t.Fatalf("%s: expected enc:v1, got %q", name, val)

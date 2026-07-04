@@ -20,7 +20,7 @@ import (
 )
 
 type Service struct {
-	Backend  *storage.FSBackend
+	Backend  storage.ObjectBackend
 	Meta     metadata.MetadataStore
 	Signer   *auth.Signer
 	Region   string
@@ -34,7 +34,7 @@ type Service struct {
 	OnBucketNotification func(webhookURL, event, bucket, key string, size int64)
 }
 
-func NewService(backend *storage.FSBackend, meta metadata.MetadataStore, signer *auth.Signer, region, ownerKey string) *Service {
+func NewService(backend storage.ObjectBackend, meta metadata.MetadataStore, signer *auth.Signer, region, ownerKey string) *Service {
 	return &Service{
 		Backend:  backend,
 		Meta:     meta,
@@ -1038,7 +1038,8 @@ func (s *Service) RestoreFromTrash(ctx context.Context, trashID string) (metadat
 	if err != nil {
 		return metadata.ObjectRecord{}, err
 	}
-	rc, _, err := s.Backend.GetObject(ctx, metadata.TrashBucketName, tr.TrashKey)
+	trashBucket := s.normalizeBucketKey(metadata.TrashBucketName)
+	rc, _, err := s.Backend.GetObject(ctx, trashBucket, tr.TrashKey)
 	if err != nil {
 		return metadata.ObjectRecord{}, err
 	}
@@ -1047,7 +1048,7 @@ func (s *Service) RestoreFromTrash(ctx context.Context, trashID string) (metadat
 	if err != nil {
 		return metadata.ObjectRecord{}, err
 	}
-	_ = s.Backend.DeleteObject(ctx, metadata.TrashBucketName, tr.TrashKey)
+	_ = s.Backend.DeleteObject(ctx, trashBucket, tr.TrashKey)
 	_ = s.Meta.DeleteTrash(trashID)
 	return rec, nil
 }
@@ -1057,7 +1058,7 @@ func (s *Service) PurgeTrashItem(ctx context.Context, trashID string) error {
 	if err != nil {
 		return err
 	}
-	_ = s.Backend.DeleteObject(ctx, metadata.TrashBucketName, tr.TrashKey)
+	_ = s.Backend.DeleteObject(ctx, s.normalizeBucketKey(metadata.TrashBucketName), tr.TrashKey)
 	return s.Meta.DeleteTrash(trashID)
 }
 

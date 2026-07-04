@@ -20,7 +20,7 @@ Prioritized backlog from [feature audit 2026-06-17](../../testing/feature-audit-
 
 | ID | Category | Item | Effort | Status | Notes |
 |----|----------|------|--------|--------|-------|
-| AUD-01 | Ops | Rebuild and publish `storage-server` Docker image after each release; CI build/push on `main` | M | planned | Local build OK with `ensure-docker-pull-proxy.cmd`; binary overlay documented |
+| AUD-01 | Ops | Rebuild and publish `storage-server` Docker image after each release; CI build/push on `main` | M | **done** | [publish-main.yml](../../../.github/workflows/publish-main.yml) — теги `:main` и `:sha-*` при merge в `main` |
 | AUD-02 | Ops | Document Docker registry proxy (`scripts/ensure-docker-pull-proxy.cmd`, `127.0.0.1:10801`) or auto-disable when proxy down | S | **done** | README §Локальная разработка; proxy wait loop in script |
 | AUD-03 | Testing | Consistent nullable FK handling — audit all postgres INSERT/UPDATE for empty-string vs `NULL` | M | partial | `team_id` fix **done**; add integration test with `TEST_POSTGRES_DSN` in CI |
 
@@ -41,7 +41,7 @@ Prioritized backlog from [feature audit 2026-06-17](../../testing/feature-audit-
 
 | ID | Category | Item | Effort | Status | Notes |
 |----|----------|------|--------|--------|-------|
-| AUD-10 | Ops | Grafana `datasafe-overview` — pre-provision Prometheus scrape on fresh install; import JSON in repo | M | partial | Prometheus scrapes `storage-server:9000`; metric `datasafe_http_requests_total` verified in audit |
+| AUD-10 | Ops | Grafana `datasafe-overview` — pre-provision Prometheus scrape on fresh install; import JSON in repo | M | **done** | Feature-audit: `Grafana datasafe-overview panel query` + Prometheus `datasafe_http_requests_total` |
 | AUD-11 | Ops | Re-enable storage-server Docker healthcheck (wget/curl on `/healthz`) | S | **done** | `docker-compose.yml` wget healthcheck |
 | AUD-12 | UX | Gateway replication visibility — UI indicator when remote S3 bucket policy adjusted for public-read | S | planned | Server-side logic exists |
 | AUD-13 | Integrations | LDAP sync on login — document first LDAP login may require admin sync if `sync_on_login` off | S | **done** | User guide §7; audit enables `sync_on_login` |
@@ -50,11 +50,11 @@ Prioritized backlog from [feature audit 2026-06-17](../../testing/feature-audit-
 
 | ID | Category | Item | Effort | Status | Notes |
 |----|----------|------|--------|--------|-------|
-| AUD-14 | Testing | Automated OIDC E2E — Playwright against Keycloak test container | L | partial | `scripts/oidc-browser-e2e.mjs`; API path in audit script |
-| AUD-15 | Testing | Tenant viewer/member E2E in `feature-audit-test.ps1` | M | planned | Currently Go tests only |
+| AUD-14 | Testing | Automated OIDC E2E — Playwright against Keycloak test container | L | **done** | `web/console/e2e/security-oidc-keycloak.spec.ts` (@nightly); [e2e-oidc.yml](../../../.github/workflows/e2e-oidc.yml) |
+| AUD-15 | Testing | Tenant viewer/member E2E in `feature-audit-test.ps1` | M | **done** | `Member read with default tenant access`, `Viewer read/write blocked` rows in audit script |
 | AUD-16 | UX | Recursive folder delete confirmation — mirror API `object_count` on conflict in UI | S | planned | Explicit confirm dialog |
-| AUD-17 | Security | MFA admin enforcement — guide admin through enroll on first login (`mfa_setup_required`) | M | planned | When `require_admin_mfa` on |
-| AUD-18 | Testing | Trash restore E2E — upload→delete→restore cycle in audit script | S | planned | Currently lists trash only |
+| AUD-17 | Security | MFA admin enforcement — guide admin through enroll on first login (`mfa_setup_required`) | M | **done** | Profile MFA wizard card (`profile.tsx`); `mfa_policy_test.go` |
+| AUD-18 | Testing | Trash restore E2E — upload→delete→restore cycle in audit script | S | **done** | `Trash restore cycle` row in `feature-audit-test.ps1` |
 | AUD-19 | Testing | Versioning / object versions UI test in audit script | S | planned | API exists |
 | AUD-20 | Testing | Webhook delivery retry — verify delivery log + retry under load | M | planned | Audit only created config |
 | AUD-21 | Ops | Cross-platform binary smoke test — Linux binary in `alpine:3.20` before publish | M | planned | Catch mount/startup issues |

@@ -24,8 +24,8 @@ func (s *Server) handleSecurityStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"weak_secrets":      security.WeakEnvVars(),
-		"doc":               security.JWTSecretsDocPath(),
-		"field_encryption":  fe.Status(registryCount),
+		"weak_secrets":     security.WeakEnvVars(),
+		"doc":              security.JWTSecretsDocPath(),
+		"field_encryption": fe.Status(registryCount),
 	})
 }

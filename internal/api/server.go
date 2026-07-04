@@ -6,21 +6,25 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/cluster/pki"
+	"github.com/DirektorBani/datasafe/internal/ha"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	_ "github.com/DirektorBani/datasafe/internal/metadata/postgres"
+	pgmeta "github.com/DirektorBani/datasafe/internal/metadata/postgres"
 	"github.com/DirektorBani/datasafe/internal/observability"
 	"github.com/DirektorBani/datasafe/internal/openapi"
 	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
 	"github.com/DirektorBani/datasafe/internal/storage"
+	"github.com/DirektorBani/datasafe/internal/storage/erasure"
 )
 
 type Config struct {
@@ -40,7 +44,7 @@ type Config struct {
 type Server struct {
 	cfg              Config
 	meta             metadata.MetadataStore
-	backend          *storage.FSBackend
+	backend          storage.ObjectBackend
 	svc              *s3.Service
 	s3               *s3.Handler
 	jwt              *auth.JWTManager
@@ -50,7 +54,10 @@ type Server struct {
 	webauthnSessions *webauthnSessionStore
 	mux              *http.ServeMux
 	cluster          *clusterMonitor
+	clusterPKI_      *pki.Manager
+	trustedClusterW  *trustedClusterWorker
 	eventSinks       []EventSink
+	haLeader         *ha.Leader
 }
 
 var corsAllowedOrigins []string
@@ -77,8 +84,10 @@ func NewServer(cfg Config) (*Server, error) {
 	if !cfg.ReadOnly {
 		cfg.ReadOnly = readOnlyFromEnv()
 	}
-	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
-		return nil, err
+	if !cfg.ReadOnly {
+		if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+			return nil, err
+		}
 	}
 	metaCfg := cfg.Metadata
 	if metaCfg.DataDir == "" {
@@ -100,7 +109,8 @@ func NewServer(cfg Config) (*Server, error) {
 			return nil, err
 		}
 	}
-	backend, err := storage.NewFSBackend(filepath.Join(cfg.DataDir, "objects"))
+	obCfg := storage.ObjectBackendFromEnv(cfg.DataDir, cfg.ReadOnly)
+	backend, err := openObjectBackend(obCfg)
 	if err != nil {
 		meta.Close()
 		return nil, err
@@ -171,6 +181,12 @@ func NewServer(cfg Config) (*Server, error) {
 	s.wireReplicationHooks()
 	s.wireEventSinks()
 	s.cluster = newClusterMonitor(s.meta)
+	haCfg := ha.ConfigFromEnv()
+	if haCfg.Enabled {
+		if pg, ok := meta.(*pgmeta.Store); ok {
+			s.haLeader = ha.New(haCfg, pg)
+		}
+	}
 	s.routes()
 	return s, nil
 }
@@ -195,7 +211,20 @@ func (s *Server) StartBackground(ctx context.Context) {
 	go s.runTrashPurgeWorker(ctx)
 	go s.runReplicationWorker(ctx)
 	go s.runReplicationFullSyncWorker(ctx)
+	go s.runSiteReplicationWorker(ctx)
+	go s.runTrustedClusterWorker(ctx)
+	go s.runClusterCertRotator(ctx)
 	go s.runLDAPSyncWorker(ctx)
+	if eb, ok := s.backend.(*erasure.Backend); ok {
+		go erasure.RunHealWorker(ctx, eb, storage.ObjectBackendFromEnv(s.cfg.DataDir, s.cfg.ReadOnly).HealEvery)
+	}
+	if s.haLeader != nil {
+		go func() {
+			if err := s.haLeader.Start(ctx); err != nil {
+				slog.Error("ha leader loop stopped", "err", err)
+			}
+		}()
+	}
 	if s.cluster != nil {
 		go s.cluster.Run(ctx)
 	}
@@ -520,6 +549,14 @@ func (s *Server) routes() {
 	mux.HandleFunc("PUT /api/v1/tenants/{tenant}/buckets/{bucket}/access", allRoles(s.handlePutBucketAccess))
 	mux.HandleFunc("DELETE /api/v1/tenants/{tenant}/buckets/{bucket}/access/{user_id}", allRoles(s.handleDeleteBucketAccess))
 
+	mux.HandleFunc("GET /api/v1/teams", adminOnly(s.handleListTeams))
+	mux.HandleFunc("POST /api/v1/teams", adminOnly(s.handleCreateTeam))
+	mux.HandleFunc("GET /api/v1/teams/{id}", adminOnly(s.handleGetTeam))
+	mux.HandleFunc("PUT /api/v1/teams/{id}", adminOnly(s.handleUpdateTeam))
+	mux.HandleFunc("DELETE /api/v1/teams/{id}", adminOnly(s.handleDeleteTeam))
+	mux.HandleFunc("GET /api/v1/teams/{id}/members", adminOnly(s.handleListTeamMembers))
+	mux.HandleFunc("PUT /api/v1/teams/{id}/members", adminOnly(s.handlePutTeamMembers))
+
 	mux.HandleFunc("GET /api/v1/tenants", allRoles(s.handleListTenants))
 	mux.HandleFunc("POST /api/v1/tenants", adminOnly(s.handleCreateTenant))
 	mux.HandleFunc("DELETE /api/v1/tenants/{id}", adminOnly(s.handleDeleteTenant))
@@ -536,17 +573,39 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /api/v1/gateway/replication/queue", adminOnly(s.handleListReplicationQueue))
 	mux.HandleFunc("POST /api/v1/gateway/replication/retry-failed", adminOnly(s.handleRetryFailedReplication))
 	mux.HandleFunc("POST /api/v1/gateway/replication/clear-errors", adminOnly(s.handleClearReplicationErrors))
+	mux.HandleFunc("GET /api/v1/site-replication/peers", adminOnly(s.handleListSiteReplicationPeers))
+	mux.HandleFunc("POST /api/v1/site-replication/peers", adminOnly(s.handleCreateSiteReplicationPeer))
+	mux.HandleFunc("DELETE /api/v1/site-replication/peers/{id}", adminOnly(s.handleDeleteSiteReplicationPeer))
+	mux.HandleFunc("GET /api/v1/site-replication/rules", adminOnly(s.handleListSiteReplicationRules))
+	mux.HandleFunc("POST /api/v1/site-replication/rules", adminOnly(s.handleCreateSiteReplicationRule))
+	mux.HandleFunc("DELETE /api/v1/site-replication/rules/{id}", adminOnly(s.handleDeleteSiteReplicationRule))
+	mux.HandleFunc("POST /api/v1/site-replication/rules/{id}/sync", adminOnly(s.handleTriggerSiteReplicationSync))
+	mux.HandleFunc("GET /api/v1/site-replication/status", adminOnly(s.handleSiteReplicationStatus))
 	mux.HandleFunc("GET /api/v1/federation/clusters", adminOnly(s.handleListFederationClusters))
 	mux.HandleFunc("POST /api/v1/federation/clusters", adminOnly(s.handleCreateFederationCluster))
 	mux.HandleFunc("DELETE /api/v1/federation/clusters/{id}", adminOnly(s.handleDeleteFederationCluster))
 	mux.HandleFunc("POST /api/v1/federation/clusters/{id}/test", adminOnly(s.handleFederationTestConnectivity))
 	mux.HandleFunc("GET /api/v1/cluster/status", adminOnly(s.handleClusterStatus))
+	mux.HandleFunc("POST /api/v1/clusters/pairing-codes", adminOnly(s.handleCreateClusterPairingCode))
+	mux.HandleFunc("POST /api/v1/clusters/pair/join", adminOnly(s.handleClusterPairJoin))
+	mux.HandleFunc("POST /api/v1/clusters/pair/complete", s.handleClusterPairComplete)
+	mux.HandleFunc("GET /api/v1/clusters", adminOnly(s.handleListTrustedClusters))
+	mux.HandleFunc("GET /api/v1/clusters/{id}", adminOnly(s.handleGetTrustedCluster))
+	mux.HandleFunc("POST /api/v1/clusters/{id}/revoke", adminOnly(s.handleRevokeTrustedCluster))
+	mux.HandleFunc("GET /api/v1/clusters/{id}/replication-rules", adminOnly(s.handleListClusterReplicationRules))
+	mux.HandleFunc("POST /api/v1/clusters/{id}/replication-rules", adminOnly(s.handleCreateClusterReplicationRule))
+	mux.HandleFunc("DELETE /api/v1/clusters/{id}/replication-rules/{ruleId}", adminOnly(s.handleDeleteClusterReplicationRule))
+	mux.HandleFunc("POST /api/v1/clusters/{id}/revoke-notify", s.handleClusterRevokeNotify)
+	mux.HandleFunc("POST /api/v1/clusters/{id}/rotate", s.handleClusterRotate)
 	mux.HandleFunc("POST /api/v1/sts/assume-role", allRoles(s.handleAssumeRole))
 	mux.HandleFunc("POST /api/v1/buckets/{bucket}/objects/transition-storage-class", allRoles(s.handleTransitionStorageClass))
 	mux.HandleFunc("PUT /api/v1/buckets/{bucket}/object-retention", allRoles(s.handlePutObjectRetention))
 	mux.HandleFunc("GET /api/v1/buckets/{bucket}/object-retention", allRoles(s.handleGetObjectRetention))
 
-	mux.Handle("GET /metrics", observability.MetricsHandler(s.storageStats))
+	mux.Handle("GET /metrics", observability.MetricsAuthHandler(
+		observability.MetricsTokenFromEnv(),
+		observability.MetricsHandler(s.storageStats),
+	))
 }
 
 func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
@@ -654,6 +713,7 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 	}
 	var req struct {
 		Visibility string `json:"visibility"`
+		TeamID     string `json:"team_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	if err := s.svc.CreateBucket(r.Context(), bucket, owner); err != nil {
@@ -672,6 +732,14 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 		_ = s.applyBucketVisibilityPolicy(info, bucket, vis)
 	}
 	s.stampBucketOwnership(bucket, info)
+	if req.TeamID != "" && auth.CanSeeAllBuckets(info.Role) {
+		if rec, err := s.resolveBucketForUser(info, bucket); err == nil {
+			if _, err := s.meta.GetTeam(req.TeamID); err == nil {
+				rec.TeamID = req.TeamID
+				_ = s.meta.UpdateBucket(rec)
+			}
+		}
+	}
 	s.logActivity(r, metadata.ActionBucketCreated, "bucket", bucket)
 	s.emitEvent(metadata.EventBucketCreated, map[string]any{"bucket": bucket, "owner": owner})
 	writeJSON(w, http.StatusCreated, map[string]any{"bucket": bucket, "visibility": vis})

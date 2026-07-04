@@ -20,25 +20,112 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Start core compose stack
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+
+      - name: Build storage-server linux binary
         run: |
-          docker compose -p datasafe-audit up -d --build --wait storage-server caddy postgres 2>/dev/null \
-            || docker compose -p datasafe-audit --profile postgres up -d --build --wait storage-server caddy postgres
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o deploy/docker/storage-server-linux ./cmd/storage-server
+
+      - name: Start core compose stack
+        env:
+          DATASAFE_DATA_ROOT: ${{ github.workspace }}/.datasafe-data
+        run: |
+          mkdir -p "$DATASAFE_DATA_ROOT/storage" "$DATASAFE_DATA_ROOT/postgres"
+          docker compose -p datasafe-audit --profile postgres \
+            -f docker-compose.yml \
+            -f docker-compose.local-data.yml \
+            -f docker-compose.local-binary.yml \
+            -f docker-compose.audit.yml \
+            up -d --wait postgres storage-server caddy prometheus grafana
           for i in $(seq 1 90); do
-            if curl -sf http://127.0.0.1:8080/healthz; then exit 0; fi
+            if curl -sf http://127.0.0.1:8080/api/v1/health; then exit 0; fi
             sleep 2
           done
-          docker compose -p datasafe-audit ps
+          docker compose -p datasafe-audit --profile postgres \
+            -f docker-compose.yml \
+            -f docker-compose.local-data.yml \
+            -f docker-compose.local-binary.yml \
+            -f docker-compose.audit.yml ps
           exit 1
 
-      - name: Run feature-audit (API smoke subset)
+      - name: Start optional audit sidecars
         run: |
-          pwsh -File scripts/feature-audit-test.ps1 -BaseUrl http://127.0.0.1:8080/api/v1
+          NET=datasafe-audit_default
+          docker run -d --name datasafe-minio-test --network "$NET" \
+            -p 9100:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data --console-address ":9001"
+          docker run -d --name datasafe-log-loki --network "$NET" \
+            -p 3100:3100 grafana/loki:2.9.4 -config.file=/etc/loki/local-config.yaml
+          docker run -d --name datasafe-elasticsearch-test --network "$NET" \
+            -p 19200:9200 \
+            -e discovery.type=single-node \
+            -e xpack.security.enabled=true \
+            -e ELASTIC_PASSWORD=ElasticTest123! \
+            -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
+            docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+          docker run -d --name datasafe-ldap-test --network "$NET" \
+            -p 389:389 \
+            -e LDAP_ORGANISATION=DataSafeS3 \
+            -e LDAP_DOMAIN=datasafe.local \
+            -e LDAP_ADMIN_PASSWORD=ldapadmin \
+            -v "$PWD/docs/integrations/ldap-test/bootstrap.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/50-datasafe-users.ldif:ro" \
+            osixia/openldap:1.5.0 --copy-service
+          docker run -d --name datasafe-keycloak-test --network "$NET" \
+            -p 8180:8080 \
+            -e KEYCLOAK_ADMIN=admin \
+            -e KEYCLOAK_ADMIN_PASSWORD=admin \
+            -v "$PWD/docs/integrations/keycloak-test/datasafe-realm.json:/opt/keycloak/data/import/datasafe-realm.json:ro" \
+            -v "$PWD/docs/integrations/keycloak-test/themes:/opt/keycloak/themes:ro" \
+            quay.io/keycloak/keycloak:26.0.7 start-dev --import-realm
+          for i in $(seq 1 90); do
+            curl -sf http://127.0.0.1:9100/minio/health/live && break
+            sleep 2
+          done
+          for i in $(seq 1 90); do
+            curl -sf -u elastic:ElasticTest123! http://127.0.0.1:19200/_cluster/health && break
+            sleep 2
+          done
+          for i in $(seq 1 90); do
+            docker exec datasafe-ldap-test ldapsearch -x -H ldap://localhost \
+              -D "cn=admin,dc=datasafe,dc=local" -w ldapadmin \
+              -b "dc=datasafe,dc=local" -s base "(objectClass=*)" >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker exec datasafe-ldap-test ldapadd -x -c \
+            -D "cn=admin,dc=datasafe,dc=local" -w ldapadmin \
+            -f /container/service/slapd/assets/config/bootstrap/ldif/custom/50-datasafe-users.ldif >/dev/null 2>&1 || true
+          for i in $(seq 1 120); do
+            curl -sf http://127.0.0.1:8180/realms/datasafe/.well-known/openid-configuration && break
+            sleep 2
+          done
+
+      - name: Run feature-audit (API smoke subset)
+        env:
+          DATASAFE_AUDIT_LDAP_URL: ldap://datasafe-ldap-test:389
+          DATASAFE_AUDIT_KEYCLOAK_ISSUER: http://127.0.0.1:8180/realms/datasafe
+          DATASAFE_AUDIT_KEYCLOAK_INTERNAL_ISSUER: http://datasafe-keycloak-test:8080/realms/datasafe
+          DATASAFE_AUDIT_LOKI_ADDRESS: http://datasafe-log-loki:3100
+          DATASAFE_AUDIT_ES_HOST_URL: http://127.0.0.1:19200
+          DATASAFE_AUDIT_ES_INTERNAL_URL: http://datasafe-elasticsearch-test:9200
+          DATASAFE_AUDIT_MINIO_HOST_URL: http://127.0.0.1:9100
+          DATASAFE_AUDIT_MINIO_INTERNAL_URL: http://datasafe-minio-test:9000
+        run: |
+          pwsh -File scripts/feature-audit-test.ps1 -BaseUrl http://127.0.0.1:8080 -S3Url http://127.0.0.1:9000
         continue-on-error: false
 
       - name: Tear down
         if: always()
-        run: docker compose -p datasafe-audit down -v --remove-orphans
+        run: |
+          docker rm -f datasafe-minio-test datasafe-log-loki datasafe-elasticsearch-test datasafe-ldap-test datasafe-keycloak-test 2>/dev/null || true
+          docker compose -p datasafe-audit --profile postgres \
+            -f docker-compose.yml \
+            -f docker-compose.local-data.yml \
+            -f docker-compose.local-binary.yml \
+            -f docker-compose.audit.yml down -v --remove-orphans
 
   vault-integration:
     if: github.event_name == 'workflow_dispatch'

@@ -29,3 +29,13 @@ flowchart LR
 ## Результат
 
 Предсказуемая локальная цель backup с опциональными off-site копиями — под вашими политиками retention и доступа.
+
+## Проверенный скрипт
+
+Smoke: создание бакета и round-trip объекта на работающем стеке:
+
+```powershell
+.\scripts\reference-arch\backup-restore.ps1
+```
+
+Ожидается `PASS reference-arch backup-restore smoke`. См. [руководство backup & restore](../../operations-guide/ru/backup-restore.md).

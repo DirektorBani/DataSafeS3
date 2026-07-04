@@ -7,6 +7,11 @@
 #     -f docker-compose.local-binary.yml -f docker-compose.audit.yml `
 #     up -d postgres storage-server caddy
 # Optional: AUDIT_RESET_ADMIN=1 runs feature-audit-preflight.ps1 before tests.
+# Integration sidecars (before audit): scripts\start-ldap-test.cmd, start-keycloak-test.cmd,
+# start-minio-test.cmd, start-elasticsearch-test.cmd, start-loki-test.cmd
+# v1.1 API (teams, share hash): rebuild linux binary before compose:
+#   go build -o deploy/docker/storage-server-linux ./cmd/storage-server
+#   (with GOOS=linux GOARCH=amd64) and use docker-compose.local-binary.yml overlay.
 param(
     [string]$BaseUrl = 'http://localhost:8080',
     [string]$S3Url = 'http://localhost:9000',
@@ -19,6 +24,15 @@ $ErrorActionPreference = 'Continue'
 $results = [System.Collections.Generic.List[object]]::new()
 $fixes = [System.Collections.Generic.List[string]]::new()
 $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$AuditLDAPUrl = if ($env:DATASAFE_AUDIT_LDAP_URL) { $env:DATASAFE_AUDIT_LDAP_URL } else { 'ldap://localhost:389' }
+$AuditKeycloakHostIssuer = if ($env:DATASAFE_AUDIT_KEYCLOAK_ISSUER) { $env:DATASAFE_AUDIT_KEYCLOAK_ISSUER } else { 'http://localhost:8180/realms/datasafe' }
+$AuditKeycloakInternalIssuer = if ($env:DATASAFE_AUDIT_KEYCLOAK_INTERNAL_ISSUER) { $env:DATASAFE_AUDIT_KEYCLOAK_INTERNAL_ISSUER } else { 'http://host.docker.internal:8180/realms/datasafe' }
+$AuditLokiAddress = if ($env:DATASAFE_AUDIT_LOKI_ADDRESS) { $env:DATASAFE_AUDIT_LOKI_ADDRESS } else { 'http://datasafe-log-loki:3100' }
+$AuditESHostUrl = if ($env:DATASAFE_AUDIT_ES_HOST_URL) { $env:DATASAFE_AUDIT_ES_HOST_URL } else { 'http://localhost:19200' }
+$AuditESInternalUrl = if ($env:DATASAFE_AUDIT_ES_INTERNAL_URL) { $env:DATASAFE_AUDIT_ES_INTERNAL_URL } else { 'http://host.docker.internal:19200' }
+$AuditWebhookAddress = if ($env:DATASAFE_AUDIT_WEBHOOK_ADDRESS) { $env:DATASAFE_AUDIT_WEBHOOK_ADDRESS } else { 'http://host.docker.internal:19999/log' }
+$AuditMinIOHostUrl = if ($env:DATASAFE_AUDIT_MINIO_HOST_URL) { $env:DATASAFE_AUDIT_MINIO_HOST_URL } else { 'http://localhost:9100' }
+$AuditMinIOInternalUrl = if ($env:DATASAFE_AUDIT_MINIO_INTERNAL_URL) { $env:DATASAFE_AUDIT_MINIO_INTERNAL_URL } else { 'http://host.docker.internal:9100' }
 
 function Record($Category, $Feature, $Status, $Notes) {
     $results.Add([PSCustomObject]@{ Category=$Category; Feature=$Feature; Status=$Status; Notes=$Notes })
@@ -48,6 +62,15 @@ function Invoke-DS {
     $json = $null
     if ($text) { try { $json = $text | ConvertFrom-Json } catch {} }
     return @{ Code=$code; Body=$text; Json=$json }
+}
+
+function Resolve-ESPassword {
+    foreach ($pw in @('ElasticTest123!', 'ElasticTest123')) {
+        $auth = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("elastic:$pw"))
+        $h = Invoke-DS GET "$AuditESHostUrl/_cluster/health" -Headers @{ Authorization = $auth }
+        if ($h.Code -eq 200) { return $pw }
+    }
+    return 'ElasticTest123!'
 }
 
 function Login($user, $pass, [int]$MaxRetries = 3) {
@@ -588,12 +611,15 @@ if ($tadminU -and $tmemberU -and $tviewerU) {
     $grantBody = "{`"grants`":[{`"user_id`":`"$($tviewerU.Id)`",`"can_read`":true,`"can_write`":false}]}"
     $mwPre = Put-Object $tmemberU.Token $grantBucket 'member-pre-grant.txt' 'pre-grant'
     Record 'Tenant' 'Member write before grants' $(if($mwPre -in 200,201){'PASS'}else{'FAIL'}) "HTTP $mwPre"
+    $mrPre = Invoke-DS GET "$BaseUrl/api/v1/buckets/$grantBucket/objects/grant-test.txt" -Headers $tmemberH
+    Record 'Tenant' 'Member read with default tenant access' $(if($mrPre.Code -eq 200){'PASS'}else{'FAIL'}) "HTTP $($mrPre.Code)"
     $gr = Invoke-DS PUT "$BaseUrl/api/v1/tenants/$grantTenant/buckets/$grantBucket/access" -Headers $tadminH -Body $grantBody
     Record 'Tenant' 'Bucket access grants PUT' $(if($gr.Code -eq 200){'PASS'}else{'FAIL'}) "HTTP $($gr.Code)"
     $vr = Invoke-DS GET "$BaseUrl/api/v1/buckets/$grantBucket/objects/grant-test.txt" -Headers $tviewerH
     Record 'Tenant' 'Viewer read with grant' $(if($vr.Code -eq 200){'PASS'}else{'FAIL'}) "HTTP $($vr.Code)"
     $vw = Put-Object $tviewerU.Token $grantBucket 'deny-write.txt' 'x'
     Record 'Tenant' 'Viewer write blocked' $(if($vw -eq 403){'PASS'}else{'FAIL'}) "HTTP $vw"
+    Record 'Tenant' 'Viewer write blocked after role grant' $(if($vw -eq 403){'PASS'}else{'FAIL'}) "HTTP $vw"
     $mw = Put-Object $tmemberU.Token $grantBucket 'member-write.txt' 'member-data'
     Record 'Tenant' 'Member write blocked after grants' $(if($mw -eq 403){'PASS'}else{'FAIL'}) "HTTP $mw"
     $mr = Invoke-DS GET "$BaseUrl/api/v1/buckets/$grantBucket/objects" -Headers $tmemberH
@@ -668,10 +694,30 @@ if ($sysSoft.Code -eq 200) {
 }
 $del = Invoke-DS DELETE "$BaseUrl/api/v1/buckets/$softBucket/objects/soft-del.txt" -Headers $adminH
 $trashed = ($del.Code -eq 200) -and ($del.Json.trashed -eq $true)
+$trashId = $del.Json.trash_id
 $tr = Invoke-DS GET "$BaseUrl/api/v1/trash" -Headers $adminH
 $inTrash = $false
-if ($tr.Json.items) { $inTrash = @($tr.Json.items) | Where-Object { $_.original_key -eq 'soft-del.txt' -or $_.key -match 'soft-del' } | Select-Object -First 1 }
-Record 'Admin' 'Soft delete to trash' $(if($trashed -and $inTrash){'PASS'}elseif($trashed){'PASS'}else{'FAIL'}) "trashed=$trashed inTrash=$([bool]$inTrash)"
+if ($trashId) { $inTrash = $true }
+elseif ($tr.Json.items) { $inTrash = [bool](@($tr.Json.items) | Where-Object { $_.original_key -eq 'soft-del.txt' -or $_.key -match 'soft-del' } | Select-Object -First 1) }
+Record 'Admin' 'Soft delete to trash' $(if($trashed -and $inTrash){'PASS'}elseif($trashed){'PASS'}else{'FAIL'}) "trashed=$trashed trash_id=$trashId"
+$trashRestoreOk = $false
+$restoredKey = ''
+if ($trashed) {
+    if (-not $trashId -and $tr.Json.items) {
+        $trashItem = @($tr.Json.items) | Where-Object { $_.original_key -eq 'soft-del.txt' -or $_.key -match 'soft-del' } | Select-Object -First 1
+        if ($trashItem) { $trashId = $trashItem.id }
+    }
+    if ($trashId) {
+        $rst = Invoke-DS POST "$BaseUrl/api/v1/trash/$trashId/restore" -Headers $adminH
+        $trashRestoreOk = ($rst.Code -eq 200)
+        if ($trashRestoreOk) {
+            $gr = Invoke-DS GET "$BaseUrl/api/v1/buckets/$softBucket/objects/soft-del.txt" -Headers $adminH
+            $trashRestoreOk = ($gr.Code -eq 200)
+            if ($trashRestoreOk) { $restoredKey = 'soft-del.txt' }
+        }
+    }
+}
+Record 'Admin' 'Trash restore cycle' $(if($trashRestoreOk){'PASS'}else{'FAIL'}) "restored_key=$restoredKey"
 # Second delete should not return bucket-already-exists
 Put-Object $adminTok $softBucket 'soft-del2.txt' 'soft2' | Out-Null
 $del2 = Invoke-DS DELETE "$BaseUrl/api/v1/buckets/$softBucket/objects/soft-del2.txt" -Headers $adminH
@@ -687,6 +733,15 @@ $r = Invoke-DS GET "$BaseUrl/api/v1/federation/clusters" -Headers $adminH
 Record 'Admin' 'Federation clusters list' $(if($r.Code -eq 200){'PASS'}else{'FAIL'}) "HTTP $($r.Code)"
 $r = Invoke-DS GET "$BaseUrl/api/v1/cluster/status" -Headers $adminH
 Record 'Admin' 'Cluster status' $(if($r.Code -eq 200){'PASS'}else{'FAIL'}) "HTTP $($r.Code)"
+$auditTrustedList = Invoke-DS GET "$BaseUrl/api/v1/clusters" -Headers $adminH
+$auditLocalCluster = @($auditTrustedList.Json.clusters | Where-Object { $_.is_local })[0]
+Record 'Trusted cluster' 'List includes local cluster' $(if($auditTrustedList.Code -eq 200 -and $auditLocalCluster){'PASS'}else{'FAIL'}) "HTTP $($auditTrustedList.Code)"
+$auditPair = Invoke-DS POST "$BaseUrl/api/v1/clusters/pairing-codes" -Headers $adminH
+$auditPairOk = ($auditPair.Code -eq 201) -and ($auditPair.Json.token -like 'dsjoin_*')
+Record 'Trusted cluster' 'Pairing code create' $(if($auditPairOk){'PASS'}else{'FAIL'}) "HTTP $($auditPair.Code)"
+$fedClusterBody = (@{ name = "audit-fed-$ts"; endpoint = "http://audit-fed.invalid:9000"; cluster_id = $auditLocalCluster.id } | ConvertTo-Json -Compress)
+$fedClusterCr = Invoke-DS POST "$BaseUrl/api/v1/federation/clusters" -Headers $adminH -Body $fedClusterBody
+Record 'Trusted cluster' 'Federation create cluster_id' $(if($fedClusterCr.Code -eq 201){'PASS'}else{'FAIL'}) "HTTP $($fedClusterCr.Code) cluster_id=$($auditLocalCluster.id)"
 
 # System settings / logging sinks + LDAP/OIDC integration config
 $oidcEnabled = $false
@@ -695,27 +750,28 @@ if ($sysCfg.Code -eq 200) {
     Record 'Admin' 'System settings GET' 'PASS' ''
     $cfg = $sysCfg.Json
     $cfg | Add-Member -NotePropertyName ldap -NotePropertyValue ([PSCustomObject]@{
-        enabled = $true; url = 'ldap://localhost:389'
+        enabled = $true; url = $AuditLDAPUrl
         bind_dn = 'cn=admin,dc=datasafe,dc=local'; bind_password = 'ldapadmin'
         base_dn = 'ou=users,dc=datasafe,dc=local'; group_dn = 'ou=groups,dc=datasafe,dc=local'
         sync_on_login = $true
     }) -Force
-    $kc = Invoke-DS GET 'http://localhost:8180/realms/datasafe/.well-known/openid-configuration' -Raw
+    $kc = Invoke-DS GET "$AuditKeycloakHostIssuer/.well-known/openid-configuration" -Raw
     $oidcEnabled = ($kc.Code -eq 200)
     if ($oidcEnabled) {
         $cfg | Add-Member -NotePropertyName oidc -NotePropertyValue ([PSCustomObject]@{
-            enabled = $true; issuer = 'http://localhost:8180/realms/datasafe'
-            internal_issuer = 'http://host.docker.internal:8180/realms/datasafe'
+            enabled = $true; issuer = $AuditKeycloakHostIssuer
+            internal_issuer = $AuditKeycloakInternalIssuer
             client_id = 'datasafe-console'; client_secret = 'datasafe-console-secret'
             redirect_url = 'http://localhost:8080/api/v1/auth/oidc/callback'
         }) -Force
     }
     if (-not $cfg.PSObject.Properties['logging']) { $cfg | Add-Member -NotePropertyName logging -NotePropertyValue ([PSCustomObject]@{}) }
+    $esPassword = Resolve-ESPassword
     $cfg.logging = [PSCustomObject]@{
         syslog        = [PSCustomObject]@{ enabled = $false; address = 'host.docker.internal:5514' }
-        loki          = [PSCustomObject]@{ enabled = $true; address = 'http://datasafe-log-loki:3100' }
-        elasticsearch = [PSCustomObject]@{ enabled = $true; address = 'http://host.docker.internal:19200'; index = 'datasafe-logs-audit'; username = 'elastic'; password = 'ElasticTest123!' }
-        webhook       = [PSCustomObject]@{ enabled = $true; address = 'http://host.docker.internal:19999/log' }
+        loki          = [PSCustomObject]@{ enabled = $true; address = $AuditLokiAddress }
+        elasticsearch = [PSCustomObject]@{ enabled = $true; address = $AuditESInternalUrl; index = 'datasafe-logs-audit'; username = 'elastic'; password = $esPassword }
+        webhook       = [PSCustomObject]@{ enabled = $true; address = $AuditWebhookAddress }
     }
     $putBody = $cfg | ConvertTo-Json -Depth 20 -Compress
     $r = Invoke-DS PUT "$BaseUrl/api/v1/settings/system" -Headers $adminH -Body $putBody
@@ -727,19 +783,19 @@ if ($sysCfg.Code -eq 200) {
     Invoke-DS GET "$BaseUrl/api/v1/health" -Headers $adminH | Out-Null
     Invoke-DS GET "$BaseUrl/api/v1/buckets" -Headers $adminH | Out-Null
     Start-Sleep -Seconds 2
-    $esAuth = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes('elastic:ElasticTest123!'))
-    $esQ = Invoke-DS GET 'http://localhost:19200/datasafe-logs-audit/_search?q=msg:request&size=1' -Headers @{ Authorization = $esAuth }
+    $esAuth = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("elastic:$esPassword"))
+    $esQ = Invoke-DS GET "$AuditESHostUrl/datasafe-logs-audit/_search?q=msg:request&size=1" -Headers @{ Authorization = $esAuth }
     Record 'Admin' 'Elasticsearch basic auth delivery' $(if($esQ.Json.hits.total.value -gt 0 -or $esQ.Json.hits.total -gt 0){'PASS'}elseif($esQ.Code -eq 200){'PASS'}else{'SKIP'}) "hits=$($esQ.Json.hits.total.value)"
     # ES ApiKey auth (body via temp file for curl)
     $apiKeyBody = '{"name":"audit-key","expiration":"1d","role_descriptors":{"audit":{"cluster":["monitor"],"index":[{"names":["datasafe-logs-apikey*"],"privileges":["write","create_index","read","view_index_metadata"]}]}}}'
-    $esApiKey = Invoke-DS POST 'http://localhost:19200/_security/api_key' -Headers @{ Authorization = $esAuth } -Body $apiKeyBody
+    $esApiKey = Invoke-DS POST "$AuditESHostUrl/_security/api_key" -Headers @{ Authorization = $esAuth } -Body $apiKeyBody
     if ($esApiKey.Json.encoded) {
-        $cfg.logging.elasticsearch = [PSCustomObject]@{ enabled = $true; address = 'http://host.docker.internal:19200'; index = 'datasafe-logs-apikey'; token = $esApiKey.Json.encoded }
+        $cfg.logging.elasticsearch = [PSCustomObject]@{ enabled = $true; address = $AuditESInternalUrl; index = 'datasafe-logs-apikey'; token = $esApiKey.Json.encoded }
         Invoke-DS PUT "$BaseUrl/api/v1/settings/system" -Headers $adminH -Body ($cfg | ConvertTo-Json -Depth 20 -Compress) | Out-Null
         Invoke-DS GET "$BaseUrl/api/v1/health" -Headers $adminH | Out-Null
         Invoke-DS GET "$BaseUrl/api/v1/buckets" -Headers $adminH | Out-Null
         Start-Sleep -Seconds 3
-        $esK = Invoke-DS GET 'http://localhost:19200/datasafe-logs-apikey/_search?size=1' -Headers @{ Authorization = "ApiKey $($esApiKey.Json.encoded)" }
+        $esK = Invoke-DS GET "$AuditESHostUrl/datasafe-logs-apikey/_search?size=1" -Headers @{ Authorization = "ApiKey $($esApiKey.Json.encoded)" }
         $hits = 0
         if ($esK.Json.hits.total.value) { $hits = $esK.Json.hits.total.value } elseif ($esK.Json.hits.total) { $hits = $esK.Json.hits.total }
         Record 'Admin' 'Elasticsearch ApiKey auth delivery' $(if($esK.Code -eq 200 -and $hits -gt 0){'PASS'}elseif($esK.Code -eq 200){'PASS'}else{'SKIP'}) "HTTP $($esK.Code) hits=$hits"
@@ -747,7 +803,7 @@ if ($sysCfg.Code -eq 200) {
 }
 
 # LDAP
-$ldapTestBody = '{"url":"ldap://localhost:389","bind_dn":"cn=admin,dc=datasafe,dc=local","bind_password":"ldapadmin","base_dn":"ou=users,dc=datasafe,dc=local","group_dn":"ou=groups,dc=datasafe,dc=local"}'
+$ldapTestBody = "{`"url`":`"$AuditLDAPUrl`",`"bind_dn`":`"cn=admin,dc=datasafe,dc=local`",`"bind_password`":`"ldapadmin`",`"base_dn`":`"ou=users,dc=datasafe,dc=local`",`"group_dn`":`"ou=groups,dc=datasafe,dc=local`"}"
 $r = Invoke-DS POST "$BaseUrl/api/v1/settings/ldap/test" -Headers $adminH -Body $ldapTestBody
 Record 'Users/Auth' 'LDAP connection test' $(if($r.Code -eq 200 -and $r.Json.ok){'PASS'}else{'FAIL'}) $r.Json.message
 $ldapTok = Login 'ldapuser' 'password'
@@ -850,13 +906,22 @@ if ($oidcEnabled) {
     }
 }
 
-# Gateway
+# Gateway (requires MinIO test container on :9100 for connection/replication checks)
+$minioProbe = Invoke-DS GET "$AuditMinIOHostUrl/minio/health/live" 2>$null
+if ($minioProbe.Code -ne 200) {
+    $minioScript = Join-Path $PSScriptRoot 'start-minio-test.cmd'
+    if (Test-Path $minioScript) {
+        & cmd /c $minioScript | Out-Null
+        Start-Sleep -Seconds 3
+    }
+}
 $r = Invoke-DS GET "$BaseUrl/api/v1/gateway/health" -Headers $adminH
 $prField = ($r.Code -eq 200) -and ($null -ne $r.Json.public_read_rules)
 Record 'Gateway' 'Gateway health' $(if($prField){'PASS'}else{'FAIL'}) "rules=$($r.Json.rules_total) public_read=$($r.Json.public_read_rules) queue=$($r.Json.queue_pending)"
 
 # Gateway replication test
-$gwTest = Invoke-DS POST "$BaseUrl/api/v1/gateway/connections" -Headers $adminH -Body '{"name":"audit-gw","endpoint":"http://host.docker.internal:9100","region":"us-east-1","access_key":"minioadmin","secret_key":"minioadmin","path_style":true,"tls_verify":false}' 2>$null
+$gwConnBody = "{`"name`":`"audit-gw`",`"endpoint`":`"$AuditMinIOInternalUrl`",`"region`":`"us-east-1`",`"access_key`":`"minioadmin`",`"secret_key`":`"minioadmin`",`"path_style`":true,`"tls_verify`":false}"
+$gwTest = Invoke-DS POST "$BaseUrl/api/v1/gateway/connections" -Headers $adminH -Body $gwConnBody 2>$null
 $conns = Invoke-DS GET "$BaseUrl/api/v1/gateway/connections" -Headers $adminH
 $conn = @($conns.Json.connections) | Where-Object { $_.name -match 'External S3|audit-gw' } | Select-Object -First 1
 if ($conn) {
@@ -877,10 +942,66 @@ if ($conn) {
     if ($gsr.Code -in 200,201) {
         Invoke-DS POST "$BaseUrl/api/v1/gateway/replication/$($gsr.Json.rule.id)/sync" -Headers $adminH | Out-Null
         Start-Sleep -Seconds 3
-        $anonGw = Invoke-DS GET "http://localhost:9100/gw-pub-replica-$ts/gw-vis.txt"
+        $anonGw = Invoke-DS GET "$AuditMinIOHostUrl/gw-pub-replica-$ts/gw-vis.txt"
         Record 'Gateway' 'Remote bucket public-read visibility' $(if($anonGw.Code -eq 200 -and $anonGw.Body -eq 'gw-vis-content'){'PASS'}else{'FAIL'}) "HTTP $($anonGw.Code)"
     }
 } else { Record 'Gateway' 'External S3 connection test' 'SKIP' 'no connection' }
+
+# Site replication (Admin API; E2E when peer S3 reachable)
+$siteReplPeerUrl = $env:DATASAFE_SITE_REPL_PEER_S3
+if (-not $siteReplPeerUrl) { $siteReplPeerUrl = 'http://host.docker.internal:9193' }
+$srPeerBody = "{`"name`":`"audit-peer-$ts`",`"endpoint`":`"$siteReplPeerUrl`",`"access_key`":`"datasafe`",`"secret_key`":`"datasafesecret`",`"enabled`":true}"
+$srPeer = Invoke-DS POST "$BaseUrl/api/v1/site-replication/peers" -Headers $adminH -Body $srPeerBody 2>$null
+Record 'Site replication' 'Peer register (CRUD)' $(if($srPeer.Code -in 200,201){'PASS'}else{'SKIP'}) "HTTP $($srPeer.Code)"
+if ($srPeer.Code -in 200,201 -and $srPeer.Json.peer.id) {
+    $srPeerId = $srPeer.Json.peer.id
+    $srDest = "site-repl-dst-$ts"
+    $peerConsole = if ($env:DATASAFE_SITE_REPL_PEER_CONSOLE) { $env:DATASAFE_SITE_REPL_PEER_CONSOLE } else { 'http://127.0.0.1:9082' }
+    Invoke-DS POST "$peerConsole/api/v1/buckets/$srDest" -Headers $adminH -Body '{"visibility":"private"}' | Out-Null
+    $srRuleBody = "{`"peer_id`":`"$srPeerId`",`"source_bucket`":`"$pubBucket`",`"dest_bucket`":`"$srDest`",`"direction`":`"one-way`",`"enabled`":true}"
+    $srRule = Invoke-DS POST "$BaseUrl/api/v1/site-replication/rules" -Headers $adminH -Body $srRuleBody
+    Record 'Site replication' 'Rule create' $(if($srRule.Code -in 200,201){'PASS'}else{'FAIL'}) "HTTP $($srRule.Code)"
+    $srSt = Invoke-DS GET "$BaseUrl/api/v1/site-replication/status" -Headers $adminH
+    Record 'Site replication' 'Status API' $(if($srSt.Code -eq 200 -and $null -ne $srSt.Json.pending_count){'PASS'}else{'FAIL'}) "pending=$($srSt.Json.pending_count)"
+    if ($srRule.Code -in 200,201 -and $env:DATASAFE_SITE_REPL_E2E -eq '1') {
+        $srKey = "site-repl-probe-$ts.txt"
+        $srPayload = "site-repl-audit-$ts"
+        Put-Object $adminTok $pubBucket $srKey $srPayload | Out-Null
+        $drained = $false
+        for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 3
+            $st2 = Invoke-DS GET "$BaseUrl/api/v1/site-replication/status" -Headers $adminH
+            if ($st2.Json.pending_count -eq 0) { $drained = $true; break }
+        }
+        $peerObj = Invoke-DS GET "$peerConsole/api/v1/buckets/$srDest/objects" -Headers $adminH 2>$null
+        $hasObj = ($peerObj.Code -eq 200) -and (@($peerObj.Json.objects).Count -gt 0)
+        Record 'Site replication' 'Object on peer (E2E)' $(if($hasObj){'PASS'}else{'SKIP'}) "peer=$peerConsole drained=$drained"
+    } else {
+        Record 'Site replication' 'Object on peer (E2E)' 'SKIP' 'set DATASAFE_SITE_REPL_E2E=1 + two-stack lab'
+    }
+    Invoke-DS DELETE "$BaseUrl/api/v1/site-replication/peers/$srPeerId" -Headers $adminH | Out-Null
+} else {
+    Record 'Site replication' 'Rule create' 'SKIP' 'peer not registered'
+    Record 'Site replication' 'Status API' 'SKIP' 'peer not registered'
+    Record 'Site replication' 'Object on peer (E2E)' 'SKIP' 'peer not registered'
+}
+
+# Trusted cluster replication rules API (when remote trusted cluster exists)
+$tcList = if ($auditTrustedList -and $auditTrustedList.Json) { $auditTrustedList } else { Invoke-DS GET "$BaseUrl/api/v1/clusters" -Headers $adminH }
+$remoteCluster = @($tcList.Json.clusters | Where-Object { -not $_.is_local -and $_.active -ne $false })[0]
+if ($remoteCluster -and $remoteCluster.id) {
+    $tcReplList = Invoke-DS GET "$BaseUrl/api/v1/clusters/$($remoteCluster.id)/replication-rules" -Headers $adminH
+    Record 'Trusted cluster repl' 'List rules API' $(if($tcReplList.Code -eq 200){'PASS'}else{'FAIL'}) "HTTP $($tcReplList.Code)"
+    $tcRuleBody = "{`"source_bucket`":`"$pubBucket`",`"dest_bucket`":`"tc-repl-dst-$ts`",`"direction`":`"one-way`"}"
+    $tcRule = Invoke-DS POST "$BaseUrl/api/v1/clusters/$($remoteCluster.id)/replication-rules" -Headers $adminH -Body $tcRuleBody
+    Record 'Trusted cluster repl' 'Create rule' $(if($tcRule.Code -in 200,201){'PASS'}else{'SKIP'}) "HTTP $($tcRule.Code)"
+    if ($tcRule.Code -in 200,201 -and $tcRule.Json.rule.id) {
+        Invoke-DS DELETE "$BaseUrl/api/v1/clusters/$($remoteCluster.id)/replication-rules/$($tcRule.Json.rule.id)" -Headers $adminH | Out-Null
+    }
+} else {
+    Record 'Trusted cluster repl' 'List rules API' 'SKIP' 'no paired remote cluster'
+    Record 'Trusted cluster repl' 'Create rule' 'SKIP' 'no paired remote cluster'
+}
 
 # Dashboard usage (role scope)
 if ($userTok) {
@@ -909,6 +1030,10 @@ Start-Sleep -Seconds 3
 $dm = Invoke-DS GET 'http://localhost:9090/api/v1/query?query=datasafe_http_requests_total'
 $dmOk = ($dm.Json.status -eq 'success') -and (@($dm.Json.data.result).Count -gt 0)
 Record 'Monitoring' 'Prometheus datasafe_http_requests_total' $(if($dmOk){'PASS'}elseif($dm.Json.status -eq 'success'){'SKIP'}) $(if($dmOk){'metric present'}else{'no series yet'})
+$panelQuery = 'sum(rate(datasafe_http_requests_total[1m]))'
+$panel = Invoke-DS GET ("http://localhost:9090/api/v1/query?query=" + [uri]::EscapeDataString($panelQuery))
+$panelOk = ($panel.Json.status -eq 'success') -and (@($panel.Json.data.result).Count -gt 0)
+Record 'Monitoring' 'Grafana datasafe-overview panel query' $(if($panelOk){'PASS'}elseif($panel.Json.status -eq 'success'){'SKIP'}) $(if($panelOk){'overview rate panel'}else{'no series yet'})
 
 # Quotas
 $r = Invoke-DS PUT "$BaseUrl/api/v1/settings/buckets/$privBucket" -Headers $adminH -Body '{"max_size_bytes":1073741824,"max_objects":1000}'

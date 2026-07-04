@@ -39,3 +39,6 @@ type Backend interface {
 
 	CopyObject(ctx context.Context, srcBucket, srcKey, dstBucket, dstKey string) (etag string, err error)
 }
+
+// Compile-time check: FSBackend satisfies Backend.
+var _ Backend = (*FSBackend)(nil)

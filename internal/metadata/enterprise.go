@@ -189,6 +189,7 @@ type FederationCluster struct {
 	Endpoint     string    `json:"endpoint"`
 	Region       string    `json:"region"`
 	Status       string    `json:"status,omitempty"`
+	ClusterID    string    `json:"cluster_id"`
 	Capabilities []string  `json:"capabilities,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 }
@@ -434,6 +435,9 @@ func (s *Store) ListSyncJobs(ruleID string, limit int) ([]SyncJob, error) {
 }
 
 func (s *Store) PutFederationCluster(rec FederationCluster) error {
+	if rec.ClusterID == "" {
+		rec.ClusterID = "local"
+	}
 	return s.db.Update(func(tx *bolt.Tx) error {
 		data, err := json.Marshal(rec)
 		if err != nil {

@@ -14,8 +14,27 @@ if [ -f /storage-server-bin ]; then
 fi
 
 if [ "$(id -u)" = "0" ]; then
-  mkdir -p "$DATA_DIR/objects/buckets"
-  chown -R "${NONROOT_UID}:${NONROOT_GID}" "$DATA_DIR"
+  if [ "${STORAGE_READ_ONLY:-false}" != "true" ]; then
+    mkdir -p "$DATA_DIR/objects/buckets"
+    chown -R "${NONROOT_UID}:${NONROOT_GID}" "$DATA_DIR"
+  fi
+  # Erasure shard volumes are separate mounts; ensure nonroot can write shards.
+  if [ "${STORAGE_OBJECT_BACKEND:-fs}" = "erasure" ]; then
+    if [ -n "${STORAGE_ERASURE_DATA_PATHS:-}" ]; then
+      OLDIFS=$IFS
+      IFS=,
+      for shard_path in $STORAGE_ERASURE_DATA_PATHS; do
+        shard_path=$(echo "$shard_path" | tr -d ' ')
+        if [ -n "$shard_path" ]; then
+          mkdir -p "$shard_path"
+          chown -R "${NONROOT_UID}:${NONROOT_GID}" "$shard_path"
+        fi
+      done
+      IFS=$OLDIFS
+    elif [ -d /shards ]; then
+      chown -R "${NONROOT_UID}:${NONROOT_GID}" /shards
+    fi
+  fi
   exec su-exec "${NONROOT_UID}:${NONROOT_GID}" "$SERVER_BIN" "$@"
 fi
 

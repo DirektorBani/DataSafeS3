@@ -307,11 +307,12 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Email        string `json:"email"`
-		Role         string `json:"role"`
-		Status       string `json:"status"`
-		MaxSizeBytes *int64 `json:"max_size_bytes"`
-		MaxObjects   *int64 `json:"max_objects"`
+		Email        string  `json:"email"`
+		Role         string  `json:"role"`
+		Status       string  `json:"status"`
+		TeamID       *string `json:"team_id"`
+		MaxSizeBytes *int64  `json:"max_size_bytes"`
+		MaxObjects   *int64  `json:"max_objects"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
@@ -325,6 +326,15 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Status != "" {
 		rec.Status = req.Status
+	}
+	if req.TeamID != nil {
+		if *req.TeamID != "" {
+			if _, err := s.meta.GetTeam(*req.TeamID); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "unknown team_id"})
+				return
+			}
+		}
+		rec.TeamID = *req.TeamID
 	}
 	if req.MaxSizeBytes != nil {
 		rec.MaxSizeBytes = *req.MaxSizeBytes

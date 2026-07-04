@@ -16,6 +16,7 @@ import (
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/federation"
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/DirektorBani/datasafe/internal/storage"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"golang.org/x/oauth2"
@@ -949,18 +950,42 @@ func (s *Server) handleClearReplicationErrors(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, map[string]any{"cleared": true})
 }
 
+func (s *Server) validateFederationClusterID(clusterID string) bool {
+	clusterID = strings.TrimSpace(clusterID)
+	if clusterID == "" {
+		clusterID = s.localClusterID()
+	}
+	if clusterID == s.localClusterID() {
+		return true
+	}
+	rec, err := s.meta.GetTrustedCluster(clusterID)
+	return err == nil && rec.Active && !rec.IsLocal
+}
+
 func (s *Server) handleListFederationClusters(w http.ResponseWriter, r *http.Request) {
 	clusters, err := s.meta.ListFederationClusters()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	filterID := strings.TrimSpace(r.URL.Query().Get("cluster_id"))
+	var filtered []metadata.FederationCluster
 	for i := range clusters {
 		if len(clusters[i].Capabilities) == 0 {
 			clusters[i].Capabilities = []string{"read", "list"}
 		}
+		if clusters[i].ClusterID == "" {
+			clusters[i].ClusterID = s.localClusterID()
+		}
+		if filterID != "" && clusters[i].ClusterID != filterID {
+			continue
+		}
 		status, _ := federation.TestConnectivity(clusters[i].Endpoint)
 		clusters[i].Status = status
+		filtered = append(filtered, clusters[i])
+	}
+	if filterID != "" {
+		clusters = filtered
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"clusters": clusters})
 }
@@ -973,6 +998,13 @@ func (s *Server) handleCreateFederationCluster(w http.ResponseWriter, r *http.Re
 	}
 	if req.Name == "" || req.Endpoint == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name and endpoint required"})
+		return
+	}
+	if req.ClusterID == "" {
+		req.ClusterID = s.localClusterID()
+	}
+	if !s.validateFederationClusterID(req.ClusterID) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "unknown cluster_id"})
 		return
 	}
 	req.ID = randomID()
@@ -1025,13 +1057,24 @@ func (s *Server) handleClusterStatus(w http.ResponseWriter, r *http.Request) {
 			ID: "local", Address: "localhost:9000", Role: "primary", Status: "healthy",
 		}}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	obCfg := storage.ObjectBackendFromEnv(s.cfg.DataDir, s.cfg.ReadOnly)
+	body := map[string]any{
 		"status":                 status,
 		"distributed_mode":       cfg.Cluster.DistributedMode,
 		"erasure_coding_planned": cfg.Cluster.ErasureCodingPlanned,
+		"object_backend":         obCfg.Backend,
 		"disk_paths":             cfg.Cluster.DiskPaths,
 		"nodes":                  nodes,
-	})
+	}
+	if h := storage.HealthOf(r.Context(), s.backend); obCfg.Backend == "erasure" {
+		body["erasure_degraded"] = h.Degraded
+	}
+	if s.haLeader != nil && s.haLeader.Enabled() {
+		body["ha_enabled"] = true
+		body["is_leader"] = s.haLeader.IsLeader(r.Context())
+		body["node_id"] = s.haLeader.NodeID()
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) mergeEnvConfig(cfg metadata.SystemConfig) metadata.SystemConfig {

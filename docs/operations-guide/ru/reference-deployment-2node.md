@@ -1,54 +1,44 @@
-# Эталонное развёртывание — 2 узла HA + резервное копирование (Community Edition)
+# Эталонное развёртывание — HA v2 (Community Edition)
 
 **[English](../en/reference-deployment-2node.md)** | Русский
 
-Руководство описывает **поддерживаемый паттерн Community Edition**: active-passive PostgreSQL для метаданных, опциональный read-only `storage-server` standby и внешний backup. **Лицензионных ограничений для HA нет.**
+HA v2 в CE: **erasure для объектов**, **оркестрируемый failover метаданных Postgres**, опциональная **site replication** на второй DataSafeS3. Лицензионных ограничений нет.
 
-## Топология
+## Топология (рекомендуемая)
 
 ```text
-[Клиент] → Caddy :8080 → storage-server (primary, запись)
-                      ↘ storage-server-standby (STORAGE_READ_ONLY=true, :9001)
-PostgreSQL primary ──streaming replication──► PostgreSQL standby
+[Клиент] → Caddy → storage-server (leader, запись)
+                    │
+                    ├─ STORAGE_OBJECT_BACKEND=erasure (4+2 или dev 2+1)
+                    ├─ Postgres primary ──streaming──► standby + ha_leader_lock
+                    └─ site replication (async) ──► Site B
 ```
 
-## Compose (лаборатория)
+## Legacy standby (deprecated)
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.ha.yml \
-  --profile postgres --profile ha-standby up -d --build
-```
+Общий FS + `storage-server-standby` (read-only) — только для DR drill. Новые установки: erasure + metadata failover. См. [scaling.md](../ru/scaling.md).
 
-| Сервис | Роль |
-|--------|------|
-| `postgres` | Primary метаданных |
-| `postgres-standby` | Реплика (`--profile ha-postgres`) |
-| `storage-server` | Primary API |
-| `storage-server-standby` | DR read (`STORAGE_READ_ONLY=true`) |
+## Compose (лаборатория Windows)
 
-На primary задайте `STORAGE_POSTGRES_READ_REPLICA_DSN` для маршрутизации list-запросов на standby.
+| Профиль | Назначение | Скрипт |
+|---------|------------|--------|
+| HA lab | Postgres + 3 storage | `scripts\ha\start-ha-stack.ps1` |
+| Erasure | 6 shard volumes | `docker-compose.ha-erasure.yml`, `scripts\ha\test-erasure-backend.ps1` |
+| Site replication | Site A → Site B | `scripts\ha\start-site-replication-lab.ps1`, `scripts\ha\test-site-replication.ps1` |
 
-## Failover (ручной)
+## Failover метаданных
 
-1. `scripts/postgres-failover.ps1` или `.sh` (promote, health wait).
-2. Обновите `STORAGE_POSTGRES_DSN` на новый primary.
-3. Ежеквартально: `scripts/dr-drill.ps1`.
-
-## Kubernetes (Helm)
-
-```bash
-helm upgrade --install datasafe ./deploy/helm/datasafe \
-  -f deploy/helm/datasafe/values-ha.yaml
-```
-
-## Резервное копирование
-
-- **Метаданные:** `pg_dump` с primary или standby.
-- **Объекты:** снимок `STORAGE_DATA_DIR` или Gateway replication во внешний S3.
+1. Остановить leader или `STORAGE_READ_ONLY=true`.
+2. `scripts\ha\failover-metadata.ps1`.
+3. Обновить `STORAGE_POSTGRES_DSN`, перезапустить storage-server.
+4. Проверить `/healthz`: `is_leader=true`.
 
 ## Проверка
 
-```bash
-curl -s http://localhost:8080/healthz | jq .
-powershell -File scripts/dr-drill.ps1
+```powershell
+scripts\ha\test-ha-cluster.ps1
+scripts\ha\test-erasure-backend.ps1
+scripts\ha\test-site-replication.ps1
 ```
+
+Подробнее: [backup-restore](../ru/backup-restore.md), [disaster-recovery](../ru/disaster-recovery.md).

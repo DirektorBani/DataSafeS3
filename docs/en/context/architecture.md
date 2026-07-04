@@ -6,7 +6,7 @@
 
 ## Single-node by default
 
-Community Edition ships as **one `storage-server` process** on one host by default. Optional **HA patterns** (PostgreSQL streaming replication, read-only standby, failover scripts, Helm `values-ha.yaml`) are documented for metadata and DR — without multi-AZ erasure at petabyte scale. See [scaling guide](../../operations-guide/en/scaling.md) and [2-node reference](../../operations-guide/en/reference-deployment-2node.md).
+Community Edition ships as **one `storage-server` process** on one host by default. Optional **HA v2 lab patterns** (erasure backend, PostgreSQL leader lock, site replication, read-only standby, failover scripts, Helm `values-ha.yaml`) are documented for metadata and DR — without production multi-AZ erasure at petabyte scale. See [scaling guide](../../operations-guide/en/scaling.md) and [2-node reference](../../operations-guide/en/reference-deployment-2node.md).
 
 | Capability | Status in Community Edition |
 |------------|---------------------------|
@@ -14,9 +14,12 @@ Community Edition ships as **one `storage-server` process** on one host by defau
 | PostgreSQL metadata (optional) | **Implemented** |
 | Gateway replication to external S3 | **Implemented** |
 | Federation (peer registry + S3 proxy) | **Partial (MVP)** — GetObject + ListObjectsV2 across registered peers |
+| Teams admin API + console | **Implemented** |
+| Metrics bearer token | **Implemented** — `STORAGE_METRICS_TOKEN` |
 | HA metadata (Postgres replicas + failover scripts) | **Partial** — manual promote; read-replica list routing |
+| HA v2 lab foundation | **Implemented (lab)** — erasure backend, leader lock, site replication scripts |
 | Read-only `storage-server` standby | **Implemented** — `STORAGE_READ_ONLY`, `docker-compose.ha.yml` |
-| Erasure coding / multi-AZ storage | **Partial (MVP)** — 2+1 codec in `internal/storage/erasure/`; not production multi-AZ |
+| Erasure coding / multi-AZ storage | **Lab foundation** — `STORAGE_OBJECT_BACKEND=erasure`; not production multi-AZ |
 | STS session tokens (scoped S3) | **Implemented** — `POST /api/v1/sts/assume-role`; credentials bound to calling user; `X-Amz-Security-Token` in SigV4 |
 | Event notifications | **Implemented** — Webhook + optional NATS (`STORAGE_NATS_URL`) |
 
@@ -51,11 +54,12 @@ Entry: `cmd/storage-server/main.go`
 |---------|------|
 | `internal/api` | HTTP mux, admin JSON handlers, wires S3 + auth |
 | `internal/api/s3` | S3 XML handlers (buckets, objects, multipart, copy) |
-| `internal/storage` | Filesystem object backend |
-| `internal/metadata` | BoltDB: buckets, keys, policies, lifecycle |
+| `internal/storage` | Filesystem and object-backend abstractions |
+| `internal/storage/erasure` | Lab erasure backend, heal worker, Reed-Solomon codec |
+| `internal/metadata` | BoltDB/Postgres metadata: buckets, teams, keys, policies, lifecycle, HA/site-repl state |
 | `internal/auth` | AWS SigV4 sign/verify, presign, JWT admin auth |
 | `internal/policy` | Bucket policy evaluator (Allow subset) |
-| `internal/observability` | Structured JSON logs, Prometheus metrics |
+| `internal/observability` | Structured JSON logs, Prometheus metrics, metrics bearer auth |
 
 ### Data layout
 

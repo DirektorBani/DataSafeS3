@@ -57,6 +57,8 @@ $env:DATASAFE_DATA_ROOT = 'D:/datasafe-data'
 pwsh -File scripts/vault/smoke-vault-integration.ps1
 ```
 
+Uses compose project `datasafe-vault` with published ports **9001** (storage) and **5434** (Postgres) so the main `datasafe` stack on :9000 can stay up.
+
 ```bash
 DATASAFE_DATA_ROOT=./.datasafe-data scripts/vault/smoke-vault-integration.sh
 ```

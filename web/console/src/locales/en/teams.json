@@ -1,0 +1,16 @@
+{
+  "title": "Teams",
+  "subtitle": "Legacy team buckets and membership (distinct from tenant groups).",
+  "create": "Create team",
+  "namePlaceholder": "Team name",
+  "empty": "No teams yet.",
+  "members": "Members",
+  "selectTeam": "Select a team to manage members.",
+  "saveMembers": "Save members",
+  "toast": {
+    "created": "Team created",
+    "updated": "Team updated",
+    "deleted": "Team deleted",
+    "membersSaved": "Members updated"
+  }
+}

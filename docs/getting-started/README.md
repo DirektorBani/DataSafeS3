@@ -1,10 +1,10 @@
 # Getting Started / Начало работы
 
-| English | Русский |
-|---------|---------|
-| [en/README.md](en/README.md) | [ru/README.md](ru/README.md) |
+| English | Русский | Deutsch | Français |
+|---------|---------|---------|----------|
+| [en/README.md](en/README.md) | [ru/README.md](ru/README.md) | [de/README.md](de/README.md) | [fr/README.md](fr/README.md) |
 
-- [What is DataSafeS3](en/what-is-datasafe.md) · [Что такое DataSafeS3](ru/what-is-datasafe.md)
+- [What is DataSafeS3](en/what-is-datasafe.md) · [Что такое DataSafeS3](ru/what-is-datasafe.md) · [DE](de/what-is-datasafe.md) · [FR](fr/what-is-datasafe.md)
 - [Architecture](en/architecture.md) · [Архитектура](ru/architecture.md)
 - [First run](en/first-run.md) · [Первый запуск](ru/first-run.md)
 - [Setup wizard](en/setup-wizard.md) · [Мастер настройки](ru/setup-wizard.md)

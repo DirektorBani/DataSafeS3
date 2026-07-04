@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: DataSafeS3 Community Integration API
-  version: 1.0.0
+  version: 1.1.0
   summary: Machine-facing JSON REST API for integrators (subset of /api/v1)
   description: |
     **DataSafeS3 Community edition** — JSON REST Integration API for machine clients and integrators.
@@ -244,7 +244,29 @@ components:
         role: { type: string, enum: [administrator, operator, user] }
         status: { type: string }
         tenant_id: { type: string }
+        team_id: { type: string, description: Primary legacy team assignment }
         mfa_enabled: { type: boolean }
+
+    Team:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+
+    TeamMember:
+      type: object
+      properties:
+        user_id: { type: string }
+        username: { type: string }
+        email: { type: string }
+
+    PutTeamMembersRequest:
+      type: object
+      properties:
+        user_ids:
+          type: array
+          items: { type: string }
 
     CreateShareRequest:
       type: object

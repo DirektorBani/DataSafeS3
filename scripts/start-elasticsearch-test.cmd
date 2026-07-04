@@ -11,6 +11,12 @@ set "IMAGE=docker.elastic.co/elasticsearch/elasticsearch:8.11.0"
 docker inspect %CONTAINER% >nul 2>&1
 if not errorlevel 1 (
   echo Container %CONTAINER% already exists.
+  curl.exe -sf -u elastic:%ES_PASSWORD% http://localhost:%PORT%/_cluster/health >nul 2>&1
+  if errorlevel 1 (
+    echo Password mismatch or unhealthy ES — recreating %CONTAINER%...
+    docker rm -f %CONTAINER% >nul 2>&1
+    goto :create
+  )
   docker start %CONTAINER% >nul 2>&1
   if errorlevel 1 (
     echo Failed to start %CONTAINER%.
@@ -20,6 +26,7 @@ if not errorlevel 1 (
   goto :done
 )
 
+:create
 echo Starting %CONTAINER% (single-node Elasticsearch 8.11)...
 docker run -d ^
   --name %CONTAINER% ^

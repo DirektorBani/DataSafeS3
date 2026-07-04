@@ -1,0 +1,17 @@
+{
+  "title": "Site replication",
+  "description": "Async replication to another DataSafeS3 site (not external S3 Gateway).",
+  "status": {
+    "title": "Status",
+    "pending": "Pending tasks",
+    "lag": "Lag"
+  },
+  "peers": {
+    "title": "Peers",
+    "empty": "No peers registered."
+  },
+  "rules": {
+    "title": "Rules",
+    "empty": "No rules configured."
+  }
+}

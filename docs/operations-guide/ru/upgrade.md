@@ -147,6 +147,62 @@ docker compose --profile postgres up -d
 
 Проверьте cosign с `TAG=v1.0.3`, затем `GET /api/v1/settings/security-status` и Admin → Settings → Security. Field encryption — только по чеклисту [field-encryption.md](field-encryption.md).
 
+## Обновление до v1.1.0
+
+Релиз **v1.1.0** — minor «trust-debt»: удаление escape hatch `STORAGE_OUTBOUND_HTTP_ALLOW` и опциональная аутентификация `/metrics` через `STORAGE_METRICS_TOKEN`. Обновляйте **storage-server и console вместе**.
+
+### Исходящие URL (breaking)
+
+| До (v1.0.x) | После (v1.1.0) |
+|-------------|----------------|
+| `STORAGE_OUTBOUND_HTTP_ALLOW=true` | **Переменная удалена** |
+| Loki `http://127.0.0.1` в production с allow | **HTTPS** или `STORAGE_DEV=true` только на dev/CI |
+
+Overlay `docker-compose.audit.yml` задаёт `STORAGE_DEV=true` для feature-audit — **не** для production.
+
+**Чеклист:** убрать `STORAGE_OUTBOUND_HTTP_ALLOW` из compose/Helm/.env; перевести sinks/webhooks на `https://` где нужно.
+
+### Аутентификация metrics
+
+| `STORAGE_METRICS_TOKEN` | Поведение |
+|-------------------------|-----------|
+| Пусто | `/metrics` открыт (legacy); warning при `STORAGE_DEV=false` |
+| Задан | `Authorization: Bearer <token>` обязателен |
+
+Пример Prometheus — см. [upgrade EN](../en/upgrade.md#upgrading-to-v110) и `deploy/docker/prometheus.yml`. Helm: `storageServer.config.metricsToken`.
+
+Консоль без bearer показывает нули на дашборде — используйте Grafana/Prometheus.
+
+### Токены share-ссылок (метаданные)
+
+| Backend | После обновления |
+|---------|------------------|
+| **PostgreSQL** | Миграция `013_share_token_hash` заполняет `token_hash`; plaintext `token` удаляется после backfill |
+| **Bolt** | Новые ссылки только как hash; **fallback по legacy plaintext index** для ссылок до обновления |
+
+Для Postgres действий не требуется. На Bolt dev старые ссылки продолжают работать; новые создаются только с hash.
+
+### Шаги (v1.1.0)
+
+```bash
+git pull
+export TAG=v1.1.0
+docker compose --profile postgres pull
+docker compose --profile postgres build storage-server
+scripts/build-console.cmd
+docker compose --profile postgres up -d
+```
+
+**Не в v1.1.0:** field encryption v2, mobile GA, Vault Transit in-process.
+
+## Trusted clusters (после v1.1.0)
+
+Входит в **v1.1.0**: mTLS pairing, trusted remote, правила репликации.
+
+Миграции `017`–`019` применяются при старте `storage-server`. Переменные: `STORAGE_CLUSTER_ID`, `STORAGE_CLUSTER_ENDPOINT`, `STORAGE_TRUSTED_CLUSTER_REPL_ENABLED`. На Docker используйте `host.docker.internal`, не `127.0.0.1`, для cross-container pairing.
+
+Подробно: [trusted-clusters.md](trusted-clusters.md) · [EN](../en/trusted-clusters.md)
+
 ## Чеклист
 
 - [ ] Backup метаданных и объектов
@@ -156,3 +212,4 @@ docker compose --profile postgres up -d
 - [ ] v1.0.2: обновить server **и** console вместе для OIDC
 - [ ] v1.0.2: проверить outbound URL и `STORAGE_RATE_LIMIT_LOGIN` для автоматизации
 - [ ] v1.0.3 (опционально): включить [field encryption](field-encryption.md) — KEK, env, security-status
+- [ ] v1.1.0: убрать `STORAGE_OUTBOUND_HTTP_ALLOW`; настроить `STORAGE_METRICS_TOKEN` и Prometheus bearer

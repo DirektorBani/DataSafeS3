@@ -2,9 +2,56 @@
 
 All notable changes to DataSafeS3 are documented in this file.
 
-## [Unreleased]
+## [1.1.0] - 2026-07-05
 
-_Nothing yet._
+Trust-debt and OSS-growth release: security hardening C01–C21, Teams/MFA console improvements, feature-audit coverage, **HA v2 CE lab foundation**, and **trusted cluster** multi-site pairing (mTLS, replication rules, federation `cluster_id`).
+
+> **Lab disclaimer:** HA v2 and trusted clusters are **CE lab foundations** (compose scripts, separate ports, pairing lab). They are **not** production multi-AZ HA, not an automatic failover orchestrator, not Patroni-certified clustering, and not a turnkey multi-region product.
+
+### Security
+
+- **`STORAGE_OUTBOUND_HTTP_ALLOW` removed** — outbound HTTP/private targets allowed only when `STORAGE_DEV=true` (non-production). Production integrations must use public HTTPS endpoints.
+- **`STORAGE_METRICS_TOKEN`** — when set, `GET /metrics` requires `Authorization: Bearer <token>`; empty token keeps legacy open mode with startup warning in production.
+- **Share link tokens** — stored as SHA-256 hash only (`token_hash`); plaintext returned once on create. Postgres migration `013_share_token_hash` backfills existing links; Bolt uses hash index with legacy plaintext fallback for pre-upgrade data.
+- **Pen-test preparation** — operator checklist ([EN](docs/operations-guide/en/pen-test-preparation.md), [RU](docs/operations-guide/ru/pen-test-preparation.md)) for external assessments.
+- **Automated mTLS cluster pairing** — join tokens (`dsjoin_*`, 15 min, single-use) stored as **hash only**; trust via mutual TLS and CA exchange (no manual fingerprint gate).
+- **Cluster PKI** — per-deployment CA and client certs on disk (`STORAGE_CLUSTER_CERT_DIR`); private keys **never** in Postgres/Bolt.
+- **Cert lifecycle** — 90-day client cert TTL; leader-only rotator renews at ~75 days; revoke updates CRL and stops workers.
+- **Cluster metadata at rest** — field encryption paths for cluster/site-replication secrets (`enc:v1:`).
+
+### Added
+
+- **Teams (admin API + console)** — `GET/POST/PUT/DELETE /api/v1/teams`, member management; Admin → Teams UI ([EN](web/console/src/locales/en/teams.json)). OpenAPI paths in `docs/api/openapi-full.yaml`.
+- **MFA setup wizard** — console profile flow for TOTP enrollment and verification (`e2e/security-mfa.spec.ts` smoke).
+- **Feature audit** — extended to **111** checks; Grafana panel smoke; **AUD-15** tenant matrix; **AUD-18** trash restore; trusted-cluster pairing and federation `cluster_id` slices.
+- **Playwright CI regression** — 7 specs on PR (`smoke`, `buckets`, `settings`, `files`, `share`, `security-mfa`, `teams`); OIDC Keycloak browser flow moved to nightly [e2e-oidc.yml](.github/workflows/e2e-oidc.yml) (optional `E2E_OIDC_KEYCLOAK=1`, see [docs/testing/oidc-e2e.md](docs/testing/oidc-e2e.md)).
+- **API guide examples** — Go S3 SDK (`docs/api-guide/en/examples/go/`) and Python Admin JWT list-buckets script; CI compile check.
+- **Reference-arch backup smoke** — `scripts/reference-arch/backup-restore.ps1`; linked from [backup-storage use-case](docs/use-cases/en/backup-storage.md) (EN/RU).
+- **Getting started stubs** — German (`docs/getting-started/de/`) and French (`docs/getting-started/fr/`).
+- **GHCR on `main`** — `.github/workflows/publish-main.yml` pushes `:main` and `:sha-*` image tags.
+- **Contributing guide** — [CONTRIBUTING.md](CONTRIBUTING.md) with local stack, Playwright list, OIDC policy, good first issues.
+- **HA v2 (CE)** — erasure object backend (`STORAGE_OBJECT_BACKEND=erasure`), Postgres leader lock (`STORAGE_HA_ENABLED`), site replication Admin API + console; lab scripts under `scripts/ha/`; spec [ha-replication-v2-tz.md](docs/specs/ha-replication-v2-tz.md).
+- **Trusted clusters** — `GET/POST /api/v1/clusters/…` (pairing, revoke, rotate, replication-rules); Console **Clusters** page; Playwright [`trusted-clusters.spec.ts`](web/console/e2e/trusted-clusters.spec.ts).
+- **Trusted-cluster replication** — mTLS S3 client to paired peers; `STORAGE_TRUSTED_CLUSTER_REPL_ENABLED` (default `true`); migrations `017`–`019`.
+- **Federation `cluster_id`** — each federation peer scoped to local or trusted remote cluster.
+- **Parallel multipart uploads** — console concurrency 4 for large files.
+- **Load balancer templates** — [Caddy multi-cluster LB](deploy/caddy/multi-cluster-lb.md); Helm [`caddy-lb.yaml`](deploy/helm/datasafe/templates/caddy-lb.yaml).
+- **Documentation (EN/RU)** — [trusted clusters ops](docs/operations-guide/en/trusted-clusters.md), [admin console guide](docs/administrator-guide/en/trusted-clusters.md), updated user guide §8.
+
+### Changed
+
+- **Helm** — `storageServer.config.metricsToken` maps to `STORAGE_METRICS_TOKEN`.
+- **Prometheus example** — bearer scrape config in `deploy/docker/prometheus.yml`.
+- **Security self-assessment** — metrics token and outbound policy notes ([EN](docs/operations-guide/en/security-self-assessment.md), [RU](docs/operations-guide/ru/security-self-assessment.md)).
+- **Site replication worker** — rules with `trusted_cluster_id` use mTLS transport.
+
+### Migration
+
+See [upgrade guide § v1.1.0](docs/operations-guide/en/upgrade.md#upgrading-to-v110) (EN/RU). Postgres migrations `013`–`019` apply on start. Field encryption v2 is **not** in this release.
+
+**Trusted clusters:** set `STORAGE_CLUSTER_ID` and `STORAGE_CLUSTER_ENDPOINT` (reachable from remote site — on Docker Desktop use `host.docker.internal`, not `127.0.0.1`). Backup `{STORAGE_DATA_DIR}/cluster-certs/`. See [trusted clusters upgrade](docs/operations-guide/en/upgrade.md#trusted-clusters-post-v110).
+
+Container images (on tag): `ghcr.io/direktorbani/datasafe-storage-server:v1.1.0`, `ghcr.io/direktorbani/datasafe-console:v1.1.0`.
 
 ## [1.0.3] - 2026-06-30
 
@@ -97,6 +144,7 @@ First public **DataSafeS3 Community Edition** release.
 
 Container images: `ghcr.io/direktorbani/datasafe-storage-server:v1.0.0`, `ghcr.io/direktorbani/datasafe-console:v1.0.0`.
 
+[1.1.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.0
 [1.0.3]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.0.3
 [1.0.2]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.0.2
 [1.0.1]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.0.1

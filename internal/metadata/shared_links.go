@@ -1,6 +1,8 @@
 package metadata
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -18,12 +20,21 @@ type SharedLinkRecord struct {
 	ID            string     `json:"id"`
 	Bucket        string     `json:"bucket"`
 	Key           string     `json:"key"`
-	Token         string     `json:"token"`
+	Token         string     `json:"token,omitempty"`
+	TokenHash     string     `json:"token_hash,omitempty"`
 	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
 	MaxDownloads  int        `json:"max_downloads"`
 	DownloadCount int        `json:"download_count"`
 	CreatedBy     string     `json:"created_by"`
 	CreatedAt     time.Time  `json:"created_at"`
+}
+
+func HashShareToken(token string) string {
+	if token == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 func (rec SharedLinkRecord) Active(now time.Time) error {
@@ -37,8 +48,15 @@ func (rec SharedLinkRecord) Active(now time.Time) error {
 }
 
 func (s *Store) PutSharedLink(rec SharedLinkRecord) error {
+	hash := HashShareToken(rec.Token)
+	if hash == "" {
+		return errors.New("share token required")
+	}
+	storeRec := rec
+	storeRec.Token = ""
+	storeRec.TokenHash = hash
 	return s.db.Update(func(tx *bolt.Tx) error {
-		data, err := json.Marshal(rec)
+		data, err := json.Marshal(storeRec)
 		if err != nil {
 			return err
 		}
@@ -46,7 +64,7 @@ func (s *Store) PutSharedLink(rec SharedLinkRecord) error {
 		if err := b.Put([]byte(rec.ID), data); err != nil {
 			return err
 		}
-		return b.Put([]byte("shared_link_token:"+rec.Token), []byte(rec.ID))
+		return b.Put([]byte("shared_link_token_hash:"+hash), []byte(rec.ID))
 	})
 }
 
@@ -57,7 +75,11 @@ func (s *Store) GetSharedLink(id string) (SharedLinkRecord, error) {
 		if data == nil {
 			return ErrNotFound
 		}
-		return json.Unmarshal(data, &rec)
+		if err := json.Unmarshal(data, &rec); err != nil {
+			return err
+		}
+		rec.Token = ""
+		return nil
 	})
 	return rec, err
 }
@@ -66,7 +88,11 @@ func (s *Store) GetSharedLinkByToken(token string) (SharedLinkRecord, error) {
 	var rec SharedLinkRecord
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("shared_links"))
-		id := b.Get([]byte("shared_link_token:" + token))
+		hash := HashShareToken(token)
+		id := b.Get([]byte("shared_link_token_hash:" + hash))
+		if id == nil {
+			id = b.Get([]byte("shared_link_token:" + token))
+		}
 		if id == nil {
 			return ErrNotFound
 		}
@@ -74,7 +100,11 @@ func (s *Store) GetSharedLinkByToken(token string) (SharedLinkRecord, error) {
 		if data == nil {
 			return ErrNotFound
 		}
-		return json.Unmarshal(data, &rec)
+		if err := json.Unmarshal(data, &rec); err != nil {
+			return err
+		}
+		rec.Token = ""
+		return nil
 	})
 	return rec, err
 }
@@ -83,7 +113,8 @@ func (s *Store) ListSharedLinks(bucket, key string) ([]SharedLinkRecord, error) 
 	var out []SharedLinkRecord
 	err := s.db.View(func(tx *bolt.Tx) error {
 		return tx.Bucket([]byte("shared_links")).ForEach(func(k, v []byte) error {
-			if strings.HasPrefix(string(k), "shared_link_token:") {
+			ks := string(k)
+			if strings.HasPrefix(ks, "shared_link_token:") || strings.HasPrefix(ks, "shared_link_token_hash:") {
 				return nil
 			}
 			var rec SharedLinkRecord
@@ -96,6 +127,7 @@ func (s *Store) ListSharedLinks(bucket, key string) ([]SharedLinkRecord, error) 
 			if key != "" && rec.Key != key {
 				return nil
 			}
+			rec.Token = ""
 			out = append(out, rec)
 			return nil
 		})
@@ -114,7 +146,12 @@ func (s *Store) DeleteSharedLink(id string) error {
 		if err := json.Unmarshal(data, &rec); err != nil {
 			return err
 		}
-		_ = b.Delete([]byte("shared_link_token:" + rec.Token))
+		if rec.TokenHash != "" {
+			_ = b.Delete([]byte("shared_link_token_hash:" + rec.TokenHash))
+		}
+		if rec.Token != "" {
+			_ = b.Delete([]byte("shared_link_token:" + rec.Token))
+		}
 		return b.Delete([]byte(id))
 	})
 }

@@ -23,6 +23,17 @@ func (s *Store) GetTeam(id string) (metadata.TeamRecord, error) {
 	return rec, nil
 }
 
+func (s *Store) UpdateTeam(rec metadata.TeamRecord) error {
+	tag, err := s.pool.Exec(context.Background(), `UPDATE teams SET name=$2 WHERE id=$1`, rec.ID, rec.Name)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return metadata.ErrNotFound
+	}
+	return nil
+}
+
 func (s *Store) ListTeams() ([]metadata.TeamRecord, error) {
 	rows, err := s.pool.Query(context.Background(), `SELECT id, name, created_at FROM teams ORDER BY name`)
 	if err != nil {
@@ -71,6 +82,23 @@ func (s *Store) RemoveUserTeam(userID, teamID string) error {
 
 func (s *Store) ListUserTeamIDs(userID string) ([]string, error) {
 	rows, err := s.pool.Query(context.Background(), `SELECT team_id FROM user_teams WHERE user_id=$1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ListTeamMemberUserIDs(teamID string) ([]string, error) {
+	rows, err := s.pool.Query(context.Background(), `SELECT user_id FROM user_teams WHERE team_id=$1 ORDER BY user_id`, teamID)
 	if err != nil {
 		return nil, err
 	}

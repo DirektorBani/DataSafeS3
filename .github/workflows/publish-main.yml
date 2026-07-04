@@ -1,0 +1,49 @@
+name: publish-main
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  SERVER_IMAGE: ghcr.io/direktorbani/datasafe-storage-server
+  CONSOLE_IMAGE: ghcr.io/direktorbani/datasafe-console
+
+jobs:
+  publish-images:
+    runs-on: ubuntu-latest
+    if: github.repository == 'DirektorBani/DataSafeS3'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push storage-server
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          docker build -f deploy/docker/Dockerfile \
+            -t "${SERVER_IMAGE}:main" \
+            -t "${SERVER_IMAGE}:sha-${SHORT_SHA}" \
+            .
+          docker push "${SERVER_IMAGE}:main"
+          docker push "${SERVER_IMAGE}:sha-${SHORT_SHA}"
+
+      - name: Build and push console
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          docker build -f deploy/docker/Dockerfile.console \
+            -t "${CONSOLE_IMAGE}:main" \
+            -t "${CONSOLE_IMAGE}:sha-${SHORT_SHA}" \
+            .
+          docker push "${CONSOLE_IMAGE}:main"
+          docker push "${CONSOLE_IMAGE}:sha-${SHORT_SHA}"

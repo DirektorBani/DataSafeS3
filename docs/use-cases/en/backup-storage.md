@@ -29,3 +29,14 @@ flowchart LR
 ## Result
 
 Predictable, self-hosted backup target with optional geo-redundant copies via Gateway — under your retention and access policies.
+
+## Verified script
+
+Smoke-test bucket create + object round-trip against a running stack:
+
+```powershell
+.\scripts\reference-arch\backup-restore.ps1
+# optional: -BaseUrl http://127.0.0.1:8080
+```
+
+Expect `PASS reference-arch backup-restore smoke`. See also [backup & restore operations guide](../../operations-guide/en/backup-restore.md).

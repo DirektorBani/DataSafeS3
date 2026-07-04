@@ -14,7 +14,8 @@
 | Supply chain | SBOM + Cosign на тегах (оба образа) | release workflow, [SECURITY.md](../../../SECURITY.md) |
 | Секреты | Env / K8s, опционально [Vault Agent](secrets-vault.md), `STORAGE_STRICT_SECRETS`, security-status API | Helm `values-production.yaml`, `examples/values-vault-agent.yaml` |
 | Шифрование полей метаданных | Opt-in X25519 envelope для access keys, gateway, config ([field-encryption.md](field-encryption.md)) | `STORAGE_FIELD_ENCRYPTION_*`, миграция `012_field_encryption`, [scripts/crypto/](../../../scripts/crypto/README.md) |
-| SSRF / исходящие URL | urlpolicy для sinks, hooks, notifications | `STORAGE_DEV`, `STORAGE_OUTBOUND_HTTP_ALLOW` |
+| SSRF / исходящие URL | urlpolicy для sinks, hooks, notifications | `STORAGE_DEV` (v1.1.0+: `STORAGE_OUTBOUND_HTTP_ALLOW` удалена) |
+| Metrics endpoint | Опциональный bearer при `STORAGE_METRICS_TOKEN` (v1.1.0+) | `GET /metrics`, [monitoring.md](monitoring.md) |
 | OIDC сессия | Exchange code (без JWT в URL браузера) | `POST /auth/oidc/exchange` |
 | Rate limiting | Login по IP | `STORAGE_RATE_LIMIT_LOGIN` |
 | Сканирование | govulncheck в CI | ci.yml |

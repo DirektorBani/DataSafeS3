@@ -94,22 +94,18 @@ func TestDefaultOptions_prodMode_matrix(t *testing.T) {
 	cases := []struct {
 		name      string
 		dev       string
-		allowHTTP string
 		url       string
 		wantAllow bool
 	}{
-		{"prod blocks loopback", "false", "", loopback, false},
-		{"prod blocks plain http public", "false", "", "http://hooks.slack.com/", false},
-		{"unset dev blocks loopback", "", "", loopback, false},
-		{"empty allow blocks loopback", "false", "", loopback, false},
-		{"explicit false allow blocks loopback", "false", "false", loopback, false},
-		{"allow true permits loopback http", "false", "true", loopback, true},
-		{"dev permits loopback without allow flag", "true", "", loopback, true},
+		{"prod blocks loopback", "false", loopback, false},
+		{"prod blocks plain http public", "false", "http://hooks.slack.com/", false},
+		{"unset dev blocks loopback", "", loopback, false},
+		{"dev permits loopback", "true", loopback, true},
+		{"dev permits loopback without explicit false", "true", "http://127.0.0.1:9200/", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("STORAGE_DEV", tc.dev)
-			t.Setenv("STORAGE_OUTBOUND_HTTP_ALLOW", tc.allowHTTP)
 			opts := DefaultOptions()
 			err := ValidateOutboundURL(tc.url, opts)
 			if tc.wantAllow && err != nil {

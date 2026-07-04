@@ -7,6 +7,7 @@ Configuration and governance for DataSafeS3 administrators.
 | Topic | Document |
 |-------|----------|
 | Users & RBAC | [users.md](users.md) |
+| Teams | [teams.md](teams.md) |
 | Groups & roles | [groups-roles.md](groups-roles.md) |
 | MFA | [mfa.md](mfa.md) |
 | LDAP | [ldap.md](ldap.md) |
@@ -15,6 +16,7 @@ Configuration and governance for DataSafeS3 administrators.
 | Quotas | [quotas.md](quotas.md) |
 | Lifecycle | [lifecycle.md](lifecycle.md) |
 | Replication | [replication.md](replication.md) |
+| Trusted clusters | [trusted-clusters.md](trusted-clusters.md) |
 | Audit | [audit.md](audit.md) |
 | Monitoring | [monitoring.md](monitoring.md) |
 

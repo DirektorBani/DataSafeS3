@@ -273,19 +273,23 @@ func (s *Store) ListSyncJobs(ruleID string, limit int) ([]metadata.SyncJob, erro
 }
 
 func (s *Store) PutFederationCluster(rec metadata.FederationCluster) error {
+	if rec.ClusterID == "" {
+		rec.ClusterID = "local"
+	}
 	_, err := s.pool.Exec(context.Background(), `
-		INSERT INTO federation_clusters (id, name, endpoint, region, status, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6)
-		ON CONFLICT (id) DO UPDATE SET name=$2, endpoint=$3, region=$4, status=$5`,
-		rec.ID, rec.Name, rec.Endpoint, rec.Region, rec.Status, rec.CreatedAt)
+		INSERT INTO federation_clusters (id, name, endpoint, region, status, cluster_id, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		ON CONFLICT (id) DO UPDATE SET name=$2, endpoint=$3, region=$4, status=$5, cluster_id=$6`,
+		rec.ID, rec.Name, rec.Endpoint, rec.Region, rec.Status, rec.ClusterID, rec.CreatedAt)
 	return err
 }
 
 func (s *Store) GetFederationCluster(id string) (metadata.FederationCluster, error) {
 	var rec metadata.FederationCluster
 	err := s.pool.QueryRow(context.Background(), `
-		SELECT id, name, endpoint, COALESCE(region,''), COALESCE(status,''), created_at FROM federation_clusters WHERE id=$1`, id).Scan(
-		&rec.ID, &rec.Name, &rec.Endpoint, &rec.Region, &rec.Status, &rec.CreatedAt)
+		SELECT id, name, endpoint, COALESCE(region,''), COALESCE(status,''), COALESCE(cluster_id,'local'), created_at
+		FROM federation_clusters WHERE id=$1`, id).Scan(
+		&rec.ID, &rec.Name, &rec.Endpoint, &rec.Region, &rec.Status, &rec.ClusterID, &rec.CreatedAt)
 	if err != nil {
 		return rec, metadata.ErrNotFound
 	}
@@ -294,7 +298,8 @@ func (s *Store) GetFederationCluster(id string) (metadata.FederationCluster, err
 
 func (s *Store) ListFederationClusters() ([]metadata.FederationCluster, error) {
 	rows, err := s.pool.Query(context.Background(), `
-		SELECT id, name, endpoint, COALESCE(region,''), COALESCE(status,''), created_at FROM federation_clusters ORDER BY name`)
+		SELECT id, name, endpoint, COALESCE(region,''), COALESCE(status,''), COALESCE(cluster_id,'local'), created_at
+		FROM federation_clusters ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +307,7 @@ func (s *Store) ListFederationClusters() ([]metadata.FederationCluster, error) {
 	var out []metadata.FederationCluster
 	for rows.Next() {
 		var rec metadata.FederationCluster
-		if err := rows.Scan(&rec.ID, &rec.Name, &rec.Endpoint, &rec.Region, &rec.Status, &rec.CreatedAt); err != nil {
+		if err := rows.Scan(&rec.ID, &rec.Name, &rec.Endpoint, &rec.Region, &rec.Status, &rec.ClusterID, &rec.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, rec)

@@ -89,6 +89,16 @@
 | Аудит | Администрирование → Активность |
 | Backup | Копия `STORAGE_DATA_DIR` + дамп PostgreSQL — [руководство по эксплуатации](../../operations-guide/ru/backup-restore.md) |
 
+## Фаза 9 — Multi-site (опционально, v1.1.0)
+
+Связать вторую площадку DataSafeS3 для DR:
+
+1. [Trusted clusters — operations](../../operations-guide/ru/trusted-clusters.md)
+2. Pairing через **Кластеры** → join-токен
+3. Правила репликации; при необходимости federation с выбором **кластера**
+
+Lab: `scripts/ha/start-ha-stack.ps1` + `start-ha-cluster-b.ps1` (Windows).
+
 ## Быстрый API bootstrap
 
 Для автоматизации (CI, скрипты):

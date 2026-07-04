@@ -11,7 +11,83 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/metadata"
 )
+
+func TestShareLink_hashOnlyStorage(t *testing.T) {
+	s := testServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+
+	req := authReq(http.MethodPost, "/api/v1/buckets/hash-share", tok, nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	putReq := authReq(http.MethodPut, "/api/v1/buckets/hash-share/objects/secret.txt", tok, []byte("hash-test"))
+	putReq.Header.Set("Content-Type", "text/plain")
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, putReq)
+
+	body, _ := json.Marshal(map[string]any{"key": "secret.txt", "expires_in_sec": 3600})
+	req = authReq(http.MethodPost, "/api/v1/buckets/hash-share/shares", tok, body)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create share %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		Share struct {
+			ID    string `json:"id"`
+			Token string `json:"token"`
+		} `json:"share"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	if created.Share.Token == "" {
+		t.Fatal("missing token in create response")
+	}
+
+	stored, err := s.Meta().GetSharedLink(created.Share.ID)
+	if err != nil {
+		t.Fatalf("get stored share: %v", err)
+	}
+	if stored.Token != "" {
+		t.Fatalf("plaintext token retained in store: %q", stored.Token)
+	}
+	if stored.TokenHash == "" {
+		t.Fatal("expected token hash in store")
+	}
+	if stored.TokenHash != metadata.HashShareToken(created.Share.Token) {
+		t.Fatalf("token hash mismatch stored=%q want=%q", stored.TokenHash, metadata.HashShareToken(created.Share.Token))
+	}
+
+	listReq := authReq(http.MethodGet, "/api/v1/buckets/hash-share/shares", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, listReq)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list shares %d %s", rec.Code, rec.Body.String())
+	}
+	var listed struct {
+		Shares []struct {
+			Token     string `json:"token"`
+			TokenHash string `json:"token_hash"`
+		} `json:"shares"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &listed)
+	for _, sh := range listed.Shares {
+		if sh.Token != "" {
+			t.Fatalf("list leaked plaintext token %q", sh.Token)
+		}
+		if sh.TokenHash != "" {
+			t.Fatalf("list leaked token hash %q", sh.TokenHash)
+		}
+	}
+
+	info := httptest.NewRequest(http.MethodGet, "/api/v1/public/share/"+created.Share.Token, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, info)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("share info via plaintext token %d %s", rec.Code, rec.Body.String())
+	}
+}
 
 func TestSharedLinkDownloadAndLimit(t *testing.T) {
 	s := testServer(t)

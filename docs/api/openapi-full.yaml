@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: DataSafeS3 REST Admin API
-  version: 1.0.0
+  version: 1.1.0
   summary: Complete JSON REST API served at /api/v1 (excluding S3 XML)
   description: |
     **Full hand-written OpenAPI 3.1** for all Admin JSON routes registered in internal/api/server.go.
@@ -10,7 +10,7 @@ info:
     | Scheme | Use |
     |--------|-----|
     | **BearerAPIToken** | Integration tokens ds_* (recommended for automation) |
-    | **BearerJWT** | JWT from POST /admin/login, MFA completion, or POST /auth/oidc/exchange (console sessions) |
+    | **BearerJWT** | JWT from POST /admin/login or OIDC callback (console sessions) |
 
     Public endpoints: GET /health, POST /admin/login, OIDC bootstrap, GET /public/share/*.
 
@@ -109,6 +109,22 @@ components:
         trashed: { type: boolean }
         trash_id: { type: string }
 
+    FederationCluster:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        endpoint: { type: string }
+        region: { type: string }
+        status: { type: string }
+        cluster_id:
+          type: string
+          description: Trusted cluster id this federation peer belongs to
+        capabilities:
+          type: array
+          items: { type: string }
+        created_at: { type: string, format: date-time }
+
     HealthStatus:
       type: object
       properties:
@@ -140,39 +156,6 @@ components:
       properties:
         mfa_token: { type: string }
         mfa_code: { type: string }
-
-    OIDCExchangeRequest:
-      type: object
-      required: [exchange_code]
-      properties:
-        exchange_code:
-          type: string
-          description: One-time code from OIDC callback redirect (?exchange_code=)
-
-    OIDCExchangeResponse:
-      type: object
-      properties:
-        token: { type: string, description: HS256 JWT for console session }
-        auth_source: { type: string, example: oidc }
-
-    SecurityStatusResponse:
-      type: object
-      properties:
-        weak_secrets:
-          type: array
-          items: { type: string }
-          description: Env var names still using insecure defaults (empty when STORAGE_DEV=true)
-        doc:
-          type: string
-          description: Documentation path for secret rotation
-        field_encryption:
-          type: object
-          properties:
-            enabled: { type: boolean }
-            active_kek_id: { type: string }
-            registry_count: { type: integer }
-            legacy_plaintext_fields_estimate: { type: integer }
-          description: Field encryption status (no secret material)
 
     MeResponse:
       type: object
@@ -291,7 +274,29 @@ components:
         role: { type: string, enum: [administrator, operator, user] }
         status: { type: string }
         tenant_id: { type: string }
+        team_id: { type: string, description: Primary legacy team assignment }
         mfa_enabled: { type: boolean }
+
+    Team:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+
+    TeamMember:
+      type: object
+      properties:
+        user_id: { type: string }
+        username: { type: string }
+        email: { type: string }
+
+    PutTeamMembersRequest:
+      type: object
+      properties:
+        user_ids:
+          type: array
+          items: { type: string }
 
     CreateShareRequest:
       type: object
@@ -507,6 +512,19 @@ paths:
       responses:
         '302': { description: Redirect to IdP }
 
+  /auth/oidc/exchange:
+    post:
+      operationId: oidcExchange
+      summary: Exchange OIDC authorization code for JWT
+      tags: [Auth]
+      security: []
+      responses:
+        '200':
+          description: JWT issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+
   /auth/oidc/password-login:
     post:
       operationId: oidcPasswordLogin
@@ -515,29 +533,6 @@ paths:
       security: []
       responses:
         '200': { description: JWT }
-
-  /auth/oidc/exchange:
-    post:
-      operationId: oidcExchange
-      summary: Redeem OIDC one-time exchange code for JWT
-      description: |
-        After OIDC callback, the browser lands on `/login?exchange_code=…`. The console
-        posts the code here (single use, ~60 s TTL). Replaces the deprecated `?token=` query flow (v1.0.2+).
-      tags: [Auth]
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/OIDCExchangeRequest' }
-      responses:
-        '200':
-          description: JWT issued
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/OIDCExchangeResponse' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { description: Invalid or expired exchange code }
 
   /me:
     get:
@@ -1321,6 +1316,178 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /teams:
+    get:
+      operationId: listTeams
+      summary: List legacy teams
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  teams:
+                    type: array
+                    items: { $ref: '#/components/schemas/Team' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      operationId: createTeam
+      summary: Create legacy team
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  team: { $ref: '#/components/schemas/Team' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /teams/{id}:
+    get:
+      operationId: getTeam
+      summary: Get team
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  team: { $ref: '#/components/schemas/Team' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    put:
+      operationId: updateTeam
+      summary: Rename team
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  team: { $ref: '#/components/schemas/Team' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      operationId: deleteTeam
+      summary: Delete team
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /teams/{id}/members:
+    get:
+      operationId: listTeamMembers
+      summary: List team members
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items: { $ref: '#/components/schemas/TeamMember' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    put:
+      operationId: putTeamMembers
+      summary: Replace team members
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PutTeamMembersRequest' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items: { $ref: '#/components/schemas/TeamMember' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /settings/buckets:
     get:
       operationId: listBucketSettings
@@ -1355,27 +1522,6 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /settings/security-status:
-    get:
-      operationId: getSecurityStatus
-      summary: List weak default secrets (admin)
-      description: |
-        Returns environment variable names still using dev defaults when not in `STORAGE_DEV` mode.
-        Use before go-live or after upgrade to v1.0.2 to verify secret rotation.
-      tags: [Admin]
-      security:
-        - BearerJWT: []
-        - BearerAPIToken: []
-      x-required-role: administrator
-      responses:
-        '200':
-          description: Security posture summary
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/SecurityStatusResponse' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
   /settings/system:
     get:
       operationId: getSystemConfig
@@ -1403,6 +1549,20 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OkResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /settings/security-status:
+    get:
+      operationId: getSecurityStatus
+      summary: Security posture summary (weak secrets, metrics auth)
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Security status object }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -2663,6 +2823,133 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /site-replication/peers:
+    get:
+      operationId: listSiteReplicationPeers
+      summary: List site replication peers
+      tags: [Buckets]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Peers }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      operationId: createSiteReplicationPeer
+      summary: Register DataSafeS3 peer site
+      tags: [Buckets]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /site-replication/peers/{id}:
+    delete:
+      operationId: deleteSiteReplicationPeer
+      summary: Remove site replication peer
+      tags: [Buckets]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /site-replication/rules:
+    get:
+      operationId: listSiteReplicationRules
+      summary: List site replication rules
+      tags: [Buckets]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Rules }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+    post:
+      operationId: createSiteReplicationRule
+      summary: Create site replication rule
+      tags: [Buckets]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /site-replication/rules/{id}:
+    delete:
+      operationId: deleteSiteReplicationRule
+      summary: Delete site replication rule
+      tags: [Buckets]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '200': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /site-replication/rules/{id}/sync:
+    post:
+      operationId: triggerSiteReplicationSync
+      summary: Queue bulk sync for site rule
+      tags: [Buckets]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+          - name: id
+            in: path
+            required: true
+            schema: { type: string }
+      responses:
+        '202': { description: Queued }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /site-replication/status:
+    get:
+      operationId: siteReplicationStatus
+      summary: Site replication lag and queue
+      tags: [Buckets]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Status }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /federation/clusters:
     get:
       operationId: listFederationClusters
@@ -2672,8 +2959,24 @@ paths:
         - BearerJWT: []
         - BearerAPIToken: []
       x-required-role: administrator
+      parameters:
+        - name: cluster_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: Filter peers by trusted cluster id (local or remote)
       responses:
-        '200': { description: Clusters }
+        '200':
+          description: Clusters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clusters:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FederationCluster'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -2685,8 +2988,31 @@ paths:
         - BearerJWT: []
         - BearerAPIToken: []
       x-required-role: administrator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, endpoint]
+              properties:
+                name: { type: string }
+                endpoint: { type: string }
+                region: { type: string }
+                cluster_id:
+                  type: string
+                  description: Trusted cluster id this peer belongs to (defaults to local cluster id)
       responses:
-        '201': { description: Created }
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cluster:
+                    $ref: '#/components/schemas/FederationCluster'
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -2706,6 +3032,99 @@ paths:
             schema: { type: string }
       responses:
         '204': { description: Deleted }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /clusters/pairing-codes:
+    post:
+      operationId: createClusterPairingCode
+      summary: Generate one-time dsjoin pairing token
+      tags: [Clusters]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '201': { description: Token issued once }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /clusters/pair/join:
+    post:
+      operationId: joinTrustedCluster
+      summary: Join remote cluster using initiator URL and dsjoin token
+      tags: [Clusters]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Paired }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /clusters/pair/complete:
+    post:
+      operationId: completeClusterPairing
+      summary: Complete mTLS pairing (called by joiner storage-server)
+      tags: [Clusters]
+      responses:
+        '200': { description: Trust established }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /clusters:
+    get:
+      operationId: listTrustedClusters
+      summary: List local and trusted remote clusters
+      tags: [Clusters]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      responses:
+        '200': { description: Clusters }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /clusters/{id}:
+    get:
+      operationId: getTrustedCluster
+      summary: Trusted cluster detail and cert timeline
+      tags: [Clusters]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Detail }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /clusters/{id}/revoke:
+    post:
+      operationId: revokeTrustedCluster
+      summary: Revoke cluster trust and CRL serials
+      tags: [Clusters]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Revoked }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }

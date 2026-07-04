@@ -21,6 +21,7 @@ var forbiddenPathPrefixes = []string{
 	"/users",
 	"/gateway",
 	"/tenants",
+	"/teams",
 	"/webhooks",
 	"/activity",
 	"/federation",
@@ -308,7 +309,8 @@ func tierAP0P1Paths() []string {
 		"/buckets", "/buckets/{bucket}/objects",
 		"/buckets/{bucket}/shares", "/keys", "/presign", "/usage", "/tokens",
 		"/public/share/{token}", "/webhooks", "/hooks/test", "/federation/clusters",
-		"/settings/system", "/settings/security-status", "/users", "/activity", "/trash",
+		"/settings/system", "/settings/security-status", "/users", "/teams", "/teams/{id}", "/teams/{id}/members",
+		"/activity", "/trash",
 	}
 }
 

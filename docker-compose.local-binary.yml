@@ -4,3 +4,4 @@ services:
   storage-server:
     volumes:
       - ./deploy/docker/storage-server-linux:/storage-server-bin:ro
+      - ./deploy/docker/docker-entrypoint.sh:/docker-entrypoint.sh:ro

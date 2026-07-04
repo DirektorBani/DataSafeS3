@@ -1,8 +1,8 @@
-ï»¿# DataSafeS3 Helm Chart
+# DataSafeS3 Helm Chart
 
-Helm chart for deploying **DataSafeS3** â€” self-hosted S3-compatible object storage with web console, Admin API, optional PostgreSQL metadata, LDAP/OIDC, Gateway replication, and Prometheus/Grafana monitoring.
+Helm chart for deploying **DataSafeS3** — self-hosted S3-compatible object storage with web console, Admin API, optional PostgreSQL metadata, LDAP/OIDC, Gateway replication, and Prometheus/Grafana monitoring.
 
-**User guide:** [EN quick start](../../docs/en/user-guide/README.md#kubernetes--helm) Â· [RU](../../docs/ru/user-guide/README.md#kubernetes--helm)
+**User guide:** [EN quick start](../../docs/en/user-guide/README.md#kubernetes--helm) · [RU](../../docs/ru/user-guide/README.md#kubernetes--helm)
 
 ## Prerequisites
 
@@ -10,16 +10,16 @@ Helm chart for deploying **DataSafeS3** â€” self-hosted S3-compatible object sto
 - Helm 3.10+
 - PersistentVolume provisioner (for object data and optional PostgreSQL)
 - Built images (or pull from GHCR):
-  - `ghcr.io/direktorbani/datasafe-storage-server:v1.0.3` â€” release tag (or build locally: `docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .`)
-  - `ghcr.io/direktorbani/datasafe-console:v1.0.3` â€” release tag (or build via `deploy/docker/Dockerfile.console`)
+  - `ghcr.io/direktorbani/datasafe-storage-server:v1.1.0` — release tag (or build locally: `docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .`)
+  - `ghcr.io/direktorbani/datasafe-console:v1.1.0` — release tag (or build via `deploy/docker/Dockerfile.console`)
 
 ## Quick install (GHCR release tags)
 
 ```bash
-# Minimal BoltDB stack with published v1.0.3 images
+# Minimal BoltDB stack with published v1.1.0 images
 helm install datasafe deploy/helm/datasafe \
-  --set storageServer.image.tag=v1.0.3 \
-  --set console.image.tag=v1.0.3 \
+  --set storageServer.image.tag=v1.1.0 \
+  --set console.image.tag=v1.1.0 \
   --namespace datasafe --create-namespace
 ```
 
@@ -72,7 +72,7 @@ helm uninstall datasafe -n datasafe
 docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .
 ```
 
-**console** (static assets served by Caddy â€” no separate console Dockerfile):
+**console** (static assets served by Caddy — no separate console Dockerfile):
 
 ```bash
 # From repository root (Windows):
@@ -96,7 +96,7 @@ The chart copies console static files from `console.image` into a shared `emptyD
 | Prometheus | Deployment (optional) | 9090 | Scrapes storage-server |
 | Grafana | Deployment (optional) | 3000 | `datasafe-overview` dashboard |
 | S3 test | Deployment (optional) | 9000/9001 | Dev-only Gateway test target |
-| Ingress | 2Ã— Ingress | â€” | Console host + S3 host |
+| Ingress | 2? Ingress | — | Console host + S3 host |
 
 ## Key values
 
@@ -144,7 +144,7 @@ All `STORAGE_*` variables from `docker-compose.yml` and `.env.example` are mappe
 | `STORAGE_OIDC_*` | `oidc.*` when `oidc.enabled` |
 | `STORAGE_GATEWAY_*` | `storageServer.gateway.*` when `gateway.enabled` |
 
-External logging (Syslog, Loki, Elasticsearch, Webhook) is configured in **system settings** (metadata DB), not env vars. Enable `systemSettings.seed.enabled` or `logging.seed` to create a reference ConfigMap, then apply via Admin â†’ Settings or `PUT /api/v1/settings/system`.
+External logging (Syslog, Loki, Elasticsearch, Webhook) is configured in **system settings** (metadata DB), not env vars. Enable `systemSettings.seed.enabled` or `logging.seed` to create a reference ConfigMap, then apply via Admin > Settings or `PUT /api/v1/settings/system`.
 
 ## Example overrides
 
@@ -195,7 +195,7 @@ monitoring:
 
 **HashiCorp Vault (env injection, optional):**
 
-See [operations guide â€” Vault](../../../docs/operations-guide/en/secrets-vault.md). Example overlay:
+See [operations guide — Vault](../../../docs/operations-guide/en/secrets-vault.md). Example overlay:
 
 ```bash
 helm upgrade datasafe deploy/helm/datasafe \

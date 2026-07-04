@@ -26,7 +26,12 @@
     "confirmSetup": "Enter the code from your app to confirm setup · refreshes in {{seconds}}s",
     "verifyAndEnable": "Verify and enable",
     "cancelSetup": "Cancel setup",
-    "disable": "Disable MFA"
+    "disable": "Disable MFA",
+    "wizardTitle": "Administrator MFA required",
+    "wizardDescription": "Your organization requires MFA before you can use admin features.",
+    "wizardStepEnroll": "Click Enable MFA and scan the QR code.",
+    "wizardStepVerify": "Enter the 6-digit code to confirm.",
+    "wizardStepDone": "Return to the dashboard — admin APIs unlock automatically."
   },
   "recovery": {
     "title": "Save these recovery codes — shown once only",

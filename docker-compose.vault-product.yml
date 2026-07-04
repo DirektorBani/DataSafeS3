@@ -11,6 +11,5 @@ services:
     environment:
       - STORAGE_DEV=false
       - STORAGE_STRICT_SECRETS=true
-      - STORAGE_OUTBOUND_HTTP_ALLOW=false
       - STORAGE_OIDC_ROPC_ENABLED=false
       - STORAGE_LDAP_REQUIRE_TLS=true

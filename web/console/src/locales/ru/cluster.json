@@ -1,6 +1,6 @@
 {
-  "title": "Кластер",
-  "description": "Статус распределённого режима (MVP).",
+  "title": "Кластеры",
+  "description": "Локальные узлы HA и доверенные удалённые кластеры (mTLS-пairing).",
   "config": {
     "title": "Конфигурация",
     "description": "Избыточное кодирование планируется; настройте узлы в Админ → Настройки → Настройки администратора."
@@ -13,13 +13,66 @@
   "erasureCoding": "Избыточное кодирование:",
   "erasure": {
     "planned": "планируется",
-    "notConfigured": "не настроено"
+    "notConfigured": "не настроено",
+    "degraded": "деградация"
+  },
+  "objectBackend": "Бэкенд объектов",
+  "haLeader": "HA лидер",
+  "leader": {
+    "yes": "этот узел",
+    "no": "standby"
   },
   "diskPaths": "Пути к дискам:",
   "nodes": {
-    "title": "Узлы"
+    "title": "Локальные узлы"
   },
   "node": {
     "unknown": "неизвестно"
+  },
+  "trusted": {
+    "title": "Доверенные кластеры",
+    "description": "Локальный кластер и удалённые сайты с автоматическим mTLS-доверием.",
+    "local": "локальный",
+    "status": "Статус доверия",
+    "certExpires": "Истечение client cert",
+    "nextRotation": "Следующая ротация",
+    "safetyNumber": "Safety number (аудит)",
+    "certTimeline": "История сертификатов",
+    "empty": "Удалённых кластеров пока нет. Создайте join-токен или подключитесь к peer."
+  },
+  "pairing": {
+    "addTitle": "Добавить кластер (инициатор)",
+    "addDescription": "Одноразовый dsjoin-токен для подключения удалённого сайта.",
+    "generate": "Создать join-токен",
+    "tokenCreated": "Join-токен создан — скопируйте сейчас",
+    "expires": "Истекает",
+    "copy": "Копировать токен",
+    "copied": "Токен скопирован",
+    "joinTitle": "Подключиться к кластеру",
+    "joinDescription": "URL инициатора и dsjoin-токен с другого сайта.",
+    "initiatorUrl": "URL инициатора",
+    "token": "Join-токен",
+    "name": "Имя (необязательно)",
+    "join": "Подключить и доверять",
+    "joinSuccess": "Кластер успешно сопряжён"
+  },
+  "revoke": {
+    "action": "Отозвать кластер",
+    "success": "Кластер отозван",
+    "revoked": "отозван"
+  },
+  "replication": {
+    "title": "Правила репликации",
+    "description": "Репликация объектов на доверенный кластер по mTLS (one-way или bidirectional).",
+    "sourceBucket": "Исходный bucket (локальный)",
+    "destBucket": "Bucket назначения (удалённый)",
+    "direction": "Направление",
+    "oneWay": "One-way",
+    "bidirectional": "Bidirectional",
+    "addRule": "Добавить правило",
+    "ruleCreated": "Правило репликации создано",
+    "ruleDeleted": "Правило репликации удалено",
+    "lag": "Задержка репликации",
+    "pending": "{{count}} задач в очереди"
   }
 }

@@ -4,98 +4,84 @@
 
 [← Мониторинг](07-monitoring-i-bazy.md) | [К содержанию](README.md)
 
-> Разделы **Federation** и **Cluster** доступны только **администратору**.
+> Разделы **Федерация** и **Кластеры** — только для **администратора**.
 
-> **Однонодовый режим по умолчанию:** Federation и Cluster **не** обеспечивают multi-AZ высокую доступность. Federation добавляет **S3 read proxy** (GetObject + ListObjectsV2) между зарегистрированными пирами — см. ниже. Паттерны HA: [масштабирование](../../operations-guide/ru/scaling.md), [эталон 2-node](../../operations-guide/ru/reference-deployment-2node.md).
+> **Single-node по умолчанию:** эти функции **не заменяют** production multi-AZ HA. Паттерны HA: [масштабирование](../../operations-guide/ru/scaling.md), [эталон 2-node](../../operations-guide/ru/reference-deployment-2node.md).
+
+---
+
+## Кластеры (доверенные площадки)
+
+Страница **Кластеры** — центр управления **multi-site trust** и **репликацией между инсталляциями** DataSafeS3.
+
+### Что доступно сегодня
+
+| Возможность | Статус |
+|-------------|--------|
+| Просмотр **локального кластера** (id, endpoint) | **Реализовано** |
+| **Join-токен** (`dsjoin_*`) | **Реализовано** — одно использование, 15 мин |
+| **Pairing** с другой площадкой (авто mTLS) | **Реализовано** — без ручного отпечатка |
+| Список **trusted remote** (статус, срок cert) | **Реализовано** |
+| **Revoke** remote | **Реализовано** |
+| **Правила репликации** на remote buckets | **Реализовано** (v1.1.0) |
+| **HA-ноды** (leader / standby) | При `STORAGE_HA_ENABLED=true` |
+
+### Типичный сценарий — два офиса
+
+1. Admin **офиса A** → **Кластеры** → join-токен.
+2. Admin **офиса B** → URL A + токен → подключить.
+3. На A → remote → правило (`documents` → `documents-dr`).
+4. Загрузка файла на A → проверка на B.
+
+Подробно: [Администратор — trusted clusters](../../administrator-guide/ru/trusted-clusters.md) · [Operations — trusted clusters](../../operations-guide/ru/trusted-clusters.md)
+
+### Локальный HA vs trusted remote
+
+| На странице «Кластеры» | Значение |
+|------------------------|----------|
+| Локальный кластер + список HA-нод | **Ноды этой площадки** |
+| Trusted remote clusters | **Отдельная инсталляция** DataSafeS3 после pairing |
 
 ---
 
 ## Federation (федерация)
 
-**Federation** — **реестр других серверов DataSafeS3** и **S3 proxy** для чтения через зарегистрированные пиры.
+**Федерация** — read proxy (GetObject + ListObjectsV2). **Не копирует** записи — для этого **Кластеры**.
 
-### Что работает сегодня
+### Что работает
 
 | Возможность | Статус |
 |-------------|--------|
-| Регистрация удалённых endpoint DataSafeS3 | **Реализовано** — Administration → Federation |
-| S3 **GetObject** через пир | **Реализовано** — если объект не найден локально |
-| S3 **ListObjectsV2** prefix proxy | **Реализовано** — список объектов на удалённом пире по префиксу |
-| Фоновый sync worker | **Реализовано** — задания federation sync в консоли |
-| Автоматическое размещение данных / глобальный поиск | **В планах** |
+| Регистрация remote endpoint | **Реализовано** |
+| Привязка peer к **кластеру** (local или trusted remote) | **Реализовано** |
+| GetObject / ListObjectsV2 через peer | **Реализовано** |
+| Federation sync jobs | **Реализовано** |
 
-### Зачем регистрировать удалённый кластер
+### Как добавить peer
 
-- учёт филиалов или резервных площадок;
-- единый реестр endpoint'ов;
-- основа для будущего сквозного поиска (пока в MVP).
-
-### Как добавить
-
-1. **Administration → Federation**.
-2. **Register cluster**.
-3. Укажите:
-   - **имя** (например «Офис Москва»);
-   - **endpoint** (URL S3/API другого Датасейф S3);
-   - **region** (регион, например `us-east-1`).
-4. Сохраните.
-
-> Сейчас это **реестр конфигурации** — автоматическая репликация между двумя Датасейф S3 через Federation отличается от Gateway (Gateway копирует в **любое** S3, в том числе external S3).
+1. **Федерация** → **Зарегистрировать кластер**.
+2. Имя, endpoint, region.
+3. Выбрать **Кластер** в dropdown.
+4. Сохранить.
 
 ---
 
-## Cluster (кластер)
-
-**Cluster** показывает, работает ли Датасейф S3 как **один сервер** или в **распределённом режиме** (несколько нод).
-
-### Что видно на странице Cluster
-
-| Поле | Описание |
-|------|----------|
-| Distributed mode | Включён ли распределённый режим |
-| Erasure coding | Планируется ли erasure coding (пока флаг, алгоритм в roadmap) |
-| Disk paths | Пути к дискам (для будущего multi-disk) |
-| Nodes | Список нод и их статус |
-
-### Однонодовый режим (по умолчанию)
-
-Для большинства установок достаточно **одного сервера** — это основной production-путь:
-
-- одна нода `local` @ `localhost:9000`, status `healthy`;
-- все данные на одном хосте.
-
-### Распределённый режим (MVP)
-
-В **Settings → Cluster** администратор может:
-
-- включить **Distributed mode**;
-- указать **disk paths** (по одному пути на строку);
-- отметить **Erasure coding planned**.
-
-> Полноценный HA-кластер с erasure coding **ещё в разработке**. Сейчас это конфигурация и мониторинг «на будущее», а не автоматическое распределение данных.
-
-### Настройка через API
-
-Для продвинутых сценариев параметры кластера можно задать через REST API `PUT /api/v1/settings/system` — см. [architecture.md](../context/architecture.md).
-
----
-
-## Сравнение: Gateway vs Federation vs Cluster
+## Сравнение
 
 | Функция | Назначение |
 |---------|------------|
-| **Gateway** | Копирование во **внешнее S3** — **работает сегодня** |
-| **Federation** | Реестр + **GetObject / ListObjectsV2 proxy** к другим площадкам DataSafeS3 — MVP |
-| **Cluster** | Несколько **нод одного** DataSafeS3 — основа + UI |
+| **Gateway** | Копия во **внешнее S3** |
+| **Кластеры** | **Trust** + **репликация объектов** (mTLS) |
+| **Federation** | **Чтение** с другой площадки |
+| **Site replication** | Legacy AK/SK (lab) |
 
 ---
 
-## Полезные ссылки
+## Ссылки
 
-- [Руководство: Gateway](06-gateway-i-minio.md)
-- [Техническая архитектура](../context/architecture.md)
-- [Roadmap](../context/roadmap.md)
-- [Статус проекта](../context/project-status.md)
+- [Модели репликации](../../administrator-guide/ru/replication.md)
+- [Trusted clusters (operations)](../../operations-guide/ru/trusted-clusters.md)
+- [HA reference](../../operations-guide/ru/reference-deployment-2node.md)
 
 ---
 

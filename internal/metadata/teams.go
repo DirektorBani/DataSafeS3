@@ -138,6 +138,20 @@ func (s *Store) GetTeam(id string) (TeamRecord, error) {
 	return rec, err
 }
 
+func (s *Store) UpdateTeam(rec TeamRecord) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("teams"))
+		if b.Get([]byte(rec.ID)) == nil {
+			return ErrNotFound
+		}
+		data, err := json.Marshal(rec)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(rec.ID), data)
+	})
+}
+
 func (s *Store) ListTeams() ([]TeamRecord, error) {
 	var out []TeamRecord
 	err := s.db.View(func(tx *bolt.Tx) error {
@@ -226,6 +240,27 @@ func (s *Store) ListUserTeamIDs(userID string) ([]string, error) {
 				parts := splitUserTeamKey(k)
 				if len(parts) == 2 {
 					out = append(out, parts[1])
+				}
+			}
+			return nil
+		})
+	})
+	return out, err
+}
+
+func (s *Store) ListTeamMemberUserIDs(teamID string) ([]string, error) {
+	var out []string
+	err := s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("user_teams"))
+		if b == nil {
+			return nil
+		}
+		suffix := []byte("\x00" + teamID)
+		return b.ForEach(func(k, _ []byte) error {
+			if len(k) >= len(suffix) && string(k[len(k)-len(suffix):]) == string(suffix) {
+				parts := splitUserTeamKey(k)
+				if len(parts) == 2 && parts[1] == teamID {
+					out = append(out, parts[0])
 				}
 			}
 			return nil

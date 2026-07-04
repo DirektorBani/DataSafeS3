@@ -6,7 +6,7 @@
 
 ## Single-node по умолчанию
 
-Community Edition по умолчанию — **один процесс `storage-server`** на одном хосте. Опциональные **паттерны HA** (streaming replication PostgreSQL, read-only standby, скрипты failover, Helm `values-ha.yaml`) документированы для метаданных и DR — без erasure multi-AZ на петабайты. См. [масштабирование](../../operations-guide/ru/scaling.md) и [эталон 2-node](../../operations-guide/ru/reference-deployment-2node.md).
+Community Edition по умолчанию — **один процесс `storage-server`** на одном хосте. Опциональные **паттерны HA v2 lab** (erasure backend, PostgreSQL leader lock, site replication, read-only standby, скрипты failover, Helm `values-ha.yaml`) документированы для метаданных и DR — без production erasure multi-AZ на петабайты. См. [масштабирование](../../operations-guide/ru/scaling.md) и [эталон 2-node](../../operations-guide/ru/reference-deployment-2node.md).
 
 | Возможность | Статус в Community Edition |
 |-------------|----------------------------|
@@ -14,9 +14,12 @@ Community Edition по умолчанию — **один процесс `storage
 | PostgreSQL для метаданных (опционально) | **Реализовано** |
 | Gateway-репликация во внешний S3 | **Реализовано** |
 | Federation (реестр + S3 proxy) | **Частично (MVP)** — GetObject + ListObjectsV2 между зарегистрированными пирами |
+| Teams admin API + консоль | **Реализовано** |
+| Bearer token для metrics | **Реализовано** — `STORAGE_METRICS_TOKEN` |
 | HA метаданных (реплики Postgres + failover) | **Частично** — ручной promote; маршрутизация list на read replica |
+| HA v2 lab foundation | **Реализовано (lab)** — erasure backend, leader lock, site replication scripts |
 | Read-only standby `storage-server` | **Реализовано** — `STORAGE_READ_ONLY`, `docker-compose.ha.yml` |
-| Erasure coding / multi-AZ | **Частично (MVP)** — codec 2+1 в `internal/storage/erasure/`; не production multi-AZ |
+| Erasure coding / multi-AZ | **Lab foundation** — `STORAGE_OBJECT_BACKEND=erasure`; не production multi-AZ |
 | STS session tokens (scoped S3) | **Реализовано** — `POST /api/v1/sts/assume-role`; credentials привязаны к вызывающему пользователю; `X-Amz-Security-Token` в SigV4 |
 | Уведомления о событиях | **Реализовано** — Webhook + опционально NATS (`STORAGE_NATS_URL`) |
 
@@ -51,11 +54,12 @@ Entry: `cmd/storage-server/main.go`
 |---------|------|
 | `internal/api` | HTTP mux, admin JSON handlers, wires S3 + auth |
 | `internal/api/s3` | S3 XML handlers (buckets, objects, multipart, copy) |
-| `internal/storage` | Filesystem object backend |
-| `internal/metadata` | BoltDB: buckets, keys, policies, lifecycle |
+| `internal/storage` | Filesystem и object-backend abstractions |
+| `internal/storage/erasure` | Lab erasure backend, heal worker, Reed-Solomon codec |
+| `internal/metadata` | BoltDB/Postgres metadata: buckets, teams, keys, policies, lifecycle, HA/site-repl state |
 | `internal/auth` | AWS SigV4 sign/verify, presign, JWT admin auth |
 | `internal/policy` | Bucket policy evaluator (Allow subset) |
-| `internal/observability` | Structured JSON logs, Prometheus metrics |
+| `internal/observability` | Structured JSON logs, Prometheus metrics, metrics bearer auth |
 
 ### Data layout
 

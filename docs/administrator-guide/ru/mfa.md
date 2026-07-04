@@ -14,6 +14,8 @@ DataSafeS3 поддерживает **TOTP** (приложения-аутент�
 
 **Admin → Settings → System** — обязательный MFA для администраторов.
 
+Если политика включена, а у администратора ещё нет TOTP-фактора, login возвращает `mfa_setup_required` и короткоживущий setup token. Консоль открывает принудительный wizard настройки до выдачи обычного JWT. После проверки кода из authenticator app пользователь продолжает стандартный MFA login flow.
+
 ## Вход с MFA
 
 ```mermaid
@@ -21,8 +23,8 @@ sequenceDiagram
   participant U as Пользователь
   participant S as storage-server
   U->>S: POST /admin/login (логин+пароль)
-  S-->>U: mfa_required + mfa_token
-  U->>S: POST /mfa/login (token+totp)
+  S-->>U: mfa_setup_required или mfa_required
+  U->>S: POST /mfa/setup/verify или /mfa/login
   S-->>U: JWT
 ```
 

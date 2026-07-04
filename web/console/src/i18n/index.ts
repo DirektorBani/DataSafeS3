@@ -11,12 +11,14 @@ import enBucketDetail from "@/locales/en/bucketDetail.json";
 import enUsers from "@/locales/en/users.json";
 import enSettings from "@/locales/en/settings.json";
 import enTenants from "@/locales/en/tenants.json";
+import enTeams from "@/locales/en/teams.json";
 import enPolicy from "@/locales/en/policy.json";
 import enUsage from "@/locales/en/usage.json";
 import enAccess from "@/locales/en/access.json";
 import enFederation from "@/locales/en/federation.json";
 import enPublicShare from "@/locales/en/publicShare.json";
 import enCluster from "@/locales/en/cluster.json";
+import enSiteRepl from "@/locales/en/siteRepl.json";
 import enWebhooks from "@/locales/en/webhooks.json";
 import enActivity from "@/locales/en/activity.json";
 import enGateway from "@/locales/en/gateway.json";
@@ -37,12 +39,14 @@ import ruBucketDetail from "@/locales/ru/bucketDetail.json";
 import ruUsers from "@/locales/ru/users.json";
 import ruSettings from "@/locales/ru/settings.json";
 import ruTenants from "@/locales/ru/tenants.json";
+import ruTeams from "@/locales/ru/teams.json";
 import ruPolicy from "@/locales/ru/policy.json";
 import ruUsage from "@/locales/ru/usage.json";
 import ruAccess from "@/locales/ru/access.json";
 import ruFederation from "@/locales/ru/federation.json";
 import ruPublicShare from "@/locales/ru/publicShare.json";
 import ruCluster from "@/locales/ru/cluster.json";
+import ruSiteRepl from "@/locales/ru/siteRepl.json";
 import ruWebhooks from "@/locales/ru/webhooks.json";
 import ruActivity from "@/locales/ru/activity.json";
 import ruGateway from "@/locales/ru/gateway.json";
@@ -69,12 +73,14 @@ const namespaces = [
   "users",
   "settings",
   "tenants",
+  "teams",
   "policy",
   "usage",
   "access",
   "federation",
   "publicShare",
   "cluster",
+  "siteRepl",
   "webhooks",
   "activity",
   "gateway",
@@ -119,12 +125,14 @@ const enResources = {
   users: enUsers,
   settings: enSettings,
   tenants: enTenants,
+  teams: enTeams,
   policy: enPolicy,
   usage: enUsage,
   access: enAccess,
   federation: enFederation,
   publicShare: enPublicShare,
   cluster: enCluster,
+  siteRepl: enSiteRepl,
   webhooks: enWebhooks,
   activity: enActivity,
   gateway: enGateway,
@@ -153,12 +161,14 @@ void i18n.use(initReactI18next).init({
       users: ruUsers,
       settings: ruSettings,
       tenants: ruTenants,
+      teams: ruTeams,
       policy: ruPolicy,
       usage: ruUsage,
       access: ruAccess,
       federation: ruFederation,
       publicShare: ruPublicShare,
       cluster: ruCluster,
+      siteRepl: ruSiteRepl,
       webhooks: ruWebhooks,
       activity: ruActivity,
       gateway: ruGateway,

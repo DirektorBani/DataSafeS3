@@ -1,38 +1,62 @@
-# Reference deployment — 2-node HA + backup (Community Edition)
+# Reference deployment — HA v2 (Community Edition)
 
 English | **[Русский](../ru/reference-deployment-2node.md)**
 
-This guide describes a **supported Community Edition** pattern: active-passive PostgreSQL metadata, optional read-only `storage-server` standby, and external backup. There are **no license gates** for HA features.
+Community Edition HA v2 combines **erasure-coded object durability**, **orchestrated PostgreSQL metadata failover**, and optional **site replication** to another DataSafeS3 deployment. There are **no license gates** for these features.
 
-## Topology
+## Topology (recommended)
 
 ```text
-[Client] → Caddy :8080 → storage-server (primary, writes)
-                      ↘ storage-server-standby (STORAGE_READ_ONLY=true, :9001)
-PostgreSQL primary ──streaming replication──► PostgreSQL standby
+[Client] → Caddy → storage-server (leader, writes)
+                    │
+                    ├─ STORAGE_OBJECT_BACKEND=erasure (4+2 or dev 2+1)
+                    │    shards on separate volumes / drives
+                    │
+                    ├─ Postgres primary ──streaming──► Postgres standby
+                    │    ha_leader_lock (single writer)
+                    │
+                    └─ async trusted cluster repl ──► Site B (paired mTLS)
 ```
 
-## Compose (lab)
+For **trust + replication** between two DataSafeS3 installs (**v1.1.0**), prefer [trusted clusters](./trusted-clusters.md) over classic site replication with access keys.
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.ha.yml \
-  --profile postgres --profile ha-standby up -d --build
+## What changed from legacy 2-node standby
+
+| Legacy (deprecated) | HA v2 (recommended) |
+|---------------------|---------------------|
+| Shared FS + `storage-server-standby` read-only | Erasure shards on distinct volumes |
+| Metadata-only Postgres HA | Metadata HA + leader lock + `/healthz` HA fields |
+| Gateway to external S3 as primary DR | Site replication for DataSafeS3↔DataSafeS3; Gateway for external S3 |
+| Manual shell-only failover | `scripts/ha/failover-metadata.ps1` + documented RPO/RTO |
+
+Legacy read-only standby (`STORAGE_READ_ONLY=true`) remains for DR drills only — see [scaling.md](./scaling.md).
+
+## Compose profiles (Windows lab)
+
+| Profile | Purpose | Script |
+|---------|---------|--------|
+| HA metadata + 3 storage (lab) | Postgres replication + object copy sidecar | `scripts/ha/start-ha-stack.ps1` |
+| Erasure backend | 6 shard volumes, single writer | `docker-compose.ha-erasure.yml` + `scripts/ha/test-erasure-backend.ps1` |
+| Site replication two-stack | Site A → Site B async (AK/SK) | `scripts/ha/start-site-replication-lab.ps1` + `scripts/ha/test-site-replication.ps1` |
+| **Trusted clusters two-stack** | Site A ↔ Site B mTLS pairing + repl | `scripts/ha/start-ha-stack.ps1` + `start-ha-cluster-b.ps1` + [trusted-clusters.md](./trusted-clusters.md) |
+
+Example erasure lab:
+
+```powershell
+docker compose -p datasafe-erasure --profile postgres `
+  -f docker-compose.yml -f docker-compose.local-data.yml -f docker-compose.local-binary.yml `
+  -f docker-compose.ha-erasure.yml --env-file .env.ha up -d
+scripts\ha\test-erasure-backend.ps1
 ```
 
-| Service | Role |
-|---------|------|
-| `postgres` | Metadata primary |
-| `postgres-standby` | Metadata replica (`--profile ha-postgres`) |
-| `storage-server` | Primary API |
-| `storage-server-standby` | DR read path (`STORAGE_READ_ONLY=true`) |
+## Metadata failover (manual, orchestrated)
 
-Set `STORAGE_POSTGRES_READ_REPLICA_DSN` on the primary to route list queries to the standby.
+1. Set `STORAGE_READ_ONLY=true` or stop the current leader `storage-server`.
+2. Run `scripts/ha/failover-metadata.ps1` (promote Postgres standby, release leader lock).
+3. Update `STORAGE_POSTGRES_DSN` on the new primary node; restart `storage-server`.
+4. Verify `/healthz`: `is_leader=true`, `postgres_ok=true`, `replication_lag_s` near zero.
 
-## Failover (manual)
-
-1. Run `scripts/postgres-failover.ps1` or `scripts/postgres-failover.sh` (promote standby, health wait).
-2. Update `STORAGE_POSTGRES_DSN` to the new primary.
-3. Quarterly: `scripts/dr-drill.ps1`.
+Automatic Patroni failover is documented as an optional compose profile — not required for CE.
 
 ## Kubernetes (Helm)
 
@@ -41,18 +65,21 @@ helm upgrade --install datasafe ./deploy/helm/datasafe \
   -f deploy/helm/datasafe/values-ha.yaml
 ```
 
-Deploys primary + read-only standby `Deployment` and Postgres. See [scaling.md](./scaling.md).
+Prefer erasure paths + Postgres HA over legacy standby Deployment. See [scaling.md](./scaling.md).
 
 ## Backup
 
-- **Metadata:** `pg_dump` from primary or standby (prefer standby for consistent snapshots).
-- **Objects:** filesystem snapshot of `STORAGE_DATA_DIR` or Gateway replication to external S3.
-- **Restore:** restore Postgres, restore object volume, point DSN, verify `/healthz`.
+- **Metadata:** `pg_dump` from primary or standby (prefer standby for snapshots).
+- **Objects (erasure):** all shard paths under `STORAGE_ERASURE_DATA_PATHS`; snapshot each volume.
+- **Objects (fs):** snapshot `STORAGE_DATA_DIR/objects/`.
+- **Off-site:** Gateway replication (external S3) or site replication (peer DataSafeS3).
 
 ## Verification
 
-```bash
-curl -s http://localhost:8080/healthz | jq .
-powershell -File scripts/dr-drill.ps1
-powershell -File scripts/federation-3node-demo.ps1
+```powershell
+curl -s http://localhost:8082/healthz
+scripts\ha\test-ha-cluster.ps1
+scripts\ha\test-erasure-backend.ps1
+scripts\ha\test-site-replication.ps1
+scripts\dr-drill.ps1
 ```

@@ -358,6 +358,18 @@ export type Tenant = {
   created_at: string;
 };
 
+export type Team = {
+  id: string;
+  name: string;
+  created_at: string;
+};
+
+export type TeamMember = {
+  user_id: string;
+  username: string;
+  email: string;
+};
+
 export type GatewayConnection = {
   id: string;
   name: string;
@@ -379,6 +391,33 @@ export type ReplicationRule = {
   dest_bucket: string;
   enabled: boolean;
   created_at: string;
+};
+
+export type SiteReplicationPeer = {
+  id: string;
+  name: string;
+  endpoint: string;
+  access_key: string;
+  enabled: boolean;
+  created_at: string;
+};
+
+export type SiteReplicationRule = {
+  id: string;
+  peer_id?: string;
+  trusted_cluster_id?: string;
+  source_bucket: string;
+  dest_bucket: string;
+  direction: string;
+  enabled: boolean;
+  created_at: string;
+};
+
+export type SiteReplicationStatus = {
+  pending_count: number;
+  lag_seconds: number;
+  last_error?: string;
+  last_processed_at?: string;
 };
 
 export type ReplicationTask = {
@@ -439,7 +478,33 @@ export type FederationCluster = {
   endpoint: string;
   region?: string;
   status?: string;
+  cluster_id: string;
   created_at: string;
+};
+
+export type TrustedCluster = {
+  id: string;
+  name: string;
+  endpoint: string;
+  auth_mode: string;
+  peer_ca_fingerprint?: string;
+  status: string;
+  cert_expires_at?: string;
+  last_rotated_at?: string;
+  next_rotation_at?: string;
+  safety_number?: string;
+  created_at: string;
+  active: boolean;
+  is_local?: boolean;
+};
+
+export type ClusterCertificate = {
+  serial: string;
+  cluster_id: string;
+  role: string;
+  not_before: string;
+  not_after: string;
+  revoked_at?: string;
 };
 
 export const RETENTION_PRESETS = [
@@ -500,6 +565,7 @@ export type MultipartUploadProgress = {
 
 export const MULTIPART_THRESHOLD = 64 * 1024 * 1024;
 export const MULTIPART_PART_SIZE = 64 * 1024 * 1024;
+export const MULTIPART_UPLOAD_CONCURRENCY = 4;
 
 export function getToken(): string | null {
   return sessionStorage.getItem(TOKEN_KEY);
@@ -1301,6 +1367,28 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
   deleteTenant: (id: string) => fetchJSON<void>(`/tenants/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  listTeams: () => fetchJSON<{ teams: Team[] }>("/teams"),
+  createTeam: (name: string) =>
+    fetchJSON<{ team: Team }>("/teams", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }),
+  updateTeam: (id: string, name: string) =>
+    fetchJSON<{ team: Team }>(`/teams/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }),
+  deleteTeam: (id: string) => fetchJSON<void>(`/teams/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  listTeamMembers: (teamId: string) =>
+    fetchJSON<{ members: TeamMember[] }>(`/teams/${encodeURIComponent(teamId)}/members`),
+  setTeamMembers: (teamId: string, userIds: string[]) =>
+    fetchJSON<{ members: TeamMember[] }>(`/teams/${encodeURIComponent(teamId)}/members`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_ids: userIds }),
+    }),
   listTenantMembers: (tenantId: string) =>
     fetchJSON<{ members: TenantMember[] }>(`/tenants/${encodeURIComponent(tenantId)}/members`),
   addTenantMember: (tenantId: string, body: { user_id: string; role?: string; group_ids?: string[] }) =>
@@ -1474,8 +1562,11 @@ export const api = {
     fetchJSON<{ retried: number }>("/gateway/replication/retry-failed", { method: "POST" }),
   clearReplicationErrors: () =>
     fetchJSON<{ cleared: boolean }>("/gateway/replication/clear-errors", { method: "POST" }),
-  listFederationClusters: () => fetchJSON<{ clusters: FederationCluster[] }>("/federation/clusters"),
-  createFederationCluster: (body: { name: string; endpoint: string; region?: string }) =>
+  listFederationClusters: (clusterId?: string) => {
+    const q = clusterId ? `?cluster_id=${encodeURIComponent(clusterId)}` : "";
+    return fetchJSON<{ clusters: FederationCluster[] }>(`/federation/clusters${q}`);
+  },
+  createFederationCluster: (body: { name: string; endpoint: string; region?: string; cluster_id: string }) =>
     fetchJSON<{ cluster: FederationCluster }>("/federation/clusters", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1491,9 +1582,62 @@ export const api = {
     fetchJSON<{
       distributed_mode: boolean;
       erasure_coding_planned: boolean;
+      object_backend?: string;
+      erasure_degraded?: boolean;
+      ha_enabled?: boolean;
+      is_leader?: boolean;
+      node_id?: string;
       disk_paths: string[];
       nodes: ClusterNode[];
     }>("/cluster/status"),
+  listTrustedClusters: () => fetchJSON<{ clusters: TrustedCluster[] }>("/clusters"),
+  getTrustedCluster: (id: string) =>
+    fetchJSON<{ cluster: TrustedCluster; certificates: ClusterCertificate[] }>(
+      `/clusters/${encodeURIComponent(id)}`,
+    ),
+  createClusterPairingCode: () =>
+    fetchJSON<{ token: string; expires_at: string; qr_payload: string }>("/clusters/pairing-codes", {
+      method: "POST",
+    }),
+  joinTrustedCluster: (body: { initiator_url: string; token: string; name?: string }) =>
+    fetchJSON<{ cluster: TrustedCluster }>("/clusters/pair/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  revokeTrustedCluster: (id: string) =>
+    fetchJSON<{ ok: boolean; status: string }>(`/clusters/${encodeURIComponent(id)}/revoke`, {
+      method: "POST",
+    }),
+  listClusterReplicationRules: (clusterId: string) =>
+    fetchJSON<{ rules: SiteReplicationRule[]; status: SiteReplicationStatus }>(
+      `/clusters/${encodeURIComponent(clusterId)}/replication-rules`,
+    ),
+  createClusterReplicationRule: (
+    clusterId: string,
+    body: { source_bucket: string; dest_bucket: string; direction?: string; enabled?: boolean },
+  ) =>
+    fetchJSON<{ rule: SiteReplicationRule }>(`/clusters/${encodeURIComponent(clusterId)}/replication-rules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  deleteClusterReplicationRule: (clusterId: string, ruleId: string) =>
+    fetchJSON<{ deleted: string }>(
+      `/clusters/${encodeURIComponent(clusterId)}/replication-rules/${encodeURIComponent(ruleId)}`,
+      { method: "DELETE" },
+    ),
+  listSiteReplicationPeers: () => fetchJSON<{ peers: SiteReplicationPeer[] }>("/site-replication/peers"),
+  createSiteReplicationPeer: (body: Partial<SiteReplicationPeer>) =>
+    fetchJSON<{ peer: SiteReplicationPeer }>("/site-replication/peers", { method: "POST", body: JSON.stringify(body) }),
+  deleteSiteReplicationPeer: (id: string) =>
+    fetchJSON<void>(`/site-replication/peers/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  listSiteReplicationRules: () => fetchJSON<{ rules: SiteReplicationRule[] }>("/site-replication/rules"),
+  createSiteReplicationRule: (body: Partial<SiteReplicationRule>) =>
+    fetchJSON<{ rule: SiteReplicationRule }>("/site-replication/rules", { method: "POST", body: JSON.stringify(body) }),
+  deleteSiteReplicationRule: (id: string) =>
+    fetchJSON<void>(`/site-replication/rules/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  siteReplicationStatus: () => fetchJSON<SiteReplicationStatus>("/site-replication/status"),
   getMe: () =>
     fetchJSON<{
       username: string;
@@ -1530,48 +1674,57 @@ export async function uploadObjectMultipart(
   bucket: string,
   key: string,
   file: File,
-  onProgress?: (p: MultipartUploadProgress) => void
+  onProgress?: (p: MultipartUploadProgress) => void,
+  concurrency = MULTIPART_UPLOAD_CONCURRENCY,
 ) {
   const partSize = MULTIPART_PART_SIZE;
   const partsTotal = Math.ceil(file.size / partSize);
   const { upload_id: uploadId } = await api.initiateMultipart(bucket, key, file.type || "application/octet-stream");
-  const parts: { part_number: number; etag: string }[] = [];
-  let loaded = 0;
+  const parts: { part_number: number; etag: string }[] = new Array(partsTotal);
+  const partLoaded = new Array<number>(partsTotal).fill(0);
   const startTime = Date.now();
+
+  const reportProgress = (partsDone: number) => {
+    const nowLoaded = partLoaded.reduce((a, b) => a + b, 0);
+    const elapsed = (Date.now() - startTime) / 1000;
+    const speed = elapsed > 0 ? nowLoaded / elapsed : 0;
+    onProgress?.({
+      loaded: nowLoaded,
+      total: file.size,
+      partsDone,
+      partsTotal,
+      speed,
+      eta: speed > 0 ? (file.size - nowLoaded) / speed : 0,
+    });
+  };
+
+  const uploadPart = async (index: number) => {
+    const start = index * partSize;
+    const end = Math.min(start + partSize, file.size);
+    const blob = file.slice(start, end);
+    const partNumber = index + 1;
+    const res = await api.uploadMultipartPart(bucket, uploadId, partNumber, blob, (partBytes) => {
+      partLoaded[index] = partBytes;
+      reportProgress(parts.filter(Boolean).length);
+    });
+    partLoaded[index] = blob.size;
+    parts[index] = { part_number: res.part_number, etag: res.etag };
+    reportProgress(parts.filter(Boolean).length);
+  };
+
   try {
-    for (let i = 0; i < partsTotal; i++) {
-      const start = i * partSize;
-      const end = Math.min(start + partSize, file.size);
-      const blob = file.slice(start, end);
-      const partStart = loaded;
-      const res = await api.uploadMultipartPart(bucket, uploadId, i + 1, blob, (partLoaded) => {
-        const nowLoaded = partStart + partLoaded;
-        const elapsed = (Date.now() - startTime) / 1000;
-        const speed = elapsed > 0 ? nowLoaded / elapsed : 0;
-        const remaining = file.size - nowLoaded;
-        onProgress?.({
-          loaded: nowLoaded,
-          total: file.size,
-          partsDone: i,
-          partsTotal,
-          speed,
-          eta: speed > 0 ? remaining / speed : 0,
-        });
-      });
-      loaded += blob.size;
-      parts.push({ part_number: res.part_number, etag: res.etag });
-      const elapsed = (Date.now() - startTime) / 1000;
-      const speed = elapsed > 0 ? loaded / elapsed : 0;
-      onProgress?.({
-        loaded,
-        total: file.size,
-        partsDone: i + 1,
-        partsTotal,
-        speed,
-        eta: speed > 0 ? (file.size - loaded) / speed : 0,
-      });
-    }
-    return await api.completeMultipart(bucket, uploadId, parts);
+    let nextPart = 0;
+    const worker = async () => {
+      while (true) {
+        const index = nextPart++;
+        if (index >= partsTotal) break;
+        await uploadPart(index);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, partsTotal) }, () => worker()),
+    );
+    return await api.completeMultipart(bucket, uploadId, parts.filter(Boolean));
   } catch (err) {
     try {
       await api.abortMultipart(bucket, uploadId);

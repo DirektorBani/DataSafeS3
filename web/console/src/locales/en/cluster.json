@@ -1,6 +1,6 @@
 {
-  "title": "Cluster",
-  "description": "Multi-node distributed mode status (MVP foundation).",
+  "title": "Clusters",
+  "description": "Local HA nodes and trusted remote clusters (mTLS pairing).",
   "config": {
     "title": "Configuration",
     "description": "Erasure coding is planned; configure nodes in Admin → Settings → Administrator settings."
@@ -13,13 +13,66 @@
   "erasureCoding": "Erasure coding:",
   "erasure": {
     "planned": "planned",
-    "notConfigured": "not configured"
+    "notConfigured": "not configured",
+    "degraded": "degraded"
+  },
+  "objectBackend": "Object backend",
+  "haLeader": "HA leader",
+  "leader": {
+    "yes": "this node",
+    "no": "standby"
   },
   "diskPaths": "Disk paths:",
   "nodes": {
-    "title": "Nodes"
+    "title": "Local nodes"
   },
   "node": {
     "unknown": "unknown"
+  },
+  "trusted": {
+    "title": "Trusted clusters",
+    "description": "Local cluster and remotely paired sites (automated mTLS trust).",
+    "local": "local",
+    "status": "Trust status",
+    "certExpires": "Client cert expires",
+    "nextRotation": "Next rotation",
+    "safetyNumber": "Safety number (audit)",
+    "certTimeline": "Certificate timeline",
+    "empty": "No remote trusted clusters yet. Generate a join token or connect to a peer."
+  },
+  "pairing": {
+    "addTitle": "Add cluster (initiator)",
+    "addDescription": "Generate a one-time dsjoin token for a remote site to connect.",
+    "generate": "Generate join token",
+    "tokenCreated": "Join token created — copy it now",
+    "expires": "Expires",
+    "copy": "Copy token",
+    "copied": "Token copied",
+    "joinTitle": "Join remote cluster",
+    "joinDescription": "Enter the initiator URL and dsjoin token from the other site.",
+    "initiatorUrl": "Initiator URL",
+    "token": "Join token",
+    "name": "Display name (optional)",
+    "join": "Connect & trust",
+    "joinSuccess": "Cluster paired successfully"
+  },
+  "revoke": {
+    "action": "Revoke cluster",
+    "success": "Cluster revoked",
+    "revoked": "revoked"
+  },
+  "replication": {
+    "title": "Replication rules",
+    "description": "Replicate objects to this trusted cluster over mTLS (one-way or bidirectional).",
+    "sourceBucket": "Source bucket (local)",
+    "destBucket": "Destination bucket (remote)",
+    "direction": "Direction",
+    "oneWay": "One-way",
+    "bidirectional": "Bidirectional",
+    "addRule": "Add rule",
+    "ruleCreated": "Replication rule created",
+    "ruleDeleted": "Replication rule deleted",
+    "lag": "Replication lag",
+    "pending": "{{count}} pending tasks"
   }
 }

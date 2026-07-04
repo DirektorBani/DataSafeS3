@@ -13,7 +13,10 @@ Set-Location $Root
 
 $env:VAULT_PROFILE = '1'
 if (-not $env:TEST_VAULT_ADDR) { $env:TEST_VAULT_ADDR = 'http://127.0.0.1:8200' }
-if (-not $env:STORAGE_URL) { $env:STORAGE_URL = 'http://127.0.0.1:9000' }
+if (-not $env:STORAGE_URL) { $env:STORAGE_URL = 'http://127.0.0.1:9001' }
+if (-not $env:VAULT_INTEGRATION_STORAGE_PORT) { $env:VAULT_INTEGRATION_STORAGE_PORT = '9001' }
+if (-not $env:VAULT_INTEGRATION_POSTGRES_PORT) { $env:VAULT_INTEGRATION_POSTGRES_PORT = '5434' }
+if (-not $env:STORAGE_POSTGRES_PUBLISH_PORT) { $env:STORAGE_POSTGRES_PUBLISH_PORT = $env:VAULT_INTEGRATION_POSTGRES_PORT }
 
 $compose = @(
     'compose', '-p', 'datasafe-vault',

@@ -105,7 +105,7 @@ docker compose -p datasafe `
 |------------|------------|
 | `STORAGE_DEV=false` | Без dev-режима |
 | `STORAGE_STRICT_SECRETS=true` | Отказ при дефолтных секретах |
-| `STORAGE_OUTBOUND_HTTP_ALLOW=false` | Исходящие URL только HTTPS |
+| `STORAGE_DEV=false` | Исходящие URL только HTTPS (v1.1.0+: `STORAGE_OUTBOUND_HTTP_ALLOW` удалена) |
 | `STORAGE_OIDC_ROPC_ENABLED=false` | Без ROPC |
 | `STORAGE_LDAP_REQUIRE_TLS=true` | Только `ldaps://` |
 

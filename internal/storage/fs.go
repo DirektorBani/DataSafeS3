@@ -26,6 +26,11 @@ func NewFSBackend(baseDir string) (*FSBackend, error) {
 	return &FSBackend{baseDir: baseDir}, nil
 }
 
+// OpenFSBackend opens an existing object tree without creating directories (read-only HA nodes).
+func OpenFSBackend(baseDir string) (*FSBackend, error) {
+	return &FSBackend{baseDir: baseDir}, nil
+}
+
 func (b *FSBackend) bucketDir(bucket string) string {
 	return filepath.Join(b.baseDir, "buckets", bucket)
 }
@@ -447,8 +452,14 @@ func (b *FSBackend) ListObjectKeys(bucket, prefix string) ([]ObjectInfo, error) 
 	return out, err
 }
 
+func (b *FSBackend) Health(_ context.Context) BackendHealth {
+	return BackendHealth{}
+}
+
 // Ensure interface compliance at compile time.
 var _ Backend = (*FSBackend)(nil)
+var _ ObjectBackend = (*FSBackend)(nil)
+var _ HealthReporter = (*FSBackend)(nil)
 
 // Used by tests to assert freshness.
 func init() {

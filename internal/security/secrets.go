@@ -3,6 +3,7 @@ package security
 import (
 	"log/slog"
 	"os"
+	"strings"
 )
 
 const (
@@ -26,6 +27,7 @@ func ValidateStartupSecrets(logger *slog.Logger) {
 	strict := os.Getenv("STORAGE_STRICT_SECRETS") == "true"
 	weak := WeakEnvVars()
 	if len(weak) == 0 {
+		warnOpenMetricsEndpoint(logger)
 		return
 	}
 	msg := "production security: rotate default secrets before go-live"
@@ -35,6 +37,7 @@ func ValidateStartupSecrets(logger *slog.Logger) {
 		"sse_doc", secretsDocPath,
 		"strict_mode", "set STORAGE_STRICT_SECRETS=true to fail fast",
 	)
+	warnOpenMetricsEndpoint(logger)
 	if strict {
 		logger.Error("STORAGE_STRICT_SECRETS=true and default secrets detected; refusing to start")
 		os.Exit(1)
@@ -76,4 +79,16 @@ func WeakEnvVars() []string {
 		weak = append(weak, "STORAGE_ADMIN_PASSWORD")
 	}
 	return weak
+}
+
+func warnOpenMetricsEndpoint(logger *slog.Logger) {
+	if isDevMode() {
+		return
+	}
+	if strings.TrimSpace(os.Getenv("STORAGE_METRICS_TOKEN")) != "" {
+		return
+	}
+	logger.Warn("production security: /metrics is open without STORAGE_METRICS_TOKEN; set a bearer token for Prometheus scrape",
+		"doc", "docs/operations-guide/en/monitoring.md",
+	)
 }

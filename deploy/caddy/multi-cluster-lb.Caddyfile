@@ -1,0 +1,41 @@
+# Example: write pool = leader only, read pool = all healthy nodes.
+# Adjust upstream host:port to your HA stack (see docker-compose.ha-local.yml).
+
+{
+	admin off
+}
+
+(leader_pool) {
+	@leader `{http.response.header.X-Datasafe-Leader} == true`
+	handle @leader {
+		reverse_proxy storage-a:9000 storage-b:9000 storage-c:9000 {
+			health_uri /api/v1/ha/status
+			health_interval 5s
+			health_timeout 2s
+			transport http {
+				health_headers X-Datasafe-Probe leader
+			}
+		}
+	}
+	respond "no leader available" 503
+}
+
+(read_pool) {
+	reverse_proxy storage-a:9000 storage-b:9000 storage-c:9000 {
+		health_uri /healthz
+		health_interval 5s
+	}
+}
+
+:8443 {
+	# S3 + admin read path
+	@read method GET HEAD
+	handle @read {
+		import read_pool
+	}
+
+	# Writes and mutations → leader pool only
+	handle {
+		import leader_pool
+	}
+}

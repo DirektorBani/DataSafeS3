@@ -1,6 +1,20 @@
 # HA overlay: primary + standby storage-server + optional Postgres replication profile
-# Usage: docker compose -f docker-compose.yml -f docker-compose.ha.yml --profile ha-standby --profile postgres up -d
+# Usage (Windows lab):
+#   scripts\ha\start-ha-stack.ps1
+#   scripts\ha\test-ha-cluster.ps1
 services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - hot_standby=on
+
   postgres-standby:
     profiles: ["ha-postgres"]
     image: postgres:16-alpine
@@ -20,7 +34,7 @@ services:
       timeout: 5s
       retries: 10
     ports:
-      - "${STORAGE_POSTGRES_STANDBY_PORT:-5433}:5432"
+      - "${STORAGE_POSTGRES_STANDBY_PORT:-5443}:5432"
     command: >
       bash -c "
       if [ ! -f /var/lib/postgresql/data/PG_VERSION ]; then
@@ -36,16 +50,13 @@ services:
 
   storage-server-standby:
     profiles: ["ha-standby"]
-    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:latest}
-    build:
-      context: .
-      dockerfile: deploy/docker/Dockerfile
-    pull_policy: never
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.1.0}
+    pull_policy: if_not_present
     environment:
       STORAGE_READ_ONLY: "true"
       STORAGE_ADDR: ":9001"
       STORAGE_DATA_DIR: /data
-      STORAGE_METADATA_BACKEND: ${STORAGE_METADATA_BACKEND:-postgres}
+      STORAGE_METADATA_BACKEND: postgres
       STORAGE_POSTGRES_DSN: ${STORAGE_POSTGRES_DSN:-postgres://datasafe:datasafe@postgres:5432/datasafe?sslmode=disable}
       STORAGE_DEV: ${STORAGE_DEV:-true}
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-datasafe}
@@ -53,16 +64,56 @@ services:
       STORAGE_ADMIN_USER: ${STORAGE_ADMIN_USER:-admin}
       STORAGE_ADMIN_PASSWORD: ${STORAGE_ADMIN_PASSWORD:-admin}
       STORAGE_JWT_SECRET: ${STORAGE_JWT_SECRET:-datasafe-jwt-secret}
+      STORAGE_POSTGRES_HOST: postgres
+      STORAGE_POSTGRES_PORT: "5432"
+      STORAGE_POSTGRES_USER: ${STORAGE_POSTGRES_USER:-datasafe}
+      STORAGE_POSTGRES_PASSWORD: ${STORAGE_POSTGRES_PASSWORD:-datasafe}
+      STORAGE_POSTGRES_DB: ${STORAGE_POSTGRES_DB:-datasafe}
     ports:
-      - "9001:9001"
-    volumes:
-      - storage-standby-data:/data
+      - "${HA_STANDBY_HTTP_PORT:-9001}:9001"
     depends_on:
       postgres:
         condition: service_healthy
         required: false
     healthcheck:
       test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:9001/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  storage-server-standby-2:
+    profiles: ["ha-standby"]
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.1.0}
+    pull_policy: if_not_present
+    environment:
+      STORAGE_READ_ONLY: "true"
+      STORAGE_ADDR: ":9003"
+      STORAGE_DATA_DIR: /data
+      STORAGE_METADATA_BACKEND: postgres
+      STORAGE_POSTGRES_DSN: ${STORAGE_POSTGRES_DSN:-postgres://datasafe:datasafe@postgres:5432/datasafe?sslmode=disable}
+      STORAGE_POSTGRES_READ_REPLICA_DSN: ${STORAGE_POSTGRES_READ_REPLICA_DSN:-postgres://datasafe:datasafe@postgres-standby:5432/datasafe?sslmode=disable}
+      STORAGE_DEV: ${STORAGE_DEV:-true}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-datasafe}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-datasafesecret}
+      STORAGE_ADMIN_USER: ${STORAGE_ADMIN_USER:-admin}
+      STORAGE_ADMIN_PASSWORD: ${STORAGE_ADMIN_PASSWORD:-admin}
+      STORAGE_JWT_SECRET: ${STORAGE_JWT_SECRET:-datasafe-jwt-secret}
+      STORAGE_POSTGRES_HOST: postgres
+      STORAGE_POSTGRES_PORT: "5432"
+      STORAGE_POSTGRES_USER: ${STORAGE_POSTGRES_USER:-datasafe}
+      STORAGE_POSTGRES_PASSWORD: ${STORAGE_POSTGRES_PASSWORD:-datasafe}
+      STORAGE_POSTGRES_DB: ${STORAGE_POSTGRES_DB:-datasafe}
+    ports:
+      - "${HA_STANDBY2_HTTP_PORT:-9003}:9003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      postgres-standby:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:9003/healthz"]
       interval: 10s
       timeout: 3s
       retries: 3

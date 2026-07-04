@@ -21,7 +21,9 @@ import { ProfilePage } from "@/pages/profile";
 import { GatewayPage } from "@/pages/gateway";
 import { FederationPage } from "@/pages/federation";
 import { ClusterPage } from "@/pages/cluster";
+import { SiteReplicationPage } from "@/pages/site-replication";
 import { TenantsPage } from "@/pages/tenants";
+import { TeamsPage } from "@/pages/teams";
 import { PublicSharePage } from "@/pages/public-share";
 import { api, isMfaSetupRequired } from "@/lib/api";
 
@@ -130,8 +132,16 @@ export function App() {
         <Route path="keys" element={<AccessKeysPage />} />
         <Route path="usage" element={<UsagePage />} />
         <Route path="profile" element={<ProfilePage />} />
-        <Route path="federation" element={<FederationPage />} />
-        <Route path="cluster" element={<ClusterPage />} />
+        <Route path="federation" element={<AdminRoute><FederationPage /></AdminRoute>} />
+        <Route path="cluster" element={<AdminRoute><ClusterPage /></AdminRoute>} />
+        <Route
+          path="site-replication"
+          element={
+            <AdminRoute>
+              <SiteReplicationPage />
+            </AdminRoute>
+          }
+        />
         <Route
           path="admin/policy"
           element={
@@ -163,6 +173,14 @@ export function App() {
           element={
             <AdminRoute>
               <WebhooksPage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="admin/teams"
+          element={
+            <AdminRoute>
+              <TeamsPage />
             </AdminRoute>
           }
         />

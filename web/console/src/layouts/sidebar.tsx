@@ -87,9 +87,11 @@ export function Sidebar() {
   const adminNav = [
     { to: "/admin/users", label: t("nav:users"), icon: Users },
     { to: "/admin/tenants", label: t("nav:tenants"), icon: Building2 },
+    { to: "/admin/teams", label: t("nav:teams"), icon: Users },
     { to: "/gateway", label: t("nav:gateway"), icon: Network },
-    { to: "/federation", label: t("nav:federation"), icon: Globe },
     { to: "/cluster", label: t("nav:cluster"), icon: Server },
+    { to: "/federation", label: t("nav:federation"), icon: Globe },
+    { to: "/site-replication", label: t("nav:siteReplication"), icon: Network },
     { to: "/admin/policy", label: t("nav:policies"), icon: Shield },
     { to: "/admin/activity", label: t("nav:activity"), icon: Activity },
     { to: "/admin/webhooks", label: t("nav:webhooks"), icon: Webhook },

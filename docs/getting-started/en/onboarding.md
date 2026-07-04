@@ -89,6 +89,16 @@ Before go-live, set `STORAGE_STRICT_SECRETS=true` so the server refuses to start
 | Audit | Admin → Activity |
 | Backup | Copy `STORAGE_DATA_DIR` + PostgreSQL dump — [operations guide](../../operations-guide/en/backup-restore.md) |
 
+## Phase 9 — Multi-site (optional, v1.1.0)
+
+Link a second DataSafeS3 site for DR:
+
+1. Read [Trusted clusters — operations](../../operations-guide/en/trusted-clusters.md)
+2. Pair sites via **Clusters** → join token
+3. Add replication rules; optionally register federation peers with **cluster** scope
+
+Lab: `scripts/ha/start-ha-stack.ps1` + `start-ha-cluster-b.ps1` on Windows.
+
 ## Quick API bootstrap
 
 For automation (CI, scripts):

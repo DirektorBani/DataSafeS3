@@ -43,6 +43,10 @@ func (s *Server) handleListSharedLinks(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	for i := range links {
+		links[i].Token = ""
+		links[i].TokenHash = ""
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"shares": links})
 }
 
@@ -90,9 +94,12 @@ func (s *Server) handleCreateSharedLink(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	s.logActivity(r, metadata.ActionShareCreated, "share", bucket+"/"+req.Key)
-	s.emitEvent("ShareCreated", map[string]any{"bucket": bucket, "key": req.Key, "token": token})
+	s.emitEvent("ShareCreated", map[string]any{"bucket": bucket, "key": req.Key})
+	respShare := rec
+	respShare.Token = token
+	respShare.TokenHash = ""
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"share": rec,
+		"share": respShare,
 		"url":   s.publicShareURL(r, token),
 	})
 }

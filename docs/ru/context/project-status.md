@@ -2,15 +2,15 @@
 
 # Статус проекта
 
-**Обновлено:** 2026-06-30 · **Текущий релиз:** [v1.0.3](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.0.3)
+**Обновлено:** 2026-07-04 · **Текущий релиз:** [v1.1.0](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.0)
 
 ## Кратко
 
-**Community Edition v1.0.3** — текущий релиз: S3 API, веб-консоль (EN/RU/DE/FR), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, HA tooling, артефакты поставки (GHCR, SBOM, cosign).
+**Community Edition v1.1.0** — текущий релиз: S3 API, веб-консоль (EN/RU/DE/FR), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, Teams, защищённые `/metrics`, hash-only share tokens и HA v2 lab tooling.
 
-**v1.0.3** добавляет **opt-in шифрование полей метаданных** (CE, без license gate), опциональный **паттерн Vault Agent → env**, усиление CI/Postgres регрессий и вкладку **Security** в админских настройках. По умолчанию поведение как в v1.0.2, пока не включено field encryption.
+**v1.1.0** закрывает trust-debt C01-C21 и поставляет **HA v2 CE lab foundation**: erasure backend, leader lock в Postgres, site replication и локальные скрипты проверки. Это scope **lab / not production multi-AZ**: без автоматического failover orchestrator, без production Patroni-кластера и без обещания petabyte 4+2 multi-host.
 
-Patch **v1.0.2** (security): SSRF outbound policy, OIDC `exchange_code`, rate limit login, API `security-status` для слабых секретов.
+Patch **v1.0.3**: opt-in field encryption, паттерн Vault Agent → env, усиление CI/Postgres регрессий и вкладка **Security** в админских настройках.
 
 ## Зрелость функций (CE)
 
@@ -24,8 +24,11 @@ Patch **v1.0.2** (security): SSRF outbound policy, OIDC `exchange_code`, rate li
 | Object Lock (WORM) | **Поставлено** | XML API + консоль |
 | Gateway replication | **Поставлено** | Внешний S3 |
 | Federation | **Частично (MVP)** | GetObject + ListObjectsV2 proxy |
+| Teams admin API + консоль | **Поставлено** | Admin → Teams, назначение пользователей, OpenAPI full spec |
+| Bearer token для metrics | **Поставлено** | `STORAGE_METRICS_TOKEN` защищает `/metrics`, если задан |
+| HA v2 lab foundation | **Поставлено (lab)** | Erasure, leader lock, site replication; не production multi-AZ |
 | HA (failover Postgres, read-only standby) | **Частично** | Ручной promote; Helm `values-ha.yaml` |
-| Erasure coding | **Lab MVP** | Не production multi-AZ |
+| Erasure coding | **Lab foundation** | `STORAGE_OBJECT_BACKEND=erasure`; production multi-AZ — future hardening |
 | Supply chain (SBOM + cosign) | **Поставлено** | Оба образа на тегах релиза (v1.0.1+) |
 | OpenAPI 3.1 + Swagger UI | **Поставлено** | Community Integration API |
 | File collaboration (фазы 1–3) | **Поставлено** | Home bucket, grants, share links, desktop sync |
@@ -37,20 +40,43 @@ Patch **v1.0.2** (security): SSRF outbound policy, OIDC `exchange_code`, rate li
 
 | Гейт | Результат | Когда |
 |------|-----------|-------|
-| `go test ./...` | PASS | Кампания v1.0.3, 2026-06-30 |
-| Feature-audit | PASS | Регрессия 2026-06-30 |
-| Playwright e2e-smoke | PASS | CI `smoke.spec.ts`, профиль postgres |
-| Postgres FK integration | PASS | `TestNullableFK_team_id` + `TEST_POSTGRES_DSN` |
+| `go test ./...` | PASS | Release prep 2026-07-04 |
+| Feature-audit | PASS | 112 PASS / 0 FAIL / 1 SKIP, 2026-07-04 |
+| Playwright 7 specs | PASS | 9 tests across 7 spec files, 2026-07-04 |
+| HA lab Option B | PASS | `run-all-ha-tests.ps1 -FreshVolumes -SkipBuild`, 0 FAIL |
 
 ## Документация
 
-- Двуязычные гайды в `docs/`; upgrade v1.0.3 (EN/RU), field encryption, Vault, CHANGELOG — 2026-06-30.
+- Двуязычные гайды в `docs/`; upgrade v1.1.0 (EN/RU), HA lab docs, pen-test prep, CHANGELOG — 2026-07-04.
 - Roadmap: [roadmap.md](./roadmap.md).
 - Архитектура: [architecture.md](./architecture.md).
 
-## Вне scope CE (план 1.1.0+)
+## Вне scope CE (future)
 
-Удаление escape hatch `STORAGE_OUTBOUND_HTTP_ALLOW` (v1.1.0), mobile (Flutter/PWA), Kafka sink, авто-failover orchestrator, production erasure, Vault Transit in-process (Enterprise phase 2).
+Mobile (Flutter/PWA), Kafka sink, авто-failover orchestrator, production multi-AZ erasure, Vault Transit in-process (Enterprise phase 2).
+
+## v1.1.0 shipped scope
+
+Charter: trust-debt + OSS growth — [TZ v1.1.0](../specs/v1.1.0-trust-debt-oss-growth-tz.md).
+
+| Пункт | Статус |
+|-------|--------|
+| Удаление `STORAGE_OUTBOUND_HTTP_ALLOW` | **Поставлено** |
+| `STORAGE_METRICS_TOKEN` на `/metrics` | **Поставлено** |
+| Upgrade EN/RU + CHANGELOG | **Поставлено** |
+| Playwright CI ≥6 specs (P1) | **Готово** |
+| Teams admin REST + UI (P1) | **Готово** |
+| OIDC Keycloak E2E nightly (P1) | **Готово** |
+| MFA wizard AUD-17 (P1) | **Готово** |
+| Feature-audit AUD-15/18 (P1) | **Готово** |
+| CONTRIBUTING + ref-arch (P1) | **Готово** |
+| Pen-test prep doc (P1) | **Готово** |
+| Grafana panel smoke AUD-10 (P2) | **Готово** |
+| SDK examples + GHCR main publish (P2) | **Готово** |
+| de/fr getting-started stubs (P2) | **Готово** |
+| Share link hash-only C21 (P2) | **Готово** |
+| OpenAPI teams routes (C06-7) | **Готово** |
+| HA v2 CE lab foundation | **Поставлено (lab)** |
 
 ---
 

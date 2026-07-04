@@ -1,0 +1,61 @@
+{{- if and .Values.caddy.enabled .Values.caddy.multiClusterLB.enabled }}
+# Optional HA write=leader / read=any pool (see deploy/caddy/multi-cluster-lb.Caddyfile).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "datasafe.caddy.fullname" . }}-multi-cluster-lb
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy-lb
+data:
+  Caddyfile: |
+    {
+      admin off
+    }
+
+    (leader_pool) {
+      @leader `{http.response.header.X-Datasafe-Leader} == true`
+      handle @leader {
+        reverse_proxy {{ join " " .Values.caddy.multiClusterLB.writeUpstreams }} {
+          health_uri /api/v1/ha/status
+          health_interval 5s
+          health_timeout 2s
+        }
+      }
+      respond "no leader available" 503
+    }
+
+    (read_pool) {
+      reverse_proxy {{ join " " .Values.caddy.multiClusterLB.readUpstreams }} {
+        health_uri /healthz
+        health_interval 5s
+      }
+    }
+
+    :{{ .Values.caddy.multiClusterLB.listenPort }} {
+      @read method GET HEAD
+      handle @read {
+        import read_pool
+      }
+      handle {
+        import leader_pool
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "datasafe.caddy.fullname" . }}-multi-cluster-lb
+  labels:
+    {{- include "datasafe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy-lb
+spec:
+  type: {{ .Values.caddy.multiClusterLB.service.type }}
+  ports:
+    - name: https
+      port: {{ .Values.caddy.multiClusterLB.service.port }}
+      targetPort: {{ .Values.caddy.multiClusterLB.listenPort }}
+  selector:
+    {{- include "datasafe.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy
+{{- end }}

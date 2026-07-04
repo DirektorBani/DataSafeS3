@@ -1,0 +1,9 @@
+# Site replication lab — enable worker on source stack (project datasafe-a).
+# Pair with docker-compose.site-b.yml on project datasafe-b.
+services:
+  storage-server:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      STORAGE_SITE_REPLICATION_ENABLED: "true"
+      STORAGE_SITE_REPL_WORKER_INTERVAL: ${STORAGE_SITE_REPL_WORKER_INTERVAL:-2s}

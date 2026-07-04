@@ -131,6 +131,7 @@ export function ProfilePage() {
   });
 
   const externalAuth = me.data?.auth_source === "ldap" || me.data?.auth_source === "oidc";
+  const setupRequired = (me.data?.mfa_setup_required ?? false) && !me.data?.mfa_enabled;
 
   function downloadRecoveryCodes() {
     if (!recoveryCodes) return;
@@ -146,6 +147,26 @@ export function ProfilePage() {
   return (
     <div>
       <PageHeader title={t("profile:title")} description={t("profile:description")} />
+      {setupRequired && (
+        <Card className="mb-6 border-destructive/50 bg-destructive/5">
+          <CardHeader>
+            <CardTitle className="text-base">{t("profile:mfa.wizardTitle")}</CardTitle>
+            <CardDescription>{t("profile:mfa.wizardDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <ol className="list-decimal space-y-1 pl-5">
+              <li>{t("profile:mfa.wizardStepEnroll")}</li>
+              <li>{t("profile:mfa.wizardStepVerify")}</li>
+              <li>{t("profile:mfa.wizardStepDone")}</li>
+            </ol>
+            {!enrollData && (
+              <Button onClick={() => enrollMutation.mutate()} disabled={enrollMutation.isPending}>
+                {t("profile:mfa.enable")}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
       {me.data && (
         <Card className="mb-6">
           <CardHeader>

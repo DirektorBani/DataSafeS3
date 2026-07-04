@@ -1,0 +1,26 @@
+# Erasure backend lab profile — single storage-server, 6 shard volumes (dev 2+1 or production 4+2)
+# Usage:
+#   docker compose -p datasafe-erasure -f docker-compose.yml -f docker-compose.local-data.yml `
+#     -f docker-compose.local-binary.yml -f docker-compose.ha-erasure.yml --profile postgres up -d
+services:
+  storage-server:
+    environment:
+      STORAGE_OBJECT_BACKEND: erasure
+      STORAGE_ERASURE_LAYOUT: ${STORAGE_ERASURE_LAYOUT:-dev}
+      STORAGE_ERASURE_DATA_PATHS: /shards/d1,/shards/d2,/shards/d3,/shards/d4,/shards/d5,/shards/d6
+      STORAGE_ERASURE_HEAL_INTERVAL: ${STORAGE_ERASURE_HEAL_INTERVAL:-5m}
+    volumes:
+      - erasure-shard-1:/shards/d1
+      - erasure-shard-2:/shards/d2
+      - erasure-shard-3:/shards/d3
+      - erasure-shard-4:/shards/d4
+      - erasure-shard-5:/shards/d5
+      - erasure-shard-6:/shards/d6
+
+volumes:
+  erasure-shard-1:
+  erasure-shard-2:
+  erasure-shard-3:
+  erasure-shard-4:
+  erasure-shard-5:
+  erasure-shard-6:

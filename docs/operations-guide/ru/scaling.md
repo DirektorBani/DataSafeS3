@@ -11,11 +11,12 @@ Community Edition DataSafeS3 — **single-node по умолчанию**. Ниж
 | Один `storage-server` + BoltDB/Postgres | **Реализовано** | Базовая модель |
 | Вертикальное масштабирование | **Реализовано** | Основной путь сегодня |
 | Gateway-репликация во внешний S3 | **Реализовано** | Копии off-site, не active-active HA |
-| Federation (multi-cluster) | **Реализовано** | GetObject + ListObjectsV2 proxy через peer |
+| Federation (multi-cluster) | **Реализовано** | GetObject/List proxy; peer привязан к **кластеру** — [trusted clusters](./trusted-clusters.md) |
+| Trusted cluster pairing + repl | **Lab (v1.1.0)** | mTLS, join token — [руководство](./trusted-clusters.md) |
 | Read replicas Postgres | **Реализовано** | `STORAGE_POSTGRES_READ_REPLICA_DSN` для list/search/count |
-| Multi-AZ / erasure coding | **Частично** | Erasure 2+1 MVP в `internal/storage/erasure/` |
+| Multi-AZ / erasure coding | **Lab foundation (v1.1)** | `STORAGE_OBJECT_BACKEND=erasure`; локальная lab-проверка, не production multi-AZ |
 
-Не предполагайте автоматический failover без сверки с [архитектурой](../../ru/context/architecture.md).
+Не предполагайте автоматический failover или production multi-AZ durability без сверки с [архитектурой](../../ru/context/architecture.md). HA v2 в v1.1.0 — **CE lab foundation**, не production Patroni/auto-failover cluster.
 
 ## Вертикальное
 
@@ -53,15 +54,40 @@ Community Edition DataSafeS3 — **single-node по умолчанию**. Ниж
 
 ## Read-only standby storage-server
 
-`STORAGE_READ_ONLY=true` — мутирующие API возвращают **503** с `Retry-After`; GET/List/Head доступны для DR. Пример: `docker-compose.ha.yml`. **Community Edition — полный HA** (скрипты failover, DR drill, Helm `values-ha.yaml`): [эталонное развёртывание](./reference-deployment-2node.md).
+`STORAGE_READ_ONLY=true` — мутирующие API возвращают **503** с `Retry-After`; GET/List/Head доступны для DR. Пример: `docker-compose.ha.yml`. **Community Edition — HA lab / DR tooling** (скрипты failover, DR drill, Helm `values-ha.yaml`): [эталонное развёртывание](./reference-deployment-2node.md).
 
 ## Горизонтальные варианты
 
 | Подход | Статус | Примечания |
 |--------|--------|------------|
 | **Репликация Gateway** | Реализовано | Копии во внешний S3 |
-| **Federation (MVP)** | Реализовано | [federation](../../ru/user-guide/08-federation-i-cluster.md) |
+| **Federation (MVP)** | Реализовано | Peer с **cluster_id**; GetObject/List — [user guide](../../ru/user-guide/08-federation-i-cluster.md) |
+| **Trusted clusters** | Lab (v1.1.0) | mTLS pairing, repl — [trusted-clusters.md](./trusted-clusters.md) |
 | **Read replicas** | Реализовано | `STORAGE_POSTGRES_READ_REPLICA_DSN` |
+| **Erasure object backend** | Lab foundation (v1.1) | `STORAGE_OBJECT_BACKEND=erasure`, paths через `STORAGE_ERASURE_DATA_PATHS` |
+| **Site replication (peer)** | Реализовано (v1.1) | DataSafeS3↔DataSafeS3 async; `STORAGE_SITE_REPLICATION_ENABLED=true` |
+| **Leader lock (single writer)** | Реализовано (v1.1) | `STORAGE_HA_ENABLED=true` + таблица Postgres `ha_leader_lock` |
+
+## Erasure object backend (v1.1)
+
+Задаётся на `storage-server`:
+
+| Переменная | Default | Описание |
+|------------|---------|----------|
+| `STORAGE_OBJECT_BACKEND` | `fs` | `fs` или `erasure` |
+| `STORAGE_ERASURE_LAYOUT` | `dev` | `dev` (2+1 XOR) или `production` (4+2 Reed-Solomon) |
+| `STORAGE_ERASURE_DATA_PATHS` | — | Корни shard-хранилищ через запятую (минимум data+parity paths) |
+| `STORAGE_ERASURE_HEAL_INTERVAL` | `5m` | Интервал фонового heal |
+
+Lab compose: `docker-compose.ha-erasure.yml` + `scripts/ha/test-erasure-backend.ps1`. Профиль `production` 4+2 — реализационная основа для future hardening; перед production-данными нужны собственные failure drills.
+
+Prometheus: `datasafe_erasure_degraded_shard_sets`, `datasafe_erasure_heal_bytes_total`.
+
+Legacy **storage-server-standby** (shared FS + read-only API) для новых HA-инсталляций считается устаревающим паттерном — предпочтительны erasure + metadata failover.
+
+## Site replication
+
+Gateway replication пишет во **внешний S3**. Site replication пишет в другой **DataSafeS3** peer (`POST /api/v1/site-replication/peers`). Worker включается через `STORAGE_SITE_REPLICATION_ENABLED=true`.
 
 ## Kubernetes
 
