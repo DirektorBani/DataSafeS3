@@ -7,6 +7,7 @@
 | Тема | Документ |
 |------|----------|
 | Backup и restore | [backup-restore.md](backup-restore.md) |
+| Миграция с MinIO | [migrate-from-minio.md](migrate-from-minio.md) |
 | Обновление | [upgrade.md](upgrade.md) |
 | Масштабирование | [scaling.md](scaling.md) |
 | Эталон 2-node HA | [reference-deployment-2node.md](reference-deployment-2node.md) |

@@ -30,6 +30,10 @@ flowchart LR
 
 Предсказуемая локальная цель backup с опциональными off-site копиями — под вашими политиками retention и доступа.
 
+## Миграция существующего MinIO backup target
+
+Если backup уже пишется в MinIO (или другой S3-compatible store), перенесите бакеты по [гайду миграции MinIO → DataSafeS3](../../operations-guide/ru/migrate-from-minio.md), затем проверьте Object Lock / versioning на стороне DataSafe.
+
 ## Проверенный скрипт
 
 Smoke: создание бакета и round-trip объекта на работающем стеке:

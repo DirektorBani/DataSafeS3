@@ -88,6 +88,7 @@ Before go-live, set `STORAGE_STRICT_SECRETS=true` so the server refuses to start
 | Monitoring | Grafana http://localhost:3000 (dashboard **DataSafeS3 Overview**) |
 | Audit | Admin → Activity |
 | Backup | Copy `STORAGE_DATA_DIR` + PostgreSQL dump — [operations guide](../../operations-guide/en/backup-restore.md) |
+| Migrate from MinIO | [Migrate from MinIO](../../operations-guide/en/migrate-from-minio.md) — rclone cutover + smoke script |
 
 ## Phase 9 — Multi-site (optional, v1.1.0)
 

@@ -18,6 +18,7 @@ Community Edition comparison for typical **governed self-hosted S3** deployments
 - Backup landing zones with retention (restic, Velero) — see [backup use-case](../use-cases/en/backup-storage.md)
 - Corporate file sharing with SSO — [corporate file storage](../use-cases/en/corporate-file-storage.md)
 - Kubernetes in-cluster S3 — [k8s object storage](../use-cases/en/k8s-object-storage.md)
+- **Leaving MinIO-compatible deployments** — DIY cutover with rclone/aws-cli: [migrate from MinIO](../operations-guide/en/migrate-from-minio.md) (not a claim of 100% API parity)
 
 ## Where we do not compete
 

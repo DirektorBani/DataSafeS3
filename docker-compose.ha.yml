@@ -50,7 +50,7 @@ services:
 
   storage-server-standby:
     profiles: ["ha-standby"]
-    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.1.0}
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.1.1}
     pull_policy: if_not_present
     environment:
       STORAGE_READ_ONLY: "true"
@@ -83,7 +83,7 @@ services:
 
   storage-server-standby-2:
     profiles: ["ha-standby"]
-    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.1.0}
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.1.1}
     pull_policy: if_not_present
     environment:
       STORAGE_READ_ONLY: "true"

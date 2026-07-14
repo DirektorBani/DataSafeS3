@@ -30,6 +30,10 @@ flowchart LR
 
 Predictable, self-hosted backup target with optional geo-redundant copies via Gateway — under your retention and access policies.
 
+## Migrating an existing MinIO backup target
+
+If backups already land on MinIO (or another S3-compatible store), cut over buckets with the [MinIO → DataSafeS3 migration kit](../../operations-guide/en/migrate-from-minio.md), then re-check Object Lock / versioning on the DataSafe side.
+
 ## Verified script
 
 Smoke-test bucket create + object round-trip against a running stack:

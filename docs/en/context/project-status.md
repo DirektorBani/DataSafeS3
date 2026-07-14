@@ -2,11 +2,11 @@ English | **[Русский](../../ru/context/project-status.md)**
 
 # Project Status
 
-**Last updated:** 2026-07-04 · **Current release:** [v1.1.0](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.0)
+**Last updated:** 2026-07-14 · **Current release:** [v1.1.1](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.1)
 
 ## Summary
 
-DataSafeS3 **Community Edition v1.1.0** is the current release: S3-compatible API, web console (EN/RU/DE/FR), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, Teams, metrics-token protection, share-token hashing, and HA v2 lab tooling.
+DataSafeS3 **Community Edition v1.1.1** is the current patch on v1.1.0: MinIO migration kit, monitoring screenshot refresh, `storage-cli migrate checklist`, AUD-19 versioning audit rows. Core platform remains as in v1.1.0: S3-compatible API, web console (EN/RU/DE/FR), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, Teams, metrics-token protection, share-token hashing, and HA v2 lab tooling.
 
 **v1.1.0** burns down trust-debt C01-C21 and ships **HA v2 CE lab foundation**: erasure backend, Postgres leader lock, site replication, and local validation scripts. This HA scope is explicitly **lab / not production multi-AZ**: no automatic failover orchestrator, no Patroni-certified production cluster, and no petabyte 4+2 multi-host promise.
 
@@ -57,7 +57,7 @@ Mobile (Flutter/PWA), Kafka event sink, automatic failover orchestrator, product
 
 ## v1.1.0 shipped scope
 
-Charter: trust-debt burn-down + OSS growth — see [v1.1.0 TZ](../specs/v1.1.0-trust-debt-oss-growth-tz.md).
+Charter: trust-debt burn-down + OSS growth — internal TZ under `D:\datasafe_tz\specs\v1.1.0\` (see [docs/specs/README.md](../specs/README.md)).
 
 | Item | Status |
 |------|--------|

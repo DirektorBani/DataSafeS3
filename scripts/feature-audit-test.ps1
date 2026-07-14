@@ -728,6 +728,30 @@ Record 'Admin' 'Object delete no bucket-exists error' $(if($noBucketErr){'PASS'}
 $r = Invoke-DS PUT "$BaseUrl/api/v1/settings/buckets/$privBucket" -Headers $adminH -Body '{"versioning_enabled":true}'
 Record 'Admin' 'Versioning enable' $(if($r.Code -eq 200){'PASS'}else{'FAIL'}) "HTTP $($r.Code)"
 
+# AUD-19 — versioning object cycle (list + get by versionId)
+$verKey = "aud19-ver-$ts.txt"
+$c1 = Put-Object $adminTok $privBucket $verKey 'version-one'
+$c2 = Put-Object $adminTok $privBucket $verKey 'version-two'
+$verPutsOk = ($c1 -in 200,201) -and ($c2 -in 200,201)
+Record 'Admin' 'Versioning put two versions' $(if($verPutsOk){'PASS'}else{'FAIL'}) "put1=$c1 put2=$c2"
+$verList = Invoke-DS GET "$BaseUrl/api/v1/buckets/$privBucket/versions?prefix=$verKey" -Headers $adminH
+$verForKey = @()
+if ($verList.Json.versions) {
+    $verForKey = @($verList.Json.versions | Where-Object { $_.key -eq $verKey -and -not $_.is_delete_marker })
+}
+$verListOk = ($verList.Code -eq 200) -and ($verForKey.Count -ge 2)
+Record 'Admin' 'Versioning list object versions' $(if($verListOk){'PASS'}else{'FAIL'}) "HTTP $($verList.Code) count=$($verForKey.Count)"
+$oldVer = $null
+if ($verForKey.Count -ge 2) {
+    $oldVer = ($verForKey | Sort-Object last_modified | Select-Object -First 1)
+}
+$verGetOk = $false
+if ($oldVer -and $oldVer.version_id) {
+    $verGet = Invoke-DS GET "$BaseUrl/api/v1/buckets/$privBucket/objects/$verKey`?versionId=$($oldVer.version_id)" -Headers $adminH -Raw
+    $verGetOk = ($verGet.Code -eq 200) -and ($verGet.Body -eq 'version-one')
+}
+Record 'Admin' 'Versioning get by versionId' $(if($verGetOk){'PASS'}elseif(-not $verListOk){'SKIP'}else{'FAIL'}) "version_id=$($oldVer.version_id)"
+
 # Federation / Cluster
 $r = Invoke-DS GET "$BaseUrl/api/v1/federation/clusters" -Headers $adminH
 Record 'Admin' 'Federation clusters list' $(if($r.Code -eq 200){'PASS'}else{'FAIL'}) "HTTP $($r.Code)"

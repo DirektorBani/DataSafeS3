@@ -12,6 +12,11 @@ See English version: [why-datasafes3-vs.md](../en/why-datasafes3-vs.md)
 | WebAuthn MFA | Да | Ограничено | Через приложения | Нет |
 | Share links + audit | Да | Нет | Сильно | Нет |
 
+## Где конкурируем
+
+- Backup landing zones — [backup use-case](../use-cases/ru/backup-storage.md)
+- **Миграция с MinIO-совместимых установок** — [migrate-from-minio](../operations-guide/ru/migrate-from-minio.md) (не заявление о 100% API parity)
+
 ## Где мы не конкурируем
 
 - Petabyte erasure / гипермасштаб

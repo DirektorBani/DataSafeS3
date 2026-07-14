@@ -7,6 +7,7 @@ Run DataSafeS3 in production: backup, upgrades, scaling, and incident response.
 | Topic | Document |
 |-------|----------|
 | Backup & restore | [backup-restore.md](backup-restore.md) |
+| Migrate from MinIO | [migrate-from-minio.md](migrate-from-minio.md) |
 | Upgrade | [upgrade.md](upgrade.md) |
 | Scaling | [scaling.md](scaling.md) |
 | 2-node HA reference | [reference-deployment-2node.md](reference-deployment-2node.md) |

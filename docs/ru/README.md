@@ -2,7 +2,7 @@
 
 # Документация DataSafeS3 (русский)
 
-**Текущий релиз:** [v1.1.0](../../CHANGELOG.md#110---2026-07-05)
+**Текущий релиз:** [v1.1.1](../../CHANGELOG.md#111---2026-07-14)
 
 Хаб документации по жизненному циклу продукта: **Learn → Deploy → Configure → Manage → Operate → Reference → API**.
 
@@ -31,7 +31,7 @@
 - **Deploy** — Docker Compose, Helm, первый запуск
 - **Configure** — LDAP, OIDC, MFA, мониторинг
 - **Manage** — [Руководство администратора](../administrator-guide/ru/README.md), [User guide](user-guide/README.md)
-- **Operate** — [Эксплуатация](../operations-guide/ru/README.md)
+- **Operate** — [Эксплуатация](../operations-guide/ru/README.md), [Миграция с MinIO](../operations-guide/ru/migrate-from-minio.md)
 
 ---
 

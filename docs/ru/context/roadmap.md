@@ -55,7 +55,7 @@ Prioritized backlog from [feature audit 2026-06-17](../../testing/feature-audit-
 | AUD-16 | UX | Recursive folder delete confirmation — mirror API `object_count` on conflict in UI | S | planned | Explicit confirm dialog |
 | AUD-17 | Security | MFA admin enforcement — guide admin through enroll on first login (`mfa_setup_required`) | M | **done** | Profile MFA wizard card (`profile.tsx`); `mfa_policy_test.go` |
 | AUD-18 | Testing | Trash restore E2E — upload→delete→restore cycle in audit script | S | **done** | `Trash restore cycle` row in `feature-audit-test.ps1` |
-| AUD-19 | Testing | Versioning / object versions UI test in audit script | S | planned | API exists |
+| AUD-19 | Testing | Cycle versioning / object versions в audit script | S | **done** | Enable → put×2 → list `/versions` → GET `?versionId=` в `feature-audit-test.ps1` |
 | AUD-20 | Testing | Webhook delivery retry — verify delivery log + retry under load | M | planned | Audit only created config |
 | AUD-21 | Ops | Cross-platform binary smoke test — Linux binary in `alpine:3.20` before publish | M | planned | Catch mount/startup issues |
 | AUD-22 | Ops | Log sink delivery errors — surface failed HTTP responses; optional admin diagnostics via `EmitTestRecord` | M | planned | Errors swallowed in async goroutines |

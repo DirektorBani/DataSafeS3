@@ -2,7 +2,14 @@
 
 # Мониторинг
 
-![Monitoring](../../images/screenshots/monitoring.png)
+![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/monitoring.png)
+
+Дашборд **DataSafeS3 Overview** состоит из двух рядов панелей:
+
+| Ряд | Панели |
+|-----|--------|
+| **HTTP / S3** | RPS, число бакетов и объектов, объём хранилища, p95 latency, HTTP-ошибки, топ бакетов по размеру |
+| **Host** | Занятость диска %, CPU load (1m), память %, сеть, lag репликации PostgreSQL, ёмкость диска |
 
 ## Стек
 

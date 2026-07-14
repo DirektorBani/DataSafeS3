@@ -2,7 +2,7 @@ English | **[Русский](../ru/README.md)**
 
 # DataSafeS3 Documentation (English)
 
-**Current release:** [v1.1.0](../../CHANGELOG.md#110---2026-07-05)
+**Current release:** [v1.1.1](../../CHANGELOG.md#111---2026-07-14)
 
 Documentation hub aligned with the product lifecycle: **Learn → Deploy → Configure → Manage → Operate → Reference → API**.
 
@@ -31,7 +31,7 @@ See the [central documentation hub](../README.md) for complete EN/RU tables:
 - **Deploy** — Docker Compose, Helm, first run
 - **Configure** — LDAP, OIDC, MFA, monitoring
 - **Manage** — [Administrator guide](../administrator-guide/en/README.md), [User guide](user-guide/README.md)
-- **Operate** — [Operations guide](../operations-guide/en/README.md)
+- **Operate** — [Operations guide](../operations-guide/en/README.md), [Migrate from MinIO](../operations-guide/en/migrate-from-minio.md)
 
 ---
 

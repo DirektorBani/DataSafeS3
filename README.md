@@ -2,7 +2,7 @@
 
 **[English](docs/en/README.md)** · **[Русский](docs/ru/README.md)** · **[Documentation](docs/README.md)**
 
-**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.1.0](CHANGELOG.md#110---2026-07-05)
+**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.1.1](CHANGELOG.md#111---2026-07-14)
 
 ---
 
@@ -103,7 +103,7 @@ docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-co
 
 Production console is served from `web/console/dist` (build with `cd web/console && npm run build`). For Vite HMR during UI work: add `-f docker-compose.dev.yml --profile dev`.
 
-Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.1.0` and `ghcr.io/direktorbani/datasafe-console:v1.1.0`.
+Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.1.1` and `ghcr.io/direktorbani/datasafe-console:v1.1.1`.
 
 **Rolling `main` builds** (for testers, not cosign/SBOM): on each push to `main`, [`.github/workflows/publish-main.yml`](.github/workflows/publish-main.yml) publishes `:main` and `:sha-<commit>` tags for both images, e.g. `ghcr.io/direktorbani/datasafe-storage-server:main`. Versioned releases (`v*`) remain the supported production path with SBOM and cosign signatures.
 
@@ -134,7 +134,7 @@ Documentation is organized by what you need to do:
 | **Deploy** | [Docker Compose](docs/getting-started/en/first-run.md), [Kubernetes / Helm](deploy/helm/datasafe/README.md) |
 | **Configure** | [LDAP](docs/administrator-guide/en/ldap.md), [OIDC](docs/administrator-guide/en/oidc.md), [monitoring](docs/administrator-guide/en/monitoring.md) |
 | **Manage** | [Users](docs/administrator-guide/en/users.md), [tenants](docs/administrator-guide/en/tenants.md), [replication](docs/administrator-guide/en/replication.md) |
-| **Operate** | [Backup](docs/operations-guide/en/backup-restore.md), [HA reference](docs/operations-guide/en/reference-deployment-2node.md), [scaling](docs/operations-guide/en/scaling.md), [troubleshooting](docs/operations-guide/en/troubleshooting.md) |
+| **Operate** | [Backup](docs/operations-guide/en/backup-restore.md), [Migrate from MinIO](docs/operations-guide/en/migrate-from-minio.md), [HA reference](docs/operations-guide/en/reference-deployment-2node.md), [scaling](docs/operations-guide/en/scaling.md), [troubleshooting](docs/operations-guide/en/troubleshooting.md) |
 | **Integrate** | [Partner cookbook](docs/operations-guide/en/partner-cookbook.md), [extension hooks](examples/extension-hook/README.md) |
 | **Reference** | [Database schema](docs/en/database.md), [Gateway](docs/en/context/gateway.md) |
 | **API** | [API guide](docs/api-guide/en/README.md) · Swagger `/api/v1/docs` |

@@ -88,6 +88,7 @@
 | Мониторинг | Grafana http://localhost:3000 (дашборд **DataSafeS3 Overview**) |
 | Аудит | Администрирование → Активность |
 | Backup | Копия `STORAGE_DATA_DIR` + дамп PostgreSQL — [руководство по эксплуатации](../../operations-guide/ru/backup-restore.md) |
+| Миграция с MinIO | [Миграция с MinIO](../../operations-guide/ru/migrate-from-minio.md) — rclone cutover + smoke |
 
 ## Фаза 9 — Multi-site (опционально, v1.1.0)
 

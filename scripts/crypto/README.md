@@ -154,7 +154,7 @@ Summary:
 5. Touch records (update access keys, gateway, settings) or call `POST /api/v1/admin/encryption/rewrap` when available.
 6. When `legacy_plaintext_fields_estimate` → 0, remove the old private key from env; later set `retired_at` on the old registry row.
 
-See [field-encryption.md § Rotation](../../docs/operations-guide/en/field-encryption.md#kek-rotation-lazy-re-encrypt) and [TZ §5.4](../../docs/specs/field-encryption-1.0.3-tz.md).
+See [field-encryption.md § Rotation](../../docs/operations-guide/en/field-encryption.md#kek-rotation-lazy-re-encrypt). Internal TZ (not in git): `D:\datasafe_tz\specs\` — see [docs/specs/README.md](../../docs/specs/README.md).
 
 ---
 
@@ -176,7 +176,7 @@ See [field-encryption.md § Rotation](../../docs/operations-guide/en/field-encry
 - DB dump without the private KEK shows `enc:v1:…` blobs only.
 - Admin API still returns decrypted values to authorized admins (by design).
 
-Spec: [docs/specs/field-encryption-1.0.3-tz.md](../../docs/specs/field-encryption-1.0.3-tz.md)
+Ops guide: [field-encryption.md](../../docs/operations-guide/en/field-encryption.md). Internal TZ: `D:\datasafe_tz\specs\` ([docs/specs/README.md](../../docs/specs/README.md)).
 
 ---
 

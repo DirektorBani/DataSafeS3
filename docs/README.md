@@ -75,6 +75,7 @@ Environment variables and system settings: [User guide — Administrator setting
 |-------|---------|---------|
 | **Operations hub** | [operations-guide/en/README.md](operations-guide/en/README.md) | [operations-guide/ru/README.md](operations-guide/ru/README.md) |
 | **Backup & restore** | [operations-guide/en/backup-restore.md](operations-guide/en/backup-restore.md) | [operations-guide/ru/backup-restore.md](operations-guide/ru/backup-restore.md) |
+| **Migrate from MinIO** | [operations-guide/en/migrate-from-minio.md](operations-guide/en/migrate-from-minio.md) | [operations-guide/ru/migrate-from-minio.md](operations-guide/ru/migrate-from-minio.md) |
 | **Upgrade** | [operations-guide/en/upgrade.md](operations-guide/en/upgrade.md) | [operations-guide/ru/upgrade.md](operations-guide/ru/upgrade.md) |
 | **Scaling** | [operations-guide/en/scaling.md](operations-guide/en/scaling.md) | [operations-guide/ru/scaling.md](operations-guide/ru/scaling.md) |
 | **2-node HA reference** | [operations-guide/en/reference-deployment-2node.md](operations-guide/en/reference-deployment-2node.md) | [operations-guide/ru/reference-deployment-2node.md](operations-guide/ru/reference-deployment-2node.md) |

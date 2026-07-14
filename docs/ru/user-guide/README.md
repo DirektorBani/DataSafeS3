@@ -1338,9 +1338,9 @@ SSO-пользователь: `ssouser` / `password`
 | Обзор системы | http://localhost:3000/d/datasafe-overview/datasafe-overview |
 | Бакеты (мультивыбор) | http://localhost:3000/d/datasafe-buckets/datasafe-buckets |
 
-![Grafana — дашборд Датасейф S3 Overview](../../user-guide/images/grafana.png)
+![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/monitoring.png)
 
-Метрики: HTTP-запросы, задержка, объём хранилища, число бакетов/объектов, S3-операции по бакетам, CPU/диск/память/сеть хоста. Prometheus: http://localhost:9090 (обычно не требует ручного входа).
+Метрики: ряд **HTTP / S3** (RPS, счётчики, объём, latency, ошибки, топ бакетов) и ряд **Host** (диск, CPU, память, сеть, lag Postgres). Prometheus: http://localhost:9090 (обычно не требует ручного входа).
 
 Обычному пользователю достаточно **Usage** в консоли.
 

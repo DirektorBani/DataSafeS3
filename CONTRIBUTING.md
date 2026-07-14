@@ -84,9 +84,9 @@ Before tagging a release:
 
 Full QA report template: `_local/qa/` (gitignored, not committed).
 
-### v1.1.0 spec
+### Product specs
 
-Implementation charter: [docs/specs/v1.1.0-trust-debt-oss-growth-tz.md](docs/specs/v1.1.0-trust-debt-oss-growth-tz.md).
+Internal TZs live under `D:\datasafe_tz\specs\` (not in git). See [docs/specs/README.md](docs/specs/README.md).
 
 ## Pull request checklist
 
@@ -130,7 +130,7 @@ Look for GitHub issues labeled `good first issue`. Maintainer may open these fro
 
 
 
-Some paths are gitignored: `docs/analysis/`, `_local/`, filled handoffs, audit artifacts. Product specs live under `docs/specs/` and `docs/en/specs/` + `docs/ru/specs/`.
+Some paths are gitignored: `docs/analysis/`, `_local/`, filled handoffs, audit artifacts. Internal product TZs live under `D:\datasafe_tz\specs\` (see [docs/specs/README.md](docs/specs/README.md)); do not commit them to git.
 
 
 

@@ -2,11 +2,11 @@
 
 # Статус проекта
 
-**Обновлено:** 2026-07-04 · **Текущий релиз:** [v1.1.0](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.0)
+**Обновлено:** 2026-07-14 · **Текущий релиз:** [v1.1.1](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.1)
 
 ## Кратко
 
-**Community Edition v1.1.0** — текущий релиз: S3 API, веб-консоль (EN/RU/DE/FR), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, Teams, защищённые `/metrics`, hash-only share tokens и HA v2 lab tooling.
+**Community Edition v1.1.1** — текущий patch поверх v1.1.0: MinIO migration kit, обновление скриншотов мониторинга, `storage-cli migrate checklist`, AUD-19 versioning в feature-audit. Платформа как в v1.1.0: S3 API, веб-консоль (EN/RU/DE/FR), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, Teams, защищённые `/metrics`, hash-only share tokens и HA v2 lab tooling.
 
 **v1.1.0** закрывает trust-debt C01-C21 и поставляет **HA v2 CE lab foundation**: erasure backend, leader lock в Postgres, site replication и локальные скрипты проверки. Это scope **lab / not production multi-AZ**: без автоматического failover orchestrator, без production Patroni-кластера и без обещания petabyte 4+2 multi-host.
 
@@ -57,7 +57,7 @@ Mobile (Flutter/PWA), Kafka sink, авто-failover orchestrator, production mul
 
 ## v1.1.0 shipped scope
 
-Charter: trust-debt + OSS growth — [TZ v1.1.0](../specs/v1.1.0-trust-debt-oss-growth-tz.md).
+Charter: trust-debt + OSS growth — внутреннее ТЗ в `D:\datasafe_tz\specs\v1.1.0\` (см. [docs/specs/README.md](../specs/README.md)).
 
 | Пункт | Статус |
 |-------|--------|

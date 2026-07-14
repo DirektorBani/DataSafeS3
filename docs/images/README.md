@@ -14,11 +14,11 @@ Product screenshots captured from a running DataSafeS3 instance:
 | [screenshots/settings.png](screenshots/settings.png) | System settings |
 | [screenshots/gateway.png](screenshots/gateway.png) | Gateway / S3 replication |
 | [screenshots/activity.png](screenshots/activity.png) | Activity / audit log |
-| [screenshots/monitoring.png](screenshots/monitoring.png) | Grafana monitoring |
+| [screenshots/monitoring.png](screenshots/monitoring.png) | Grafana — DataSafeS3 Overview (HTTP/S3 + Host rows) |
 
-Regenerate: `node scripts/capture-screenshots.mjs` (user guide) · `cd scripts/screenshots && npm run capture` (README / marketing set)
+Regenerate console: `node scripts/capture-screenshots.mjs` · marketing set: `cd scripts/screenshots && npm run capture`
 
-**Last capture:** 2026-06-19 (Playwright, local stack `localhost:8080`)
+**Last capture:** 2026-07-06 — monitoring dashboard (manual, production Grafana); console screenshots 2026-06-19 (Playwright, `localhost:8080`)
 
 ## Diagrams
 

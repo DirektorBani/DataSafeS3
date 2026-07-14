@@ -2,7 +2,9 @@
 
 # Эксплуатационный мониторинг
 
-![Monitoring](../../images/screenshots/monitoring.png)
+![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/monitoring.png)
+
+Панели обзора: **HTTP / S3** (RPS, счётчики, объём, latency, ошибки, топ бакетов) и **Host** (диск, CPU, память, сеть, lag Postgres).
 
 ## Prometheus
 

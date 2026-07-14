@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/migrate"
 )
 
 type Config struct {
@@ -38,6 +39,10 @@ func main() {
 	}
 	cfg := loadConfig()
 	switch args[0] {
+	case "migrate":
+		if err := runMigrate(args[1:]); err != nil {
+			fail(err)
+		}
 	case "ls":
 		if len(args) < 2 {
 			if err := listBuckets(cfg); err != nil {
@@ -126,6 +131,7 @@ Commands:
   cp <src> <dst>            Copy local<->s3 (s3://bucket/key)
   rm s3://bucket/key        Delete object
   cat s3://bucket/key       Print object to stdout
+  migrate checklist [minio] Print MinIO → DataSafeS3 cutover checklist
 
 Environment:
   DATASAFE_ENDPOINT    Default http://127.0.0.1:9000 (alias: S3FORK_ENDPOINT)
@@ -133,6 +139,34 @@ Environment:
   DATASAFE_SECRET_KEY  Default datasafesecret (alias: S3FORK_SECRET_KEY)
   DATASAFE_REGION      Default us-east-1 (alias: S3FORK_REGION)
 `)
+}
+
+func runMigrate(args []string) error {
+	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
+		fmt.Print(`storage-cli migrate — operator helpers (no network)
+
+Usage:
+  storage-cli migrate checklist [minio]
+
+Prints the MinIO → DataSafeS3 cutover checklist (same text as internal/migrate).
+See docs/operations-guide/en/migrate-from-minio.md
+`)
+		return nil
+	}
+	switch args[0] {
+	case "checklist":
+		target := "minio"
+		if len(args) > 1 {
+			target = strings.ToLower(strings.TrimSpace(args[1]))
+		}
+		if target != "minio" && target != "minio-compatible" {
+			return fmt.Errorf("unsupported checklist target %q (supported: minio)", args[1])
+		}
+		fmt.Print(migrate.ChecklistMarkdown())
+		return nil
+	default:
+		return fmt.Errorf("unknown migrate subcommand %q (try: migrate checklist)", args[0])
+	}
 }
 
 func parseS3URI(uri string) (bucket, key string, err error) {

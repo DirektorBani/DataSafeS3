@@ -25,15 +25,13 @@ After sign-in, open:
 | **DataSafeS3 System Overview** | http://localhost:3000/d/datasafe-overview/datasafe-overview |
 | **DataSafeS3 Buckets** (per-bucket selector) | http://localhost:3000/d/datasafe-buckets/datasafe-buckets |
 
-![Grafana — DataSafeS3 Overview dashboard](../../user-guide/images/grafana.png)
+![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/monitoring.png)
 
-On the overview dashboard you will see:
+On the overview dashboard you will see two rows:
 
-- HTTP request count and errors;
-- server response time;
-- storage volume, bucket and object counts;
-- S3 read/write operations;
-- host CPU, disk, memory, and network metrics.
+**HTTP / S3** — request rate, bucket and object counts, total storage used, p95 latency, HTTP errors, and a chart of the largest buckets.
+
+**Host** — disk use percentage, CPU load (1 minute), memory use, network I/O, PostgreSQL replication lag (when Postgres is enabled), and disk capacity over time.
 
 The **Buckets** dashboard adds a multi-select **Bucket** variable to drill into object count, storage size, and S3 ops per bucket.
 

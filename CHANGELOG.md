@@ -2,6 +2,27 @@
 
 All notable changes to DataSafeS3 are documented in this file.
 
+## [1.1.1] - 2026-07-14
+
+Patch release: MinIO migration kit, monitoring doc/screenshot refresh, public specs redirect, `storage-cli migrate checklist`, and AUD-19 versioning rows in feature-audit.
+
+### Added
+
+- **MinIO migration kit** — ops guide ([EN](docs/operations-guide/en/migrate-from-minio.md), [RU](docs/operations-guide/ru/migrate-from-minio.md)), rclone example config, cutover checklist (`internal/migrate`), smoke script [`scripts/migrate/minio-cutover-smoke.ps1`](scripts/migrate/minio-cutover-smoke.ps1), suite [`test-minio-migration-kit.ps1`](scripts/migrate/test-minio-migration-kit.ps1).
+- **`storage-cli migrate checklist`** — print MinIO cutover checklist to stdout (`storage-cli migrate checklist [minio]`).
+- **Architecture ADRs** — [docs/architecture/adr/](docs/architecture/adr/) (migration kit Accepted; EventSink, immutable backup, inventory, scripted promote Proposed).
+- **Extension stubs** — `internal/events.EventSink`, `internal/inventory` types, `internal/ha/promote` (no runtime behavior yet).
+- **AUD-19** — feature-audit: versioning enable → put two versions → list versions → get by `versionId`.
+
+### Changed
+
+- **Monitoring docs / screenshots** — Grafana Overview caption and HTTP/S3 + Host panel descriptions (ops, admin, user guide EN/RU); refreshed `monitoring.png` / `grafana.png`.
+- **Public `docs/specs/`** — internal TZ files removed from git; [README redirect](docs/specs/README.md) points to `D:\datasafe_tz\`.
+
+> Not a claim of 100% MinIO API parity. IAM/policies remapped manually. Object sync uses rclone/aws-cli.
+
+Container images (on tag): `ghcr.io/direktorbani/datasafe-storage-server:v1.1.1`, `ghcr.io/direktorbani/datasafe-console:v1.1.1`.
+
 ## [1.1.0] - 2026-07-05
 
 Trust-debt and OSS-growth release: security hardening C01–C21, Teams/MFA console improvements, feature-audit coverage, **HA v2 CE lab foundation**, and **trusted cluster** multi-site pairing (mTLS, replication rules, federation `cluster_id`).
@@ -30,7 +51,7 @@ Trust-debt and OSS-growth release: security hardening C01–C21, Teams/MFA conso
 - **Getting started stubs** — German (`docs/getting-started/de/`) and French (`docs/getting-started/fr/`).
 - **GHCR on `main`** — `.github/workflows/publish-main.yml` pushes `:main` and `:sha-*` image tags.
 - **Contributing guide** — [CONTRIBUTING.md](CONTRIBUTING.md) with local stack, Playwright list, OIDC policy, good first issues.
-- **HA v2 (CE)** — erasure object backend (`STORAGE_OBJECT_BACKEND=erasure`), Postgres leader lock (`STORAGE_HA_ENABLED`), site replication Admin API + console; lab scripts under `scripts/ha/`; spec [ha-replication-v2-tz.md](docs/specs/ha-replication-v2-tz.md).
+- **HA v2 (CE)** — erasure object backend (`STORAGE_OBJECT_BACKEND=erasure`), Postgres leader lock (`STORAGE_HA_ENABLED`), site replication Admin API + console; lab scripts under `scripts/ha/`. (Internal HA TZ moved off public `docs/specs/` — see [docs/specs/README.md](docs/specs/README.md).)
 - **Trusted clusters** — `GET/POST /api/v1/clusters/…` (pairing, revoke, rotate, replication-rules); Console **Clusters** page; Playwright [`trusted-clusters.spec.ts`](web/console/e2e/trusted-clusters.spec.ts).
 - **Trusted-cluster replication** — mTLS S3 client to paired peers; `STORAGE_TRUSTED_CLUSTER_REPL_ENABLED` (default `true`); migrations `017`–`019`.
 - **Federation `cluster_id`** — each federation peer scoped to local or trusted remote cluster.
@@ -59,7 +80,7 @@ Trust-and-quality release: optional metadata field encryption (CE), Vault env-in
 
 ### Added
 
-- **Field encryption (metadata at rest)** — opt-in X25519 envelope for access keys, gateway credentials, and system-config secrets (`enc:v1:`). **Community Edition**, no license gate. Ops guide ([EN](docs/operations-guide/en/field-encryption.md), [RU](docs/operations-guide/ru/field-encryption.md)), spec [field-encryption-1.0.3-tz.md](docs/specs/field-encryption-1.0.3-tz.md), Postgres migration `012_field_encryption`, [scripts/crypto/](scripts/crypto/README.md). Vault Transit / HSM for KEK — Enterprise phase 2+.
+- **Field encryption (metadata at rest)** — opt-in X25519 envelope for access keys, gateway credentials, and system-config secrets (`enc:v1:`). **Community Edition**, no license gate. Ops guide ([EN](docs/operations-guide/en/field-encryption.md), [RU](docs/operations-guide/ru/field-encryption.md)), Postgres migration `012_field_encryption`, [scripts/crypto/](scripts/crypto/README.md). Vault Transit / HSM for KEK — Enterprise phase 2+.
 - **HashiCorp Vault (env injection)** — optional Agent / Injector pattern; maps KV v2 to existing `STORAGE_*` env (no in-app Vault SDK). Guide ([EN](docs/operations-guide/en/secrets-vault.md), [RU](docs/operations-guide/ru/secrets-vault.md)), Compose overlays (`docker-compose.vault.yml`, `docker-compose.vault-product.yml`), [deploy/vault/](deploy/vault/README.md), Helm [values-vault-agent.yaml](deploy/helm/datasafe/examples/values-vault-agent.yaml).
 - **Console** — Admin → Settings → **Security** posture panel (`GET /api/v1/settings/security-status`, including `field_encryption` block); gateway health shows `public_read_rules` count.
 
@@ -144,6 +165,7 @@ First public **DataSafeS3 Community Edition** release.
 
 Container images: `ghcr.io/direktorbani/datasafe-storage-server:v1.0.0`, `ghcr.io/direktorbani/datasafe-console:v1.0.0`.
 
+[1.1.1]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.1
 [1.1.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.0
 [1.0.3]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.0.3
 [1.0.2]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.0.2

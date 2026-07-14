@@ -17,11 +17,11 @@
 | `bucket-detail.png` | Браузер объектов внутри бакета: файл `sample.txt` | [02 — Главная и бакеты](../02-dashbord-i-bakety.md) |
 | `gateway.png` | Раздел Gateway, вкладка Connections | [06 — Gateway replication](../../ru/user-guide/06-gateway-i-minio.md) |
 | `mfa-profile.png` | Страница Profile: настройка двухфакторной аутентификации (MFA) | [04 — Безопасность и профиль](../04-bezopasnost-i-profil.md) |
-| `grafana.png` | Grafana: дашборд «DataSafeS3 Overview» | [07 — Мониторинг и базы данных](../07-monitoring-i-bazy.md) |
+| `grafana.png` | Grafana: дашборд **DataSafeS3 Overview** (копия `docs/images/screenshots/monitoring.png`) | [07 — Мониторинг и базы данных](../07-monitoring-i-bazy.md) |
 
 ---
 
-**Last capture:** 2026-06-19 — `node scripts/capture-screenshots.mjs` (7 PNG, 1280×720)
+**Last capture:** 2026-07-06 — `grafana.png` синхронизирован с `docs/images/screenshots/monitoring.png` (дашборд с prod-стенда); остальные PNG — 2026-06-19, `node scripts/capture-screenshots.mjs`
 
 | Параметр | Значение |
 |----------|----------|

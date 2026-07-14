@@ -2,7 +2,14 @@ English | **[Русский](../ru/monitoring.md)**
 
 # Monitoring
 
-![Monitoring](../../images/screenshots/monitoring.png)
+![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/monitoring.png)
+
+The **DataSafeS3 Overview** dashboard has two rows:
+
+| Row | Panels |
+|-----|--------|
+| **HTTP / S3** | Request rate, bucket and object counts, total storage, p95 latency, HTTP errors, top buckets by size |
+| **Host** | Disk use %, CPU load (1m), memory use %, network I/O, PostgreSQL replication lag, disk capacity |
 
 ## Stack
 

@@ -2,7 +2,9 @@ English | **[Русский](../ru/monitoring.md)**
 
 # Monitoring operations
 
-![Monitoring](../../images/screenshots/monitoring.png)
+![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/monitoring.png)
+
+Overview panels: **HTTP / S3** (RPS, counts, storage, latency, errors, top buckets) and **Host** (disk, CPU, memory, network, Postgres replication lag).
 
 ## Prometheus
 

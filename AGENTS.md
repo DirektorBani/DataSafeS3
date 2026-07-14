@@ -1,5 +1,18 @@
 # AGENTS.md
 
+## Agent skills (DataSafeS3)
+
+| Role | Skill |
+|------|--------|
+| **Senior / lead Go developer** | `.cursor/skills/datasafe-senior-developer/SKILL.md` (rule: `.cursor/rules/datasafe-senior-developer.mdc` on `internal/`, `cmd/`, `scripts/`) |
+| Frontend | `.cursor/skills/datasafe-frontend/SKILL.md` |
+| Docs EN/RU | `.cursor/skills/datasafe-documentation-architect/SKILL.md` |
+| QA | `.cursor/skills/datasafe-qa/SKILL.md` |
+| Security | `.cursor/skills/datasafe-cybersecurity/SKILL.md` |
+| Product Owner | `.cursor/skills/datasafe-product-owner/SKILL.md` |
+
+For A1 MinIO migration kit and backend delivery, prefer **datasafe-senior-developer** (+ documentation-architect for EN/RU guides).
+
 ## Cursor Cloud specific instructions
 
 ### What this is
