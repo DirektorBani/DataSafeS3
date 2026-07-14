@@ -36,6 +36,10 @@ docker compose start storage-server
 
 [Репликация Gateway](../../administrator-guide/ru/replication.md) как непрерывная off-site копия на удалённой стороне/AWS.
 
+## Immutable backup (Object Lock)
+
+Чтобы использовать DataSafe как **WORM-подобный** target для restic/Kopia/Velero (versioning + Object Lock + режим retention), см. [immutable backup](../../use-cases/ru/immutable-backup.md). Без Object Lock это не WORM. В Admin/консоли доступен `retention_mode` (`GOVERNANCE` | `COMPLIANCE`).
+
 ## Ротация SSE master key {#sse-master-key-rotation}
 
 При заданном `STORAGE_SSE_MASTER_KEY` шифрование SSE-S3 выводит ключи объектов из master secret.

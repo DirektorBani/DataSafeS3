@@ -126,7 +126,7 @@ pwsh -File scripts/migrate/minio-cutover-smoke.ps1 `
 
 ## 9. Post-cutover
 
-- Re-enable **Object Lock** / **versioning** on DataSafe buckets if your backup jobs require immutability (source server flags are not a substitute). See [backup use-case](../../use-cases/en/backup-storage.md); fuller immutable path is planned (ADR [0003](../../architecture/adr/0003-immutable-backup-path.md)).
+- Re-enable **Object Lock** / **versioning** on DataSafe buckets if your backup jobs require immutability (source server flags are not a substitute). Follow the [immutable backup](../../use-cases/en/immutable-backup.md) golden path ([ADR 0003](../../architecture/adr/0003-immutable-backup-path.md)).
 - Wire LDAP/OIDC if you used MinIO identity plugins — [onboarding](../../getting-started/en/onboarding.md).
 - Optional off-site copy: [Gateway replication](../../administrator-guide/en/replication.md).
 

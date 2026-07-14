@@ -5,8 +5,10 @@ export type ApplyMode = "overwrite" | "only_empty";
 export const EDITABLE_BUCKET_FIELDS = [
   "description",
   "versioning_enabled",
+  "versioning_suspended",
   "object_lock_enabled",
   "retention_days",
+  "retention_mode",
   "storage_class",
   "visibility",
   "max_size_bytes",
@@ -20,8 +22,10 @@ export type BucketSettingsUpdate = Pick<
   BucketSettings,
   | "description"
   | "versioning_enabled"
+  | "versioning_suspended"
   | "object_lock_enabled"
   | "retention_days"
+  | "retention_mode"
   | "storage_class"
   | "visibility"
   | "max_size_bytes"
@@ -45,6 +49,9 @@ function fieldValuesEqual(field: EditableBucketField, a: BucketSettings, b: Buck
   if (field === "retention_days") {
     return (av ?? 30) === (bv ?? 30);
   }
+  if (field === "retention_mode") {
+    return (av || "GOVERNANCE") === (bv || "GOVERNANCE");
+  }
   return av === bv;
 }
 
@@ -67,10 +74,14 @@ export function isFieldEmpty(bucket: BucketSettings, field: EditableBucketField)
       return !bucket.description?.trim();
     case "versioning_enabled":
       return !bucket.versioning_enabled;
+    case "versioning_suspended":
+      return !bucket.versioning_suspended;
     case "object_lock_enabled":
       return !bucket.object_lock_enabled;
     case "retention_days":
       return (bucket.retention_days ?? 30) === 30;
+    case "retention_mode":
+      return !bucket.retention_mode || bucket.retention_mode === "GOVERNANCE";
     case "storage_class":
       return !bucket.storage_class || bucket.storage_class === "hot";
     case "visibility":
@@ -125,8 +136,10 @@ export function draftToUpdateBody(draft: BucketSettings): BucketSettingsUpdate {
   return {
     description: draft.description,
     versioning_enabled: draft.versioning_enabled,
+    versioning_suspended: draft.versioning_suspended,
     object_lock_enabled: draft.object_lock_enabled,
     retention_days: draft.retention_days,
+    retention_mode: draft.retention_mode,
     storage_class: draft.storage_class,
     visibility: draft.visibility,
     max_size_bytes: draft.max_size_bytes,

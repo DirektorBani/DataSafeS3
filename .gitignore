@@ -79,3 +79,6 @@ README.zip
 
 # --- Build / coverage ---
 web/console/coverage/
+
+# --- DEP knowledge cache ---
+.cache/

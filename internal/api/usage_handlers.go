@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/metadata"
@@ -107,18 +108,20 @@ func (s *Server) handleListBucketSettings(w http.ResponseWriter, r *http.Request
 		return
 	}
 	type settingsRow struct {
-		Name           string                   `json:"name"`
-		Owner          string                   `json:"owner"`
-		Description    string                   `json:"description"`
-		Versioning     bool                     `json:"versioning_enabled"`
-		ObjectLock     bool                     `json:"object_lock_enabled"`
-		RetentionDays  int                      `json:"retention_days"`
-		StorageClass   string                   `json:"storage_class"`
-		TenantID       string                   `json:"tenant_id"`
-		Visibility     string                   `json:"visibility"`
-		MaxSizeBytes   int64                    `json:"max_size_bytes"`
-		MaxObjects     int64                    `json:"max_objects"`
-		LifecycleRules []metadata.LifecycleRule `json:"lifecycle_rules"`
+		Name                string                   `json:"name"`
+		Owner               string                   `json:"owner"`
+		Description         string                   `json:"description"`
+		Versioning          bool                     `json:"versioning_enabled"`
+		VersioningSuspended bool                     `json:"versioning_suspended"`
+		ObjectLock          bool                     `json:"object_lock_enabled"`
+		RetentionDays       int                      `json:"retention_days"`
+		RetentionMode       string                   `json:"retention_mode"`
+		StorageClass        string                   `json:"storage_class"`
+		TenantID            string                   `json:"tenant_id"`
+		Visibility          string                   `json:"visibility"`
+		MaxSizeBytes        int64                    `json:"max_size_bytes"`
+		MaxObjects          int64                    `json:"max_objects"`
+		LifecycleRules      []metadata.LifecycleRule `json:"lifecycle_rules"`
 	}
 	var out []settingsRow
 	for _, b := range buckets {
@@ -126,11 +129,15 @@ func (s *Server) handleListBucketSettings(w http.ResponseWriter, r *http.Request
 		if vis == "" {
 			vis = "private"
 		}
+		mode := b.RetentionMode
+		if mode == "" && b.ObjectLock {
+			mode = "GOVERNANCE"
+		}
 		out = append(out, settingsRow{
 			Name: b.Name, Owner: b.Owner, Description: b.Description,
-			Versioning: b.Versioning, ObjectLock: b.ObjectLock,
-			RetentionDays: b.RetentionDays, StorageClass: b.StorageClass,
-			TenantID: b.TenantID, Visibility: vis,
+			Versioning: b.Versioning, VersioningSuspended: b.VersioningSuspended,
+			ObjectLock: b.ObjectLock, RetentionDays: b.RetentionDays, RetentionMode: mode,
+			StorageClass: b.StorageClass, TenantID: b.TenantID, Visibility: vis,
 			MaxSizeBytes: b.MaxSizeBytes, MaxObjects: b.MaxObjects,
 			LifecycleRules: b.LifecycleRules,
 		})
@@ -151,15 +158,17 @@ func (s *Server) handleUpdateBucketSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var req struct {
-		Description    string                   `json:"description"`
-		Versioning     *bool                    `json:"versioning_enabled"`
-		ObjectLock     *bool                    `json:"object_lock_enabled"`
-		RetentionDays  *int                     `json:"retention_days"`
-		StorageClass   string                   `json:"storage_class"`
-		Visibility     string                   `json:"visibility"`
-		MaxSizeBytes   *int64                   `json:"max_size_bytes"`
-		MaxObjects     *int64                   `json:"max_objects"`
-		LifecycleRules []metadata.LifecycleRule `json:"lifecycle_rules"`
+		Description         string                   `json:"description"`
+		Versioning          *bool                    `json:"versioning_enabled"`
+		VersioningSuspended *bool                    `json:"versioning_suspended"`
+		ObjectLock          *bool                    `json:"object_lock_enabled"`
+		RetentionDays       *int                     `json:"retention_days"`
+		RetentionMode       *string                  `json:"retention_mode"`
+		StorageClass        string                   `json:"storage_class"`
+		Visibility          string                   `json:"visibility"`
+		MaxSizeBytes        *int64                   `json:"max_size_bytes"`
+		MaxObjects          *int64                   `json:"max_objects"`
+		LifecycleRules      []metadata.LifecycleRule `json:"lifecycle_rules"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
@@ -168,12 +177,31 @@ func (s *Server) handleUpdateBucketSettings(w http.ResponseWriter, r *http.Reque
 	rec.Description = req.Description
 	if req.Versioning != nil {
 		rec.Versioning = *req.Versioning
+		if !*req.Versioning {
+			rec.VersioningSuspended = false
+		}
+	}
+	if req.VersioningSuspended != nil {
+		rec.VersioningSuspended = *req.VersioningSuspended
+		if rec.VersioningSuspended {
+			rec.Versioning = true
+		}
 	}
 	if req.ObjectLock != nil {
 		rec.ObjectLock = *req.ObjectLock
 	}
 	if req.RetentionDays != nil {
 		rec.RetentionDays = *req.RetentionDays
+	}
+	if req.RetentionMode != nil {
+		mode := strings.ToUpper(strings.TrimSpace(*req.RetentionMode))
+		switch mode {
+		case "", "GOVERNANCE", "COMPLIANCE":
+			rec.RetentionMode = mode
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "retention_mode must be GOVERNANCE or COMPLIANCE"})
+			return
+		}
 	}
 	if req.StorageClass != "" {
 		rec.StorageClass = req.StorageClass

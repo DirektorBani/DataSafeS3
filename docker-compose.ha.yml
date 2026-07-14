@@ -1,4 +1,4 @@
-# HA overlay: primary + standby storage-server + optional Postgres replication profile
+﻿# HA overlay: primary + standby storage-server + optional Postgres replication profile
 # Usage (Windows lab):
 #   scripts\ha\start-ha-stack.ps1
 #   scripts\ha\test-ha-cluster.ps1
@@ -50,7 +50,7 @@ services:
 
   storage-server-standby:
     profiles: ["ha-standby"]
-    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.1.1}
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.2.0}
     pull_policy: if_not_present
     environment:
       STORAGE_READ_ONLY: "true"
@@ -83,7 +83,7 @@ services:
 
   storage-server-standby-2:
     profiles: ["ha-standby"]
-    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.1.1}
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.2.0}
     pull_policy: if_not_present
     environment:
       STORAGE_READ_ONLY: "true"

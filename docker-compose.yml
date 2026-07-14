@@ -1,4 +1,4 @@
-# Local dev: bind-mount Postgres + storage to a host directory via overlay
+﻿# Local dev: bind-mount Postgres + storage to a host directory via overlay
 # docker-compose.local-data.yml (see .cursor/rules/docker-compose-d-drive.mdc).
 # Set DATASAFE_DATA_ROOT in .env before `docker compose up`.
 name: datasafe
@@ -26,7 +26,7 @@ services:
 
   storage-server:
 
-    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.1.1}
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.2.0}
 
     restart: unless-stopped
 

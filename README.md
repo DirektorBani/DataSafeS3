@@ -2,7 +2,7 @@
 
 **[English](docs/en/README.md)** · **[Русский](docs/ru/README.md)** · **[Documentation](docs/README.md)**
 
-**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.1.1](CHANGELOG.md#111---2026-07-14)
+**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.2.0](CHANGELOG.md#120---2026-07-14)
 
 ---
 
@@ -103,7 +103,7 @@ docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-co
 
 Production console is served from `web/console/dist` (build with `cd web/console && npm run build`). For Vite HMR during UI work: add `-f docker-compose.dev.yml --profile dev`.
 
-Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.1.1` and `ghcr.io/direktorbani/datasafe-console:v1.1.1`.
+Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.2.0` and `ghcr.io/direktorbani/datasafe-console:v1.2.0`.
 
 **Rolling `main` builds** (for testers, not cosign/SBOM): on each push to `main`, [`.github/workflows/publish-main.yml`](.github/workflows/publish-main.yml) publishes `:main` and `:sha-<commit>` tags for both images, e.g. `ghcr.io/direktorbani/datasafe-storage-server:main`. Versioned releases (`v*`) remain the supported production path with SBOM and cosign signatures.
 

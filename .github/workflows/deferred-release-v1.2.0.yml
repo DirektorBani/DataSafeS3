@@ -1,0 +1,183 @@
+# One-shot deferred GitHub Release for v1.2.0 (publish ~one week after freeze).
+# Native Releases UI/API has no "publish at" field; scheduling is via Actions cron.
+# Safe to delete this workflow after v1.2.0 is published.
+name: deferred-release-v1.2.0
+
+on:
+  schedule:
+    # 2026-07-21 07:00 Europe/Moscow (== one week after 2026-07-14 freeze)
+    - cron: "0 7 21 7 *"
+      timezone: Europe/Moscow
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Publish now even if not the scheduled date"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  SERVER_IMAGE: ghcr.io/direktorbani/datasafe-storage-server
+  CONSOLE_IMAGE: ghcr.io/direktorbani/datasafe-console
+  RELEASE_TAG: v1.2.0
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - name: Decide whether to publish
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "${RELEASE_TAG}" -R "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG} already exists; skip."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
+            echo "Forced publish via workflow_dispatch."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Only auto-publish in July 2026 (cron would otherwise fire every year)
+          YM="$(TZ=Europe/Moscow date +%Y-%m)"
+          if [ "$YM" != "2026-07" ]; then
+            echo "Not July 2026 (got $YM); skip."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+
+  publish-images:
+    needs: guard
+    if: needs.guard.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push storage-server
+        run: |
+          docker build -f deploy/docker/Dockerfile \
+            -t "${SERVER_IMAGE}:${RELEASE_TAG}" \
+            -t "${SERVER_IMAGE}:latest" \
+            .
+          docker push "${SERVER_IMAGE}:${RELEASE_TAG}"
+          docker push "${SERVER_IMAGE}:latest"
+
+      - name: Build and push console
+        run: |
+          docker build -f deploy/docker/Dockerfile.console \
+            -t "${CONSOLE_IMAGE}:${RELEASE_TAG}" \
+            -t "${CONSOLE_IMAGE}:latest" \
+            .
+          docker push "${CONSOLE_IMAGE}:${RELEASE_TAG}"
+          docker push "${CONSOLE_IMAGE}:latest"
+
+      - name: Generate SBOM storage-server (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: "${{ env.SERVER_IMAGE }}:${{ env.RELEASE_TAG }}"
+          format: cyclonedx-json
+          output-file: sbom-storage-server.cdx.json
+
+      - name: Generate SBOM console (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: "${{ env.CONSOLE_IMAGE }}:${{ env.RELEASE_TAG }}"
+          format: cyclonedx-json
+          output-file: sbom-console.cdx.json
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ env.RELEASE_TAG }}
+          path: |
+            sbom-storage-server.cdx.json
+            sbom-console.cdx.json
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign release images
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign --yes "${SERVER_IMAGE}:${RELEASE_TAG}"
+          cosign sign --yes "${CONSOLE_IMAGE}:${RELEASE_TAG}"
+
+      - name: Smoke test server image (alpine)
+        run: |
+          docker run --rm -d --name ds-smoke -e STORAGE_DEV=true "${SERVER_IMAGE}:${RELEASE_TAG}"
+          for i in $(seq 1 30); do
+            if docker exec ds-smoke wget -q -O- http://127.0.0.1:9000/healthz 2>/dev/null; then
+              docker rm -f ds-smoke
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs ds-smoke
+          docker rm -f ds-smoke
+          exit 1
+
+  github-release:
+    needs: [guard, publish-images]
+    if: needs.guard.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Download SBOM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-${{ env.RELEASE_TAG }}
+          path: sbom
+
+      - name: Extract CHANGELOG section for release body
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          chmod +x scripts/extract-changelog-section.sh
+          ./scripts/extract-changelog-section.sh "$VERSION" CHANGELOG.md release-body.md
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Container images"
+            echo ""
+            echo "- \`${{ env.SERVER_IMAGE }}:${{ env.RELEASE_TAG }}\`"
+            echo "- \`${{ env.CONSOLE_IMAGE }}:${{ env.RELEASE_TAG }}\`"
+            echo ""
+            echo "CycloneDX SBOM files and cosign signatures are attached. See [SECURITY.md](https://github.com/${{ github.repository }}/blob/main/SECURITY.md) for \`cosign verify\` instructions."
+          } >> release-body.md
+
+      - name: Create GitHub Release and tag
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: main
+          name: ${{ env.RELEASE_TAG }}
+          files: sbom/*
+          generate_release_notes: false
+          body_path: release-body.md
+          make_latest: true

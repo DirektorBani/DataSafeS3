@@ -36,6 +36,10 @@ docker compose start storage-server
 
 Use [Gateway replication](../../administrator-guide/en/replication.md) as continuous off-site copy to external S3.
 
+## Immutable backup landing (Object Lock)
+
+To use DataSafe as a **WORM-style target** for restic/Kopia/Velero (versioning + Object Lock + retention mode), follow the [immutable backup](../../use-cases/en/immutable-backup.md) use-case. Not WORM unless Object Lock is enabled. Admin/console expose `retention_mode` (`GOVERNANCE` | `COMPLIANCE`).
+
 ## SSE master key rotation {#sse-master-key-rotation}
 
 When `STORAGE_SSE_MASTER_KEY` is set, server-side encryption (SSE-S3) derives per-object keys from this master secret.

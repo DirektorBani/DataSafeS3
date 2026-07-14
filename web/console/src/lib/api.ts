@@ -120,8 +120,10 @@ export type BucketSettings = {
   owner_id?: string;
   description: string;
   versioning_enabled: boolean;
+  versioning_suspended?: boolean;
   object_lock_enabled: boolean;
   retention_days?: number;
+  retention_mode?: "GOVERNANCE" | "COMPLIANCE" | string;
   storage_class?: string;
   tenant_id?: string;
   visibility: string;
@@ -685,9 +687,17 @@ export function isAdministrator(): boolean {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** Parsed JSON body fields when the API returns structured errors. */
+  body?: Record<string, unknown>;
+  constructor(message: string, status: number, body?: Record<string, unknown>) {
     super(message);
     this.status = status;
+    this.body = body;
+  }
+
+  objectCount(): number | undefined {
+    const n = this.body?.object_count;
+    return typeof n === "number" ? n : undefined;
   }
 }
 
@@ -706,13 +716,15 @@ async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
     let message = text || res.statusText;
+    let body: Record<string, unknown> | undefined;
     try {
-      const json = JSON.parse(text);
-      if (json.error) message = json.error;
+      const json = JSON.parse(text) as Record<string, unknown>;
+      body = json;
+      if (typeof json.error === "string") message = json.error;
     } catch {
       /* use raw text */
     }
-    throw new ApiError(message, res.status);
+    throw new ApiError(message, res.status, body);
   }
   if (res.status === 204) return {} as T;
   return res.json();

@@ -168,17 +168,41 @@ export function BucketSettingsTabs({
       <TabsContent value="versioning">
         <Card>
           <CardHeader><CardTitle className="text-base">{t("settings:bucketTabs.versioning")}</CardTitle></CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <MixedCheckbox
               checked={draft.versioning_enabled}
               mixed={isMixed("versioning_enabled")}
-              onChange={(v) => patch("versioning_enabled", { ...draft, versioning_enabled: v })}
+              onChange={(v) =>
+                patch("versioning_enabled", {
+                  ...draft,
+                  versioning_enabled: v,
+                  versioning_suspended: v ? draft.versioning_suspended : false,
+                })
+              }
               disabled={disabled}
               label={t("settings:bucketTabs.enableVersioning")}
               mixedLabel={multipleValues}
               count={count}
               mixedCountLabel={multipleValuesCount}
             />
+            {(draft.versioning_enabled || isMixed("versioning_enabled")) && (
+              <MixedCheckbox
+                checked={Boolean(draft.versioning_suspended)}
+                mixed={isMixed("versioning_suspended")}
+                onChange={(v) =>
+                  patch("versioning_suspended", {
+                    ...draft,
+                    versioning_enabled: true,
+                    versioning_suspended: v,
+                  })
+                }
+                disabled={disabled}
+                label={t("settings:bucketTabs.suspendVersioning")}
+                mixedLabel={multipleValues}
+                count={count}
+                mixedCountLabel={multipleValuesCount}
+              />
+            )}
           </CardContent>
         </Card>
       </TabsContent>
@@ -198,6 +222,34 @@ export function BucketSettingsTabs({
               mixedCountLabel={multipleValuesCount}
             />
             {(draft.object_lock_enabled || isMixed("object_lock_enabled")) && (
+              <>
+              <div className="space-y-2 max-w-xs">
+                <Label>{t("settings:bucketTabs.retentionMode")}</Label>
+                <Select
+                  value={
+                    isMixed("retention_mode")
+                      ? MIXED_SELECT
+                      : String(draft.retention_mode || "GOVERNANCE")
+                  }
+                  onValueChange={(v) => {
+                    if (v === MIXED_SELECT) return;
+                    patch("retention_mode", { ...draft, retention_mode: v });
+                  }}
+                  disabled={disabled}
+                >
+                  <SelectTrigger><SelectValue placeholder={multipleValues} /></SelectTrigger>
+                  <SelectContent>
+                    {isMixed("retention_mode") && (
+                      <SelectItem value={MIXED_SELECT} disabled>
+                        {multipleValues}
+                      </SelectItem>
+                    )}
+                    <SelectItem value="GOVERNANCE">{t("settings:bucketTabs.retentionModeGovernance")}</SelectItem>
+                    <SelectItem value="COMPLIANCE">{t("settings:bucketTabs.retentionModeCompliance")}</SelectItem>
+                  </SelectContent>
+                </Select>
+                {isMixed("retention_mode") && <MixedHint count={count} label={multipleValuesCount} />}
+              </div>
               <div className="space-y-2 max-w-xs">
                 <Label>{t("settings:bucketTabs.defaultRetention")}</Label>
                 <Select
@@ -226,6 +278,7 @@ export function BucketSettingsTabs({
                 </Select>
                 {isMixed("retention_days") && <MixedHint count={count} label={multipleValuesCount} />}
               </div>
+              </>
             )}
           </CardContent>
         </Card>

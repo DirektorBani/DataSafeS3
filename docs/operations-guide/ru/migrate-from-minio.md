@@ -120,7 +120,7 @@ pwsh -File scripts/migrate/minio-cutover-smoke.ps1 `
 
 ## 9. После cutover
 
-- Снова включите **Object Lock** / **versioning** на бакетах DataSafe, если нужны immutable backup — [use-case backup](../../use-cases/ru/backup-storage.md); полный путь — ADR [0003](../../architecture/adr/0003-immutable-backup-path.md).
+- Снова включите **Object Lock** / **versioning** на бакетах DataSafe, если нужны immutable backup — следуйте [immutable backup](../../use-cases/ru/immutable-backup.md) ([ADR 0003](../../architecture/adr/0003-immutable-backup-path.md)).
 - LDAP/OIDC — [onboarding](../../getting-started/ru/onboarding.md).
 - Off-site: [Gateway](../../administrator-guide/ru/replication.md).
 

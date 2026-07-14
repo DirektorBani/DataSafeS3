@@ -2,6 +2,35 @@
 
 All notable changes to DataSafeS3 are documented in this file.
 
+## [1.2.0] - 2026-07-21
+
+Minor release: **immutable backup golden path** (Object Lock + versioning) and audit hygiene (AUD-12 / AUD-16). Merges the former patch hygiene slice into one operator-facing minor.
+
+### Added
+
+- **Immutable backup use-case** — [EN](docs/use-cases/en/immutable-backup.md) / [RU](docs/use-cases/ru/immutable-backup.md); linked from backup storage and MinIO migration guides.
+- **Admin/console `retention_mode`** — `GOVERNANCE` | `COMPLIANCE` on bucket Object Lock settings (GET/PUT + console selector).
+- **Versioning Suspend in console** — Admin API `versioning_suspended` + UI checkbox (AC-VER-1a).
+- **Feature-audit rows** — `retention_mode` round-trip, versioning suspended flag, folder-delete `object_count` on 409.
+- **ADR-0003 Accepted** — [immutable backup golden path](docs/architecture/adr/0003-immutable-backup-path.md).
+
+### Changed
+
+- **AUD-12** — roadmap marked done (gateway public-read console indicators already shipped).
+- **Roadmap** — bucket versioning marked **done** (Enabled/Suspended in console).
+
+### Fixed
+
+- **AUD-16** — folder delete confirm dialog and toast surface API `object_count` from HTTP 409 (`ApiError` body).
+
+### Deferred (not in this tag)
+
+- Scripted HA promote hardening (A5), alpine binary smoke (AUD-21), log-sink error surfacing (AUD-22) — candidate for a follow-up patch.
+
+> Honesty: Not WORM without Object Lock enabled. Not 100% AWS Object Lock parity. Scripted HA remain lab — not automatic multi-AZ.
+
+Container images (on tag): `ghcr.io/direktorbani/datasafe-storage-server:v1.2.0`, `ghcr.io/direktorbani/datasafe-console:v1.2.0`.
+
 ## [1.1.1] - 2026-07-14
 
 Patch release: MinIO migration kit, monitoring doc/screenshot refresh, public specs redirect, `storage-cli migrate checklist`, and AUD-19 versioning rows in feature-audit.
@@ -165,6 +194,7 @@ First public **DataSafeS3 Community Edition** release.
 
 Container images: `ghcr.io/direktorbani/datasafe-storage-server:v1.0.0`, `ghcr.io/direktorbani/datasafe-console:v1.0.0`.
 
+[1.2.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.2.0
 [1.1.1]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.1
 [1.1.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.0
 [1.0.3]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.0.3

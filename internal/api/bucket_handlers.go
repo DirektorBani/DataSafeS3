@@ -448,20 +448,26 @@ func (s *Server) handleGetBucketSettingsJSON(w http.ResponseWriter, r *http.Requ
 		vis = "private"
 	}
 	_ = s.meta.TouchRecentItem(info.UserID, bucket, "")
+	mode := rec.RetentionMode
+	if mode == "" && rec.ObjectLock {
+		mode = "GOVERNANCE"
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"name":                rec.Name,
-		"owner":               rec.Owner,
-		"owner_id":            rec.OwnerID,
-		"description":         rec.Description,
-		"versioning_enabled":  rec.Versioning,
-		"object_lock_enabled": rec.ObjectLock,
-		"retention_days":      rec.RetentionDays,
-		"storage_class":       rec.StorageClass,
-		"tenant_id":           rec.TenantID,
-		"visibility":          vis,
-		"max_size_bytes":      rec.MaxSizeBytes,
-		"max_objects":         rec.MaxObjects,
-		"lifecycle_rules":     rec.LifecycleRules,
-		"tags":                rec.Tags,
+		"name":                   rec.Name,
+		"owner":                  rec.Owner,
+		"owner_id":               rec.OwnerID,
+		"description":            rec.Description,
+		"versioning_enabled":     rec.Versioning,
+		"versioning_suspended":   rec.VersioningSuspended,
+		"object_lock_enabled":    rec.ObjectLock,
+		"retention_days":         rec.RetentionDays,
+		"retention_mode":         mode,
+		"storage_class":          rec.StorageClass,
+		"tenant_id":              rec.TenantID,
+		"visibility":             vis,
+		"max_size_bytes":         rec.MaxSizeBytes,
+		"max_objects":            rec.MaxObjects,
+		"lifecycle_rules":        rec.LifecycleRules,
+		"tags":                   rec.Tags,
 	})
 }

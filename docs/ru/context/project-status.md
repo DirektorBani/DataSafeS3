@@ -2,11 +2,11 @@
 
 # Статус проекта
 
-**Обновлено:** 2026-07-14 · **Текущий релиз:** [v1.1.1](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.1)
+**Обновлено:** 2026-07-14 · **Текущий релиз:** [v1.2.0](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.2.0)
 
 ## Кратко
 
-**Community Edition v1.1.1** — текущий patch поверх v1.1.0: MinIO migration kit, обновление скриншотов мониторинга, `storage-cli migrate checklist`, AUD-19 versioning в feature-audit. Платформа как в v1.1.0: S3 API, веб-консоль (EN/RU/DE/FR), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, Teams, защищённые `/metrics`, hash-only share tokens и HA v2 lab tooling.
+**Community Edition v1.2.0** — текущий релиз: **immutable backup golden path** (`retention_mode` Object Lock + Suspend versioning в консоли, use-case EN/RU), AUD-16 `object_count` при удалении папки, плюс MinIO migration kit из v1.1.1. Платформа: S3 API, веб-консоль (EN/RU/DE/FR), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, Teams, защищённые `/metrics`, hash-only share tokens и HA v2 lab tooling.
 
 **v1.1.0** закрывает trust-debt C01-C21 и поставляет **HA v2 CE lab foundation**: erasure backend, leader lock в Postgres, site replication и локальные скрипты проверки. Это scope **lab / not production multi-AZ**: без автоматического failover orchestrator, без production Patroni-кластера и без обещания petabyte 4+2 multi-host.
 
@@ -21,7 +21,7 @@ Patch **v1.0.3**: opt-in field encryption, паттерн Vault Agent → env, �
 | PostgreSQL + read replica | **Поставлено** | Compose `--profile postgres` |
 | LDAP / OIDC SSO | **Поставлено** | OIDC exchange (v1.0.2+); предупреждение о недоступном issuer (AUD-09) |
 | MFA / WebAuthn | **Поставлено** | TOTP + passkeys |
-| Object Lock (WORM) | **Поставлено** | XML API + консоль |
+| Object Lock (WORM) | **Поставлено** | XML API + консоль; `retention_mode` GOVERNANCE/COMPLIANCE (v1.2.0) |
 | Gateway replication | **Поставлено** | Внешний S3 |
 | Federation | **Частично (MVP)** | GetObject + ListObjectsV2 proxy |
 | Teams admin API + консоль | **Поставлено** | Admin → Teams, назначение пользователей, OpenAPI full spec |

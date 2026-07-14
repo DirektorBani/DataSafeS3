@@ -25,10 +25,12 @@ flowchart LR
 3. Issue S3 access keys per backup job (least privilege)
 4. Optional: [Gateway replication](../../administrator-guide/en/replication.md) for off-site copies
 5. [Lifecycle rules](../../administrator-guide/en/lifecycle.md) to expire old restore points
+6. For ransomware-resistant landing zones, follow the [immutable backup](immutable-backup.md) path (Object Lock + versioning)
 
 ## Result
 
-Predictable, self-hosted backup target with optional geo-redundant copies via Gateway — under your retention and access policies.
+Predictable, self-hosted backup target with optional geo-redundant copies via Gateway — under your retention and access policies. For WORM-style protection see [immutable backup](immutable-backup.md).
+
 
 ## Migrating an existing MinIO backup target
 

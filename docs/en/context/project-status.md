@@ -2,11 +2,11 @@ English | **[Русский](../../ru/context/project-status.md)**
 
 # Project Status
 
-**Last updated:** 2026-07-14 · **Current release:** [v1.1.1](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.1)
+**Last updated:** 2026-07-14 · **Current release:** [v1.2.0](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.2.0)
 
 ## Summary
 
-DataSafeS3 **Community Edition v1.1.1** is the current patch on v1.1.0: MinIO migration kit, monitoring screenshot refresh, `storage-cli migrate checklist`, AUD-19 versioning audit rows. Core platform remains as in v1.1.0: S3-compatible API, web console (EN/RU/DE/FR), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, Teams, metrics-token protection, share-token hashing, and HA v2 lab tooling.
+DataSafeS3 **Community Edition v1.2.0** is the current release: **immutable backup golden path** (Object Lock `retention_mode` + versioning Suspend in console, EN/RU use-case), AUD-16 folder `object_count` UX, and prior v1.1.1 MinIO migration kit. Core platform: S3-compatible API, web console (EN/RU/DE/FR), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, Teams, metrics-token protection, share-token hashing, and HA v2 lab tooling.
 
 **v1.1.0** burns down trust-debt C01-C21 and ships **HA v2 CE lab foundation**: erasure backend, Postgres leader lock, site replication, and local validation scripts. This HA scope is explicitly **lab / not production multi-AZ**: no automatic failover orchestrator, no Patroni-certified production cluster, and no petabyte 4+2 multi-host promise.
 
@@ -21,7 +21,7 @@ Prior patch **v1.0.3**: opt-in metadata field encryption, Vault Agent env inject
 | PostgreSQL metadata + read replica routing | **Shipped** | Compose `--profile postgres` |
 | LDAP / OIDC SSO | **Shipped** | OIDC exchange flow (v1.0.2+); issuer unreachable warning (AUD-09) |
 | MFA / WebAuthn | **Shipped** | TOTP + passkeys |
-| Object Lock (WORM) | **Shipped** | XML API + console |
+| Object Lock (WORM) | **Shipped** | XML API + console; `retention_mode` GOVERNANCE/COMPLIANCE (v1.2.0) |
 | Gateway replication | **Shipped** | External S3 target |
 | Federation | **Partial (MVP)** | GetObject + ListObjectsV2 proxy |
 | Teams admin API + console | **Shipped** | Admin → Teams, user assignment, OpenAPI full spec |

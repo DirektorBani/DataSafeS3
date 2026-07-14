@@ -43,7 +43,7 @@ Prioritized backlog from [feature audit 2026-06-17](../../testing/feature-audit-
 |----|----------|------|--------|--------|-------|
 | AUD-10 | Ops | Grafana `datasafe-overview` — pre-provision Prometheus scrape on fresh install; import JSON in repo | M | **done** | Feature-audit: `Grafana datasafe-overview panel query` + Prometheus `datasafe_http_requests_total` |
 | AUD-11 | Ops | Re-enable storage-server Docker healthcheck (wget/curl on `/healthz`) | S | **done** | `docker-compose.yml` wget healthcheck |
-| AUD-12 | UX | Gateway replication visibility — UI indicator when remote S3 bucket policy adjusted for public-read | S | planned | Server-side logic exists |
+| AUD-12 | UX | Gateway replication visibility — UI indicator when remote S3 bucket policy adjusted for public-read | S | **done** | Баннер + warning на rule (`gateway.tsx`); feature-audit health |
 | AUD-13 | Integrations | LDAP sync on login — document first LDAP login may require admin sync if `sync_on_login` off | S | **done** | User guide §7; audit enables `sync_on_login` |
 
 ### P3 — Nice to Have
@@ -52,7 +52,7 @@ Prioritized backlog from [feature audit 2026-06-17](../../testing/feature-audit-
 |----|----------|------|--------|--------|-------|
 | AUD-14 | Testing | Automated OIDC E2E — Playwright against Keycloak test container | L | **done** | `web/console/e2e/security-oidc-keycloak.spec.ts` (@nightly); [e2e-oidc.yml](../../../.github/workflows/e2e-oidc.yml) |
 | AUD-15 | Testing | Tenant viewer/member E2E in `feature-audit-test.ps1` | M | **done** | `Member read with default tenant access`, `Viewer read/write blocked` rows in audit script |
-| AUD-16 | UX | Recursive folder delete confirmation — mirror API `object_count` on conflict in UI | S | planned | Explicit confirm dialog |
+| AUD-16 | UX | Recursive folder delete confirmation — mirror API `object_count` on conflict in UI | S | **done** | Dialog + toast показывают `object_count` из 409 (`ApiError`) |
 | AUD-17 | Security | MFA admin enforcement — guide admin through enroll on first login (`mfa_setup_required`) | M | **done** | Profile MFA wizard card (`profile.tsx`); `mfa_policy_test.go` |
 | AUD-18 | Testing | Trash restore E2E — upload→delete→restore cycle in audit script | S | **done** | `Trash restore cycle` row in `feature-audit-test.ps1` |
 | AUD-19 | Testing | Cycle versioning / object versions в audit script | S | **done** | Enable → put×2 → list `/versions` → GET `?versionId=` в `feature-audit-test.ps1` |
@@ -93,7 +93,7 @@ Prioritized backlog from [feature audit 2026-06-17](../../testing/feature-audit-
 
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
-| 1.1 | Bucket Versioning | **partial** | S3 PUT/GET `?versioning`; delete markers; console Versions tab |
+| 1.1 | Bucket Versioning | **done** | S3 PUT/GET `?versioning` (Enabled/Suspended); delete markers; console Versions + Suspend UI (v1.2.0) |
 | 1.2 | Object Browser | **done** | Folders, breadcrumbs, drag-drop, bulk ops, metadata sidebar |
 | 1.3 | Lifecycle Rules UI | **done** | Bucket Lifecycle tab + S3 XML |
 | 1.4 | Presigned URLs / Share | **done** | `POST /api/v1/presign` |

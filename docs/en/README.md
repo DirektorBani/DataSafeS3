@@ -2,7 +2,7 @@ English | **[Русский](../ru/README.md)**
 
 # DataSafeS3 Documentation (English)
 
-**Current release:** [v1.1.1](../../CHANGELOG.md#111---2026-07-14)
+**Current release:** [v1.2.0](../../CHANGELOG.md#120---2026-07-14)
 
 Documentation hub aligned with the product lifecycle: **Learn → Deploy → Configure → Manage → Operate → Reference → API**.
 

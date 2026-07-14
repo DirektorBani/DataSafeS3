@@ -24,6 +24,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   api,
+  ApiError,
   MULTIPART_THRESHOLD,
   uploadObjectMultipart,
   type BucketAccessGrant,
@@ -151,6 +152,7 @@ export function BucketDetailPage() {
   const [folderPinned, setFolderPinned] = useState(false);
   const [deleteFolderTarget, setDeleteFolderTarget] = useState<string | null>(null);
   const [deleteFolderRecursive, setDeleteFolderRecursive] = useState(false);
+  const [deleteFolderObjectCount, setDeleteFolderObjectCount] = useState<number | null>(null);
   const [moveDestBucket, setMoveDestBucket] = useState("");
 
   const PAGE_SIZE = 50;
@@ -406,8 +408,10 @@ export function BucketDetailPage() {
       return api.updateBucketSettings(bucket, {
         description: settingsDraft.description,
         versioning_enabled: settingsDraft.versioning_enabled,
+        versioning_suspended: settingsDraft.versioning_suspended,
         object_lock_enabled: settingsDraft.object_lock_enabled,
         retention_days: settingsDraft.retention_days,
+        retention_mode: settingsDraft.retention_mode,
         storage_class: settingsDraft.storage_class,
         visibility: settingsDraft.visibility,
         max_size_bytes: settingsDraft.max_size_bytes,
@@ -1285,7 +1289,16 @@ export function BucketDetailPage() {
       </Dialog>
 
       {/* Delete folder dialog */}
-      <Dialog open={!!deleteFolderTarget} onOpenChange={(o) => !o && setDeleteFolderTarget(null)}>
+      <Dialog
+        open={!!deleteFolderTarget}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDeleteFolderTarget(null);
+            setDeleteFolderObjectCount(null);
+            setDeleteFolderRecursive(false);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("bucketDetail:deleteFolder.title")}</DialogTitle>
@@ -1293,6 +1306,11 @@ export function BucketDetailPage() {
               {t("bucketDetail:deleteFolder.description", { name: deleteFolderTarget?.replace(prefix, "").replace(/\/$/, "") })}
             </DialogDescription>
           </DialogHeader>
+          {deleteFolderObjectCount != null && (
+            <p className="text-sm text-destructive" data-testid="folder-object-count">
+              {t("bucketDetail:deleteFolder.objectCount", { count: deleteFolderObjectCount })}
+            </p>
+          )}
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -1302,7 +1320,15 @@ export function BucketDetailPage() {
             {t("bucketDetail:deleteFolder.recursive")}
           </label>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteFolderTarget(null)}>{t("common:cancel")}</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteFolderTarget(null);
+                setDeleteFolderObjectCount(null);
+              }}
+            >
+              {t("common:cancel")}
+            </Button>
             <Button
               variant="destructive"
               onClick={async () => {
@@ -1311,14 +1337,22 @@ export function BucketDetailPage() {
                   const res = await api.deleteFolder(bucket, deleteFolderTarget, deleteFolderRecursive);
                   invalidateObjects();
                   setDeleteFolderTarget(null);
+                  setDeleteFolderObjectCount(null);
+                  setDeleteFolderRecursive(false);
                   toast.success(t("bucketDetail:toast.folderDeleted", { count: res.deleted }));
                 } catch (e) {
-                  const msg = e instanceof Error ? e.message : t("bucketDetail:toast.deleteFailed");
-                  if (msg.includes("not empty") || msg.includes("409")) {
-                    toast.error(t("bucketDetail:toast.folderNotEmpty"));
-                  } else {
-                    toast.error(msg);
+                  if (e instanceof ApiError && e.status === 409) {
+                    const count = e.objectCount();
+                    if (count != null) setDeleteFolderObjectCount(count);
+                    toast.error(
+                      count != null
+                        ? t("bucketDetail:toast.folderNotEmptyCount", { count })
+                        : t("bucketDetail:toast.folderNotEmpty")
+                    );
+                    return;
                   }
+                  const msg = e instanceof Error ? e.message : t("bucketDetail:toast.deleteFailed");
+                  toast.error(msg);
                 }
               }}
             >

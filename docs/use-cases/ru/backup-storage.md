@@ -25,10 +25,11 @@ flowchart LR
 3. S3-ключи с минимальными правами на каждую задачу
 4. Опционально: [репликация Gateway](../../administrator-guide/ru/replication.md)
 5. [Lifecycle](../../administrator-guide/ru/lifecycle.md) для истечения старых точек
+6. Для ransomware-resistant зоны следуйте [immutable backup](immutable-backup.md) (Object Lock + versioning)
 
 ## Результат
 
-Предсказуемая локальная цель backup с опциональными off-site копиями — под вашими политиками retention и доступа.
+Предсказуемый self-hosted backup target с опциональной георепликацией через Gateway — под вашими политиками retention и доступа. Для WORM-path см. [immutable backup](immutable-backup.md).
 
 ## Миграция существующего MinIO backup target
 

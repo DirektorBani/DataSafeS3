@@ -36,7 +36,8 @@
     "renamed": "Renamed",
     "folderDeleted": "Deleted {{count}} object(s)",
     "deleteFailed": "Delete failed",
-    "folderNotEmpty": "Folder is not empty — enable recursive delete"
+    "folderNotEmpty": "Folder is not empty — enable recursive delete",
+    "folderNotEmptyCount": "Folder is not empty ({{count}} objects) — enable recursive delete"
   },
   "invalidBucket": "Invalid bucket.",
   "backToBuckets": "Back to buckets",
@@ -163,7 +164,8 @@
   "deleteFolder": {
     "title": "Delete folder",
     "description": "Delete folder \"{{name}}\"?",
-    "recursive": "Delete all contents recursively (required if folder is not empty)"
+    "recursive": "Delete all contents recursively (required if folder is not empty)",
+    "objectCount": "This folder contains {{count}} objects."
   },
   "lifecycleRule": {
     "edit": "Edit rule",

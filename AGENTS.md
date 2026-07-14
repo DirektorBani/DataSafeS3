@@ -9,7 +9,9 @@
 | Docs EN/RU | `.cursor/skills/datasafe-documentation-architect/SKILL.md` |
 | QA | `.cursor/skills/datasafe-qa/SKILL.md` |
 | Security | `.cursor/skills/datasafe-cybersecurity/SKILL.md` |
-| Product Owner | `.cursor/skills/datasafe-product-owner/SKILL.md` |
+| Product Owner | `.cursor/skills/datasafe-product-owner/SKILL.md` (+ `.cursor/skills/product-owner/SKILL.md`) |
+
+**All skills** must use DEP MCP **`user-datasafe-dep`** (≥1 tool before finishing analysis/plans). Rule: [`.cursor/rules/dep-mcp-required.mdc`](.cursor/rules/dep-mcp-required.mdc). Binary: `D:/cursor_p/bin/dep-mcp.exe` (`DEP_WORKSPACE=D:/cursor_p`).
 
 For A1 MinIO migration kit and backend delivery, prefer **datasafe-senior-developer** (+ documentation-architect for EN/RU guides).
 

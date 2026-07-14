@@ -752,6 +752,32 @@ if ($oldVer -and $oldVer.version_id) {
 }
 Record 'Admin' 'Versioning get by versionId' $(if($verGetOk){'PASS'}elseif(-not $verListOk){'SKIP'}else{'FAIL'}) "version_id=$($oldVer.version_id)"
 
+# v1.2.0 — Admin retention_mode + versioning_suspended round-trip
+$modeBody = '{"object_lock_enabled":true,"retention_days":30,"retention_mode":"COMPLIANCE"}'
+$modePut = Invoke-DS PUT "$BaseUrl/api/v1/settings/buckets/$privBucket" -Headers $adminH -Body $modeBody
+$modeGet = Invoke-DS GET "$BaseUrl/api/v1/buckets/$privBucket/settings" -Headers $adminH
+$modeOk = ($modePut.Code -eq 200) -and ($modeGet.Code -eq 200) -and ($modeGet.Json.retention_mode -eq 'COMPLIANCE') -and ($modeGet.Json.object_lock_enabled -eq $true)
+Record 'Admin' 'Object Lock retention_mode COMPLIANCE' $(if($modeOk){'PASS'}else{'FAIL'}) "put=$($modePut.Code) mode=$($modeGet.Json.retention_mode)"
+
+$suspBody = '{"versioning_enabled":true,"versioning_suspended":true}'
+$suspPut = Invoke-DS PUT "$BaseUrl/api/v1/settings/buckets/$privBucket" -Headers $adminH -Body $suspBody
+$suspGet = Invoke-DS GET "$BaseUrl/api/v1/buckets/$privBucket/settings" -Headers $adminH
+$suspOk = ($suspPut.Code -eq 200) -and ($suspGet.Json.versioning_enabled -eq $true) -and ($suspGet.Json.versioning_suspended -eq $true)
+Record 'Admin' 'Versioning suspended flag' $(if($suspOk){'PASS'}else{'FAIL'}) "put=$($suspPut.Code) susp=$($suspGet.Json.versioning_suspended)"
+# Restore versioning active for later checks
+Invoke-DS PUT "$BaseUrl/api/v1/settings/buckets/$privBucket" -Headers $adminH -Body '{"versioning_enabled":true,"versioning_suspended":false}' | Out-Null
+
+# AUD-16 — folder delete 409 includes object_count
+$foldBucket = "audit-fold-$ts"
+Invoke-DS POST "$BaseUrl/api/v1/buckets/$foldBucket" -Headers $adminH -Body '{"visibility":"private"}' | Out-Null
+Put-Object $adminTok $foldBucket 'docs/a.txt' 'a' | Out-Null
+Put-Object $adminTok $foldBucket 'docs/b.txt' 'b' | Out-Null
+$foldDel = Invoke-DS DELETE "$BaseUrl/api/v1/buckets/$foldBucket/folders" -Headers $adminH -Body '{"prefix":"docs/","recursive":false}'
+$foldCnt = 0
+if ($foldDel.Json.object_count) { $foldCnt = [int]$foldDel.Json.object_count }
+$foldOk = ($foldDel.Code -eq 409) -and ($foldCnt -ge 2)
+Record 'Admin' 'Folder delete not-empty object_count' $(if($foldOk){'PASS'}else{'FAIL'}) "HTTP $($foldDel.Code) count=$foldCnt"
+
 # Federation / Cluster
 $r = Invoke-DS GET "$BaseUrl/api/v1/federation/clusters" -Headers $adminH
 Record 'Admin' 'Federation clusters list' $(if($r.Code -eq 200){'PASS'}else{'FAIL'}) "HTTP $($r.Code)"
