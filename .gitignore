@@ -80,5 +80,8 @@ README.zip
 # --- Build / coverage ---
 web/console/coverage/
 
-# --- DEP knowledge cache ---
+# --- Local analysis / tooling cache ---
 .cache/
+
+# --- Machine-local tooling tree (not shipped) ---
+tools/dep/
