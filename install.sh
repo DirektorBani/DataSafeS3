@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 YES=0
-TAG="v1.2.0"
+TAG="v1.3.0"
 DATA_ROOT=""
 PROFILES=""
 PROJECT_NAME="datasafe"

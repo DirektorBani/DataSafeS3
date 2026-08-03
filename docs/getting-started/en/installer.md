@@ -81,7 +81,7 @@ storage-server is deployed on the leader by Apply (`deploy-storage-server.sh`) o
 
 SSO for the console is **OIDC** (Keycloak / other IdP via Settings), not an edge oauth2-proxy gate.
 
-Image tag (default `v1.2.0`) sets `DATASAFE_SERVER_IMAGE` / `DATASAFE_CONSOLE_IMAGE` unless **5** (local binary) is selected.
+Image tag (default `v1.3.0`) sets `DATASAFE_SERVER_IMAGE` / `DATASAFE_CONSOLE_IMAGE` unless **5** (local binary) is selected.
 
 ## Prerequisites
 

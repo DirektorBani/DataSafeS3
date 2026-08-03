@@ -9,7 +9,7 @@
 #>
 param(
   [switch]$Yes,
-  [string]$Tag = "v1.2.0",
+  [string]$Tag = "v1.3.0",
   [string]$DataRoot = "",
   [string]$Profiles = "",
   [string]$ProjectName = "datasafe",
@@ -38,7 +38,7 @@ DataSafeS3 interactive installer
   .\install.ps1
   .\install.ps1 -Yes -Profiles core,postgres,monitoring,data
   .\install.ps1 -DryRun -Yes -Profiles core,postgres,data
-  .\install.ps1 -Tag v1.2.0 -DataRoot D:/datasafe-data
+  .\install.ps1 -Tag v1.3.0 -DataRoot D:/datasafe-data
   .\install.ps1 -Cluster -DryRun
 
 Profiles: core, postgres, monitoring, data, binary, identity

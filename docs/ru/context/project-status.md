@@ -2,11 +2,11 @@
 
 # Статус проекта
 
-**Обновлено:** 2026-07-14 · **Текущий релиз:** [v1.2.0](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.2.0)
+**Обновлено:** 2026-08-03 · **Текущий релиз:** [v1.3.0](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.3.0)
 
 ## Кратко
 
-**Community Edition v1.2.0** — текущий релиз: **immutable backup golden path** (`retention_mode` Object Lock + Suspend versioning в консоли, use-case EN/RU), AUD-16 `object_count` при удалении папки, плюс MinIO migration kit из v1.1.1. Платформа: S3 API, веб-консоль (EN/RU/DE/FR), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, Teams, защищённые `/metrics`, hash-only share tokens и HA v2 lab tooling.
+**Community Edition v1.3.0** — текущий релиз: **cluster installer** (Waves 1–2) и SSH Docker lab release gate (Apply + Patroni promote + unicast VIP, 0 SKIP), cluster Grafana metrics, root `install.*` entrypoints. Ранее: immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Платформа: S3 API, веб-консоль (EN/RU/DE/FR), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, Teams, защищённые `/metrics`, hash-only share tokens и HA v2 lab tooling.
 
 **v1.1.0** закрывает trust-debt C01-C21 и поставляет **HA v2 CE lab foundation**: erasure backend, leader lock в Postgres, site replication и локальные скрипты проверки. Это scope **lab / not production multi-AZ**: без автоматического failover orchestrator, без production Patroni-кластера и без обещания petabyte 4+2 multi-host.
 

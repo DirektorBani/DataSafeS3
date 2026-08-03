@@ -2,9 +2,9 @@
 
 All notable changes to DataSafeS3 are documented in this file.
 
-## [Unreleased]
+## [1.3.0] - 2026-08-03
 
-Candidate **v1.3.0** (cluster installer + SSH lab release gate). Do not retag `v1.2.0`.
+Minor release: **cluster installer (Waves 1–2)** and **SSH Docker lab release gate** (live Apply, Patroni promote, unicast keepalived VIP — 0 SKIP), plus cluster Grafana metrics and root install entrypoints.
 
 ### Added
 
@@ -25,6 +25,8 @@ Candidate **v1.3.0** (cluster installer + SSH lab release gate). Do not retag `v
 - SSH lab unicast VRRP proves the Apply/drill path on Docker Desktop; it is **not** bare-metal L2 multicast parity.
 - Offline compose lab may still SKIP VIP/Patroni by design — use the SSH lab for the no-skip gate.
 - Grafana cluster panels reflect `Cluster.Nodes` configured in Admin (empty → single local fallback).
+
+Container images (on tag): `ghcr.io/direktorbani/datasafe-storage-server:v1.3.0`, `ghcr.io/direktorbani/datasafe-console:v1.3.0`.
 
 ## [1.2.0] - 2026-07-21
 
@@ -218,6 +220,7 @@ First public **DataSafeS3 Community Edition** release.
 
 Container images: `ghcr.io/direktorbani/datasafe-storage-server:v1.0.0`, `ghcr.io/direktorbani/datasafe-console:v1.0.0`.
 
+[1.3.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.3.0
 [1.2.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.2.0
 [1.1.1]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.1
 [1.1.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.0
