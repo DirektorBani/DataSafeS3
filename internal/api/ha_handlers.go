@@ -79,9 +79,13 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 		resp["erasure_degraded"] = false
 	}
 	if s.haLeader != nil && s.haLeader.Enabled() {
+		isLeader := s.haLeader.IsLeader(r.Context())
 		resp["ha_enabled"] = true
-		resp["is_leader"] = s.haLeader.IsLeader(r.Context())
+		resp["is_leader"] = isLeader
 		resp["node_id"] = s.haLeader.NodeID()
+		observability.SetHALeaderMetrics(true, isLeader)
+	} else {
+		observability.SetHALeaderMetrics(false, false)
 	}
 	if lag, ok := s.meta.ReplicationLagSeconds(); ok {
 		resp["postgres_ok"] = true

@@ -1,0 +1,9 @@
+[
+  {
+    "targets": ["storage-server:9000"],
+    "labels": {
+      "job": "datasafe-cluster-nodes",
+      "cluster": "compose-default"
+    }
+  }
+]

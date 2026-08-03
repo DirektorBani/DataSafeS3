@@ -96,6 +96,7 @@ func (c *clusterMonitor) probe() {
 		}}
 	}
 	healthy, offline := 0, 0
+	samples := make([]observability.ClusterNodeSample, 0, len(nodes))
 	for i := range nodes {
 		status := c.checkNode(nodes[i].Address)
 		nodes[i].Status = status
@@ -107,6 +108,12 @@ func (c *clusterMonitor) probe() {
 		default:
 			// degraded counted as neither fully healthy nor offline
 		}
+		samples = append(samples, observability.ClusterNodeSample{
+			ID:      nodes[i].ID,
+			Address: nodes[i].Address,
+			Role:    nodes[i].Role,
+			Status:  status,
+		})
 	}
 	overall := "healthy"
 	if offline > 0 && healthy == 0 {
@@ -118,7 +125,7 @@ func (c *clusterMonitor) probe() {
 	c.nodes = nodes
 	c.status = overall
 	c.mu.Unlock()
-	observability.SetClusterMetrics(len(nodes), healthy, offline)
+	observability.SetClusterNodeStatuses(overall, samples)
 }
 
 func (c *clusterMonitor) checkNode(address string) string {

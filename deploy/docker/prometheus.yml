@@ -9,3 +9,15 @@ scrape_configs:
     # authorization:
     #   type: Bearer
     #   credentials: "<STORAGE_METRICS_TOKEN>"
+
+  # Optional multi-node scrape (cluster). Copy targets example and mount:
+  #   ./deploy/docker/prometheus/targets:/etc/prometheus/targets:ro
+  # Edit cluster-nodes.json with each node's host:9000 (VIP or per-node).
+  - job_name: "datasafe-cluster-nodes"
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/cluster-nodes.json
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance

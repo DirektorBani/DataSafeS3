@@ -1,4 +1,4 @@
-﻿English | **[Русский](../../ru/user-guide/README.md)**
+English | **[Русский](../../ru/user-guide/README.md)**
 
 # DataSafeS3 (Датасейф S3) User Guide
 
@@ -460,7 +460,7 @@ On Windows, `docker compose build` may fail when pulling base images if WinHTTP 
 
 1. Builds a **Linux binary** locally (`GOOS=linux`, `CGO_ENABLED=0`).
 2. Builds console static assets (`scripts\build-console.cmd`).
-3. Mounts the binary via overlay [`docker-compose.local-binary.yml`](../../../docker-compose.local-binary.yml) — without a full image rebuild from sources.
+3. Mounts the binary via overlay [`deploy/compose/docker-compose.local-binary.yml`](../../../deploy/compose/docker-compose.local-binary.yml) — without a full image rebuild from sources.
 4. Starts the stack with the **postgres** profile (as in the project dev environment).
 
 **Run:**
@@ -478,7 +478,7 @@ set CGO_ENABLED=0
 set GOOS=linux
 set GOARCH=amd64
 go build -trimpath -ldflags="-s -w" -o deploy\docker\storage-server-linux .\cmd\storage-server
-docker compose --profile postgres -f docker-compose.yml -f docker-compose.local-binary.yml up -d storage-server --no-deps
+docker compose --profile postgres -f docker-compose.yml -f deploy/compose/docker-compose.local-binary.yml up -d storage-server --no-deps
 ```
 
 **Rebuild console only:**

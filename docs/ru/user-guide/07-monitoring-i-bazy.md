@@ -23,13 +23,16 @@
 | Дашборд | URL |
 |---------|-----|
 | **Обзор системы** | http://localhost:3000/d/datasafe-overview/datasafe-overview |
+| **Статус кластера** (ноды / HA) | http://localhost:3000/d/datasafe-cluster/datasafe-cluster |
 | **Бакеты** (выбор одного или нескольких) | http://localhost:3000/d/datasafe-buckets/datasafe-buckets |
 
 ![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/monitoring.png)
 
-На дашборде обзора два ряда панелей:
+На дашборде обзора три ряда панелей:
 
 **HTTP / S3** — частота запросов, число бакетов и объектов, занятый объём, p95 latency, HTTP-ошибки и график крупнейших бакетов.
+
+**Cluster (summary)** — общий статус, healthy/offline, HA leader. Таблица UP/DOWN по нодам — дашборд **Статус кластера**.
 
 **Host** — занятость диска, CPU load (1 мин), память, сеть, lag репликации PostgreSQL (при включённом Postgres) и ёмкость диска во времени.
 

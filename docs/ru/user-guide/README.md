@@ -1,4 +1,4 @@
-﻿**[English](../../en/user-guide/README.md)** | Русский
+**[English](../../en/user-guide/README.md)** | Русский
 
 # Руководство пользователя Датасейф S3 (DataSafeS3)
 
@@ -460,7 +460,7 @@ English version: [Kubernetes / Helm](../../en/user-guide/README.md#kubernetes--h
 
 1. Собирает **Linux-бинарник** локально (`GOOS=linux`, `CGO_ENABLED=0`).
 2. Собирает статику консоли (`scripts\build-console.cmd`).
-3. Монтирует бинарник через overlay [`docker-compose.local-binary.yml`](../../../docker-compose.local-binary.yml) — без полной пересборки образа с исходниками.
+3. Монтирует бинарник через overlay [`deploy/compose/docker-compose.local-binary.yml`](../../../deploy/compose/docker-compose.local-binary.yml) — без полной пересборки образа с исходниками.
 4. Поднимает стек с профилем **postgres** (как в dev-окружении проекта).
 
 **Запуск:**
@@ -478,7 +478,7 @@ set CGO_ENABLED=0
 set GOOS=linux
 set GOARCH=amd64
 go build -trimpath -ldflags="-s -w" -o deploy\docker\storage-server-linux .\cmd\storage-server
-docker compose --profile postgres -f docker-compose.yml -f docker-compose.local-binary.yml up -d storage-server --no-deps
+docker compose --profile postgres -f docker-compose.yml -f deploy/compose/docker-compose.local-binary.yml up -d storage-server --no-deps
 ```
 
 **Пересборка только консоли:**

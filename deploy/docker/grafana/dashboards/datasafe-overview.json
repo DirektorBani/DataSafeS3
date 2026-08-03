@@ -12,6 +12,17 @@
       "keepTime": true,
       "tags": [],
       "targetBlank": false,
+      "title": "Датасейф S3 — кластер / DataSafeS3 Cluster",
+      "type": "link",
+      "url": "/d/datasafe-cluster/datasafe-cluster"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
       "title": "Датасейф S3 — бакеты / DataSafeS3 Buckets",
       "type": "link",
       "url": "/d/datasafe-buckets/datasafe-buckets"
@@ -155,6 +166,82 @@
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 102,
+      "title": "Cluster (summary)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "color": "red", "text": "Offline" }, "1": { "color": "orange", "text": "Degraded" }, "2": { "color": "green", "text": "Healthy" } }, "type": "value" }
+          ],
+          "max": 2,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "green", "value": 2 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 25 },
+      "id": 20,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "datasafe_cluster_overall_status", "legendFormat": "status", "refId": "A" }],
+      "title": "Cluster overall",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 25 },
+      "id": 21,
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "datasafe_cluster_nodes_healthy", "legendFormat": "healthy", "refId": "A" }],
+      "title": "Nodes healthy",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 25 },
+      "id": 22,
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "datasafe_cluster_nodes_offline", "legendFormat": "offline", "refId": "A" }],
+      "title": "Nodes offline",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "color": "text", "text": "Follower/off" }, "1": { "color": "green", "text": "Leader" } }, "type": "value" }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 25 },
+      "id": 23,
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [{ "expr": "datasafe_ha_is_leader", "legendFormat": "leader", "refId": "A" }],
+      "title": "HA is leader",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
       "id": 101,
       "title": "Host",
       "type": "row"
@@ -162,7 +249,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 25 },
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 31 },
       "id": 6,
       "targets": [{ "expr": "datasafe_host_disk_used_percent", "legendFormat": "disk %", "refId": "A" }],
       "title": "Disk used %",
@@ -171,7 +258,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 7, "w": 6, "x": 6, "y": 25 },
+      "gridPos": { "h": 7, "w": 6, "x": 6, "y": 31 },
       "id": 7,
       "targets": [{ "expr": "datasafe_host_cpu_load1", "legendFormat": "load1", "refId": "A" }],
       "title": "CPU load (1m)",
@@ -180,7 +267,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 25 },
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 31 },
       "id": 8,
       "targets": [{ "expr": "datasafe_host_memory_used_percent", "legendFormat": "mem %", "refId": "A" }],
       "title": "Memory used %",
@@ -189,7 +276,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 25 },
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 31 },
       "id": 9,
       "targets": [
         { "expr": "rate(datasafe_host_network_in_bytes_total[1m])", "legendFormat": "in", "refId": "A" },
@@ -201,7 +288,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 32 },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 38 },
       "id": 14,
       "targets": [
         { "expr": "datasafe_postgres_replication_lag_seconds", "legendFormat": "lag seconds", "refId": "A" }
@@ -212,7 +299,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
-      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 39 },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 45 },
       "id": 13,
       "targets": [
         { "expr": "datasafe_host_disk_total_bytes", "legendFormat": "total", "refId": "A" },

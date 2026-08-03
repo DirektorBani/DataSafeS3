@@ -17,8 +17,12 @@ dist/
 *.out
 coverage.out
 
-# Env / secrets (working copy stays at repo root for compose)
+# Env / secrets (working copies stay at repo root for compose --env-file)
 .env
+.env.*
+!.env.example
+!deploy/compose/env/
+!deploy/compose/env/**
 
 # Local runtime data (legacy paths; prefer _local/data/)
 data/
@@ -46,7 +50,11 @@ pnpm-debug.log*
 # Docker
 *.log
 deploy/docker/storage-server-linux
+deploy/docker/oauth2-proxy-linux
 
+# Playwright / local test artifacts
+web/console/test-results/
+web/console/playwright-report/
 # --- Local test data ---
 data-local-test/
 
