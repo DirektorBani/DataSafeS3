@@ -1,0 +1,6 @@
+# Host-fetched packages for offline Dockerfile.offline (large; do not commit)
+offline-apk/
+offline-pip/
+offline-bin/
+offline-bundle.stamp
+_debug-idx.ps1

@@ -1,5 +1,5 @@
 # Site replication lab — enable worker on source stack (project datasafe-a).
-# Pair with docker-compose.site-b.yml on project datasafe-b.
+# Pair with deploy/compose/docker-compose.site-b.yml on project datasafe-b.
 services:
   storage-server:
     extra_hosts:

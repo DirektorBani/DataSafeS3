@@ -3,11 +3,11 @@
 #   docker compose -p datasafe --profile postgres \
 #     -f docker-compose.yml \
 #     -f docker-compose.local-data.yml \
-#     -f docker-compose.local-binary.yml \
-#     -f docker-compose.audit.yml \
+#     -f deploy/compose/docker-compose.local-binary.yml \
+#     -f deploy/compose/docker-compose.audit.yml \
 #     up -d storage-server
 #
-# With strict security QA, combine with docker-compose.security-test.yml but keep audit rate limit:
+# With strict security QA, combine with deploy/compose/docker-compose.security-test.yml but keep audit rate limit:
 #   STORAGE_RATE_LIMIT_LOGIN=500 in .env or this file overrides security-test default (5).
 services:
   storage-server:

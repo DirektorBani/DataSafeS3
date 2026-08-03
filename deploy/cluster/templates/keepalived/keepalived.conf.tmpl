@@ -1,0 +1,29 @@
+# keepalived — {{VIP_ROLE}} (Wave 2)
+# Prefer datasafes3 + CAP_NET_ADMIN/CAP_NET_RAW; fallback root+warn (U8).
+# auth_pass must come from secrets file — never commit real values.
+# Lab/Docker: set UNICAST_* for bridge networks (multicast VRRP often fails).
+vrrp_script chk_{{VIP_ROLE}} {
+  script "{{CHECK_SCRIPT}}"
+  interval 2
+  weight 20
+  fall 3
+  rise 2
+}
+
+vrrp_instance VI_{{VIP_ROLE}} {
+  state {{VRRP_STATE}}
+  interface {{INTERFACE}}
+  virtual_router_id {{VRID}}
+  priority {{PRIORITY}}
+  advert_int 1
+  authentication {
+    auth_type PASS
+    auth_pass {{AUTH_PASS}}
+  }
+{{UNICAST_BLOCK}}  virtual_ipaddress {
+    {{VIP_ADDRESS}}
+  }
+  track_script {
+    chk_{{VIP_ROLE}}
+  }
+}

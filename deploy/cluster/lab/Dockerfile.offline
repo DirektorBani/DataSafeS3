@@ -1,0 +1,49 @@
+# Offline / proxy-safe SSH lab node for release drills (Apply + Patroni + keepalived).
+#   powershell -File scripts/cluster/lab/fetch-offline-bundle.ps1
+#   (plus etcd binary / pip wheels as documented in README)
+#   docker build -f Dockerfile.offline -t datasafe-cluster-node:lab .
+FROM alpine:3.20
+
+COPY offline-apk /tmp/offline-apk/
+COPY offline-pip /tmp/offline-pip/
+COPY offline-bin/etcd-v3.5.16-linux-amd64/etcd /usr/local/bin/etcd
+COPY offline-bin/etcd-v3.5.16-linux-amd64/etcdctl /usr/local/bin/etcdctl
+COPY offline-bin/docker/docker /usr/local/bin/docker
+
+RUN set -eux; \
+    chmod +x /usr/local/bin/etcd /usr/local/bin/etcdctl /usr/local/bin/docker; \
+    apk add --allow-untrusted --no-network /tmp/offline-apk/*.apk; \
+    # Alpine py3-psycopg-c conflicts with pip psycopg-binary (PGcancelConn). Prefer pip wheels.
+    rm -rf /usr/lib/python3.*/site-packages/psycopg \
+           /usr/lib/python3.*/site-packages/psycopg_c \
+           /usr/lib/python3.*/site-packages/psycopg_binary \
+           /usr/lib/python3.*/site-packages/psycopg-*.dist-info \
+           /usr/lib/python3.*/site-packages/psycopg_c-*.dist-info \
+           /usr/lib/python3.*/site-packages/PyYAML* \
+           /usr/lib/python3.*/site-packages/yaml 2>/dev/null || true; \
+    python3 -m pip install --no-cache-dir --break-system-packages --no-index \
+      /tmp/offline-pip/setuptools*.whl /tmp/offline-pip/wheel*.whl; \
+    python3 -m pip install --no-cache-dir --break-system-packages --no-index \
+      /tmp/offline-pip/typing_extensions*.whl /tmp/offline-pip/six*.whl; \
+    python3 -m pip install --no-cache-dir --break-system-packages --no-index --no-deps \
+      /tmp/offline-pip/*x86_64*.whl /tmp/offline-pip/*none-any.whl; \
+    python3 -m pip install --no-cache-dir --break-system-packages --no-index --no-build-isolation --no-deps \
+      /tmp/offline-pip/cdifflib-*.tar.gz /tmp/offline-pip/etcd3-*.tar.gz \
+      /tmp/offline-pip/python-etcd-*.tar.gz; \
+    python3 -c "from patroni.dcs.etcd3 import Etcd3; import etcd; print('patroni-etcd3-ok')"; \
+    rm -rf /tmp/offline-apk /tmp/offline-pip; \
+    mkdir -p /var/run/sshd /var/run/haproxy /var/run/postgresql /var/lib/datasafe /etc/datasafe /etc/ssh /etc/keepalived /etc/haproxy; \
+    ssh-keygen -A; \
+    adduser -D -s /bin/bash datasafes3; \
+    usermod -p '*' datasafes3; \
+    echo 'datasafes3 ALL=(root) NOPASSWD:ALL' > /etc/sudoers.d/datasafes3-lab; \
+    chmod 440 /etc/sudoers.d/datasafes3-lab; \
+    adduser -D -s /bin/sh postgres 2>/dev/null || true; \
+    command -v patroni; command -v keepalived; command -v etcd; command -v sshd; command -v docker
+
+COPY lab-entrypoint.sh /usr/local/bin/lab-entrypoint.sh
+RUN chmod +x /usr/local/bin/lab-entrypoint.sh
+
+EXPOSE 22 2379 2380 5432 8008 8080 9000 8404
+
+ENTRYPOINT ["/usr/local/bin/lab-entrypoint.sh"]

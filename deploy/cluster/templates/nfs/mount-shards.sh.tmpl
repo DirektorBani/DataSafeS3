@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Mount remote erasure shards on storage leader (C1 NFSv4).
+# Generated — do not commit with site-specific IPs if this tree is public.
+set -euo pipefail
+
+LEADER_MOUNT_ROOT="${LEADER_MOUNT_ROOT:-/var/lib/datasafe/erasure}"
+mkdir -p "$LEADER_MOUNT_ROOT"
+
+{{MOUNT_LINES}}
+
+echo "C1 mounts ready under $LEADER_MOUNT_ROOT"
+ls -la "$LEADER_MOUNT_ROOT"

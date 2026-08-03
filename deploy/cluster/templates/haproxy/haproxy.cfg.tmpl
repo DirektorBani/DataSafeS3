@@ -1,0 +1,57 @@
+# DataSafeS3 multi-LB frontends (Wave 2)
+# Bind VIP addresses only so colocated Patroni/Postgres/storage can use *:port.
+# LB-S3 -> storage leader; LB-Console -> console backends; LB-Postgres -> Patroni primary.
+global
+  log /dev/log local0
+  maxconn 4096
+  stats socket /var/run/haproxy/admin.sock mode 660 level admin
+
+defaults
+  log global
+  mode tcp
+  option tcplog
+  timeout connect 5s
+  timeout client  1h
+  timeout server  1h
+  retries 3
+
+# ---- LB-S3 ----
+frontend fe_s3
+  bind {{VIP_S3}}:9000
+  default_backend be_s3
+
+backend be_s3
+  option httpchk GET /healthz
+  http-check expect status 200
+  default-server inter 3s fall 3 rise 2
+  server storage_leader {{LEADER_IP}}:9000 check port 9000
+
+# ---- LB-Console ----
+frontend fe_console
+  bind {{VIP_CONSOLE}}:8080
+  default_backend be_console
+
+backend be_console
+  balance roundrobin
+  option httpchk GET /healthz
+  http-check expect status 200
+  default-server inter 3s fall 3 rise 2
+{{CONSOLE_SERVERS}}
+
+# ---- LB-Postgres (Patroni primary only) ----
+frontend fe_postgres
+  bind {{VIP_PG}}:5432
+  default_backend be_postgres
+
+backend be_postgres
+  option httpchk GET /primary
+  http-check expect status 200
+  default-server inter 2s fall 3 rise 2
+{{POSTGRES_SERVERS}}
+
+listen stats
+  bind 127.0.0.1:8404
+  mode http
+  stats enable
+  stats uri /stats
+  stats refresh 10s

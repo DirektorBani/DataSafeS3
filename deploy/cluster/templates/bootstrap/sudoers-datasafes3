@@ -1,0 +1,8 @@
+﻿# Scoped sudo for datasafes3 (Wave 2). Do not grant unlimited sudo.
+# Install to /etc/sudoers.d/datasafes3 (visudo -cf first).
+datasafes3 ALL=(root) NOPASSWD: /bin/systemctl start keepalived, /bin/systemctl stop keepalived, /bin/systemctl restart keepalived, /bin/systemctl status keepalived
+datasafes3 ALL=(root) NOPASSWD: /bin/systemctl start haproxy, /bin/systemctl stop haproxy, /bin/systemctl restart haproxy, /bin/systemctl status haproxy
+datasafes3 ALL=(root) NOPASSWD: /bin/systemctl start patroni, /bin/systemctl stop patroni, /bin/systemctl restart patroni, /bin/systemctl status patroni
+datasafes3 ALL=(root) NOPASSWD: /bin/systemctl start etcd, /bin/systemctl stop etcd, /bin/systemctl restart etcd, /bin/systemctl status etcd
+datasafes3 ALL=(root) NOPASSWD: /usr/bin/exportfs, /bin/mount, /bin/umount
+

@@ -1,5 +1,5 @@
 # QA overlay: pass security remediation env vars into storage-server (local only).
-# For feature-audit runs, also apply docker-compose.audit.yml (raises STORAGE_RATE_LIMIT_LOGIN to 500).
+# For feature-audit runs, also apply deploy/compose/docker-compose.audit.yml (raises STORAGE_RATE_LIMIT_LOGIN to 500).
 services:
   storage-server:
     environment:

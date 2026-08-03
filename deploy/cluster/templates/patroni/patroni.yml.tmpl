@@ -1,0 +1,55 @@
+# DataSafeS3 Patroni member (Wave 2 template)
+# DCS: etcd3. Secrets injected at Apply from ~/.datasafe-cluster/secrets/ (not this file in git).
+scope: datasafe-pg
+namespace: /datasafe/
+name: {{PATRONI_NAME}}
+
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: {{NODE_IP}}:8008
+
+etcd3:
+  hosts: {{ETCD_HOSTS}}
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    postgresql:
+      use_pg_rewind: true
+      parameters:
+        max_connections: 200
+        shared_buffers: 256MB
+        wal_level: replica
+        hot_standby: "on"
+        max_wal_senders: 10
+        max_replication_slots: 10
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+  pg_hba:
+    - host replication replicator {{CLUSTER_CIDR}} md5
+    - host all all {{CLUSTER_CIDR}} md5
+
+postgresql:
+  listen: {{NODE_IP}}:5432
+  connect_address: {{NODE_IP}}:5432
+  data_dir: /var/lib/datasafe/postgresql/data
+  bin_dir: /usr/lib/postgresql/16/bin
+  authentication:
+    replication:
+      username: replicator
+      password: {{PG_REPL_PASSWORD}}
+    superuser:
+      username: postgres
+      password: {{PG_SUPER_PASSWORD}}
+  parameters:
+    unix_socket_directories: /var/run/postgresql
+
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: false
+  nosync: false

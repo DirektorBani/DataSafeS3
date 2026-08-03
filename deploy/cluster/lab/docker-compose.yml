@@ -1,0 +1,100 @@
+# DataSafeS3 cluster lab — 3 SSH nodes (Docker "VMs")
+# Build offline image first (host fetches apk; Docker proxy often breaks apk HTTPS):
+#   powershell -File scripts/cluster/lab/fetch-offline-bundle.ps1
+#   docker build -f Dockerfile.offline -t datasafe-cluster-node:lab .
+# Then: bash scripts/cluster/lab/up-ssh.sh
+name: datasafe-cluster-lab
+
+services:
+  node0:
+    image: datasafe-cluster-node:lab
+    hostname: node0
+    container_name: ds-lab-node0
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    sysctls:
+      net.ipv4.ip_nonlocal_bind: "1"
+    ports:
+      - "2221:22"
+      - "9010:9000"
+      - "8081:8080"
+      - "8008:8008"
+    networks:
+      labnet:
+        ipv4_address: 10.88.0.10
+    volumes:
+      - lab0_data:/var/lib/datasafe
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./keys:/lab-keys:ro
+    environment:
+      DATASAFE_LAB_NET_CONTAINER: ds-lab-node0
+      DATASAFE_SERVER_IMAGE: ghcr.io/direktorbani/datasafe-storage-server:v1.1.0
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  node1:
+    image: datasafe-cluster-node:lab
+    hostname: node1
+    container_name: ds-lab-node1
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    sysctls:
+      net.ipv4.ip_nonlocal_bind: "1"
+    ports:
+      - "2222:22"
+      - "8009:8008"
+    networks:
+      labnet:
+        ipv4_address: 10.88.0.11
+    volumes:
+      - lab1_data:/var/lib/datasafe
+      - ./keys:/lab-keys:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  node2:
+    image: datasafe-cluster-node:lab
+    hostname: node2
+    container_name: ds-lab-node2
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    sysctls:
+      net.ipv4.ip_nonlocal_bind: "1"
+    ports:
+      - "2223:22"
+      - "8010:8008"
+    networks:
+      labnet:
+        ipv4_address: 10.88.0.12
+    volumes:
+      - lab2_data:/var/lib/datasafe
+      - ./keys:/lab-keys:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x sshd >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+networks:
+  labnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.88.0.0/24
+
+volumes:
+  lab0_data:
+  lab1_data:
+  lab2_data:
