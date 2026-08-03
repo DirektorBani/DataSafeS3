@@ -2,6 +2,30 @@
 
 All notable changes to DataSafeS3 are documented in this file.
 
+## [Unreleased]
+
+Candidate **v1.3.0** (cluster installer + SSH lab release gate). Do not retag `v1.2.0`.
+
+### Added
+
+- **Cluster installer (Waves 1–2)** — inventory/plan/render/apply scripts (`scripts/cluster/`), templates under `deploy/cluster/templates/`, SECURITY notes, and installer tests (`scripts/tests/cluster-installer-w1|w2`).
+- **SSH Docker lab release gate** — offline-capable node image + `up-ssh.sh` / `run-apply-ssh.sh` / `run-drills-ssh.sh` for live Apply, Patroni promote ≤60s, and unicast keepalived VIP move (**0 SKIP**). See `deploy/cluster/lab/README.md`.
+- **Cluster observability** — Prometheus gauges `datasafe_cluster_node_*` / overall / HA; Grafana dashboard `datasafe-cluster.json`; optional Prometheus `file_sd` targets.
+- **Root install entrypoints** — `install.ps1` / `install.sh` / `install.cmd` with optional `identity` profile; getting-started installer docs (EN/RU).
+- **Public login options** — `GET` login-options for LDAP/OIDC console buttons without leaking secrets.
+- **Compose layout** — overlays and env examples under `deploy/compose/` (paths updated in scripts/docs).
+
+### Changed
+
+- HAProxy cluster templates bind VIP addresses only; Patroni listens on fabric `NODE_IP` so colocated LB + Postgres do not clash.
+- Lab Apply deploys storage-server after etcd/Patroni quorum; secrets file uses Patroni **superuser** password.
+
+### Honesty
+
+- SSH lab unicast VRRP proves the Apply/drill path on Docker Desktop; it is **not** bare-metal L2 multicast parity.
+- Offline compose lab may still SKIP VIP/Patroni by design — use the SSH lab for the no-skip gate.
+- Grafana cluster panels reflect `Cluster.Nodes` configured in Admin (empty → single local fallback).
+
 ## [1.2.0] - 2026-07-21
 
 Minor release: **immutable backup golden path** (Object Lock + versioning) and audit hygiene (AUD-12 / AUD-16). Merges the former patch hygiene slice into one operator-facing minor.
