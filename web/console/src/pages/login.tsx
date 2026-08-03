@@ -30,12 +30,19 @@ export function LoginPage() {
   const [mfaSubmitting, setMfaSubmitting] = useState(false);
   const totpRemaining = useTotpCountdown();
   const oidc = useQueryOIDC();
+  const loginOptions = useQuery({
+    queryKey: ["auth-login-options"],
+    queryFn: () => api.getLoginOptions(),
+    staleTime: 60_000,
+  });
+  const localLoginOn = loginOptions.data?.local_login_enabled !== false;
   const setupStatus = useQuery({
     queryKey: ["setup-status"],
     queryFn: () => api.getSetupStatus(),
     staleTime: 30_000,
   });
   const showDefaultCredentials =
+    localLoginOn &&
     !setupStatus.data?.admin_first_login_completed &&
     !setupStatus.data?.initial_setup_completed;
 
@@ -69,21 +76,21 @@ export function LoginPage() {
       return;
     }
     const token = searchParams.get("token");
-    if (!token) return;
-
-    setSessionProfile(token, "user", "", { authSource });
-    setSearchParams({}, { replace: true });
-    onLogin();
-
-    api.getMe().then((me) => {
-      setSessionProfile(token, me.role, me.username, {
-        authSource: me.auth_source ?? authSource,
-        tenantMemberships: me.tenant_memberships,
-        isTenantAdmin: me.is_tenant_admin,
-      });
+    if (token) {
+      setSessionProfile(token, "user", "", { authSource });
+      setSearchParams({}, { replace: true });
       onLogin();
-    }).catch(() => {});
-  }, [searchParams, setSearchParams, onLogin]);
+
+      api.getMe().then((me) => {
+        setSessionProfile(token, me.role, me.username, {
+          authSource: me.auth_source ?? authSource,
+          tenantMemberships: me.tenant_memberships,
+          isTenantAdmin: me.is_tenant_admin,
+        });
+        onLogin();
+      }).catch(() => {});
+    }
+  }, [searchParams, setSearchParams, onLogin, t]);
 
   const {
     register,
@@ -243,38 +250,45 @@ export function LoginPage() {
               </div>
             </div>
           ) : (
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="username">{t("fields.username")}</Label>
-                <Input id="username" autoComplete="username" {...register("username")} />
-                {errors.username && (
-                  <p className="text-sm text-destructive">{errors.username.message}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">{t("fields.password")}</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  {...register("password")}
-                />
-                {errors.password && (
-                  <p className="text-sm text-destructive">{errors.password.message}</p>
-                )}
-              </div>
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    {t("actions.signingIn")}
-                  </>
-                ) : (
-                  t("actions.signIn")
-                )}
-              </Button>
-            </form>
+            <>
+              {localLoginOn && (
+                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="username">{t("fields.username")}</Label>
+                    <Input id="username" autoComplete="username" {...register("username")} />
+                    {errors.username && (
+                      <p className="text-sm text-destructive">{errors.username.message}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">{t("fields.password")}</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      autoComplete="current-password"
+                      {...register("password")}
+                    />
+                    {errors.password && (
+                      <p className="text-sm text-destructive">{errors.password.message}</p>
+                    )}
+                  </div>
+                  {error && <p className="text-sm text-destructive">{error}</p>}
+                  <Button type="submit" className="w-full" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {t("actions.signingIn")}
+                      </>
+                    ) : (
+                      t("actions.signIn")
+                    )}
+                  </Button>
+                </form>
+              )}
+              {!localLoginOn && error && (
+                <p className="text-sm text-destructive text-center">{error}</p>
+              )}
+            </>
           )}
           {oidc.enabled && !mfaStep && (
             <>
@@ -285,6 +299,7 @@ export function LoginPage() {
                 variant="outline"
                 className="mt-4 w-full"
                 disabled={!!oidc.issuerError}
+                title={oidc.issuerError ? t("error.oidcIssuerUnreachable") : undefined}
                 onClick={() => { window.location.href = "/api/v1/auth/oidc/login"; }}
               >
                 {t("actions.signInSso")}

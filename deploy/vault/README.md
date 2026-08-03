@@ -14,7 +14,7 @@ Optional **opt-in** stack for the Vault Agent → `STORAGE_*` env injection patt
 
 ```powershell
 cd D:\cursor_p
-Copy-Item .env.vault.example .env -ErrorAction SilentlyContinue
+Copy-Item deploy/compose/env/.env.vault.example .env -ErrorAction SilentlyContinue
 # Ensure DATASAFE_DATA_ROOT=D:/datasafe-data
 
 .\deploy\vault\local\setup-vault-dev.ps1
@@ -22,7 +22,7 @@ Copy-Item .env.vault.example .env -ErrorAction SilentlyContinue
 docker compose -p datasafe `
   -f docker-compose.yml `
   -f docker-compose.local-data.yml `
-  -f docker-compose.vault.yml `
+  -f deploy/compose/docker-compose.vault.yml `
   --profile vault up -d
 ```
 
@@ -35,7 +35,7 @@ chmod +x deploy/vault/local/setup-vault-dev.sh deploy/vault/init-kv.sh
 
 docker compose -p datasafe \
   -f docker-compose.yml \
-  -f docker-compose.vault.yml \
+  -f deploy/compose/docker-compose.vault.yml \
   --profile vault up -d
 ```
 
@@ -45,8 +45,8 @@ docker compose -p datasafe \
 docker compose -p datasafe `
   -f docker-compose.yml `
   -f docker-compose.local-data.yml `
-  -f docker-compose.vault.yml `
-  -f docker-compose.vault-product.yml `
+  -f deploy/compose/docker-compose.vault.yml `
+  -f deploy/compose/docker-compose.vault-product.yml `
   --profile vault up -d
 ```
 
@@ -93,4 +93,4 @@ Hardened Vault, Kubernetes auth or AppRole, and [Helm Agent Injector example](..
 
 ## Troubleshooting: Docker proxy
 
-On Windows, if `docker pull` or Compose fails with `connecting to 127.0.0.1:10801: connectex: ... actively refused`, WinHTTP is still pointing at a local proxy that is not running (check with `netsh winhttp show proxy`). Either start the repo workaround before pulls—`node scripts/local-direct-proxy.js` in the background, or run `scripts\ensure-docker-pull-proxy.cmd` (same idea)—or reset WinHTTP as an administrator with `netsh winhttp reset proxy` and restart Docker Desktop. Client `%USERPROFILE%\.docker\config.json` may look clean while the daemon still uses WinHTTP; fixing the dead `127.0.0.1:10801` listener is required before `hashicorp/vault:1.17` can be pulled. Prefer local images for storage-server: set `DATASAFE_SERVER_IMAGE` to a built tag and add `-f docker-compose.local-binary.yml` after `go build` into `deploy/docker/storage-server-linux`.
+On Windows, if `docker pull` or Compose fails with `connecting to 127.0.0.1:10801: connectex: ... actively refused`, WinHTTP is still pointing at a local proxy that is not running (check with `netsh winhttp show proxy`). Either start the repo workaround before pulls—`node scripts/local-direct-proxy.js` in the background, or run `scripts\ensure-docker-pull-proxy.cmd` (same idea)—or reset WinHTTP as an administrator with `netsh winhttp reset proxy` and restart Docker Desktop. Client `%USERPROFILE%\.docker\config.json` may look clean while the daemon still uses WinHTTP; fixing the dead `127.0.0.1:10801` listener is required before `hashicorp/vault:1.17` can be pulled. Prefer local images for storage-server: set `DATASAFE_SERVER_IMAGE` to a built tag and add `-f deploy/compose/docker-compose.local-binary.yml` after `go build` into `deploy/docker/storage-server-linux`.

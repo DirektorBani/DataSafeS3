@@ -3,6 +3,8 @@ package erasure_test
 import (
 	"bytes"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/DirektorBani/datasafe/internal/storage/erasure"
@@ -84,6 +86,43 @@ func TestBackendPutGet(t *testing.T) {
 	}
 	if info.ETag != etag {
 		t.Fatalf("etag mismatch")
+	}
+}
+
+func TestBackendMetaSurvivesPath0Loss(t *testing.T) {
+	root := t.TempDir()
+	paths := make([]string, 3)
+	for i := range paths {
+		paths[i] = t.TempDir()
+	}
+	b, err := erasure.OpenBackend(erasure.Config{
+		Paths:   paths,
+		Layout:  "dev",
+		Staging: root,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte("meta must survive disk0 loss")
+	if _, err := b.PutObject(t.Context(), "b", "m.txt", bytes.NewReader(body), int64(len(body)), "text/plain"); err != nil {
+		t.Fatal(err)
+	}
+	// Wipe entire first path (shard0 + former single meta home).
+	entries, err := os.ReadDir(paths[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		_ = os.RemoveAll(filepath.Join(paths[0], e.Name()))
+	}
+	rc, _, err := b.GetObject(t.Context(), "b", "m.txt")
+	if err != nil {
+		t.Fatalf("get after path0 wipe: %v", err)
+	}
+	defer rc.Close()
+	got, _ := io.ReadAll(rc)
+	if !bytes.Equal(body, got) {
+		t.Fatal("payload mismatch after path0 wipe")
 	}
 }
 

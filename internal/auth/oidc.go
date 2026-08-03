@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -123,11 +124,44 @@ func DiscoverOIDCEndpoints(issuer string, client *http.Client) (authURL, tokenUR
 	return doc.AuthorizationEndpoint, doc.TokenEndpoint, doc.UserinfoEndpoint, nil
 }
 
+// ProbeOIDCDiscovery reports whether OpenID Provider metadata is reachable from this process.
+// Prefer Internal (server-side / Docker DNS / host.docker.internal), then Public.
+// A localhost Public issuer is often unreachable from inside a container even when SSO works
+// for browsers — probing Internal avoids false "IdP unreachable" UX (AUD-09).
+func ProbeOIDCDiscovery(issuers OIDCIssuers, client *http.Client) (ok bool, err error) {
+	seen := map[string]struct{}{}
+	var lastErr error
+	for _, u := range []string{issuers.Internal, issuers.Public} {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		if _, dup := seen[u]; dup {
+			continue
+		}
+		seen[u] = struct{}{}
+		if _, _, _, e := DiscoverOIDCEndpoints(u, client); e == nil {
+			return true, nil
+		} else {
+			lastErr = e
+		}
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("oidc issuer not configured")
+	}
+	return false, lastErr
+}
+
 // BrowserOAuthEndpoint returns OAuth2 endpoints for browser authorization redirects.
+// Discovery prefers the Internal issuer (reachable from Docker), then rewrites the
+// authorization URL onto the Public issuer host so the browser stays on localhost/public DNS.
 func BrowserOAuthEndpoint(issuers OIDCIssuers, client *http.Client) oauth2.Endpoint {
 	ep := defaultOIDCEndpoint(issuers.Public)
-	authURL, _, _, err := DiscoverOIDCEndpoints(issuers.Public, client)
-	if err == nil && authURL != "" {
+	if authURL, _, _, err := DiscoverOIDCEndpoints(issuers.Internal, client); err == nil && authURL != "" {
+		ep.AuthURL = RewriteEndpointHost(authURL, issuers.Public)
+		return ep
+	}
+	if authURL, _, _, err := DiscoverOIDCEndpoints(issuers.Public, client); err == nil && authURL != "" {
 		ep.AuthURL = authURL
 	}
 	return ep

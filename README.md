@@ -94,14 +94,29 @@ flowchart TB
 
 ## Quick start
 
-**Goal:** running console and first bucket in about 5 minutes.
+**Interactive installer** (recommended):
+
+```powershell
+# Windows
+.\install.ps1
+```
+
+```bash
+# Linux / macOS / WSL
+chmod +x install.sh && ./install.sh
+```
+
+Or `install.cmd` on Windows. Menu: Core, Postgres, Monitoring, host data, optional build / Identity lab.  
+Docs: [EN](docs/getting-started/en/installer.md) · [RU](docs/getting-started/ru/installer.md)
+
+**Manual** (equivalent default profile):
 
 ```cmd
 copy .env.example .env
-docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml -f docker-compose.local-binary.yml up -d --build
+docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml up -d
 ```
 
-Production console is served from `web/console/dist` (build with `cd web/console && npm run build`). For Vite HMR during UI work: add `-f docker-compose.dev.yml --profile dev`.
+Production console is served from `web/console/dist` (build with `cd web/console && npm run build`). For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
 
 Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.2.0` and `ghcr.io/direktorbani/datasafe-console:v1.2.0`.
 
@@ -155,6 +170,7 @@ Full hub: **[docs/README.md](docs/README.md)**
 | `web/console` | React web console |
 | `internal/metadata` | BoltDB and PostgreSQL metadata |
 | `deploy/helm/datasafe` | Kubernetes Helm chart |
+| `deploy/compose/` | Optional Compose overlays (HA, Vault, OAuth2, audit, …) |
 | `docs/` | Product documentation |
 
 ---

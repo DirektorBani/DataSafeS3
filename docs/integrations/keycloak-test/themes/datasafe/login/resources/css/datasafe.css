@@ -1,4 +1,4 @@
-/* DataSafeS3 (Датасейф S3) login theme — matches web/console dark shadcn Card layout */
+/* DataSafeS3 (Датасейф S3) login theme — matches web/console dark shadcn Card */
 
 :root {
   --ds-background: hsl(222.2, 84%, 4.9%);
@@ -15,7 +15,6 @@
   --ds-radius: 0.5rem;
 }
 
-/* Page */
 html.login-pf,
 .login-pf body,
 body.login-pf {
@@ -34,13 +33,21 @@ body.login-pf {
   background: var(--ds-background) !important;
 }
 
-/* Hide default realm header above card */
+/* Hide realm chrome above card (brand lives inside the form) */
 #kc-header,
-.login-pf-page-header {
+.login-pf-page-header,
+#kc-page-title,
+.login-pf-header h1#kc-page-title {
   display: none !important;
 }
 
-/* Centered card (~login.tsx max-w-md) */
+.login-pf-header {
+  display: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
 .login-pf-page .card-pf {
   width: 100%;
   max-width: 420px;
@@ -54,20 +61,14 @@ body.login-pf {
   float: none !important;
 }
 
-.login-pf-header {
-  text-align: center;
-  margin-bottom: 1.25rem;
-  border: none;
-  padding: 0;
-}
-
-/* Brand block from login.ftl */
+/* Brand */
 .ds-login-brand {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
-  margin-bottom: 0.25rem;
+  margin: 0 0 1.25rem;
+  text-align: center;
 }
 
 .ds-login-logo-wrap {
@@ -77,12 +78,13 @@ body.login-pf {
   width: 3rem;
   height: 3rem;
   border-radius: var(--ds-radius);
-  background: hsl(217.2 91.2% 59.8% / 0.1);
+  background: hsl(217.2 91.2% 59.8% / 0.12);
 }
 
 .ds-login-logo {
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  display: block;
 }
 
 .ds-login-title {
@@ -102,10 +104,6 @@ body.login-pf {
   color: var(--ds-muted-foreground);
 }
 
-#kc-page-title {
-  display: none;
-}
-
 #kc-content,
 #kc-content-wrapper,
 #kc-form,
@@ -118,7 +116,6 @@ body.login-pf {
   margin-bottom: 1rem;
 }
 
-/* Labels */
 .pf-c-form__label,
 .pf-c-form__label-text,
 label {
@@ -129,7 +126,7 @@ label {
   display: block;
 }
 
-/* Inputs (PatternFly v4 — Keycloak 26 parent=keycloak) */
+/* Standalone inputs (username) */
 .pf-c-form-control,
 input[type="text"],
 input[type="password"],
@@ -143,6 +140,9 @@ input[type="email"] {
   width: 100%;
   padding: 0.5rem 0.75rem;
   box-shadow: none !important;
+  outline: none !important;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .pf-c-form-control:focus,
@@ -154,43 +154,109 @@ input[type="email"]:focus {
   outline: none !important;
 }
 
-/* Password visibility toggle */
-.pf-c-input-group {
-  display: flex;
-  width: 100%;
-}
-
-.pf-c-input-group .pf-c-form-control {
-  border-top-right-radius: 0 !important;
-  border-bottom-right-radius: 0 !important;
-  border-right: none !important;
-  flex: 1 1 auto;
-}
-
-.pf-c-input-group .pf-c-button.pf-m-control {
-  background-color: var(--ds-background) !important;
+/* Password row: one dark shell, no white PF / browser chrome */
+.pf-c-input-group,
+.ds-password-group,
+div[class*="input-group"] {
+  display: flex !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: var(--ds-background) !important;
   border: 1px solid var(--ds-input) !important;
-  border-left: none !important;
-  border-top-left-radius: 0 !important;
-  border-bottom-left-radius: 0 !important;
-  border-top-right-radius: calc(var(--ds-radius) - 2px) !important;
-  border-bottom-right-radius: calc(var(--ds-radius) - 2px) !important;
+  border-radius: calc(var(--ds-radius) - 2px) !important;
+  overflow: hidden !important;
+  box-shadow: none !important;
+}
+
+.pf-c-input-group:focus-within,
+.ds-password-group:focus-within {
+  border-color: var(--ds-ring) !important;
+  box-shadow: 0 0 0 2px hsl(224.3 76.3% 48% / 0.35) !important;
+}
+
+.pf-c-input-group .pf-c-form-control,
+.pf-c-input-group input,
+.ds-password-group .pf-c-form-control,
+.ds-password-group input,
+div[class*="input-group"] input {
+  flex: 1 1 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.pf-c-input-group .pf-c-form-control:focus,
+.pf-c-input-group input:focus,
+.ds-password-group input:focus,
+div[class*="input-group"] input:focus {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.pf-c-input-group .pf-c-button,
+.pf-c-input-group button,
+.ds-password-toggle,
+div[class*="input-group"] button {
+  flex: 0 0 2.75rem !important;
+  width: 2.75rem !important;
+  min-width: 2.75rem !important;
+  min-height: 2.5rem !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
   color: var(--ds-muted-foreground) !important;
-  min-height: 2.5rem;
-  min-width: 2.5rem;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
-.pf-c-input-group .pf-c-button.pf-m-control:hover,
-.pf-c-input-group .pf-c-button.pf-m-control:focus {
-  background-color: hsl(217.2 32.6% 17.5% / 0.65) !important;
+.pf-c-input-group .pf-c-button::before,
+.pf-c-input-group .pf-c-button::after,
+.pf-c-input-group button::before,
+.pf-c-input-group button::after,
+.ds-password-toggle::before,
+.ds-password-toggle::after {
+  display: none !important;
+  content: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.pf-c-input-group .pf-c-button:hover,
+.pf-c-input-group .pf-c-button:focus,
+.pf-c-input-group .pf-c-button:active,
+.pf-c-input-group button:hover,
+.pf-c-input-group button:focus,
+.ds-password-toggle:hover,
+.ds-password-toggle:focus {
+  background: hsl(217.2 32.6% 17.5% / 0.65) !important;
   color: var(--ds-foreground) !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
-.pf-c-input-group .pf-c-button.pf-m-control .fa {
+.pf-c-input-group .pf-c-button .fa,
+.pf-c-input-group button i,
+.ds-password-toggle i,
+.ds-password-toggle .fa {
   color: inherit !important;
+  font-size: 0.95rem;
 }
 
-/* Primary button */
+/* Primary CTA */
 .pf-c-button.pf-m-primary,
 #kc-login,
 input[type="submit"].pf-c-button,
@@ -203,6 +269,7 @@ button[type="submit"] {
   font-weight: 500;
   min-height: 2.5rem;
   width: 100%;
+  box-shadow: none !important;
   transition: background-color 0.15s ease;
 }
 
@@ -218,13 +285,11 @@ input[type="submit"].pf-c-button:hover {
   margin-bottom: 0;
 }
 
-/* Links / secondary */
 .pf-c-button.pf-m-link,
 a {
   color: var(--ds-primary) !important;
 }
 
-/* Alerts */
 .pf-c-alert,
 .alert-error,
 #input-error,
@@ -237,7 +302,6 @@ a {
   color: var(--ds-destructive) !important;
 }
 
-/* Footer clutter */
 #kc-registration,
 #kc-info,
 .login-pf-page-footer,
@@ -245,14 +309,13 @@ a {
   display: none !important;
 }
 
-/* Checkbox (remember me) */
 .pf-c-check__label,
 .checkbox label {
   color: var(--ds-muted-foreground) !important;
   font-size: 0.875rem;
 }
 
-/* PatternFly v5 fallback (future keycloak.v2 themes) */
+/* PatternFly v5 fallback */
 .pf-v5-c-login {
   min-height: 100vh;
   display: flex !important;
@@ -277,4 +340,27 @@ a {
   border: 1px solid var(--ds-border) !important;
   border-radius: var(--ds-radius) !important;
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.25) !important;
+}
+
+.pf-v5-c-input-group {
+  display: flex !important;
+  background: var(--ds-background) !important;
+  border: 1px solid var(--ds-input) !important;
+  border-radius: calc(var(--ds-radius) - 2px) !important;
+  overflow: hidden !important;
+}
+
+.pf-v5-c-input-group .pf-v5-c-form-control,
+.pf-v5-c-input-group input {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.pf-v5-c-input-group .pf-v5-c-button,
+.pf-v5-c-input-group button {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--ds-muted-foreground) !important;
 }

@@ -9,7 +9,7 @@ if not exist .env (
 )
 if not defined DATASAFE_DATA_ROOT set DATASAFE_DATA_ROOT=D:/datasafe-data
 
-set COMPOSE_ARGS=-p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml -f docker-compose.local-binary.yml
+set COMPOSE_ARGS=-p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml -f deploy/compose/docker-compose.local-binary.yml
 
 echo Building Linux storage-server binary from current source...
 set CGO_ENABLED=0

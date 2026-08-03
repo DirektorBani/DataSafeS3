@@ -9,10 +9,16 @@ English | **[Русский](../ru/first-run.md)**
 
 ## Steps
 
+**Recommended:** run the [interactive installer](installer.md) (`.\install.ps1` / `./install.sh`).
+
+Manual:
+
 ```cmd
 copy .env.example .env
-docker compose up -d --build
+docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml up -d
 ```
+
+Optional overlays (HA, Vault, OAuth2, local binary, …): see [`deploy/compose/README.md`](../../deploy/compose/README.md).
 
 ### PostgreSQL metadata (recommended for production-like setup)
 

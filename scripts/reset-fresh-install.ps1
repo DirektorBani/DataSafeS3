@@ -1,4 +1,4 @@
-﻿# РЎР±СЂРѕСЃ DataSafeS3 Рє СЃРѕСЃС‚РѕСЏРЅРёСЋ В«С‡РёСЃС‚Р°СЏ СѓСЃС‚Р°РЅРѕРІРєР°В»
+# РЎР±СЂРѕСЃ DataSafeS3 Рє СЃРѕСЃС‚РѕСЏРЅРёСЋ В«С‡РёСЃС‚Р°СЏ СѓСЃС‚Р°РЅРѕРІРєР°В»
 #
 # РЈРґР°Р»СЏРµС‚ РјРµС‚Р°РґР°РЅРЅС‹Рµ (BoltDB РёР»Рё С‚РѕРј PostgreSQL), РѕР±СЉРµРєС‚С‹ РЅР° РґРёСЃРєРµ Рё РїРµСЂРµР·Р°РїСѓСЃРєР°РµС‚ СЃС‚РµРє.
 # РСЃРїРѕР»СЊР·СѓР№С‚Рµ РїРµСЂРµРґ РїСЂРѕРІРµСЂРєРѕР№ РјР°СЃС‚РµСЂР° РїРµСЂРІРёС‡РЅРѕР№ РЅР°СЃС‚СЂРѕР№РєРё (initial setup wizard).
@@ -15,7 +15,7 @@
 #   .\scripts\reset-fresh-install.ps1 -DataDir .\data-local-test -Postgres -ProjectName datasafe
 #
 # Р”Р»СЏ local-binary overlay (Windows dev) overlay РїРѕРґРєР»СЋС‡Р°РµС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё, РµСЃР»Рё РµСЃС‚СЊ
-# docker-compose.local-binary.yml. РџСЂРѕРµРєС‚ Compose: -ProjectName РёР»Рё COMPOSE_PROJECT_NAME,
+# deploy/compose/docker-compose.local-binary.yml. РџСЂРѕРµРєС‚ Compose: -ProjectName РёР»Рё COMPOSE_PROJECT_NAME,
 # РёРЅР°С‡Рµ РѕРїСЂРµРґРµР»СЏРµС‚СЃСЏ РїРѕ Р·Р°РїСѓС‰РµРЅРЅРѕРјСѓ storage-server, РёРЅР°С‡Рµ РёРјСЏ РёР· compose (datasafe).
 
 param(
@@ -45,9 +45,9 @@ function Get-ComposeBaseArgs {
     if (Test-Path $localData) {
         $args += @("-f", "docker-compose.local-data.yml")
     }
-    $localBinary = Join-Path $root "docker-compose.local-binary.yml"
+    $localBinary = Join-Path $root "deploy/compose/docker-compose.local-binary.yml"
     if (-not $NoLocalBinary -and (Test-Path $localBinary)) {
-        $args += @("-f", "docker-compose.local-binary.yml")
+        $args += @("-f", "deploy/compose/docker-compose.local-binary.yml")
     }
     if ($Project) {
         $args = @("-p", $Project) + $args

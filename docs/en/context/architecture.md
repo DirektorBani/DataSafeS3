@@ -1,4 +1,4 @@
-﻿English | **[Русский](../../ru/context/architecture.md)**
+English | **[Русский](../../ru/context/architecture.md)**
 
 # Architecture
 
@@ -18,7 +18,7 @@ Community Edition ships as **one `storage-server` process** on one host by defau
 | Metrics bearer token | **Implemented** — `STORAGE_METRICS_TOKEN` |
 | HA metadata (Postgres replicas + failover scripts) | **Partial** — manual promote; read-replica list routing |
 | HA v2 lab foundation | **Implemented (lab)** — erasure backend, leader lock, site replication scripts |
-| Read-only `storage-server` standby | **Implemented** — `STORAGE_READ_ONLY`, `docker-compose.ha.yml` |
+| Read-only `storage-server` standby | **Implemented** — `STORAGE_READ_ONLY`, `deploy/compose/docker-compose.ha.yml` |
 | Erasure coding / multi-AZ storage | **Lab foundation** — `STORAGE_OBJECT_BACKEND=erasure`; not production multi-AZ |
 | STS session tokens (scoped S3) | **Implemented** — `POST /api/v1/sts/assume-role`; credentials bound to calling user; `X-Amz-Security-Token` in SigV4 |
 | Event notifications | **Implemented** — Webhook + optional NATS (`STORAGE_NATS_URL`) |
@@ -89,11 +89,11 @@ File: `deploy/docker/Caddyfile`
 | `/healthz`, `/metrics` | storage-server:9000 |
 | everything else | Pre-built static assets (`web/console/dist`) |
 
-Console and API share origin on `:8080` so the UI uses relative `/api/v1` paths without CORS. For Vite HMR during UI development, use `docker compose --profile dev -f docker-compose.yml -f docker-compose.dev.yml`.
+Console and API share origin on `:8080` so the UI uses relative `/api/v1` paths without CORS. For Vite HMR during UI development, use `docker compose --profile dev -f docker-compose.yml -f deploy/compose/docker-compose.dev.yml`.
 
 ## web-console
 
-React + TypeScript SPA. **Default Compose and Helm** serve a **production build** from `web/console/dist` (or the published `ghcr.io/direktorbani/datasafe-console` image in Kubernetes). The optional **`dev` Compose profile** runs Vite with hot reload via `docker-compose.dev.yml`.
+React + TypeScript SPA. **Default Compose and Helm** serve a **production build** from `web/console/dist` (or the published `ghcr.io/direktorbani/datasafe-console` image in Kubernetes). The optional **`dev` Compose profile** runs Vite with hot reload via `deploy/compose/docker-compose.dev.yml`.
 
 ## Observability stack
 

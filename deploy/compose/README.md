@@ -1,5 +1,7 @@
 # Compose overlays
 
+For day-1 setup prefer the **interactive installer** at the repo root: [`install.ps1`](../../install.ps1) / [`install.sh`](../../install.sh) — see [installer docs](../../docs/getting-started/en/installer.md).
+
 Canonical entrypoints stay at the **repository root**:
 
 | File | Role |
@@ -12,7 +14,7 @@ Everything else lives here so the root stays clean for first-run and the future 
 
 ## Usage
 
-Always run compose from the **repo root**. Paths inside these overlays are relative to `deploy/compose/`.
+Always run compose from the **repo root**. Volume paths inside overlays use **repo-root-relative** paths (`./deploy/docker/...`) because Docker Compose on this project resolves them from the project directory.
 
 ```bash
 # Example: postgres + host data + local Linux binary
@@ -33,9 +35,8 @@ cp deploy/compose/env/.env.ha.example .env.ha
 
 | Overlay | Purpose |
 |---------|---------|
-| `docker-compose.local-binary.yml` | Mount prebuilt `deploy/docker/storage-server-linux` |
+| `docker-compose.local-binary.yml` | Mount prebuilt `deploy/docker/storage-server-linux` + console dist |
 | `docker-compose.dev.yml` | Vite HMR console (`--profile dev`) |
-| `docker-compose.oauth2.yml` | oauth2-proxy edge SSO (`--profile oauth2`) |
 | `docker-compose.audit.yml` | Feature-audit / CI (higher login rate limit, `STORAGE_DEV`) |
 | `docker-compose.security-test.yml` | Stricter security QA defaults |
 | `docker-compose.vault.yml` | HashiCorp Vault Agent lab (`--profile vault`) |

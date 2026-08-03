@@ -10,7 +10,7 @@ on:
       - "scripts/vault/**"
       - "deploy/vault/**"
       - "docker-compose.yml"
-      - "docker-compose.vault.yml"
+      - "deploy/compose/docker-compose.vault.yml"
       - ".github/workflows/audit.yml"
   workflow_dispatch:
 
@@ -36,8 +36,8 @@ jobs:
           docker compose -p datasafe-audit --profile postgres \
             -f docker-compose.yml \
             -f docker-compose.local-data.yml \
-            -f docker-compose.local-binary.yml \
-            -f docker-compose.audit.yml \
+            -f deploy/compose/docker-compose.local-binary.yml \
+            -f deploy/compose/docker-compose.audit.yml \
             up -d --wait postgres storage-server caddy prometheus grafana
           for i in $(seq 1 90); do
             if curl -sf http://127.0.0.1:8080/api/v1/health; then exit 0; fi
@@ -46,8 +46,8 @@ jobs:
           docker compose -p datasafe-audit --profile postgres \
             -f docker-compose.yml \
             -f docker-compose.local-data.yml \
-            -f docker-compose.local-binary.yml \
-            -f docker-compose.audit.yml ps
+            -f deploy/compose/docker-compose.local-binary.yml \
+            -f deploy/compose/docker-compose.audit.yml ps
           exit 1
 
       - name: Start optional audit sidecars
@@ -124,8 +124,8 @@ jobs:
           docker compose -p datasafe-audit --profile postgres \
             -f docker-compose.yml \
             -f docker-compose.local-data.yml \
-            -f docker-compose.local-binary.yml \
-            -f docker-compose.audit.yml down -v --remove-orphans
+            -f deploy/compose/docker-compose.local-binary.yml \
+            -f deploy/compose/docker-compose.audit.yml down -v --remove-orphans
 
   vault-integration:
     if: github.event_name == 'workflow_dispatch'
@@ -157,4 +157,4 @@ jobs:
         if: always()
         run: |
           docker compose -p datasafe-vault --profile postgres --profile vault \
-            -f docker-compose.yml -f docker-compose.vault.yml down -v --remove-orphans
+            -f docker-compose.yml -f deploy/compose/docker-compose.vault.yml down -v --remove-orphans

@@ -77,9 +77,29 @@ services:
 
       - STORAGE_SSE_MASTER_KEY=${STORAGE_SSE_MASTER_KEY:-}
 
+      # Identity lab (optional — set via install -Profiles …,identity or .env)
+      - STORAGE_LDAP_ENABLED=${STORAGE_LDAP_ENABLED:-false}
+      - STORAGE_LDAP_URL=${STORAGE_LDAP_URL:-}
+      - STORAGE_LDAP_BIND_DN=${STORAGE_LDAP_BIND_DN:-}
+      - STORAGE_LDAP_BIND_PASSWORD=${STORAGE_LDAP_BIND_PASSWORD:-}
+      - STORAGE_LDAP_BASE_DN=${STORAGE_LDAP_BASE_DN:-}
+      - STORAGE_LDAP_GROUP_DN=${STORAGE_LDAP_GROUP_DN:-}
+      - STORAGE_LDAP_REQUIRE_TLS=${STORAGE_LDAP_REQUIRE_TLS:-false}
+      - STORAGE_OIDC_ENABLED=${STORAGE_OIDC_ENABLED:-false}
+      - STORAGE_OIDC_ISSUER=${STORAGE_OIDC_ISSUER:-}
+      - STORAGE_OIDC_INTERNAL_ISSUER=${STORAGE_OIDC_INTERNAL_ISSUER:-}
+      - STORAGE_OIDC_CLIENT_ID=${STORAGE_OIDC_CLIENT_ID:-}
+      - STORAGE_OIDC_CLIENT_SECRET=${STORAGE_OIDC_CLIENT_SECRET:-}
+      - STORAGE_OIDC_REDIRECT_URL=${STORAGE_OIDC_REDIRECT_URL:-}
+      - STORAGE_OIDC_ROPC_ENABLED=${STORAGE_OIDC_ROPC_ENABLED:-false}
+
     ports:
 
       - "9000:9000"
+
+    # LDAP/OIDC test sidecars and host-published IdPs (Keycloak :8180, OpenLDAP :389).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
     volumes:
 
@@ -144,6 +164,8 @@ services:
     volumes:
 
       - ./deploy/docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+      - ./deploy/docker/prometheus/targets:/etc/prometheus/targets:ro
 
     ports:
 

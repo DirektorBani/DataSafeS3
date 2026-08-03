@@ -4,6 +4,7 @@ English | **[Русский](../ru/README.md)**
 
 - [What is DataSafeS3?](what-is-datasafe.md)
 - [Architecture](architecture.md)
+- **[Interactive installer](installer.md)**
 - [First run](first-run.md)
 - [Setup wizard](setup-wizard.md)
 - [S3 configuration](s3-configuration.md)

@@ -1330,6 +1330,10 @@ export const api = {
     fetchJSON<{ enabled: boolean; issuer?: string; issuer_reachable?: boolean; issuer_error?: string }>(
       "/auth/oidc/config"
     ),
+  getLoginOptions: () =>
+    fetchJSON<{
+      local_login_enabled: boolean;
+    }>("/auth/login-options"),
   exchangeOidcCode: (exchangeCode: string) => exchangeOidcCode(exchangeCode),
   testLDAP: (body: LDAPConfig) =>
     fetchJSON<{ ok: boolean; message?: string; error?: string }>("/settings/ldap/test", {

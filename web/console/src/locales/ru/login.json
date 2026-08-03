@@ -5,7 +5,8 @@
   },
   "error": {
     "loginFailed": "Не удалось войти",
-    "invalidCode": "Неверный код. Попробуйте снова."
+    "invalidCode": "Неверный код. Попробуйте снова.",
+    "oidcIssuerUnreachable": "SSO включён, но IdP недоступен с сервера. В Docker задайте Internal issuer (host.docker.internal или DNS compose) в Настройки → Система и убедитесь, что Keycloak/LDAP запущены."
   },
   "title": {
     "mfa": "Двухфакторная аутентификация",

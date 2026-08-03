@@ -21,10 +21,10 @@ if (-not $env:STORAGE_POSTGRES_PUBLISH_PORT) { $env:STORAGE_POSTGRES_PUBLISH_POR
 $compose = @(
     'compose', '-p', 'datasafe-vault',
     '-f', 'docker-compose.yml',
-    '-f', 'docker-compose.vault.yml'
+    '-f', 'deploy/compose/docker-compose.vault.yml'
 )
 if ($env:DATASAFE_DATA_ROOT) {
-    $compose += @('-f', 'docker-compose.local-data.yml', '-f', 'docker-compose.local-binary.yml')
+    $compose += @('-f', 'docker-compose.local-data.yml', '-f', 'deploy/compose/docker-compose.local-binary.yml')
 }
 $profiles = @('--profile', 'vault')
 if (-not $SkipPostgres) {

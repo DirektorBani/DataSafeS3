@@ -23,7 +23,7 @@ HA v2 в CE: **erasure для объектов**, **оркестрируемый
 | Профиль | Назначение | Скрипт |
 |---------|------------|--------|
 | HA lab | Postgres + 3 storage | `scripts\ha\start-ha-stack.ps1` |
-| Erasure | 6 shard volumes | `docker-compose.ha-erasure.yml`, `scripts\ha\test-erasure-backend.ps1` |
+| Erasure | 6 shard volumes | `deploy/compose/docker-compose.ha-erasure.yml`, `scripts\ha\test-erasure-backend.ps1` |
 | Site replication | Site A → Site B | `scripts\ha\start-site-replication-lab.ps1`, `scripts\ha\test-site-replication.ps1` |
 
 ## Failover метаданных

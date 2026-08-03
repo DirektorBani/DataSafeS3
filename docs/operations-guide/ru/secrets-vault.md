@@ -76,8 +76,8 @@ storageServer:
 
 | Overlay | Назначение |
 |---------|------------|
-| `docker-compose.vault.yml` | Dev Vault + Agent + entrypoint |
-| `docker-compose.vault-product.yml` | `STORAGE_STRICT_SECRETS=true` и prod-флаги |
+| `deploy/compose/docker-compose.vault.yml` | Dev Vault + Agent + entrypoint |
+| `deploy/compose/docker-compose.vault-product.yml` | `STORAGE_STRICT_SECRETS=true` и prod-флаги |
 | `docker-compose.local-data.yml` | Данные в `DATASAFE_DATA_ROOT` (`D:/datasafe-data`) |
 
 ```powershell
@@ -87,7 +87,7 @@ $env:DATASAFE_DATA_ROOT = 'D:/datasafe-data'
 docker compose -p datasafe `
   -f docker-compose.yml `
   -f docker-compose.local-data.yml `
-  -f docker-compose.vault.yml `
+  -f deploy/compose/docker-compose.vault.yml `
   --profile vault up -d
 ```
 
@@ -95,7 +95,7 @@ docker compose -p datasafe `
 
 **Smoke:** `scripts/vault/smoke-vault-integration.ps1` / `.sh`.
 
-Пример env: [`.env.vault.example`](../../../.env.vault.example).
+Пример env: [`deploy/compose/env/.env.vault.example`](../../../deploy/compose/env/.env.vault.example).
 
 ## Контракт product / production-like Compose
 
@@ -109,7 +109,7 @@ docker compose -p datasafe `
 | `STORAGE_OIDC_ROPC_ENABLED=false` | Без ROPC |
 | `STORAGE_LDAP_REQUIRE_TLS=true` | Только `ldaps://` |
 
-Через `docker-compose.vault-product.yml` или Helm `values-production.yaml`.
+Через `deploy/compose/docker-compose.vault-product.yml` или Helm `values-production.yaml`.
 
 ## Air-gap / on-prem
 

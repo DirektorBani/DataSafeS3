@@ -59,7 +59,7 @@ The IdP redirect URI is unchanged (`/api/v1/auth/oidc/callback`). After login, t
 
 In production (`STORAGE_DEV` unset or false), server-initiated HTTP must use **public HTTPS** endpoints. Plain `http://`, loopback, and RFC1918 targets are rejected unless you explicitly relax policy.
 
-For local Loki on `http://localhost:3100`, either keep `STORAGE_DEV=true` or set `STORAGE_OUTBOUND_HTTP_ALLOW=true` (temporary escape hatch — see [planned deprecation](#planned-deprecation-storage_outbound_http_allow) below). The `docker-compose.audit.yml` overlay sets relaxed outbound and higher login limits for feature-audit runs; use it only in dev/CI, not in production.
+For local Loki on `http://localhost:3100`, either keep `STORAGE_DEV=true` or set `STORAGE_OUTBOUND_HTTP_ALLOW=true` (temporary escape hatch — see [planned deprecation](#planned-deprecation-storage_outbound_http_allow) below). The `deploy/compose/docker-compose.audit.yml` overlay sets relaxed outbound and higher login limits for feature-audit runs; use it only in dev/CI, not in production.
 
 ### Planned deprecation: `STORAGE_OUTBOUND_HTTP_ALLOW`
 
@@ -69,13 +69,13 @@ For local Loki on `http://localhost:3100`, either keep `STORAGE_DEV=true` or set
 | **v1.0.3** | Documented sunset timeline (this section); default remains `false` in production |
 | **v1.1.0** | **`STORAGE_OUTBOUND_HTTP_ALLOW` removed** — use `STORAGE_DEV=true` only on non-production stacks, or point integrations at public **HTTPS** endpoints |
 
-**Before v1.1.0:** audit compose, Helm values, and `.env` for `STORAGE_OUTBOUND_HTTP_ALLOW=true`. Replace with HTTPS URLs where possible; for local Loki/Elasticsearch use `STORAGE_DEV=true` on dev/CI overlays only (`docker-compose.audit.yml`, not production).
+**Before v1.1.0:** audit compose, Helm values, and `.env` for `STORAGE_OUTBOUND_HTTP_ALLOW=true`. Replace with HTTPS URLs where possible; for local Loki/Elasticsearch use `STORAGE_DEV=true` on dev/CI overlays only (`deploy/compose/docker-compose.audit.yml`, not production).
 
 **Production checklist:** unset `STORAGE_OUTBOUND_HTTP_ALLOW` (or leave at default `false`); confirm log sinks and webhooks use `https://` public endpoints; run `GET /api/v1/settings/security-status` after upgrade.
 
 ### Login rate limits
 
-Default: **10** login attempts per IP per minute (`STORAGE_RATE_LIMIT_LOGIN`, window `STORAGE_RATE_LIMIT_WINDOW`, default `1m`). CI scripts and load tests may hit 429 — raise the limit in a test overlay (see `docker-compose.audit.yml`) or add backoff in automation.
+Default: **10** login attempts per IP per minute (`STORAGE_RATE_LIMIT_LOGIN`, window `STORAGE_RATE_LIMIT_WINDOW`, default `1m`). CI scripts and load tests may hit 429 — raise the limit in a test overlay (see `deploy/compose/docker-compose.audit.yml`) or add backoff in automation.
 
 ### New and changed environment variables
 
@@ -158,7 +158,7 @@ Release **v1.1.0** is a **trust-debt** minor: closes scheduled SSRF escape hatch
 | `STORAGE_OUTBOUND_HTTP_ALLOW=true` allowed loopback HTTP in production | **Variable removed** — ignored if still set in `.env` |
 | Production Loki at `http://127.0.0.1:3100` with allow flag | Use **HTTPS** public endpoint, or `STORAGE_DEV=true` **only** on dev/CI overlays |
 
-**Dev/CI:** `docker-compose.audit.yml` sets `STORAGE_DEV=true` for feature-audit and local Loki loops — do **not** use this overlay in production.
+**Dev/CI:** `deploy/compose/docker-compose.audit.yml` sets `STORAGE_DEV=true` for feature-audit and local Loki loops — do **not** use this overlay in production.
 
 **Checklist:**
 

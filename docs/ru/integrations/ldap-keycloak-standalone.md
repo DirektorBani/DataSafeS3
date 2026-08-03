@@ -153,7 +153,9 @@ CSS темы: `docs/integrations/keycloak-test/themes/datasafe/login/resources/c
 | Client secret | `datasafe-console-secret` | то же |
 | Redirect URL | `http://localhost:8080/api/v1/auth/oidc/callback` | то же (URL, который видит браузер) |
 
-> **Критично для Docker:** `storage-server` обменивает authorization code на token **из контейнера**, не из браузера. Issuer с `localhost:8180` в well-known Keycloak указывает token endpoint на `[::1]:8180` — из контейнера это недоступно. Задайте **Internal issuer** = `http://host.docker.internal:8180/realms/datasafe` или только public issuer с `localhost` — сервер подставит `host.docker.internal` автоматически (если запущен в Docker).
+> **Критично для Docker:** `storage-server` обменивает authorization code на token **из контейнера**, не из браузера. Issuer с `localhost:8180` в well-known Keycloak указывает token endpoint на `[::1]:8180` — из контейнера это недоступно. Задайте **Internal issuer** = `http://host.docker.internal:8180/realms/datasafe` (или compose DNS `http://datasafe-keycloak-test:8080/realms/datasafe` после `scripts\start-*-test.cmd`, который подключает sidecar к `datasafe_default`) — или только public issuer с `localhost`: сервер подставит `host.docker.internal` автоматически в Docker.
+>
+> **AUD-09 / кнопка SSO:** проверка доступности идёт сначала по **серверному** (Internal) issuer. Раньше проверка только Public `localhost` из контейнера отключала **Войти через SSO**, даже когда Keycloak был жив — этот ложный негатив исправлен.
 
 **Keycloak Admin Console:** http://localhost:8180/admin — `admin` / `admin`.
 
@@ -166,6 +168,14 @@ curl -s http://localhost:8180/realms/datasafe/.well-known/openid-configuration
 ```
 
 Ожидается JSON с `issuer`, `authorization_endpoint`, `token_endpoint`.
+
+---
+
+## 2.1 Edge oauth2-proxy login — удалён
+
+Доверие к заголовкам `X-Auth-Request-*` для выдачи JWT консоли (`STORAGE_TRUST_AUTH_PROXY` / `/api/v1/auth/proxy/session`) **не поддерживается**. Путь убран: он небезопасен, если edge не идеально снимает клиентские заголовки — типичная ошибка конфигурации.
+
+Используйте **OIDC**: настройте Keycloak (или другой IdP) в **Settings → OIDC**, затем **Войти через SSO** на странице логина. Админка Keycloak: `http://localhost:8180/admin`.
 
 ---
 

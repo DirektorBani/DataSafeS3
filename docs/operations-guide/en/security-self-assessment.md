@@ -31,7 +31,7 @@ DataSafeS3 Community Edition `storage-server` + console, Apache-2.0, single-tena
 | Control | Status |
 |---------|--------|
 | Postgres streaming replication docs + scripts | `scripts/postgres-failover.*`, `scripts/dr-drill.ps1` |
-| Read-only storage-server standby | `STORAGE_READ_ONLY`, `docker-compose.ha.yml` |
+| Read-only storage-server standby | `STORAGE_READ_ONLY`, `deploy/compose/docker-compose.ha.yml` |
 | Replication lag alerting | Grafana `PostgresReplicationLagHigh` |
 
 ## Residual risks

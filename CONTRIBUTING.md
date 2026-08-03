@@ -34,11 +34,11 @@ docker compose -p datasafe --profile postgres `
 
   -f docker-compose.local-data.yml `
 
-  -f docker-compose.local-binary.yml `
+  -f deploy/compose/docker-compose.local-binary.yml `
 
   up -d postgres storage-server caddy
 
-scripts\feature-audit-test.ps1   # requires stack on :8080 + docker-compose.audit.yml overlay
+scripts\feature-audit-test.ps1   # requires stack on :8080 + deploy/compose/docker-compose.audit.yml overlay
 
 ```
 
@@ -75,7 +75,7 @@ Before tagging a release:
 1. Rebuild server binary for `local-binary` overlay:  
    `$env:GOOS='linux'; $env:GOARCH='amd64'; go build -o deploy/docker/storage-server-linux ./cmd/storage-server; Remove-Item Env:GOOS,Env:GOARCH -ErrorAction SilentlyContinue`
 2. Fresh volumes: `docker compose ... down -v`, clear `D:\datasafe-data\storage` and `postgres`.
-3. Stack with `docker-compose.audit.yml` (+ prometheus/grafana for monitoring rows).
+3. Stack with `deploy/compose/docker-compose.audit.yml` (+ prometheus/grafana for monitoring rows).
 4. `scripts\start-minio-test.cmd` (or let feature-audit auto-start MinIO on :9100).
 5. Integration sidecars for full audit: `start-ldap-test.cmd`, `start-keycloak-test.cmd`, `start-elasticsearch-test.cmd`, `start-loki-test.cmd`.
 6. `scripts\feature-audit-test.ps1` — target **0 FAIL**.

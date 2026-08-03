@@ -1,4 +1,4 @@
-﻿English | **[Русский](../../ru/context/gateway.md)**
+English | **[Русский](../../ru/context/gateway.md)**
 
 # DataSafeS3 Gateway — External S3 Replication
 
@@ -264,7 +264,7 @@ Full DataSafeS3 restart with Postgres and local binary:
 ```cmd
 docker compose --profile postgres down
 scripts\dev-docker-local-binary.cmd
-docker compose --profile postgres -f docker-compose.yml -f docker-compose.local-binary.yml up -d
+docker compose --profile postgres -f docker-compose.yml -f deploy/compose/docker-compose.local-binary.yml up -d
 ```
 
 (`dev-docker-local-binary.cmd` starts only storage-server and caddy; for Postgres use the second command or extend the profile in the script.)

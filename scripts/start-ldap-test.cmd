@@ -8,6 +8,7 @@ set "VOLUME_CONFIG=datasafe-ldap-config"
 set "LDAP_DOMAIN=datasafe.local"
 set "LDAP_ADMIN_PASSWORD=ldapadmin"
 set "BOOTSTRAP=%CD%\docs\integrations\ldap-test\bootstrap.ldif"
+set "COMPOSE_NET=datasafe_default"
 
 if not exist "%BOOTSTRAP%" (
   echo Bootstrap LDIF not found: %BOOTSTRAP%
@@ -23,7 +24,7 @@ if not errorlevel 1 (
     exit /b 1
   )
   echo Started existing container %CONTAINER%.
-  goto :done
+  goto :ready
 )
 
 echo Starting %CONTAINER% (osixia/openldap)...
@@ -40,7 +41,13 @@ docker run -d ^
   osixia/openldap:1.5.0
 if errorlevel 1 exit /b 1
 
-:done
+:ready
+rem Attach to the main compose network when present (storage-server can use container DNS).
+docker network inspect %COMPOSE_NET% >nul 2>&1
+if not errorlevel 1 (
+  docker network connect %COMPOSE_NET% %CONTAINER% >nul 2>&1
+)
+
 echo Waiting for LDAP and applying bootstrap LDIF (idempotent)...
 set /a LDAP_WAIT=0
 :wait_ldap
@@ -57,11 +64,12 @@ if errorlevel 1 (
 docker exec %CONTAINER% ldapadd -x -c -D "cn=admin,dc=datasafe,dc=local" -w %LDAP_ADMIN_PASSWORD% -f /container/service/sldif/custom/50-datasafe-users.ldif >nul 2>&1
 
 echo.
-echo LDAP URL (host):      ldap://localhost:389
-echo LDAP URL (Docker):    ldap://host.docker.internal:389
-echo Bind DN:              cn=admin,dc=datasafe,dc=local
-echo Bind password:        %LDAP_ADMIN_PASSWORD%
-echo Base DN:              ou=users,dc=datasafe,dc=local
-echo Test user:            ldapuser / password
+echo LDAP URL (host):           ldap://localhost:389
+echo LDAP URL (Docker host):    ldap://host.docker.internal:389
+echo LDAP URL (compose DNS):    ldap://datasafe-ldap-test:389
+echo Bind DN:                   cn=admin,dc=datasafe,dc=local
+echo Bind password:             %LDAP_ADMIN_PASSWORD%
+echo Base DN:                   ou=users,dc=datasafe,dc=local
+echo Test user:                 ldapuser / password
 echo.
 echo See docs\integrations\ldap-keycloak-standalone.md

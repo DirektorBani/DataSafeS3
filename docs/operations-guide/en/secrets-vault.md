@@ -84,8 +84,8 @@ The example overrides container `command`/`args` to `source /vault/secrets/stora
 
 | Overlay | Purpose |
 |---------|---------|
-| `docker-compose.vault.yml` | Dev Vault + Agent + entrypoint wrapper |
-| `docker-compose.vault-product.yml` | `STORAGE_STRICT_SECRETS=true`, production-like flags |
+| `deploy/compose/docker-compose.vault.yml` | Dev Vault + Agent + entrypoint wrapper |
+| `deploy/compose/docker-compose.vault-product.yml` | `STORAGE_STRICT_SECRETS=true`, production-like flags |
 | `docker-compose.local-data.yml` | Bind data to `DATASAFE_DATA_ROOT` (Windows: `D:/datasafe-data`) |
 
 ```powershell
@@ -96,7 +96,7 @@ $env:DATASAFE_DATA_ROOT = 'D:/datasafe-data'
 docker compose -p datasafe `
   -f docker-compose.yml `
   -f docker-compose.local-data.yml `
-  -f docker-compose.vault.yml `
+  -f deploy/compose/docker-compose.vault.yml `
   --profile vault up -d
 ```
 
@@ -107,7 +107,7 @@ docker compose -p datasafe `
 docker compose -p datasafe \
   -f docker-compose.yml \
   -f docker-compose.local-data.yml \
-  -f docker-compose.vault.yml \
+  -f deploy/compose/docker-compose.vault.yml \
   --profile vault up -d
 ```
 
@@ -115,7 +115,7 @@ Step-by-step: [deploy/vault/README.md](../../../deploy/vault/README.md).
 
 **Integration smoke:** `scripts/vault/smoke-vault-integration.sh` (or `.ps1`) — Vault KV check, `/healthz`, admin login, `GET /api/v1/settings/security-status` with no weak defaults.
 
-Copy [`.env.vault.example`](../../../.env.vault.example) for vault-related compose variables.
+Copy [`deploy/compose/env/.env.vault.example`](../../../deploy/compose/env/.env.vault.example) for vault-related compose variables.
 
 ## Product / production-like Compose contract
 
@@ -129,7 +129,7 @@ There is no separate `product` Compose profile. Production-like behaviour uses:
 | `STORAGE_OIDC_ROPC_ENABLED=false` | Disable ROPC grant |
 | `STORAGE_LDAP_REQUIRE_TLS=true` | Reject `ldap://` |
 
-Apply via `docker-compose.vault-product.yml` or Helm `values-production.yaml`. Secrets must come from Vault Agent (or operator `.env`), not compose defaults.
+Apply via `deploy/compose/docker-compose.vault-product.yml` or Helm `values-production.yaml`. Secrets must come from Vault Agent (or operator `.env`), not compose defaults.
 
 ## Air-gapped / on-prem
 

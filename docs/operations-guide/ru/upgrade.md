@@ -59,7 +59,7 @@ Redirect URI у IdP не меняется (`/api/v1/auth/oidc/callback`). Пос
 
 В production (`STORAGE_DEV` не задан или false) server-initiated HTTP — только **публичный HTTPS**. Plain `http://`, loopback и RFC1918 отклоняются, пока явно не ослабите политику.
 
-Для локального Loki на `http://localhost:3100` оставьте `STORAGE_DEV=true` или задайте `STORAGE_OUTBOUND_HTTP_ALLOW=true` (временный escape hatch — см. [планируемый sunset](#planned-deprecation-storage_outbound_http_allow) ниже). Overlay `docker-compose.audit.yml` ослабляет outbound и поднимает лимит login для feature-audit — только dev/CI, не production.
+Для локального Loki на `http://localhost:3100` оставьте `STORAGE_DEV=true` или задайте `STORAGE_OUTBOUND_HTTP_ALLOW=true` (временный escape hatch — см. [планируемый sunset](#planned-deprecation-storage_outbound_http_allow) ниже). Overlay `deploy/compose/docker-compose.audit.yml` ослабляет outbound и поднимает лимит login для feature-audit — только dev/CI, не production.
 
 ### Planned deprecation: `STORAGE_OUTBOUND_HTTP_ALLOW`
 
@@ -69,13 +69,13 @@ Redirect URI у IdP не меняется (`/api/v1/auth/oidc/callback`). Пос
 | **v1.0.3** | Зафиксирован timeline sunset (этот раздел); в production по умолчанию `false` |
 | **v1.1.0** | **`STORAGE_OUTBOUND_HTTP_ALLOW` удаляется** — `STORAGE_DEV=true` только на non-production стеках, либо публичные **HTTPS** endpoint'ы |
 
-**До v1.1.0:** проверьте compose, Helm и `.env` на `STORAGE_OUTBOUND_HTTP_ALLOW=true`. Где возможно — переведите интеграции на HTTPS; для локального Loki/Elasticsearch используйте `STORAGE_DEV=true` только в dev/CI overlay (`docker-compose.audit.yml`, не production).
+**До v1.1.0:** проверьте compose, Helm и `.env` на `STORAGE_OUTBOUND_HTTP_ALLOW=true`. Где возможно — переведите интеграции на HTTPS; для локального Loki/Elasticsearch используйте `STORAGE_DEV=true` только в dev/CI overlay (`deploy/compose/docker-compose.audit.yml`, не production).
 
 **Чеклист production:** не задавайте `STORAGE_OUTBOUND_HTTP_ALLOW` (или оставьте `false`); sinks и webhooks — `https://` на публичные хосты; после обновления — `GET /api/v1/settings/security-status`.
 
 ### Rate limit на login
 
-По умолчанию **10** попыток login с IP за минуту (`STORAGE_RATE_LIMIT_LOGIN`, окно `STORAGE_RATE_LIMIT_WINDOW`, по умолчанию `1m`). CI и нагрузочные скрипты могут получить 429 — поднимите лимит в test overlay (`docker-compose.audit.yml`) или добавьте backoff в автоматизацию.
+По умолчанию **10** попыток login с IP за минуту (`STORAGE_RATE_LIMIT_LOGIN`, окно `STORAGE_RATE_LIMIT_WINDOW`, по умолчанию `1m`). CI и нагрузочные скрипты могут получить 429 — поднимите лимит в test overlay (`deploy/compose/docker-compose.audit.yml`) или добавьте backoff в автоматизацию.
 
 ### Новые и изменённые переменные окружения
 
@@ -158,7 +158,7 @@ docker compose --profile postgres up -d
 | `STORAGE_OUTBOUND_HTTP_ALLOW=true` | **Переменная удалена** |
 | Loki `http://127.0.0.1` в production с allow | **HTTPS** или `STORAGE_DEV=true` только на dev/CI |
 
-Overlay `docker-compose.audit.yml` задаёт `STORAGE_DEV=true` для feature-audit — **не** для production.
+Overlay `deploy/compose/docker-compose.audit.yml` задаёт `STORAGE_DEV=true` для feature-audit — **не** для production.
 
 **Чеклист:** убрать `STORAGE_OUTBOUND_HTTP_ALLOW` из compose/Helm/.env; перевести sinks/webhooks на `https://` где нужно.
 

@@ -19,7 +19,7 @@ services:
       STORAGE_TRUSTED_CLUSTER_REPL_ENABLED: ${STORAGE_TRUSTED_CLUSTER_REPL_ENABLED:-true}
     volumes: !override
       - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-primary:/data
-      - ../docker/storage-server-linux:/storage-server-bin:ro
+      - ./deploy/docker/storage-server-linux:/storage-server-bin:ro
     ports: !override
       - "${HA_PRIMARY_STORAGE_PORT:-9002}:9000"
     healthcheck:
@@ -35,7 +35,7 @@ services:
       - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-primary:/source:ro
       - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-standby-1:/dest1
       - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-standby-2:/dest2
-      - ../docker/object-replicator.sh:/replicate.sh:ro
+      - ./deploy/docker/object-replicator.sh:/replicate.sh:ro
     environment:
       SYNC_INTERVAL_SEC: ${HA_OBJECT_SYNC_INTERVAL_SEC:-3}
     depends_on:
@@ -47,8 +47,8 @@ services:
     pull_policy: if_not_present
     volumes:
       - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-standby-1:/data:ro
-      - ../docker/storage-server-linux:/storage-server-bin:ro
-      - ../docker/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+      - ./deploy/docker/storage-server-linux:/storage-server-bin:ro
+      - ./deploy/docker/docker-entrypoint.sh:/docker-entrypoint.sh:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,8 +69,8 @@ services:
     pull_policy: if_not_present
     volumes:
       - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-standby-2:/data:ro
-      - ../docker/storage-server-linux:/storage-server-bin:ro
-      - ../docker/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+      - ./deploy/docker/storage-server-linux:/storage-server-bin:ro
+      - ./deploy/docker/docker-entrypoint.sh:/docker-entrypoint.sh:ro
     depends_on:
       postgres:
         condition: service_healthy

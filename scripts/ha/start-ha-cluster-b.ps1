@@ -11,7 +11,7 @@ Set-Location $Root
 $Project = "datasafe-b"
 $EnvFile = ".env.site-b"
 if (-not (Test-Path $EnvFile)) {
-    Copy-Item ".env.site-b.example" $EnvFile
+    Copy-Item "deploy/compose/env/.env.site-b.example" $EnvFile
     Write-Host "[ha-cluster-b] Created $EnvFile from example"
 }
 
@@ -27,8 +27,8 @@ $Compose = @(
     "--profile", "postgres",
     "-f", "docker-compose.yml",
     "-f", "docker-compose.local-data.yml",
-    "-f", "docker-compose.local-binary.yml",
-    "-f", "docker-compose.site-b.yml",
+    "-f", "deploy/compose/docker-compose.local-binary.yml",
+    "-f", "deploy/compose/docker-compose.site-b.yml",
     "--env-file", $EnvFile
 )
 

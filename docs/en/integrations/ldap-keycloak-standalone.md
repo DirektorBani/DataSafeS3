@@ -153,7 +153,9 @@ Theme CSS: `docs/integrations/keycloak-test/themes/datasafe/login/resources/css/
 | Client secret | `datasafe-console-secret` | same |
 | Redirect URL | `http://localhost:8080/api/v1/auth/oidc/callback` | same (URL seen by browser) |
 
-> **Critical for Docker:** `storage-server` exchanges authorization code for token **from the container**, not from the browser. Issuer with `localhost:8180` in Keycloak well-known points token endpoint to `[::1]:8180` — unreachable from the container. Set **Internal issuer** = `http://host.docker.internal:8180/realms/datasafe` or only public issuer with `localhost` — server substitutes `host.docker.internal` automatically (when running in Docker).
+> **Critical for Docker:** `storage-server` exchanges authorization code for token **from the container**, not from the browser. Issuer with `localhost:8180` in Keycloak well-known points token endpoint to `[::1]:8180` — unreachable from the container. Set **Internal issuer** = `http://host.docker.internal:8180/realms/datasafe` (or compose DNS `http://datasafe-keycloak-test:8080/realms/datasafe` after `scripts\start-*-test.cmd` joins `datasafe_default`) — or only public issuer with `localhost`: the server substitutes `host.docker.internal` automatically when running in Docker.
+>
+> **AUD-09 / SSO button:** console reachability probes the **server-side** (Internal) issuer first. Checking only Public `localhost` from inside the container used to disable **Sign in with SSO** even when Keycloak was healthy — that false positive is fixed.
 
 **Keycloak Admin Console:** http://localhost:8180/admin — `admin` / `admin`.
 
@@ -166,6 +168,14 @@ curl -s http://localhost:8180/realms/datasafe/.well-known/openid-configuration
 ```
 
 Expect JSON with `issuer`, `authorization_endpoint`, `token_endpoint`.
+
+---
+
+## 2.1 Edge oauth2-proxy login — removed
+
+Trusting `X-Auth-Request-*` headers to mint a console JWT (`STORAGE_TRUST_AUTH_PROXY` / `/api/v1/auth/proxy/session`) is **not supported**. That path was removed because it is unsafe unless the edge is perfect at stripping client-supplied headers — a common misconfiguration.
+
+Use **OIDC** instead: configure Keycloak (or another IdP) under **Settings → OIDC**, then **Sign in with SSO** on the login page. Keep Keycloak admin on `http://localhost:8180/admin`.
 
 ---
 

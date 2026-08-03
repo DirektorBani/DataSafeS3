@@ -11,7 +11,7 @@ export STORAGE_URL="${STORAGE_URL:-http://127.0.0.1:9000}"
 
 COMPOSE=(docker compose -p datasafe-vault
   -f docker-compose.yml
-  -f docker-compose.vault.yml)
+  -f deploy/compose/docker-compose.vault.yml)
 
 if [[ -f docker-compose.local-data.yml && -n "${DATASAFE_DATA_ROOT:-}" ]]; then
   COMPOSE+=(-f docker-compose.local-data.yml)

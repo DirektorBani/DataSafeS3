@@ -8,7 +8,7 @@ cd "$ROOT"
 
 COMPOSE=(docker compose -p datasafe
   -f docker-compose.yml
-  -f docker-compose.vault.yml)
+  -f deploy/compose/docker-compose.vault.yml)
 
 if [[ -f docker-compose.local-data.yml ]]; then
   COMPOSE+=(-f docker-compose.local-data.yml)

@@ -124,14 +124,16 @@ func (s *Server) handleOIDCPublicConfig(w http.ResponseWriter, r *http.Request) 
 		"issuer":  cfg.OIDC.Issuer,
 	}
 	if cfg.OIDC.Enabled {
+		// Probe Internal first (server-side path). Checking only Public localhost from
+		// inside Docker falsely marks Keycloak unreachable and disables the SSO button.
 		issuers := s.oidcIssuers(cfg)
-		issuerURL := issuers.Public
-		if issuerURL == "" {
-			issuerURL = issuers.Internal
-		}
-		if _, _, _, err := auth.DiscoverOIDCEndpoints(issuerURL, http.DefaultClient); err != nil {
+		if ok, err := auth.ProbeOIDCDiscovery(issuers, http.DefaultClient); err != nil || !ok {
 			resp["issuer_reachable"] = false
-			resp["issuer_error"] = err.Error()
+			if err != nil {
+				resp["issuer_error"] = err.Error()
+			} else {
+				resp["issuer_error"] = "openid discovery failed"
+			}
 		} else {
 			resp["issuer_reachable"] = true
 		}

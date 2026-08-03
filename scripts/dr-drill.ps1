@@ -29,7 +29,7 @@ Test-Step "Postgres metadata (when configured)" {
 }
 
 Test-Step "Read-only standby profile exists" {
-  if (-not (Test-Path "docker-compose.ha.yml")) { throw "docker-compose.ha.yml missing" }
+  if (-not (Test-Path "deploy/compose/docker-compose.ha.yml")) { throw "deploy/compose/docker-compose.ha.yml missing" }
 }
 
 Test-Step "Backup smoke (list buckets)" {

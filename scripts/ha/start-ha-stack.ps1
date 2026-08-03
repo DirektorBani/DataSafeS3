@@ -12,8 +12,8 @@ Set-Location $Root
 $Project = "datasafe-ha"
 $EnvFile = Join-Path $Root ".env.ha"
 if (-not (Test-Path $EnvFile)) {
-    Copy-Item (Join-Path $Root ".env.ha.example") $EnvFile
-    Write-Host "Created $EnvFile from .env.ha.example"
+    Copy-Item (Join-Path $Root "deploy/compose/env/.env.ha.example") $EnvFile
+    Write-Host "Created $EnvFile from deploy/compose/env/.env.ha.example"
 }
 
 $DataRoot = "D:/datasafe-data-ha"
@@ -68,9 +68,9 @@ $Compose = @(
     "--profile", "ha-standby",
     "-f", "docker-compose.yml",
     "-f", "docker-compose.local-data.yml",
-    "-f", "docker-compose.local-binary.yml",
-    "-f", "docker-compose.ha.yml",
-    "-f", "docker-compose.ha-local.yml",
+    "-f", "deploy/compose/docker-compose.local-binary.yml",
+    "-f", "deploy/compose/docker-compose.ha.yml",
+    "-f", "deploy/compose/docker-compose.ha-local.yml",
     "--env-file", ".env.ha"
 )
 

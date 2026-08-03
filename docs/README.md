@@ -30,6 +30,8 @@ What DataSafeS3 is, how it works, and how data and access are modeled.
 | Topic | English | Русский |
 |-------|---------|---------|
 | **First run (Docker Compose)** | [getting-started/en/first-run.md](getting-started/en/first-run.md) | [getting-started/ru/first-run.md](getting-started/ru/first-run.md) |
+| **Interactive installer** | [getting-started/en/installer.md](getting-started/en/installer.md) | [getting-started/ru/installer.md](getting-started/ru/installer.md) |
+| **Compose overlays (labs / HA / Vault / OAuth2)** | [../deploy/compose/README.md](../deploy/compose/README.md) | same |
 | **Setup wizard** | [getting-started/en/setup-wizard.md](getting-started/en/setup-wizard.md) | [getting-started/ru/setup-wizard.md](getting-started/ru/setup-wizard.md) |
 | **External S3 (optional)** | [getting-started/en/s3-configuration.md](getting-started/en/s3-configuration.md) | [getting-started/ru/s3-configuration.md](getting-started/ru/s3-configuration.md) |
 | **Kubernetes / Helm** | [../deploy/helm/datasafe/README.md](../deploy/helm/datasafe/README.md) | same |

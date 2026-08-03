@@ -4,6 +4,7 @@
 
 - [Что такое DataSafeS3?](what-is-datasafe.md)
 - [Архитектура](architecture.md)
+- **[Интерактивный установщик](installer.md)**
 - [Первый запуск](first-run.md)
 - [Мастер настройки](setup-wizard.md)
 - [Настройка S3](s3-configuration.md)

@@ -106,42 +106,100 @@ func (b *Backend) shardPath(pathIdx int, bucket, key, versionID string, shard in
 	return filepath.Join(b.paths[pathIdx], b.shardDir(bucket, key, versionID), fmt.Sprintf("shard-%d.bin", shard))
 }
 
-func (b *Backend) metaPath(bucket, key, versionID string) string {
-	return filepath.Join(b.paths[0], b.shardDir(bucket, key, versionID), "meta.json")
+func (b *Backend) metaPath(pathIdx int, bucket, key, versionID string) string {
+	return filepath.Join(b.paths[pathIdx], b.shardDir(bucket, key, versionID), "meta.json")
 }
 
+// writeMeta stores object metadata on every erasure path so losing paths[0] alone
+// cannot make a recoverable object unreadable.
 func (b *Backend) writeMeta(bucket, key, versionID string, meta objectMeta) error {
 	if b.readOnly {
 		return fmt.Errorf("read-only")
-	}
-	path := b.metaPath(bucket, key, versionID)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
 	}
 	data, err := json.Marshal(meta)
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
+	var firstErr error
+	ok := 0
+	for i := range b.paths {
+		path := b.metaPath(i, bucket, key, versionID)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		tmp := path + ".tmp"
+		if err := os.WriteFile(tmp, data, 0o644); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if err := os.Rename(tmp, path); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		ok++
 	}
-	return os.Rename(tmp, path)
+	// Quorum: at least one full copy beyond a single disk — prefer majority of paths.
+	need := (len(b.paths) + 1) / 2
+	if need < 1 {
+		need = 1
+	}
+	if ok < need {
+		if firstErr != nil {
+			return fmt.Errorf("erasure meta write: %d/%d paths ok: %w", ok, len(b.paths), firstErr)
+		}
+		return fmt.Errorf("erasure meta write: %d/%d paths ok", ok, len(b.paths))
+	}
+	return nil
 }
 
 func (b *Backend) readMeta(bucket, key, versionID string) (objectMeta, error) {
-	data, err := os.ReadFile(b.metaPath(bucket, key, versionID))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return objectMeta{}, storage.ErrNotFound
+	var lastErr error
+	for i := range b.paths {
+		data, err := os.ReadFile(b.metaPath(i, bucket, key, versionID))
+		if err != nil {
+			if os.IsNotExist(err) {
+				lastErr = storage.ErrNotFound
+				continue
+			}
+			lastErr = err
+			continue
 		}
-		return objectMeta{}, err
+		var meta objectMeta
+		if err := json.Unmarshal(data, &meta); err != nil {
+			lastErr = err
+			continue
+		}
+		return meta, nil
 	}
-	var meta objectMeta
-	if err := json.Unmarshal(data, &meta); err != nil {
-		return objectMeta{}, err
+	if lastErr != nil {
+		return objectMeta{}, lastErr
 	}
-	return meta, nil
+	return objectMeta{}, storage.ErrNotFound
+}
+
+func (b *Backend) metaModTime(bucket, key, versionID string) time.Time {
+	for i := range b.paths {
+		st, err := os.Stat(b.metaPath(i, bucket, key, versionID))
+		if err == nil {
+			return st.ModTime().UTC()
+		}
+	}
+	return time.Now().UTC()
+}
+
+func (b *Backend) removeAllMeta(bucket, key, versionID string) {
+	for i := range b.paths {
+		path := b.metaPath(i, bucket, key, versionID)
+		_ = os.Remove(path)
+		_ = os.Remove(filepath.Dir(path))
+	}
 }
 
 func (b *Backend) PutObject(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string) (string, error) {
@@ -236,7 +294,7 @@ func (b *Backend) GetObjectVersion(_ context.Context, bucket, key, versionID str
 		Size:         int64(len(data)),
 		ETag:         etag,
 		ContentType:  meta.ContentType,
-		LastModified: fileModTime(b.metaPath(bucket, key, versionID)),
+		LastModified: b.metaModTime(bucket, key, versionID),
 	}
 	return io.NopCloser(strings.NewReader(string(data))), info, nil
 }
@@ -266,7 +324,7 @@ func (b *Backend) StatObjectVersion(_ context.Context, bucket, key, versionID st
 		Size:         int64(meta.OrigLen),
 		ETag:         etag,
 		ContentType:  meta.ContentType,
-		LastModified: fileModTime(b.metaPath(bucket, key, versionID)),
+		LastModified: b.metaModTime(bucket, key, versionID),
 	}, nil
 }
 
@@ -294,9 +352,7 @@ func (b *Backend) DeleteObjectVersion(_ context.Context, bucket, key, versionID 
 	for i := 0; i < total; i++ {
 		_ = os.Remove(b.shardPath(i, bucket, key, versionID, i))
 	}
-	_ = os.Remove(b.metaPath(bucket, key, versionID))
-	dir := filepath.Dir(b.metaPath(bucket, key, versionID))
-	_ = os.Remove(dir)
+	b.removeAllMeta(bucket, key, versionID)
 	b.refreshHealth(context.Background())
 	return nil
 }
@@ -359,29 +415,33 @@ func (b *Backend) Health(ctx context.Context) storage.BackendHealth {
 
 func (b *Backend) refreshHealth(_ context.Context) {
 	degraded := 0
-	filepath.WalkDir(b.paths[0], func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || d.Name() != "meta.json" {
-			return nil
-		}
-		dir := filepath.Dir(path)
-		missing := 0
-		for i := range b.paths {
-			shard := filepath.Join(b.paths[i], strings.TrimPrefix(dir, b.paths[0]+string(os.PathSeparator)), "shard-"+fmt.Sprintf("%d", i)+".bin")
-			// simpler: derive bucket/key from meta path
-			_ = shard
-		}
-		rel, _ := filepath.Rel(b.paths[0], dir)
-		for i := 0; i < b.layout.total(); i++ {
-			sp := filepath.Join(b.paths[i], rel, fmt.Sprintf("shard-%d.bin", i))
-			if _, err := os.Stat(sp); err != nil {
-				missing++
+	seen := map[string]struct{}{}
+	for _, root := range b.paths {
+		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || d.Name() != "meta.json" {
+				return nil
 			}
-		}
-		if missing > 0 && missing <= b.layout.ParityShards {
-			degraded++
-		}
-		return nil
-	})
+			rel, err := filepath.Rel(root, filepath.Dir(path))
+			if err != nil || rel == "." {
+				return nil
+			}
+			if _, ok := seen[rel]; ok {
+				return nil
+			}
+			seen[rel] = struct{}{}
+			missing := 0
+			for i := 0; i < b.layout.total(); i++ {
+				sp := filepath.Join(b.paths[i], rel, fmt.Sprintf("shard-%d.bin", i))
+				if _, err := os.Stat(sp); err != nil {
+					missing++
+				}
+			}
+			if missing > 0 && missing <= b.layout.ParityShards {
+				degraded++
+			}
+			return nil
+		})
+	}
 	h := storage.BackendHealth{Degraded: degraded > 0, DegradedSets: degraded}
 	b.mu.Lock()
 	b.health = h
@@ -389,72 +449,104 @@ func (b *Backend) refreshHealth(_ context.Context) {
 	observability.SetErasureDegradedSets(degraded)
 }
 
-// HealOnce rebuilds missing shards for all objects under path[0].
+// HealOnce rebuilds missing shards (and missing meta replicas) for known objects.
 func (b *Backend) HealOnce(ctx context.Context) (int64, error) {
 	if b.readOnly {
 		return 0, nil
 	}
 	var healedBytes int64
-	err := filepath.WalkDir(b.paths[0], func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || d.Name() != "meta.json" {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		rel, err := filepath.Rel(b.paths[0], filepath.Dir(path))
-		if err != nil {
-			return nil
-		}
-		metaBytes, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		var meta objectMeta
-		if json.Unmarshal(metaBytes, &meta) != nil {
-			return nil
-		}
-		total := b.layout.total()
-		shards := make([][]byte, total)
-		missing := false
-		for i := 0; i < total; i++ {
-			sp := filepath.Join(b.paths[i], rel, fmt.Sprintf("shard-%d.bin", i))
-			data, err := os.ReadFile(sp)
-			if err != nil {
-				shards[i] = nil
-				missing = true
-				continue
-			}
-			shards[i] = data
-		}
-		if !missing {
-			return nil
-		}
-		data, err := b.codec.Decode(shards, meta.OrigLen)
-		if err != nil {
-			return nil
-		}
-		newShards, err := b.codec.Encode(data)
-		if err != nil {
-			return nil
-		}
-		for i, shard := range newShards {
-			sp := filepath.Join(b.paths[i], rel, fmt.Sprintf("shard-%d.bin", i))
-			if _, err := os.Stat(sp); err == nil {
-				continue
-			}
-			if err := writeShard(sp, shard); err != nil {
+	seen := map[string]struct{}{}
+	for _, root := range b.paths {
+		err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || d.Name() != "meta.json" {
 				return nil
 			}
-			healedBytes += int64(len(shard))
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+			rel, err := filepath.Rel(root, filepath.Dir(path))
+			if err != nil || rel == "." {
+				return nil
+			}
+			if _, ok := seen[rel]; ok {
+				return nil
+			}
+			seen[rel] = struct{}{}
+
+			metaBytes, err := os.ReadFile(path)
+			if err != nil {
+				return nil
+			}
+			var meta objectMeta
+			if json.Unmarshal(metaBytes, &meta) != nil {
+				return nil
+			}
+			// Replicate meta to any path that lost it.
+			for i := range b.paths {
+				mp := filepath.Join(b.paths[i], rel, "meta.json")
+				if _, err := os.Stat(mp); err == nil {
+					continue
+				}
+				if err := os.MkdirAll(filepath.Dir(mp), 0o755); err != nil {
+					continue
+				}
+				tmp := mp + ".tmp"
+				if err := os.WriteFile(tmp, metaBytes, 0o644); err != nil {
+					continue
+				}
+				if err := os.Rename(tmp, mp); err != nil {
+					continue
+				}
+				healedBytes += int64(len(metaBytes))
+			}
+
+			total := b.layout.total()
+			shards := make([][]byte, total)
+			missing := false
+			for i := 0; i < total; i++ {
+				sp := filepath.Join(b.paths[i], rel, fmt.Sprintf("shard-%d.bin", i))
+				data, err := os.ReadFile(sp)
+				if err != nil {
+					shards[i] = nil
+					missing = true
+					continue
+				}
+				shards[i] = data
+			}
+			if !missing {
+				return nil
+			}
+			data, err := b.codec.Decode(shards, meta.OrigLen)
+			if err != nil {
+				return nil
+			}
+			newShards, err := b.codec.Encode(data)
+			if err != nil {
+				return nil
+			}
+			for i, shard := range newShards {
+				sp := filepath.Join(b.paths[i], rel, fmt.Sprintf("shard-%d.bin", i))
+				if _, err := os.Stat(sp); err == nil {
+					continue
+				}
+				if err := writeShard(sp, shard); err != nil {
+					return nil
+				}
+				healedBytes += int64(len(shard))
+			}
+			return nil
+		})
+		if err != nil {
+			b.refreshHealth(ctx)
+			observability.AddErasureHealBytes(healedBytes)
+			return healedBytes, err
 		}
-		return nil
-	})
+	}
 	b.refreshHealth(ctx)
 	observability.AddErasureHealBytes(healedBytes)
-	return healedBytes, err
+	return healedBytes, nil
 }
 
 var _ storage.ObjectBackend = (*Backend)(nil)

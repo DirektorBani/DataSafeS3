@@ -11,7 +11,7 @@ Set-Location $Root
 $compose = @(
     "compose", "-p", $ComposeProject,
     "-f", "docker-compose.yml",
-    "-f", "docker-compose.vault.yml"
+    "-f", "deploy/compose/docker-compose.vault.yml"
 )
 if (Test-Path "docker-compose.local-data.yml") {
     $compose += @("-f", "docker-compose.local-data.yml")

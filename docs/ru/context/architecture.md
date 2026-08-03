@@ -1,4 +1,4 @@
-﻿**[English](../../en/context/architecture.md)** | Русский
+**[English](../../en/context/architecture.md)** | Русский
 
 # Architecture
 
@@ -18,7 +18,7 @@ Community Edition по умолчанию — **один процесс `storage
 | Bearer token для metrics | **Реализовано** — `STORAGE_METRICS_TOKEN` |
 | HA метаданных (реплики Postgres + failover) | **Частично** — ручной promote; маршрутизация list на read replica |
 | HA v2 lab foundation | **Реализовано (lab)** — erasure backend, leader lock, site replication scripts |
-| Read-only standby `storage-server` | **Реализовано** — `STORAGE_READ_ONLY`, `docker-compose.ha.yml` |
+| Read-only standby `storage-server` | **Реализовано** — `STORAGE_READ_ONLY`, `deploy/compose/docker-compose.ha.yml` |
 | Erasure coding / multi-AZ | **Lab foundation** — `STORAGE_OBJECT_BACKEND=erasure`; не production multi-AZ |
 | STS session tokens (scoped S3) | **Реализовано** — `POST /api/v1/sts/assume-role`; credentials привязаны к вызывающему пользователю; `X-Amz-Security-Token` в SigV4 |
 | Уведомления о событиях | **Реализовано** — Webhook + опционально NATS (`STORAGE_NATS_URL`) |
@@ -89,11 +89,11 @@ File: `deploy/docker/Caddyfile`
 | `/healthz`, `/metrics` | storage-server:9000 |
 | everything else | Статическая сборка (`web/console/dist`) |
 
-Консоль и API на одном origin `:8080`. Для Vite HMR: `docker compose --profile dev -f docker-compose.yml -f docker-compose.dev.yml`.
+Консоль и API на одном origin `:8080`. Для Vite HMR: `docker compose --profile dev -f docker-compose.yml -f deploy/compose/docker-compose.dev.yml`.
 
 ## web-console
 
-React + TypeScript SPA. **По умолчанию** в Compose и Helm — **production-сборка** из `web/console/dist` (или образ `ghcr.io/direktorbani/datasafe-console` в Kubernetes). Профиль **`dev`** — Vite с hot reload (`docker-compose.dev.yml`).
+React + TypeScript SPA. **По умолчанию** в Compose и Helm — **production-сборка** из `web/console/dist` (или образ `ghcr.io/direktorbani/datasafe-console` в Kubernetes). Профиль **`dev`** — Vite с hot reload (`deploy/compose/docker-compose.dev.yml`).
 
 ## Observability stack
 

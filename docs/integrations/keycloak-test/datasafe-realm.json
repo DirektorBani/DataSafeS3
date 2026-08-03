@@ -70,6 +70,43 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "datasafe-oauth2-proxy",
+      "name": "DataSafeS3 OAuth2 Proxy",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "datasafe-oauth2-proxy-secret",
+      "redirectUris": [
+        "http://localhost:8080/oauth2/callback",
+        "http://127.0.0.1:8080/oauth2/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080"
+      ],
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "aud-oauth2-proxy",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "datasafe-oauth2-proxy",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
     }
   ]
 }

@@ -52,7 +52,7 @@ storageServer:
       {{- with secret "secret/data/datasafe/ldap-bind" }}
       STORAGE_LDAP_BIND_PASSWORD={{ .Data.data.value }}
       {{- end }}
-  # Source injected file before the stock entrypoint (same pattern as docker-compose.vault.yml).
+  # Source injected file before the stock entrypoint (same pattern as deploy/compose/docker-compose.vault.yml).
   command: ["/bin/sh", "-c"]
   args:
     - |

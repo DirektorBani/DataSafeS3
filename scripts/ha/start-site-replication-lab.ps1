@@ -7,10 +7,13 @@ $ErrorActionPreference = "Stop"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $Root
 
-foreach ($f in @(".env.site-a", ".env.site-b")) {
-    if (-not (Test-Path $f)) {
-        Copy-Item "$f.example" $f
-        Write-Host "[site-repl] Created $f from example"
+foreach ($pair in @(
+    @{ File = ".env.site-a"; Example = "deploy/compose/env/.env.site-a.example" },
+    @{ File = ".env.site-b"; Example = "deploy/compose/env/.env.site-b.example" }
+)) {
+    if (-not (Test-Path $pair.File)) {
+        Copy-Item $pair.Example $pair.File
+        Write-Host "[site-repl] Created $($pair.File) from $($pair.Example)"
     }
 }
 
@@ -35,15 +38,15 @@ function ComposeArgs([string]$Project, [string]$EnvFile, [string[]]$ExtraFiles) 
         "--profile", "postgres",
         "-f", "docker-compose.yml",
         "-f", "docker-compose.local-data.yml",
-        "-f", "docker-compose.local-binary.yml"
+        "-f", "deploy/compose/docker-compose.local-binary.yml"
     )
     foreach ($ef in $ExtraFiles) { $args += @("-f", $ef) }
     $args += @("--env-file", $EnvFile)
     return ,$args
 }
 
-$ComposeA = ComposeArgs "datasafe-a" ".env.site-a" @("docker-compose.site-repl-lab.yml")
-$ComposeB = ComposeArgs "datasafe-b" ".env.site-b" @("docker-compose.site-b.yml")
+$ComposeA = ComposeArgs "datasafe-a" ".env.site-a" @("deploy/compose/docker-compose.site-repl-lab.yml")
+$ComposeB = ComposeArgs "datasafe-b" ".env.site-b" @("deploy/compose/docker-compose.site-b.yml")
 
 if ($FreshVolumes) {
     & docker @ComposeA down -v --remove-orphans

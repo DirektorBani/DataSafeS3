@@ -87,12 +87,58 @@ func TestBrowserOAuthEndpointKeepsPublicAuthURL(t *testing.T) {
 
 	issuers := OIDCIssuers{
 		Public:   srv.URL + "/realms/datasafe",
-		Internal: "http://host.docker.internal:8180/realms/datasafe",
+		// Closed port so Internal discovery fails even when a local Keycloak is up.
+		Internal: "http://127.0.0.1:1/realms/datasafe",
 	}
 	ep := BrowserOAuthEndpoint(issuers, srv.Client())
 	wantAuth := "http://localhost:8180/realms/datasafe/protocol/openid-connect/auth"
 	if ep.AuthURL != wantAuth {
 		t.Fatalf("AuthURL = %q, want %q", ep.AuthURL, wantAuth)
+	}
+}
+
+func TestBrowserOAuthEndpointRewritesInternalDiscoveryToPublic(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"authorization_endpoint":"http://host.docker.internal:8180/realms/datasafe/protocol/openid-connect/auth",
+			"token_endpoint":"http://host.docker.internal:8180/realms/datasafe/protocol/openid-connect/token"
+		}`))
+	}))
+	defer srv.Close()
+
+	issuers := OIDCIssuers{
+		Public:   "http://localhost:8180/realms/datasafe",
+		Internal: srv.URL + "/realms/datasafe",
+	}
+	ep := BrowserOAuthEndpoint(issuers, srv.Client())
+	want := "http://localhost:8180/realms/datasafe/protocol/openid-connect/auth"
+	if ep.AuthURL != want {
+		t.Fatalf("AuthURL = %q, want %q", ep.AuthURL, want)
+	}
+}
+
+func TestProbeOIDCDiscoveryPrefersInternal(t *testing.T) {
+	t.Parallel()
+	internalOK := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"authorization_endpoint":"http://x/auth","token_endpoint":"http://x/token"}`))
+	}))
+	defer internalOK.Close()
+
+	ok, err := ProbeOIDCDiscovery(OIDCIssuers{
+		Public:   "http://127.0.0.1:1/realms/missing",
+		Internal: internalOK.URL + "/realms/datasafe",
+	}, internalOK.Client())
+	if err != nil || !ok {
+		t.Fatalf("expected reachable via internal, ok=%v err=%v", ok, err)
+	}
+
+	ok, err = ProbeOIDCDiscovery(OIDCIssuers{
+		Public:   "http://127.0.0.1:1/realms/missing",
+		Internal: "http://127.0.0.1:1/realms/also-missing",
+	}, http.DefaultClient)
+	if ok || err == nil {
+		t.Fatalf("expected unreachable, ok=%v err=%v", ok, err)
 	}
 }
 

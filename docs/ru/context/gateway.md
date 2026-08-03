@@ -1,4 +1,4 @@
-﻿**[English](../../en/context/gateway.md)** | Русский
+**[English](../../en/context/gateway.md)** | Русский
 
 # DataSafeS3 Gateway — внешняя репликация S3
 
@@ -263,7 +263,7 @@ scripts\setup-minio-gateway.cmd
 `cmd
 docker compose --profile postgres down
 scripts\dev-docker-local-binary.cmd
-docker compose --profile postgres -f docker-compose.yml -f docker-compose.local-binary.yml up -d
+docker compose --profile postgres -f docker-compose.yml -f deploy/compose/docker-compose.local-binary.yml up -d
 `
 
 (`dev-docker-local-binary.cmd` поднимает только storage-server и caddy; для Postgres используйте вторую команду или расширьте профиль в скрипте.)

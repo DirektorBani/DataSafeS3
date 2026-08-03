@@ -1,4 +1,4 @@
-﻿**[English](../en/scaling.md)** | Русский
+**[English](../en/scaling.md)** | Русский
 
 # Масштабирование
 
@@ -54,7 +54,7 @@ Community Edition DataSafeS3 — **single-node по умолчанию**. Ниж
 
 ## Read-only standby storage-server
 
-`STORAGE_READ_ONLY=true` — мутирующие API возвращают **503** с `Retry-After`; GET/List/Head доступны для DR. Пример: `docker-compose.ha.yml`. **Community Edition — HA lab / DR tooling** (скрипты failover, DR drill, Helm `values-ha.yaml`): [эталонное развёртывание](./reference-deployment-2node.md).
+`STORAGE_READ_ONLY=true` — мутирующие API возвращают **503** с `Retry-After`; GET/List/Head доступны для DR. Пример: `deploy/compose/docker-compose.ha.yml`. **Community Edition — HA lab / DR tooling** (скрипты failover, DR drill, Helm `values-ha.yaml`): [эталонное развёртывание](./reference-deployment-2node.md).
 
 ## Горизонтальные варианты
 
@@ -79,7 +79,7 @@ Community Edition DataSafeS3 — **single-node по умолчанию**. Ниж
 | `STORAGE_ERASURE_DATA_PATHS` | — | Корни shard-хранилищ через запятую (минимум data+parity paths) |
 | `STORAGE_ERASURE_HEAL_INTERVAL` | `5m` | Интервал фонового heal |
 
-Lab compose: `docker-compose.ha-erasure.yml` + `scripts/ha/test-erasure-backend.ps1`. Профиль `production` 4+2 — реализационная основа для future hardening; перед production-данными нужны собственные failure drills.
+Lab compose: `deploy/compose/docker-compose.ha-erasure.yml` + `scripts/ha/test-erasure-backend.ps1`. Профиль `production` 4+2 — реализационная основа для future hardening; перед production-данными нужны собственные failure drills.
 
 Prometheus: `datasafe_erasure_degraded_shard_sets`, `datasafe_erasure_heal_bytes_total`.
 

@@ -47,7 +47,7 @@ Use path-style endpoint and `--option s3.region=us-east-1` if required by your r
 Example NATS compose:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.ha.yml --profile nats up -d nats
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.ha.yml --profile nats up -d nats
 ```
 
 ## STS scoped upload (integrators)

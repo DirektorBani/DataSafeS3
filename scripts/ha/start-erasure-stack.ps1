@@ -10,11 +10,11 @@ Set-Location $Root
 $Project = "datasafe-erasure"
 $EnvFile = Join-Path $Root ".env.erasure"
 if (-not (Test-Path $EnvFile)) {
-    $example = Join-Path $Root ".env.erasure.example"
+    $example = Join-Path $Root "deploy/compose/env/.env.erasure.example"
     if (Test-Path $example) {
         Copy-Item $example $EnvFile
-    } elseif (Test-Path (Join-Path $Root ".env.ha.example")) {
-        Copy-Item (Join-Path $Root ".env.ha.example") $EnvFile
+    } elseif (Test-Path (Join-Path $Root "deploy/compose/env/.env.ha.example")) {
+        Copy-Item (Join-Path $Root "deploy/compose/env/.env.ha.example") $EnvFile
     }
     Write-Host "[erasure] Created $EnvFile"
 }
@@ -55,8 +55,8 @@ $Compose = @(
     "--profile", "postgres",
     "-f", "docker-compose.yml",
     "-f", "docker-compose.local-data.yml",
-    "-f", "docker-compose.local-binary.yml",
-    "-f", "docker-compose.ha-erasure.yml",
+    "-f", "deploy/compose/docker-compose.local-binary.yml",
+    "-f", "deploy/compose/docker-compose.ha-erasure.yml",
     "--env-file", ".env.erasure"
 )
 

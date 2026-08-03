@@ -36,7 +36,7 @@ Legacy read-only standby (`STORAGE_READ_ONLY=true`) remains for DR drills only �
 | Profile | Purpose | Script |
 |---------|---------|--------|
 | HA metadata + 3 storage (lab) | Postgres replication + object copy sidecar | `scripts/ha/start-ha-stack.ps1` |
-| Erasure backend | 6 shard volumes, single writer | `docker-compose.ha-erasure.yml` + `scripts/ha/test-erasure-backend.ps1` |
+| Erasure backend | 6 shard volumes, single writer | `deploy/compose/docker-compose.ha-erasure.yml` + `scripts/ha/test-erasure-backend.ps1` |
 | Site replication two-stack | Site A → Site B async (AK/SK) | `scripts/ha/start-site-replication-lab.ps1` + `scripts/ha/test-site-replication.ps1` |
 | **Trusted clusters two-stack** | Site A ↔ Site B mTLS pairing + repl | `scripts/ha/start-ha-stack.ps1` + `start-ha-cluster-b.ps1` + [trusted-clusters.md](./trusted-clusters.md) |
 
@@ -44,8 +44,8 @@ Example erasure lab:
 
 ```powershell
 docker compose -p datasafe-erasure --profile postgres `
-  -f docker-compose.yml -f docker-compose.local-data.yml -f docker-compose.local-binary.yml `
-  -f docker-compose.ha-erasure.yml --env-file .env.ha up -d
+  -f docker-compose.yml -f docker-compose.local-data.yml -f deploy/compose/docker-compose.local-binary.yml `
+  -f deploy/compose/docker-compose.ha-erasure.yml --env-file .env.ha up -d
 scripts\ha\test-erasure-backend.ps1
 ```
 

@@ -31,11 +31,11 @@ Template: [deploy/helm/datasafe/templates/caddy-lb.yaml](../helm/datasafe/templa
 
 ## Compose overlay
 
-Use with `docker-compose.ha-local.yml`:
+Use with `deploy/compose/docker-compose.ha-local.yml`:
 
 ```powershell
 # Leader + two followers behind Caddy (adjust upstreams to your node addresses)
-docker compose -f docker-compose.ha-local.yml -f deploy/caddy/docker-compose.lb-overlay.yml up -d
+docker compose -f deploy/compose/docker-compose.ha-local.yml -f deploy/caddy/docker-compose.lb-overlay.yml up -d
 ```
 
 ## Health checks

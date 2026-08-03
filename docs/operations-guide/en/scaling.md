@@ -1,4 +1,4 @@
-﻿English | **[Русский](../ru/scaling.md)**
+English | **[Русский](../ru/scaling.md)**
 
 # Scaling
 
@@ -60,7 +60,7 @@ See also [disaster-recovery](./disaster-recovery.md).
 
 ## Read-only storage-server standby
 
-Set `STORAGE_READ_ONLY=true` on a secondary `storage-server` sharing the same metadata + object data path (or replica metadata + replicated object store). Mutating Admin/S3 APIs return **503** with `Retry-After`; GET/List/Head remain available for DR read access. Example overlay: `docker-compose.ha.yml`. **Community Edition — full HA tooling** (failover scripts, DR drill, Helm `values-ha.yaml`) — see [reference deployment](./reference-deployment-2node.md).
+Set `STORAGE_READ_ONLY=true` on a secondary `storage-server` sharing the same metadata + object data path (or replica metadata + replicated object store). Mutating Admin/S3 APIs return **503** with `Retry-After`; GET/List/Head remain available for DR read access. Example overlay: `deploy/compose/docker-compose.ha.yml`. **Community Edition — full HA tooling** (failover scripts, DR drill, Helm `values-ha.yaml`) — see [reference deployment](./reference-deployment-2node.md).
 
 ## Horizontal options (limited today)
 
@@ -85,7 +85,7 @@ Set on `storage-server`:
 | `STORAGE_ERASURE_DATA_PATHS` | — | Comma-separated shard roots (min = data+parity count) |
 | `STORAGE_ERASURE_HEAL_INTERVAL` | `5m` | Background shard rebuild interval |
 
-Lab compose: `docker-compose.ha-erasure.yml` + `scripts/ha/test-erasure-backend.ps1`. The `production` 4+2 layout is an implementation profile for future hardening; validate it with your own failure drills before using it for production data.
+Lab compose: `deploy/compose/docker-compose.ha-erasure.yml` + `scripts/ha/test-erasure-backend.ps1`. The `production` 4+2 layout is an implementation profile for future hardening; validate it with your own failure drills before using it for production data.
 
 Prometheus: `datasafe_erasure_degraded_shard_sets`, `datasafe_erasure_heal_bytes_total`.
 

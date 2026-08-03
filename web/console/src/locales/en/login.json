@@ -6,7 +6,7 @@
   "error": {
     "loginFailed": "Login failed",
     "invalidCode": "Invalid code. Try again.",
-    "oidcIssuerUnreachable": "SSO is enabled but the identity provider is unreachable. Check issuer URL in Settings → System."
+    "oidcIssuerUnreachable": "SSO is enabled but the identity provider is unreachable from the server. For Docker, set Internal issuer (e.g. host.docker.internal or compose DNS) in Settings → System, and confirm Keycloak/LDAP sidecars are running."
   },
   "title": {
     "mfa": "Two-factor authentication",

@@ -1,17 +1,17 @@
 # DataSafeS3 Feature Audit - automated API tests (corrected API contracts)
 #
-# Compose (Windows local dev): use docker-compose.audit.yml overlay so login rate limit
+# Compose (Windows local dev): use deploy/compose/docker-compose.audit.yml overlay so login rate limit
 # and outbound HTTP allowlist do not block the ~15+ logins and Loki/webhook sink tests.
 #   docker compose -p datasafe --profile postgres `
 #     -f docker-compose.yml -f docker-compose.local-data.yml `
-#     -f docker-compose.local-binary.yml -f docker-compose.audit.yml `
+#     -f deploy/compose/docker-compose.local-binary.yml -f deploy/compose/docker-compose.audit.yml `
 #     up -d postgres storage-server caddy
 # Optional: AUDIT_RESET_ADMIN=1 runs feature-audit-preflight.ps1 before tests.
 # Integration sidecars (before audit): scripts\start-ldap-test.cmd, start-keycloak-test.cmd,
 # start-minio-test.cmd, start-elasticsearch-test.cmd, start-loki-test.cmd
 # v1.1 API (teams, share hash): rebuild linux binary before compose:
 #   go build -o deploy/docker/storage-server-linux ./cmd/storage-server
-#   (with GOOS=linux GOARCH=amd64) and use docker-compose.local-binary.yml overlay.
+#   (with GOOS=linux GOARCH=amd64) and use deploy/compose/docker-compose.local-binary.yml overlay.
 param(
     [string]$BaseUrl = 'http://localhost:8080',
     [string]$S3Url = 'http://localhost:9000',

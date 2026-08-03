@@ -414,6 +414,7 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /api/v1/auth/oidc/callback", s.handleOIDCCallback)
 	mux.HandleFunc("POST /api/v1/auth/oidc/exchange", s.handleOIDCExchange)
 	mux.HandleFunc("POST /api/v1/auth/oidc/password-login", s.handleOIDCPasswordLogin)
+	mux.HandleFunc("GET /api/v1/auth/login-options", s.handleAuthLoginOptions)
 
 	mux.HandleFunc("GET /api/v1/setup/status", s.handleSetupStatus)
 	setupAdmin := s.requireAdmin
@@ -609,6 +610,10 @@ func (s *Server) routes() {
 }
 
 func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
+	if !localLoginEnabled() {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "local login disabled"})
+		return
+	}
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`

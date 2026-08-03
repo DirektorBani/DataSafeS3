@@ -8,7 +8,7 @@
 #   docker compose -f docker-compose.yml -f docker-compose.local-data.yml --profile postgres up -d
 #
 # Combine with local-binary overlay on Windows:
-#   docker compose -f docker-compose.yml -f docker-compose.local-data.yml -f docker-compose.local-binary.yml --profile postgres up -d
+#   docker compose -f docker-compose.yml -f docker-compose.local-data.yml -f deploy/compose/docker-compose.local-binary.yml --profile postgres up -d
 #
 # Compose merges volume lists by container target; named volumes from docker-compose.yml
 # are replaced for /data and /var/lib/postgresql/data.
