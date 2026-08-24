@@ -2,6 +2,31 @@
 
 All notable changes to DataSafeS3 are documented in this file.
 
+## [Unreleased]
+
+## [1.4.0] - 2026-08-24
+
+### Added
+
+- **Governance Evidence Pack (CE)** — Admin storage inventory CSV jobs (`POST/GET /api/v1/inventory/jobs`, download); Activity export CSV/JSON (`GET /api/v1/activity/export`); Object Lock / retention / blocked-delete activity codes; optional activity trail GC via `STORAGE_ACTIVITY_RETENTION_DAYS` (default 90).
+- **S3 path audit** — SigV4 `DeleteObject` blocked by retention/legal hold now writes `object_delete_blocked` to Activity (same as Admin JSON delete).
+- **Console** — Activity Export buttons; bucket Settings → Storage inventory CSV with optional dest-bucket (admin).
+- **Helper** — `scripts/collect-evidence-pack.ps1` assembles inventory + activity + settings into a folder/zip.
+- **Docs** — EN/RU [governance evidence](docs/use-cases/en/governance-evidence.md) checklist; audit guide updates.
+- **Tests** — Go evidence-pack coverage (inventory, activity export, S3 delete-blocked, retention purge); Playwright smoke `e2e/evidence-pack.spec.ts`.
+
+### Changed
+
+- Activity retention worker runs once at process start, then hourly (was hourly-only).
+- Inventory `schedule` other than `manual` returns **501** (cron not shipped).
+
+### Honesty
+
+- Inventory is Admin-first CSV for operator evidence — **not** AWS S3 Inventory + Athena / Parquet analytics; cron/durable queue deferred.
+- Activity retention GC is disk hygiene — **not** a WORM / certified compliance audit store.
+- Evidence pack does **not** claim ISO/SOC certification or multi-AZ magic.
+- Read-only **auditor** role is not in this slice (admin exports the pack for the auditor).
+
 ## [1.3.0] - 2026-08-03
 
 Minor release: **cluster installer (Waves 1–2)** and **SSH Docker lab release gate** (live Apply, Patroni promote, unicast keepalived VIP — 0 SKIP), plus cluster Grafana metrics and root install entrypoints.

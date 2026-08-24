@@ -68,7 +68,14 @@ func (s *Store) ListActivity(f metadata.ActivityFilter) (metadata.ActivityListRe
 		args = append(args, f.IP)
 		n++
 	}
-	q += ` ORDER BY ts DESC LIMIT 5000`
+	fetchLimit := f.Limit + f.Offset
+	if fetchLimit < 5000 {
+		fetchLimit = 5000
+	}
+	if fetchLimit > 100_000 {
+		fetchLimit = 100_000
+	}
+	q += fmt.Sprintf(` ORDER BY ts DESC LIMIT %d`, fetchLimit)
 	rows, err := s.pool.Query(context.Background(), q, args...)
 	if err != nil {
 		return metadata.ActivityListResult{}, err
@@ -103,6 +110,18 @@ func (s *Store) ListActivity(f metadata.ActivityFilter) (metadata.ActivityListRe
 		end = total
 	}
 	return metadata.ActivityListResult{Events: all[f.Offset:end], Total: total}, nil
+}
+
+// PurgeActivityBefore deletes audit_logs rows older than cutoff.
+func (s *Store) PurgeActivityBefore(cutoff time.Time) (int, error) {
+	if cutoff.IsZero() {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(context.Background(), `DELETE FROM audit_logs WHERE ts < $1`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 func (s *Store) PutWebhook(rec metadata.WebhookRecord) error {

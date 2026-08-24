@@ -730,6 +730,41 @@ async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+async function downloadAuthenticated(path: string, fallbackName: string): Promise<void> {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${API_BASE}${path}`, { headers });
+  if (res.status === 401) {
+    clearToken();
+    window.dispatchEvent(new Event("datasafe:unauthorized"));
+    throw new ApiError("Session expired. Please sign in again.", 401);
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    let message = text || res.statusText;
+    try {
+      const json = JSON.parse(text) as { error?: string };
+      if (json.error) message = json.error;
+    } catch {
+      /* raw */
+    }
+    throw new ApiError(message, res.status);
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="?([^";]+)"?/i.exec(cd);
+  const name = match?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function login(username: string, password: string): Promise<{ mfa_required?: boolean; mfa_token?: string; mfa_setup_required?: boolean }> {
   const res = await fetch(`${API_BASE}/admin/login`, {
     method: "POST",
@@ -1069,6 +1104,58 @@ export const api = {
     const qs = q.toString();
     return fetchJSON<{ events: ActivityEvent[]; total: number }>(
       `/activity${qs ? `?${qs}` : ""}`
+    );
+  },
+
+  exportActivity: async (params?: {
+    period?: string;
+    user?: string;
+    action?: string;
+    bucket?: string;
+    ip?: string;
+    search?: string;
+    format?: "csv" | "json";
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.period) q.set("period", params.period);
+    if (params?.user) q.set("user", params.user);
+    if (params?.action) q.set("action", params.action);
+    if (params?.bucket) q.set("bucket", params.bucket);
+    if (params?.ip) q.set("ip", params.ip);
+    if (params?.search) q.set("search", params.search);
+    q.set("format", params?.format ?? "csv");
+    const qs = q.toString();
+    await downloadAuthenticated(`/activity/export?${qs}`, `activity-export.${params?.format ?? "csv"}`);
+  },
+
+  createInventoryJob: (body: {
+    bucket: string;
+    prefix?: string;
+    format?: string;
+    dest_bucket?: string;
+    dest_key?: string;
+  }) =>
+    fetchJSON<{
+      id: string;
+      bucket: string;
+      prefix?: string;
+      format: string;
+      status: string;
+      error?: string;
+      object_count?: number;
+      truncated?: boolean;
+      dest_bucket?: string;
+      dest_key?: string;
+    }>("/inventory/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
+  downloadInventoryJob: async (id: string, filename?: string) => {
+    await downloadAuthenticated(
+      `/inventory/jobs/${encodeURIComponent(id)}/download`,
+      filename ?? `inventory-${id}.csv`
     );
   },
 

@@ -14,6 +14,12 @@
     "userUpdated": "Пользователь обновлён",
     "policyChanged": "Политика изменена",
     "settingsChanged": "Настройки изменены",
+    "objectDeleteBlocked": "Удаление заблокировано",
+    "objectLockChanged": "Object Lock изменён",
+    "objectRetentionSet": "Retention объекта задан",
+    "versioningChanged": "Versioning изменён",
+    "activityExported": "Activity экспортирован",
+    "inventoryExported": "Inventory экспортирован",
     "webhookCreated": "Вебхук создан",
     "webhookDeleted": "Вебхук удалён",
     "shareCreated": "Ссылка создана",
@@ -24,6 +30,12 @@
   "description": "Журнал аудита операций хранилища и администрирования. Обновляется каждые 5 секунд.",
   "live": "В реальном времени",
   "updating": "Обновление…",
+  "export": {
+    "csv": "Экспорт CSV",
+    "json": "Экспорт JSON",
+    "done": "Выгрузка activity скачана",
+    "failed": "Не удалось выгрузить activity"
+  },
   "filters": {
     "period": "Период",
     "action": "Действие",

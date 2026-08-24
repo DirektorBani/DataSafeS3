@@ -133,6 +133,7 @@ type MetadataStore interface {
 	// Activity / audit
 	AppendActivity(rec ActivityRecord) error
 	ListActivity(f ActivityFilter) (ActivityListResult, error)
+	PurgeActivityBefore(cutoff time.Time) (int, error)
 
 	// Usage
 	AddUsageBytes(upload, download int64) error

@@ -28,7 +28,7 @@ services:
     cap_add:
       - IPC_LOCK
     command: server -dev
-    ports:
+    ports: !override
       - "${VAULT_PUBLISH_PORT:-8200}:8200"
     healthcheck:
       test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
@@ -86,7 +86,7 @@ services:
     environment:
       - DATASAFE_VAULT_REQUIRED=true
       - VAULT_RENDERED_ENV=/rendered/datasafe.env
-    ports:
+    ports: !override
       - "${VAULT_INTEGRATION_STORAGE_PORT:-9001}:9000"
 
   postgres:
@@ -94,7 +94,7 @@ services:
       POSTGRES_PASSWORD: ${VAULT_TEST_PG_PASSWORD:-VaultIntegPg9!}
       POSTGRES_USER: ${STORAGE_POSTGRES_USER:-datasafe}
       POSTGRES_DB: ${STORAGE_POSTGRES_DB:-datasafe}
-    ports:
+    ports: !override
       - "${VAULT_INTEGRATION_POSTGRES_PORT:-5434}:5432"
 
 volumes:

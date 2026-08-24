@@ -1,4 +1,4 @@
-# Re-upload all objects via Admin API so erasure backend rewrites shards (maintenance window).
+﻿# Re-upload all objects via Admin API so erasure backend rewrites shards (maintenance window).
 param(
     [string]$BaseUrl = "http://127.0.0.1:8082",
     [switch]$DryRun
@@ -33,7 +33,12 @@ $migrated = 0
 
 foreach ($bucket in $buckets) {
     if ($bucket -match '^\.' -or $bucket -eq '.datasafe-trash') { continue }
-    $objs = Invoke-RestMethod -Uri "$BaseUrl/api/v1/buckets/$bucket/objects" -Headers $h
+    try {
+        $objs = Invoke-RestMethod -Uri "$BaseUrl/api/v1/buckets/$bucket/objects" -Headers $h
+    } catch {
+        if ($_.Exception.Response.StatusCode.value__ -eq 404) { Write-Host "  skip bucket $bucket (objects list 404)"; continue }
+        throw
+    }
     foreach ($obj in @($objs.objects)) {
         if ($obj.is_delete_marker) { continue }
         $total++

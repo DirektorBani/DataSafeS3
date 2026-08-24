@@ -103,6 +103,21 @@
   "settings": {
     "openAdmin": "Open in admin bucket settings"
   },
+  "inventory": {
+    "title": "Storage inventory",
+    "description": "Export a CSV listing of objects (with Object Lock fields when present). Admin-only; not AWS Inventory/Athena.",
+    "prefix": "Prefix filter",
+    "prefixPlaceholder": "backups/",
+    "destBucket": "Destination bucket (optional)",
+    "destBucketPlaceholder": "evidence-reports",
+    "destKey": "Destination key (optional)",
+    "destKeyPlaceholder": "inventory/backups.csv",
+    "destHint": "If a destination bucket is set, the same CSV is also written as an object there. Download still happens in the browser.",
+    "destDone": "Also wrote {{key}} to bucket {{bucket}}",
+    "exportCsv": "Export CSV",
+    "done": "Inventory downloaded ({{count}} objects)",
+    "failed": "Inventory export failed"
+  },
   "access": {
     "title": "Tenant access",
     "description": "Regulate who can read or write this bucket. Empty list = default tenant role rules.",

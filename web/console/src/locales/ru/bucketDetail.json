@@ -104,6 +104,21 @@
   "settings": {
     "openAdmin": "Открыть в настройках бакетов администратора"
   },
+  "inventory": {
+    "title": "Состав хранения",
+    "description": "Выгрузка CSV со списком объектов (поля Object Lock, если есть). Только для администратора; это не AWS Inventory/Athena.",
+    "prefix": "Фильтр префикса",
+    "prefixPlaceholder": "backups/",
+    "destBucket": "Бакет назначения (опционально)",
+    "destBucketPlaceholder": "evidence-reports",
+    "destKey": "Ключ объекта (опционально)",
+    "destKeyPlaceholder": "inventory/backups.csv",
+    "destHint": "Если указан бакет назначения, тот же CSV дополнительно записывается туда объектом. Скачивание в браузере всё равно выполняется.",
+    "destDone": "Также записано {{key}} в бакет {{bucket}}",
+    "exportCsv": "Экспорт CSV",
+    "done": "Inventory скачан ({{count}} объектов)",
+    "failed": "Не удалось выгрузить inventory"
+  },
   "access": {
     "title": "Доступ тенанта",
     "description": "Кто может читать или записывать этот бакет. Пустой список = правила ролей тенанта по умолчанию.",

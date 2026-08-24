@@ -17,6 +17,7 @@ import (
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/cluster/pki"
 	"github.com/DirektorBani/datasafe/internal/ha"
+	"github.com/DirektorBani/datasafe/internal/inventory"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	_ "github.com/DirektorBani/datasafe/internal/metadata/postgres"
 	pgmeta "github.com/DirektorBani/datasafe/internal/metadata/postgres"
@@ -42,22 +43,24 @@ type Config struct {
 }
 
 type Server struct {
-	cfg              Config
-	meta             metadata.MetadataStore
-	backend          storage.ObjectBackend
-	svc              *s3.Service
-	s3               *s3.Handler
-	jwt              *auth.JWTManager
-	oidcSessions     *auth.OIDCSessionStore
-	oidcExchange     *auth.OIDCExchangeStore
-	loginRateLimit   *ipRateLimiter
-	webauthnSessions *webauthnSessionStore
-	mux              *http.ServeMux
-	cluster          *clusterMonitor
-	clusterPKI_      *pki.Manager
-	trustedClusterW  *trustedClusterWorker
-	eventSinks       []EventSink
-	haLeader         *ha.Leader
+	cfg                   Config
+	meta                  metadata.MetadataStore
+	backend               storage.ObjectBackend
+	svc                   *s3.Service
+	s3                    *s3.Handler
+	jwt                   *auth.JWTManager
+	oidcSessions          *auth.OIDCSessionStore
+	oidcExchange          *auth.OIDCExchangeStore
+	loginRateLimit        *ipRateLimiter
+	webauthnSessions      *webauthnSessionStore
+	mux                   *http.ServeMux
+	cluster               *clusterMonitor
+	clusterPKI_           *pki.Manager
+	trustedClusterW       *trustedClusterWorker
+	eventSinks            []EventSink
+	haLeader              *ha.Leader
+	invJobs               *inventory.JobStore
+	activityRetentionDays int
 }
 
 var corsAllowedOrigins []string
@@ -148,18 +151,25 @@ func NewServer(cfg Config) (*Server, error) {
 			svc.SetSSE(cipher)
 		}
 	}
+	s3h := s3.NewHandler(svc)
 	s := &Server{
-		cfg:              cfg,
-		meta:             meta,
-		backend:          backend,
-		svc:              svc,
-		s3:               s3.NewHandler(svc),
-		jwt:              auth.NewJWTManager(cfg.JWTSecret, 24*time.Hour),
-		oidcSessions:     auth.NewOIDCSessionStore(),
-		oidcExchange:     auth.NewOIDCExchangeStore(60 * time.Second),
-		loginRateLimit:   newLoginRateLimiter(),
-		webauthnSessions: newWebAuthnSessionStore(),
-		mux:              http.NewServeMux(),
+		cfg:                   cfg,
+		meta:                  meta,
+		backend:               backend,
+		svc:                   svc,
+		s3:                    s3h,
+		jwt:                   auth.NewJWTManager(cfg.JWTSecret, 24*time.Hour),
+		oidcSessions:          auth.NewOIDCSessionStore(),
+		oidcExchange:          auth.NewOIDCExchangeStore(60 * time.Second),
+		loginRateLimit:        newLoginRateLimiter(),
+		webauthnSessions:      newWebAuthnSessionStore(),
+		mux:                   http.NewServeMux(),
+		invJobs:               inventory.NewJobStore(),
+		activityRetentionDays: activityRetentionDaysFromEnv(),
+	}
+	// S3 SigV4 path: retention/legal-hold delete blocks must appear in Activity (Admin path already logs).
+	s3h.OnActivity = func(user, ip, action, resourceType, resourceName string) {
+		s.logActivityAs(user, ip, action, resourceType, resourceName)
 	}
 	initCORSFromEnv()
 	if err := s.seedAdminUser(); err != nil {
@@ -209,6 +219,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 	go s.svc.RunLifecycle(ctx, time.Minute)
 	go s.runScheduledDeleteWorker(ctx)
 	go s.runTrashPurgeWorker(ctx)
+	go s.runActivityRetentionWorker(ctx)
 	go s.runReplicationWorker(ctx)
 	go s.runReplicationFullSyncWorker(ctx)
 	go s.runSiteReplicationWorker(ctx)
@@ -247,6 +258,36 @@ func (s *Server) runTrashPurgeWorker(ctx context.Context) {
 				s.logActivityAs("system", "", metadata.ActionTrashPurged, "object", tr.OriginalBucket+"/"+tr.OriginalKey)
 			}
 		}
+	}
+}
+
+func (s *Server) runActivityRetentionWorker(ctx context.Context) {
+	s.purgeActivityOnce()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.purgeActivityOnce()
+		}
+	}
+}
+
+func (s *Server) purgeActivityOnce() {
+	days := s.activityRetentionDays
+	if days <= 0 {
+		return
+	}
+	cutoff := time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour)
+	n, err := s.meta.PurgeActivityBefore(cutoff)
+	if err != nil {
+		slog.Warn("activity retention purge failed", "err", err)
+		return
+	}
+	if n > 0 {
+		slog.Info("activity retention purge", "deleted", n, "retention_days", days)
 	}
 }
 
@@ -467,6 +508,10 @@ func (s *Server) routes() {
 	mux.HandleFunc("PUT /api/v1/buckets/{bucket}/lifecycle", allRoles(s.handlePutLifecycle))
 
 	mux.HandleFunc("GET /api/v1/activity", adminOnly(s.handleListActivity))
+	mux.HandleFunc("GET /api/v1/activity/export", adminOnly(s.handleExportActivity))
+	mux.HandleFunc("POST /api/v1/inventory/jobs", adminOnly(s.handleCreateInventoryJob))
+	mux.HandleFunc("GET /api/v1/inventory/jobs/{id}", adminOnly(s.handleGetInventoryJob))
+	mux.HandleFunc("GET /api/v1/inventory/jobs/{id}/download", adminOnly(s.handleDownloadInventoryJob))
 	mux.HandleFunc("GET /api/v1/usage", allRoles(s.handleUsage))
 
 	mux.HandleFunc("GET /api/v1/users", allRoles(s.handleListUsers))
@@ -858,10 +903,12 @@ func (s *Server) handleDeleteObjectJSON(w http.ResponseWriter, r *http.Request) 
 func (s *Server) deleteObjectNow(w http.ResponseWriter, r *http.Request, logicalBucket, storageKey, key, versionID string, obj metadata.ObjectRecord) {
 	if err := s.checkObjectDeletable(storageKey, key, versionID); err != nil {
 		if err == metadata.ErrLegalHold {
+			s.logActivity(r, metadata.ActionObjectDeleteBlocked, "object", logicalBucket+"/"+key)
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "object is under legal hold"})
 			return
 		}
 		if err == metadata.ErrRetentionLocked {
+			s.logActivity(r, metadata.ActionObjectDeleteBlocked, "object", logicalBucket+"/"+key)
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "retention period has not expired"})
 			return
 		}

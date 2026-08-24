@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { type ColumnDef } from "@tanstack/react-table";
 import { useTranslation } from "react-i18next";
-import { Circle, RefreshCw } from "lucide-react";
+import { Circle, Download, RefreshCw } from "lucide-react";
 import { api, type ActivityEvent } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const ACTION_VALUES = [
   "",
@@ -28,6 +29,12 @@ const ACTION_VALUES = [
   "object_uploaded",
   "object_downloaded",
   "object_deleted",
+  "object_delete_blocked",
+  "object_lock_changed",
+  "object_retention_set",
+  "versioning_changed",
+  "activity_exported",
+  "inventory_exported",
   "policy_changed",
   "trash_restored",
   "trash_purged",
@@ -47,6 +54,12 @@ const ACTION_LOCALE_KEYS: Record<string, string> = {
   bucket_deleted: "bucketDeleted",
   object_uploaded: "objectUploaded",
   object_deleted: "objectDeleted",
+  object_delete_blocked: "objectDeleteBlocked",
+  object_lock_changed: "objectLockChanged",
+  object_retention_set: "objectRetentionSet",
+  versioning_changed: "versioningChanged",
+  activity_exported: "activityExported",
+  inventory_exported: "inventoryExported",
   policy_changed: "policyChanged",
   access_key_created: "keyCreated",
   access_key_deleted: "keyDeleted",
@@ -90,10 +103,31 @@ export function ActivityPage() {
   });
 
   const [live, setLive] = useState(true);
+  const [exporting, setExporting] = useState(false);
   useEffect(() => {
     setLive(!activity.isFetching);
   }, [activity.isFetching, activity.dataUpdatedAt]);
 
+  async function onExport(format: "csv" | "json") {
+    setExporting(true);
+    try {
+      await api.exportActivity({
+        period: period || undefined,
+        action: action || undefined,
+        user: userFilter || undefined,
+        bucket: bucketFilter || undefined,
+        ip: ipFilter || undefined,
+        search: search || undefined,
+        format,
+      });
+      toast.success(t("activity:export.done"));
+      void activity.refetch();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("activity:export.failed"));
+    } finally {
+      setExporting(false);
+    }
+  }
   const columns: ColumnDef<ActivityEvent>[] = useMemo(() => [
     {
       accessorKey: "timestamp",
@@ -128,15 +162,35 @@ export function ActivityPage() {
           </span>
         }
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => activity.refetch()}
-            disabled={activity.isFetching}
-          >
-            <RefreshCw className={`h-4 w-4 ${activity.isFetching ? "animate-spin" : ""}`} />
-            {t("common:refresh")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void onExport("csv")}
+              disabled={exporting}
+            >
+              <Download className="h-4 w-4" />
+              {t("activity:export.csv")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void onExport("json")}
+              disabled={exporting}
+            >
+              <Download className="h-4 w-4" />
+              {t("activity:export.json")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => activity.refetch()}
+              disabled={activity.isFetching}
+            >
+              <RefreshCw className={`h-4 w-4 ${activity.isFetching ? "animate-spin" : ""}`} />
+              {t("common:refresh")}
+            </Button>
+          </div>
         }
       />
 

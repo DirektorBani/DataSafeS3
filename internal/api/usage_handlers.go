@@ -175,28 +175,45 @@ func (s *Server) handleUpdateBucketSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	rec.Description = req.Description
+	lockChanged := false
+	versioningChanged := false
 	if req.Versioning != nil {
+		if rec.Versioning != *req.Versioning {
+			versioningChanged = true
+		}
 		rec.Versioning = *req.Versioning
 		if !*req.Versioning {
 			rec.VersioningSuspended = false
 		}
 	}
 	if req.VersioningSuspended != nil {
+		if rec.VersioningSuspended != *req.VersioningSuspended {
+			versioningChanged = true
+		}
 		rec.VersioningSuspended = *req.VersioningSuspended
 		if rec.VersioningSuspended {
 			rec.Versioning = true
 		}
 	}
 	if req.ObjectLock != nil {
+		if rec.ObjectLock != *req.ObjectLock {
+			lockChanged = true
+		}
 		rec.ObjectLock = *req.ObjectLock
 	}
 	if req.RetentionDays != nil {
+		if rec.RetentionDays != *req.RetentionDays {
+			lockChanged = true
+		}
 		rec.RetentionDays = *req.RetentionDays
 	}
 	if req.RetentionMode != nil {
 		mode := strings.ToUpper(strings.TrimSpace(*req.RetentionMode))
 		switch mode {
 		case "", "GOVERNANCE", "COMPLIANCE":
+			if rec.RetentionMode != mode {
+				lockChanged = true
+			}
 			rec.RetentionMode = mode
 		default:
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "retention_mode must be GOVERNANCE or COMPLIANCE"})
@@ -227,5 +244,11 @@ func (s *Server) handleUpdateBucketSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	s.logActivity(r, metadata.ActionSettingsChanged, "bucket", name)
+	if lockChanged {
+		s.logActivity(r, metadata.ActionObjectLockChanged, "bucket", name)
+	}
+	if versioningChanged {
+		s.logActivity(r, metadata.ActionVersioningChanged, "bucket", name)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "bucket": rec.Name})
 }

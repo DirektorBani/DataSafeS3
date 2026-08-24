@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Clock,
   Copy,
+  Download,
   File,
   Folder,
   FolderPlus,
@@ -141,6 +142,9 @@ export function BucketDetailPage() {
   const [copyDestKey, setCopyDestKey] = useState("");
   const [lifecycleDraft, setLifecycleDraft] = useState<LifecycleRule[]>([]);
   const [settingsDraft, setSettingsDraft] = useState<BucketSettings | null>(null);
+  const [inventoryPrefix, setInventoryPrefix] = useState("");
+  const [inventoryDestBucket, setInventoryDestBucket] = useState("");
+  const [inventoryDestKey, setInventoryDestKey] = useState("");
   const [ruleDialog, setRuleDialog] = useState<LifecycleRule | null>(null);
   const [nextMarker, setNextMarker] = useState<string | undefined>();
   const [allFiles, setAllFiles] = useState<ObjectRow[]>([]);
@@ -424,6 +428,40 @@ export function BucketDetailPage() {
       toast.success(t("bucketDetail:toast.settingsSaved"));
     },
     onError: (err: Error) => toast.error(err.message),
+  });
+
+  const inventoryMutation = useMutation({
+    mutationFn: async () => {
+      const dest = inventoryDestBucket.trim();
+      const job = await api.createInventoryJob({
+        bucket,
+        prefix: inventoryPrefix.trim() || undefined,
+        format: "csv",
+        dest_bucket: dest || undefined,
+        dest_key: dest ? inventoryDestKey.trim() || undefined : undefined,
+      });
+      if (job.status !== "completed") {
+        throw new Error(job.error || `inventory status: ${job.status}`);
+      }
+      await api.downloadInventoryJob(job.id, `inventory-${bucket}.csv`);
+      return job;
+    },
+    onSuccess: (job) => {
+      toast.success(
+        t("bucketDetail:inventory.done", {
+          count: job.object_count ?? 0,
+        })
+      );
+      if (job.dest_bucket && job.dest_key) {
+        toast.message(
+          t("bucketDetail:inventory.destDone", {
+            bucket: job.dest_bucket,
+            key: job.dest_key,
+          })
+        );
+      }
+    },
+    onError: (e: Error) => toast.error(e.message || t("bucketDetail:inventory.failed")),
   });
 
   const saveLifecycleMutation = useMutation({
@@ -849,6 +887,56 @@ export function BucketDetailPage() {
                   </Button>
                 )}
               </div>
+              {isAdmin && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">{t("bucketDetail:inventory.title")}</CardTitle>
+                    <CardDescription>{t("bucketDetail:inventory.description")}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div className="space-y-2 min-w-[12rem] flex-1">
+                        <Label htmlFor="inventory-prefix">{t("bucketDetail:inventory.prefix")}</Label>
+                        <Input
+                          id="inventory-prefix"
+                          value={inventoryPrefix}
+                          onChange={(e) => setInventoryPrefix(e.target.value)}
+                          placeholder={t("bucketDetail:inventory.prefixPlaceholder")}
+                        />
+                      </div>
+                      <div className="space-y-2 min-w-[10rem] flex-1">
+                        <Label htmlFor="inventory-dest-bucket">{t("bucketDetail:inventory.destBucket")}</Label>
+                        <Input
+                          id="inventory-dest-bucket"
+                          value={inventoryDestBucket}
+                          onChange={(e) => setInventoryDestBucket(e.target.value)}
+                          placeholder={t("bucketDetail:inventory.destBucketPlaceholder")}
+                        />
+                      </div>
+                      <div className="space-y-2 min-w-[12rem] flex-1">
+                        <Label htmlFor="inventory-dest-key">{t("bucketDetail:inventory.destKey")}</Label>
+                        <Input
+                          id="inventory-dest-key"
+                          value={inventoryDestKey}
+                          onChange={(e) => setInventoryDestKey(e.target.value)}
+                          placeholder={t("bucketDetail:inventory.destKeyPlaceholder")}
+                          disabled={!inventoryDestBucket.trim()}
+                        />
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={inventoryMutation.isPending}
+                        onClick={() => inventoryMutation.mutate()}
+                      >
+                        <Download className="h-4 w-4" />
+                        {t("bucketDetail:inventory.exportCsv")}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{t("bucketDetail:inventory.destHint")}</p>
+                  </CardContent>
+                </Card>
+              )}
               <BucketSettingsTabs
                 draft={settingsDraft}
                 onDraftChange={setSettingsDraft}

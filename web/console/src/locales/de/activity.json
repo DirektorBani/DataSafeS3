@@ -14,6 +14,12 @@
     "userUpdated": "User updated",
     "policyChanged": "Policy changed",
     "settingsChanged": "Settings changed",
+    "objectDeleteBlocked": "Object delete blocked",
+    "objectLockChanged": "Object Lock changed",
+    "objectRetentionSet": "Object retention set",
+    "versioningChanged": "Versioning changed",
+    "activityExported": "Activity exported",
+    "inventoryExported": "Inventory exported",
     "webhookCreated": "Webhook created",
     "webhookDeleted": "Webhook deleted",
     "shareCreated": "Share link created",
@@ -24,6 +30,12 @@
   "description": "Audit log of storage and admin operations. Refreshes every 5 seconds.",
   "live": "Live",
   "updating": "Updating…",
+  "export": {
+    "csv": "Export CSV",
+    "json": "Export JSON",
+    "done": "Activity export downloaded",
+    "failed": "Activity export failed"
+  },
   "filters": {
     "period": "Period",
     "action": "Action",

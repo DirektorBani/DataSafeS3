@@ -250,6 +250,10 @@ if (-not $adminTok) { Record 'Users/Auth' 'Admin login' 'FAIL' 'no token'; exit 
 Record 'Users/Auth' 'Admin login' 'PASS' 'token received'
 $adminH = Auth $adminTok
 
+$loginOpts = Invoke-DS GET "$BaseUrl/api/v1/auth/login-options"
+$loginOptsOk = ($loginOpts.Code -eq 200) -and ($null -ne $loginOpts.Json.local_login_enabled)
+Record 'Users/Auth' 'Login options local_login_enabled' $(if($loginOptsOk){'PASS'}else{'FAIL'}) "HTTP $($loginOpts.Code) local_login_enabled=$($loginOpts.Json.local_login_enabled)"
+
 $r = Invoke-DS GET "$BaseUrl/api/v1/me" -Headers $adminH
 Record 'Users/Auth' 'GET /me (admin)' $(if($r.Code -eq 200 -and $r.Json.username -eq 'admin'){'PASS'}else{'FAIL'}) $r.Json.role
 
@@ -767,6 +771,27 @@ Record 'Admin' 'Versioning suspended flag' $(if($suspOk){'PASS'}else{'FAIL'}) "p
 # Restore versioning active for later checks
 Invoke-DS PUT "$BaseUrl/api/v1/settings/buckets/$privBucket" -Headers $adminH -Body '{"versioning_enabled":true,"versioning_suspended":false}' | Out-Null
 
+# v1.4 Evidence Pack — inventory CSV + activity export
+$invBucket = "audit-inv-$ts"
+Invoke-DS POST "$BaseUrl/api/v1/buckets/$invBucket" -Headers $adminH -Body '{}' | Out-Null
+Put-Object $adminTok $invBucket 'evidence/a.txt' 'evidence-a' | Out-Null
+$invJob = Invoke-DS POST "$BaseUrl/api/v1/inventory/jobs" -Headers $adminH -Body (@{ bucket = $invBucket; prefix = 'evidence/'; format = 'csv' } | ConvertTo-Json -Compress)
+$invId = $invJob.Json.id
+$invOk = ($invJob.Code -eq 201) -and ($invJob.Json.status -eq 'completed') -and ($invId)
+$invDl = $null
+if ($invOk) {
+    $invDl = Invoke-DS GET "$BaseUrl/api/v1/inventory/jobs/$invId/download" -Headers $adminH -Raw
+}
+$invDlOk = $invOk -and ($invDl.Code -eq 200) -and ($invDl.Body -match 'object_lock_enabled') -and ($invDl.Body -match 'evidence/a.txt')
+Record 'Admin' 'Inventory CSV job download' $(if($invDlOk){'PASS'}else{'FAIL'}) "create=$($invJob.Code) status=$($invJob.Json.status) dl=$($invDl.Code)"
+
+$actExp = Invoke-DS GET "$BaseUrl/api/v1/activity/export?format=csv&period=all" -Headers $adminH -Raw
+$actExpOk = ($actExp.Code -eq 200) -and ($actExp.Body -match 'action')
+Record 'Admin' 'Activity export CSV' $(if($actExpOk){'PASS'}else{'FAIL'}) "HTTP $($actExp.Code)"
+$actRow = Invoke-DS GET "$BaseUrl/api/v1/activity?action=activity_exported&period=all&limit=5" -Headers $adminH
+$actRowOk = ($actRow.Code -eq 200) -and (($actRow.Body -match 'activity_exported') -or ($actRow.Json.events.Count -ge 1))
+Record 'Admin' 'Activity export audited' $(if($actRowOk){'PASS'}else{'FAIL'}) "HTTP $($actRow.Code)"
+
 # AUD-16 — folder delete 409 includes object_count
 $foldBucket = "audit-fold-$ts"
 Invoke-DS POST "$BaseUrl/api/v1/buckets/$foldBucket" -Headers $adminH -Body '{"visibility":"private"}' | Out-Null
@@ -1007,7 +1032,13 @@ if ($srPeer.Code -in 200,201 -and $srPeer.Json.peer.id) {
     $srPeerId = $srPeer.Json.peer.id
     $srDest = "site-repl-dst-$ts"
     $peerConsole = if ($env:DATASAFE_SITE_REPL_PEER_CONSOLE) { $env:DATASAFE_SITE_REPL_PEER_CONSOLE } else { 'http://127.0.0.1:9082' }
-    Invoke-DS POST "$peerConsole/api/v1/buckets/$srDest" -Headers $adminH -Body '{"visibility":"private"}' | Out-Null
+    $peerLogin = Invoke-DS POST "$peerConsole/api/v1/admin/login" -Body '{"username":"admin","password":"admin"}'
+    $peerTok = $peerLogin.Json.token
+    $peerH = $null
+    if ($peerTok) { $peerH = Auth $peerTok }
+    if ($peerH) {
+        Invoke-DS POST "$peerConsole/api/v1/buckets/$srDest" -Headers $peerH -Body '{"visibility":"private"}' | Out-Null
+    }
     $srRuleBody = "{`"peer_id`":`"$srPeerId`",`"source_bucket`":`"$pubBucket`",`"dest_bucket`":`"$srDest`",`"direction`":`"one-way`",`"enabled`":true}"
     $srRule = Invoke-DS POST "$BaseUrl/api/v1/site-replication/rules" -Headers $adminH -Body $srRuleBody
     Record 'Site replication' 'Rule create' $(if($srRule.Code -in 200,201){'PASS'}else{'FAIL'}) "HTTP $($srRule.Code)"
@@ -1023,9 +1054,12 @@ if ($srPeer.Code -in 200,201 -and $srPeer.Json.peer.id) {
             $st2 = Invoke-DS GET "$BaseUrl/api/v1/site-replication/status" -Headers $adminH
             if ($st2.Json.pending_count -eq 0) { $drained = $true; break }
         }
-        $peerObj = Invoke-DS GET "$peerConsole/api/v1/buckets/$srDest/objects" -Headers $adminH 2>$null
-        $hasObj = ($peerObj.Code -eq 200) -and (@($peerObj.Json.objects).Count -gt 0)
-        Record 'Site replication' 'Object on peer (E2E)' $(if($hasObj){'PASS'}else{'SKIP'}) "peer=$peerConsole drained=$drained"
+        $peerObj = $null
+        if ($peerH) {
+            $peerObj = Invoke-DS GET "$peerConsole/api/v1/buckets/$srDest/objects" -Headers $peerH
+        }
+        $hasObj = ($peerObj -and $peerObj.Code -eq 200) -and (@($peerObj.Json.objects).Count -gt 0)
+        Record 'Site replication' 'Object on peer (E2E)' $(if($hasObj){'PASS'}else{'SKIP'}) "peer=$peerConsole drained=$drained peerLogin=$($peerLogin.Code) list=$($peerObj.Code)"
     } else {
         Record 'Site replication' 'Object on peer (E2E)' 'SKIP' 'set DATASAFE_SITE_REPL_E2E=1 + two-stack lab'
     }

@@ -29,12 +29,10 @@ test.describe("OIDC Keycloak browser flow @nightly", () => {
     await page.fill("#password", "password");
     await page.click("#kc-login");
 
-    await page.waitForURL((url) => !url.searchParams.has("exchange_code") === false || !url.pathname.startsWith("/login"), {
-      timeout: 45_000,
-    });
-
-    const token = await page.evaluate(() => sessionStorage.getItem("datasafe_admin_token"));
-    expect(token).toBeTruthy();
+    await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 45_000 });
+    await expect.poll(async () => page.evaluate(() => sessionStorage.getItem("datasafe_admin_token")), {
+      timeout: 20_000,
+    }).toBeTruthy();
     expect(page.url()).not.toContain("exchange_code=");
   });
 });

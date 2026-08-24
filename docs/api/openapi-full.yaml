@@ -109,6 +109,23 @@ components:
         trashed: { type: boolean }
         trash_id: { type: string }
 
+    InventoryJob:
+      type: object
+      properties:
+        id: { type: string }
+        bucket: { type: string }
+        prefix: { type: string }
+        format: { type: string, example: csv }
+        schedule: { type: string, example: manual }
+        dest_bucket: { type: string }
+        dest_key: { type: string }
+        status: { type: string, enum: [pending, running, completed, failed] }
+        error: { type: string }
+        object_count: { type: integer }
+        truncated: { type: boolean }
+        created_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+
     FederationCluster:
       type: object
       properties:
@@ -1204,6 +1221,131 @@ paths:
         '200': { description: Paginated activity }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /activity/export:
+    get:
+      operationId: exportActivity
+      summary: Export activity trail (CSV or JSON)
+      description: Same filters as listActivity. Caps at 50000 rows. Logs activity_exported.
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+        - name: format
+          in: query
+          schema: { type: string, enum: [csv, json], default: csv }
+        - name: period
+          in: query
+          schema: { type: string, enum: [24h, 7d, 30d, all] }
+        - name: user
+          in: query
+          schema: { type: string }
+        - name: action
+          in: query
+          schema: { type: string }
+        - name: bucket
+          in: query
+          schema: { type: string }
+        - name: ip
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Attachment (text/csv or application/json)
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /inventory/jobs:
+    post:
+      operationId: createInventoryJob
+      summary: Create storage inventory CSV job (manual)
+      description: |
+        Admin-first listing export for operator evidence. Not AWS S3 Inventory.
+        Runs synchronously; returns completed/failed job. Optional dest_bucket writes CSV as an object.
+        Only `schedule=manual` (or omitted) is supported; other values return 501.
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bucket]
+              properties:
+                bucket: { type: string }
+                prefix: { type: string }
+                format: { type: string, enum: [csv], default: csv }
+                schedule: { type: string, enum: [manual], default: manual }
+                dest_bucket: { type: string }
+                dest_key: { type: string }
+      responses:
+        '201':
+          description: Job result (status completed or failed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryJob' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '501':
+          description: Scheduled/cron inventory not available
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+
+  /inventory/jobs/{id}:
+    get:
+      operationId: getInventoryJob
+      summary: Get inventory job status
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventoryJob' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /inventory/jobs/{id}/download:
+    get:
+      operationId: downloadInventoryJob
+      summary: Download inventory CSV
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: text/csv attachment
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Job not completed
 
   /usage:
     get:

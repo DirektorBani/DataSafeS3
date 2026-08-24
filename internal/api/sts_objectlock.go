@@ -102,6 +102,7 @@ func (s *Server) handlePutObjectRetention(w http.ResponseWriter, r *http.Request
 		brec.ObjectLock = true
 		_ = s.meta.UpdateBucket(brec)
 	}
+	s.logActivity(r, metadata.ActionObjectRetentionSet, "object", bucket+"/"+req.Key)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"bucket": bucket, "key": req.Key, "mode": req.Mode, "retain_until": until.UTC().Format(time.RFC3339),
 	})

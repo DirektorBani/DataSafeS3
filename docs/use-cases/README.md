@@ -18,5 +18,6 @@ Documentation describes **DataSafeS3 value only** — no competitor comparisons.
 | 4 | Document archive | [en/data-archive.md](en/data-archive.md) | [ru/data-archive.md](ru/data-archive.md) |
 | 5 | Media repository | [en/media-storage.md](en/media-storage.md) | [ru/media-storage.md](ru/media-storage.md) |
 | 6 | Kubernetes object storage | [en/k8s-object-storage.md](en/k8s-object-storage.md) | [ru/k8s-object-storage.md](ru/k8s-object-storage.md) |
+| 7 | Governance evidence pack | [en/governance-evidence.md](en/governance-evidence.md) | [ru/governance-evidence.md](ru/governance-evidence.md) |
 
 Related: [Why DataSafeS3](../why-datasafe.md) · [Conceptual architecture](../learn/en/conceptual-architecture.md)

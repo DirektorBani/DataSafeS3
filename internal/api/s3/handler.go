@@ -15,8 +15,13 @@ import (
 	"github.com/DirektorBani/datasafe/internal/storage"
 )
 
+// ActivityHook records an Admin Activity row from the S3 path (optional).
+// user is a display name (access-key owner username when known).
+type ActivityHook func(user, ip, action, resourceType, resourceName string)
+
 type Handler struct {
-	Svc *Service
+	Svc        *Service
+	OnActivity ActivityHook
 }
 
 func NewHandler(svc *Service) *Handler {
@@ -702,10 +707,39 @@ func (h *Handler) deleteObject(w http.ResponseWriter, r *http.Request, bucket, k
 		return
 	}
 	if err := h.Svc.DeleteObject(r.Context(), sk, key, r.URL.Query().Get("versionId")); err != nil {
+		if err == metadata.ErrRetentionLocked || err == metadata.ErrLegalHold {
+			h.emitActivity(r, creds.AccessKey, metadata.ActionObjectDeleteBlocked, "object", bucket+"/"+key)
+		}
 		mapErr(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) emitActivity(r *http.Request, accessKey, action, resourceType, resourceName string) {
+	if h.OnActivity == nil {
+		return
+	}
+	user := accessKey
+	if accessKey != "" && accessKey == h.Svc.OwnerKey {
+		user = "bootstrap"
+	}
+	if ak, err := h.Svc.Meta.GetAccessKey(accessKey); err == nil {
+		if ak.Owner != "" {
+			user = ak.Owner
+		} else if ak.OwnerID != "" {
+			if u, uerr := h.Svc.Meta.GetUser(ak.OwnerID); uerr == nil && u.Username != "" {
+				user = u.Username
+			}
+		}
+	}
+	ip := r.RemoteAddr
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		ip = strings.TrimSpace(strings.Split(fwd, ",")[0])
+	} else if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		ip = strings.TrimSpace(xri)
+	}
+	h.OnActivity(user, ip, action, resourceType, resourceName)
 }
 
 func (h *Handler) copyObject(w http.ResponseWriter, r *http.Request, dstBucket, dstKey string) {

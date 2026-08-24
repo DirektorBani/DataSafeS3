@@ -34,6 +34,13 @@ const (
 	ActionShareDownloaded       = "share.downloaded"
 	ActionShareLimitReached     = "share.limit_reached"
 	ActionShareExpired          = "share.expired"
+	// Governance Evidence Pack (v1.4)
+	ActionObjectLockChanged   = "object_lock_changed"
+	ActionObjectRetentionSet  = "object_retention_set"
+	ActionVersioningChanged   = "versioning_changed"
+	ActionObjectDeleteBlocked = "object_delete_blocked"
+	ActionActivityExported    = "activity_exported"
+	ActionInventoryExported   = "inventory_exported"
 )
 
 type ActivityRecord struct {
@@ -153,4 +160,31 @@ func (s *Store) ListActivity(f ActivityFilter) (ActivityListResult, error) {
 		end = total
 	}
 	return ActivityListResult{Events: all[f.Offset:end], Total: total}, nil
+}
+
+// PurgeActivityBefore deletes activity rows with Timestamp strictly before cutoff.
+// Returns the number of deleted records. cutoff zero is a no-op.
+func (s *Store) PurgeActivityBefore(cutoff time.Time) (int, error) {
+	if cutoff.IsZero() {
+		return 0, nil
+	}
+	deleted := 0
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("activity"))
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var rec ActivityRecord
+			if err := json.Unmarshal(v, &rec); err != nil {
+				continue
+			}
+			if rec.Timestamp.Before(cutoff) {
+				if err := b.Delete(k); err != nil {
+					return err
+				}
+				deleted++
+			}
+		}
+		return nil
+	})
+	return deleted, err
 }

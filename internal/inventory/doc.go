@@ -1,3 +1,5 @@
-// Package inventory is reserved for S3 Inventory / capacity export jobs (planned A4).
-// No runtime behavior in v1.1.1 — see docs/architecture/adr/0004-inventory-jobs.md.
+// Package inventory implements Admin-first storage inventory export (Governance Evidence Pack / A4).
+//
+// Manual CSV export works on Bolt and Postgres metadata. Optional dest-bucket write uses the
+// normal PutObject path. This is not AWS S3 Inventory + Athena; see ADR-0004 and ops docs.
 package inventory
