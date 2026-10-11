@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -33,36 +34,59 @@ func (s *Store) normalizeObjectBucket(bucket string) string {
 
 // PutObject stores or overwrites the latest object when versioning is disabled.
 func (s *Store) PutObject(rec ObjectRecord) error {
-	return s.putObject(rec, false)
+	_, err := s.putObject(rec, false, nil)
+	return err
 }
 
 // PutObjectVersioned appends a new version and updates the latest pointer.
 func (s *Store) PutObjectVersioned(rec ObjectRecord) error {
-	return s.putObject(rec, true)
+	_, err := s.putObject(rec, true, nil)
+	return err
 }
 
-func (s *Store) putObject(rec ObjectRecord, versioned bool) error {
+// PutObjectWithOutbox writes the object and notification rows in one bolt transaction.
+func (s *Store) PutObjectWithOutbox(rec ObjectRecord, evs []events.OutboxRecord) (int, error) {
+	return s.putObject(rec, false, evs)
+}
+
+// PutObjectVersionedWithOutbox writes a version and notification rows in one bolt transaction.
+func (s *Store) PutObjectVersionedWithOutbox(rec ObjectRecord, evs []events.OutboxRecord) (int, error) {
+	return s.putObject(rec, true, evs)
+}
+
+func (s *Store) putObject(rec ObjectRecord, versioned bool, evs []events.OutboxRecord) (int, error) {
 	rec.Bucket = s.normalizeObjectBucket(rec.Bucket)
-	return s.db.Update(func(tx *bolt.Tx) error {
-		objects := tx.Bucket([]byte("objects"))
-		latest := tx.Bucket([]byte("object_latest"))
-		data, err := json.Marshal(rec)
-		if err != nil {
+	var dropped int
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		if err := s.putObjectTx(tx, rec, versioned); err != nil {
 			return err
 		}
-		if versioned {
-			if rec.VersionID == "" {
-				return ErrNotFound
-			}
-			if err := objects.Put(versionObjectKey(rec.Bucket, rec.Key, rec.VersionID), data); err != nil {
-				return err
-			}
-			return latest.Put(latestIndexKey(rec.Bucket, rec.Key), []byte(rec.VersionID))
-		}
-		// Non-versioned: remove version index and legacy entries, store flat key.
-		_ = s.deleteAllVersionsTx(tx, rec.Bucket, rec.Key)
-		return objects.Put(objectKey(rec.Bucket, rec.Key), data)
+		n, err := insertOutboxBolt(tx, evs, s.maxPending())
+		dropped = n
+		return err
 	})
+	return dropped, err
+}
+
+func (s *Store) putObjectTx(tx *bolt.Tx, rec ObjectRecord, versioned bool) error {
+	objects := tx.Bucket([]byte("objects"))
+	latest := tx.Bucket([]byte("object_latest"))
+	data, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	if versioned {
+		if rec.VersionID == "" {
+			return ErrNotFound
+		}
+		if err := objects.Put(versionObjectKey(rec.Bucket, rec.Key, rec.VersionID), data); err != nil {
+			return err
+		}
+		return latest.Put(latestIndexKey(rec.Bucket, rec.Key), []byte(rec.VersionID))
+	}
+	// Non-versioned: remove version index and legacy entries, store flat key.
+	_ = s.deleteAllVersionsTx(tx, rec.Bucket, rec.Key)
+	return objects.Put(objectKey(rec.Bucket, rec.Key), data)
 }
 
 func (s *Store) deleteAllVersionsTx(tx *bolt.Tx, bucket, key string) error {
@@ -125,56 +149,77 @@ func (s *Store) DeleteObject(bucket, key string) error {
 
 // DeleteObjectVersion deletes a specific version or the latest when versionID is empty.
 func (s *Store) DeleteObjectVersion(bucket, key, versionID string, versioningEnabled bool) error {
+	_, err := s.deleteObjectVersion(bucket, key, versionID, versioningEnabled, nil)
+	return err
+}
+
+// DeleteObjectVersionWithOutbox deletes object metadata and writes notifications in one transaction.
+func (s *Store) DeleteObjectVersionWithOutbox(bucket, key, versionID string, versioningEnabled bool, evs []events.OutboxRecord) (int, error) {
+	return s.deleteObjectVersion(bucket, key, versionID, versioningEnabled, evs)
+}
+
+func (s *Store) deleteObjectVersion(bucket, key, versionID string, versioningEnabled bool, evs []events.OutboxRecord) (int, error) {
 	bucket = s.normalizeObjectBucket(bucket)
-	return s.db.Update(func(tx *bolt.Tx) error {
-		objects := tx.Bucket([]byte("objects"))
-		latest := tx.Bucket([]byte("object_latest"))
-		if !versioningEnabled {
-			if objects.Get(objectKey(bucket, key)) == nil && latest.Get(latestIndexKey(bucket, key)) == nil {
-				return ErrNotFound
-			}
-			return s.deleteAllVersionsTx(tx, bucket, key)
-		}
-		if versionID == "" {
-			vid := latest.Get(latestIndexKey(bucket, key))
-			if vid == nil {
-				if objects.Get(objectKey(bucket, key)) == nil {
-					return ErrNotFound
-				}
-				return objects.Delete(objectKey(bucket, key))
-			}
-			versionID = string(vid)
-		}
-		vk := versionObjectKey(bucket, key, versionID)
-		if objects.Get(vk) == nil {
-			return ErrNotFound
-		}
-		if err := objects.Delete(vk); err != nil {
+	var dropped int
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		if err := s.deleteObjectVersionTx(tx, bucket, key, versionID, versioningEnabled); err != nil {
 			return err
 		}
-		currentLatest := string(latest.Get(latestIndexKey(bucket, key)))
-		if currentLatest != versionID {
-			return nil
-		}
-		var nextID string
-		var nextMod ObjectRecord
-		prefix := []byte(bucket + "\x00" + key + "\x00")
-		c := objects.Cursor()
-		for k, v := c.Seek(prefix); k != nil && strings.HasPrefix(string(k), string(prefix)); k, v = c.Next() {
-			var rec ObjectRecord
-			if err := json.Unmarshal(v, &rec); err != nil {
-				continue
-			}
-			if nextID == "" || rec.LastModified.After(nextMod.LastModified) {
-				nextID = rec.VersionID
-				nextMod = rec
-			}
-		}
-		if nextID == "" {
-			return latest.Delete(latestIndexKey(bucket, key))
-		}
-		return latest.Put(latestIndexKey(bucket, key), []byte(nextID))
+		n, err := insertOutboxBolt(tx, evs, s.maxPending())
+		dropped = n
+		return err
 	})
+	return dropped, err
+}
+
+func (s *Store) deleteObjectVersionTx(tx *bolt.Tx, bucket, key, versionID string, versioningEnabled bool) error {
+	objects := tx.Bucket([]byte("objects"))
+	latest := tx.Bucket([]byte("object_latest"))
+	if !versioningEnabled {
+		if objects.Get(objectKey(bucket, key)) == nil && latest.Get(latestIndexKey(bucket, key)) == nil {
+			return ErrNotFound
+		}
+		return s.deleteAllVersionsTx(tx, bucket, key)
+	}
+	if versionID == "" {
+		vid := latest.Get(latestIndexKey(bucket, key))
+		if vid == nil {
+			if objects.Get(objectKey(bucket, key)) == nil {
+				return ErrNotFound
+			}
+			return objects.Delete(objectKey(bucket, key))
+		}
+		versionID = string(vid)
+	}
+	vk := versionObjectKey(bucket, key, versionID)
+	if objects.Get(vk) == nil {
+		return ErrNotFound
+	}
+	if err := objects.Delete(vk); err != nil {
+		return err
+	}
+	currentLatest := string(latest.Get(latestIndexKey(bucket, key)))
+	if currentLatest != versionID {
+		return nil
+	}
+	var nextID string
+	var nextMod ObjectRecord
+	prefix := []byte(bucket + "\x00" + key + "\x00")
+	c := objects.Cursor()
+	for k, v := c.Seek(prefix); k != nil && strings.HasPrefix(string(k), string(prefix)); k, v = c.Next() {
+		var rec ObjectRecord
+		if err := json.Unmarshal(v, &rec); err != nil {
+			continue
+		}
+		if nextID == "" || rec.LastModified.After(nextMod.LastModified) {
+			nextID = rec.VersionID
+			nextMod = rec
+		}
+	}
+	if nextID == "" {
+		return latest.Delete(latestIndexKey(bucket, key))
+	}
+	return latest.Put(latestIndexKey(bucket, key), []byte(nextID))
 }
 
 // ListObjects returns the latest object per key.

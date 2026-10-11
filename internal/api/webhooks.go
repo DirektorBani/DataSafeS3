@@ -2,11 +2,15 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 )
 
@@ -16,31 +20,39 @@ const (
 	EventBucketCreated = metadata.EventBucketCreated
 )
 
-func (s *Server) fireWebhooks(event string, payload map[string]any) {
+func (s *Server) deliverWebhooks(ctx context.Context, e events.Event) error {
 	hooks, err := s.meta.ListWebhooks()
 	if err != nil {
-		return
+		return err
+	}
+	ts := e.CreatedAt
+	if ts.IsZero() {
+		ts = time.Now().UTC()
 	}
 	body := map[string]any{
-		"event":     event,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-		"data":      payload,
+		"event":     e.Type,
+		"timestamp": ts.UTC().Format(time.RFC3339),
+		"data":      e.Payload,
 	}
-	data, _ := json.Marshal(body)
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	var errs []error
 	for _, h := range hooks {
-		if !h.Enabled {
-			continue
-		}
-		if !webhookMatchesEvent(h.Events, event) {
+		if !h.Enabled || !webhookMatchesEvent(h.Events, e.Type) {
 			continue
 		}
 		payloadStr := string(data)
 		delivery := metadata.WebhookDeliveryRecord{
-			ID: randomID(), WebhookID: h.ID, Event: event, URL: h.URL,
+			ID: randomID(), WebhookID: h.ID, Event: e.Type, URL: h.URL,
 			Payload: payloadStr, CreatedAt: time.Now().UTC(), Attempts: 0,
 		}
-		go s.deliverWebhook(h, payloadStr, &delivery)
+		if err := s.deliverWebhook(ctx, h, payloadStr, &delivery); err != nil {
+			errs = append(errs, err)
+		}
 	}
+	return errors.Join(errs...)
 }
 
 func webhookMatchesEvent(events []string, event string) bool {
@@ -52,15 +64,15 @@ func webhookMatchesEvent(events []string, event string) bool {
 	return false
 }
 
-func (s *Server) deliverWebhook(hook metadata.WebhookRecord, payload string, delivery *metadata.WebhookDeliveryRecord) {
+func (s *Server) deliverWebhook(ctx context.Context, hook metadata.WebhookRecord, payload string, delivery *metadata.WebhookDeliveryRecord) error {
 	delivery.Attempts++
 	delivery.LastAttempt = time.Now().UTC()
-	req, err := http.NewRequest(http.MethodPost, hook.URL, bytes.NewReader([]byte(payload)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, hook.URL, bytes.NewReader([]byte(payload)))
 	if err != nil {
 		delivery.Success = false
 		delivery.Error = err.Error()
 		_ = s.meta.PutWebhookDelivery(*delivery)
-		return
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Datasafe-Webhook/1.0")
@@ -75,7 +87,7 @@ func (s *Server) deliverWebhook(hook metadata.WebhookRecord, payload string, del
 		delivery.Success = false
 		delivery.Error = err.Error()
 		_ = s.meta.PutWebhookDelivery(*delivery)
-		return
+		return err
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
@@ -85,4 +97,8 @@ func (s *Server) deliverWebhook(hook metadata.WebhookRecord, payload string, del
 		delivery.Error = resp.Status
 	}
 	_ = s.meta.PutWebhookDelivery(*delivery)
+	if !delivery.Success {
+		return fmt.Errorf("webhook %s: %s", hook.ID, resp.Status)
+	}
+	return nil
 }

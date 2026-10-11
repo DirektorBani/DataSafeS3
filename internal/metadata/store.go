@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
 	bolt "go.etcd.io/bbolt"
 )
@@ -92,8 +93,10 @@ type AccessKeyRecord struct {
 }
 
 type Store struct {
-	db       *bolt.DB
-	fieldenc *fieldenc.Service
+	db               *bolt.DB
+	fieldenc         *fieldenc.Service
+	outboxMaxPending int
+	outboxMaxSet     bool
 }
 
 func boltOpen(path string) (*bolt.DB, error) {
@@ -112,6 +115,7 @@ func (s *Store) init() error {
 			"users", "user_index", "activity", "usage_counters", "usage_snapshots",
 			"config", "trash", "api_tokens", "webhooks", "favorites", "webhook_deliveries",
 			"user_notifications", "recent_items",
+			"event_outbox", "event_outbox_due",
 		} {
 			if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
 				return err
@@ -163,28 +167,49 @@ func (s *Store) migrateBucketScopeIndex(tx *bolt.Tx) error {
 }
 
 func (s *Store) PutBucket(rec BucketRecord) error {
+	_, err := s.putBucket(rec, nil)
+	return err
+}
+
+// PutBucketWithOutbox creates the bucket and notification rows in one bolt transaction.
+func (s *Store) PutBucketWithOutbox(rec BucketRecord, evs []events.OutboxRecord) (int, error) {
+	return s.putBucket(rec, evs)
+}
+
+func (s *Store) putBucket(rec BucketRecord, evs []events.OutboxRecord) (int, error) {
 	scope := BucketScopeForRecord(rec.TenantID, rec.OwnerID)
 	if rec.StorageKey == "" {
 		rec.StorageKey = MakeStorageKey(scope, rec.Name)
 	}
-	return s.db.Update(func(tx *bolt.Tx) error {
-		idx := tx.Bucket([]byte("bucket_scope_index"))
-		if idx.Get([]byte(ScopeIndexKey(scope, rec.Name))) != nil {
-			return ErrBucketExists
-		}
-		b := tx.Bucket([]byte("buckets"))
-		if b.Get([]byte(rec.StorageKey)) != nil {
-			return ErrBucketExists
-		}
-		data, err := json.Marshal(rec)
-		if err != nil {
+	var dropped int
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		if err := putBucketTx(tx, rec, scope); err != nil {
 			return err
 		}
-		if err := b.Put([]byte(rec.StorageKey), data); err != nil {
-			return err
-		}
-		return idx.Put([]byte(ScopeIndexKey(scope, rec.Name)), []byte(rec.StorageKey))
+		n, err := insertOutboxBolt(tx, evs, s.maxPending())
+		dropped = n
+		return err
 	})
+	return dropped, err
+}
+
+func putBucketTx(tx *bolt.Tx, rec BucketRecord, scope BucketScope) error {
+	idx := tx.Bucket([]byte("bucket_scope_index"))
+	if idx.Get([]byte(ScopeIndexKey(scope, rec.Name))) != nil {
+		return ErrBucketExists
+	}
+	b := tx.Bucket([]byte("buckets"))
+	if b.Get([]byte(rec.StorageKey)) != nil {
+		return ErrBucketExists
+	}
+	data, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	if err := b.Put([]byte(rec.StorageKey), data); err != nil {
+		return err
+	}
+	return idx.Put([]byte(ScopeIndexKey(scope, rec.Name)), []byte(rec.StorageKey))
 }
 
 func (s *Store) GetBucketByKey(storageKey string) (BucketRecord, error) {
@@ -251,31 +276,52 @@ func (s *Store) ResolveBucket(scope BucketScope, name string) (BucketRecord, err
 }
 
 func (s *Store) DeleteBucket(storageKey string) error {
-	return s.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("buckets"))
-		data := b.Get([]byte(storageKey))
-		if data == nil {
-			return ErrNotFound
-		}
-		var rec BucketRecord
-		if err := json.Unmarshal(data, &rec); err != nil {
+	_, err := s.deleteBucket(storageKey, nil)
+	return err
+}
+
+// DeleteBucketWithOutbox removes the bucket and writes notifications in one bolt transaction.
+func (s *Store) DeleteBucketWithOutbox(storageKey string, evs []events.OutboxRecord) (int, error) {
+	return s.deleteBucket(storageKey, evs)
+}
+
+func (s *Store) deleteBucket(storageKey string, evs []events.OutboxRecord) (int, error) {
+	var dropped int
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		if err := deleteBucketTx(tx, storageKey); err != nil {
 			return err
 		}
-		scope := BucketScopeForRecord(rec.TenantID, rec.OwnerID)
-		_ = tx.Bucket([]byte("bucket_scope_index")).Delete([]byte(ScopeIndexKey(scope, rec.Name)))
-		prefix := []byte(storageKey + "\x00")
-		latest := tx.Bucket([]byte("object_latest"))
-		if c := latest.Cursor(); c != nil {
-			for k, _ := c.Seek(prefix); k != nil && len(k) >= len(prefix) && string(k[:len(prefix)]) == string(prefix); k, _ = c.Next() {
-				return ErrBucketNotEmpty
-			}
-		}
-		c := tx.Bucket([]byte("objects")).Cursor()
+		n, err := insertOutboxBolt(tx, evs, s.maxPending())
+		dropped = n
+		return err
+	})
+	return dropped, err
+}
+
+func deleteBucketTx(tx *bolt.Tx, storageKey string) error {
+	b := tx.Bucket([]byte("buckets"))
+	data := b.Get([]byte(storageKey))
+	if data == nil {
+		return ErrNotFound
+	}
+	var rec BucketRecord
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return err
+	}
+	scope := BucketScopeForRecord(rec.TenantID, rec.OwnerID)
+	_ = tx.Bucket([]byte("bucket_scope_index")).Delete([]byte(ScopeIndexKey(scope, rec.Name)))
+	prefix := []byte(storageKey + "\x00")
+	latest := tx.Bucket([]byte("object_latest"))
+	if c := latest.Cursor(); c != nil {
 		for k, _ := c.Seek(prefix); k != nil && len(k) >= len(prefix) && string(k[:len(prefix)]) == string(prefix); k, _ = c.Next() {
 			return ErrBucketNotEmpty
 		}
-		return b.Delete([]byte(storageKey))
-	})
+	}
+	c := tx.Bucket([]byte("objects")).Cursor()
+	for k, _ := c.Seek(prefix); k != nil && len(k) >= len(prefix) && string(k[:len(prefix)]) == string(prefix); k, _ = c.Next() {
+		return ErrBucketNotEmpty
+	}
+	return b.Delete([]byte(storageKey))
 }
 
 func (s *Store) ListBuckets() ([]BucketRecord, error) {

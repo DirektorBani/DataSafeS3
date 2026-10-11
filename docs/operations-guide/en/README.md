@@ -14,6 +14,7 @@ Run DataSafeS3 in production: backup, upgrades, scaling, and incident response.
 | Partner integrations | [partner-cookbook.md](partner-cookbook.md) |
 | Disaster recovery | [disaster-recovery.md](disaster-recovery.md) |
 | Monitoring | [monitoring.md](monitoring.md) |
+| Event outbox | [event-outbox.md](event-outbox.md) |
 | Security self-assessment | [security-self-assessment.md](security-self-assessment.md) |
 | Field encryption (metadata) | [field-encryption.md](field-encryption.md) |
 | Vault secrets injection | [secrets-vault.md](secrets-vault.md) |

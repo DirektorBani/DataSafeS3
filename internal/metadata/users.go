@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -45,24 +46,45 @@ type UserRecord struct {
 }
 
 func (s *Store) PutUser(rec UserRecord) error {
-	return s.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("users"))
-		if b.Get([]byte(rec.ID)) != nil {
-			return ErrUserExists
-		}
-		idx := tx.Bucket([]byte("user_index"))
-		if idx.Get([]byte(rec.Username)) != nil {
-			return ErrUserExists
-		}
-		data, err := json.Marshal(rec)
-		if err != nil {
+	_, err := s.putUser(rec, nil)
+	return err
+}
+
+// PutUserWithOutbox writes the user and notification rows in one bolt transaction.
+func (s *Store) PutUserWithOutbox(rec UserRecord, evs []events.OutboxRecord) (int, error) {
+	return s.putUser(rec, evs)
+}
+
+func (s *Store) putUser(rec UserRecord, evs []events.OutboxRecord) (int, error) {
+	var dropped int
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		if err := putUserTx(tx, rec); err != nil {
 			return err
 		}
-		if err := b.Put([]byte(rec.ID), data); err != nil {
-			return err
-		}
-		return idx.Put([]byte(rec.Username), []byte(rec.ID))
+		n, err := insertOutboxBolt(tx, evs, s.maxPending())
+		dropped = n
+		return err
 	})
+	return dropped, err
+}
+
+func putUserTx(tx *bolt.Tx, rec UserRecord) error {
+	b := tx.Bucket([]byte("users"))
+	if b.Get([]byte(rec.ID)) != nil {
+		return ErrUserExists
+	}
+	idx := tx.Bucket([]byte("user_index"))
+	if idx.Get([]byte(rec.Username)) != nil {
+		return ErrUserExists
+	}
+	data, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	if err := b.Put([]byte(rec.ID), data); err != nil {
+		return err
+	}
+	return idx.Put([]byte(rec.Username), []byte(rec.ID))
 }
 
 func (s *Store) GetUser(id string) (UserRecord, error) {

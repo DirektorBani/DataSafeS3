@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"strings"
 	"sync"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	nats "github.com/nats-io/nats.go"
 )
 
@@ -27,9 +29,24 @@ func newNATSEventSink() *natsEventSink {
 
 func (n *natsEventSink) Name() string { return "nats" }
 
-func (n *natsEventSink) Publish(event string, payload map[string]any) error {
+func (n *natsEventSink) Close() error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.nc != nil {
+		n.nc.Close()
+		n.nc = nil
+	}
+	return nil
+}
+
+// Publish sends the event to NATS. An empty STORAGE_NATS_URL is a disabled sink:
+// it returns nil and does not dial.
+func (n *natsEventSink) Publish(ctx context.Context, e events.Event) error {
 	if n.url == "" {
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -41,11 +58,11 @@ func (n *natsEventSink) Publish(event string, payload map[string]any) error {
 		n.nc = nc
 	}
 	body, err := json.Marshal(map[string]any{
-		"event":   event,
-		"payload": payload,
+		"event":   e.Type,
+		"payload": e.Payload,
 	})
 	if err != nil {
 		return err
 	}
-	return n.nc.Publish(n.subj+"."+event, body)
+	return n.nc.Publish(n.subj+"."+e.Type, body)
 }

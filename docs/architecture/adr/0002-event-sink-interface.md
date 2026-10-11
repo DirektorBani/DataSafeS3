@@ -1,17 +1,36 @@
-# ADR 0002: EventSink interface
+# ADR 0002: EventSink interface and durable outbox
 
-**Status:** Proposed  
-**Date:** 2026-07-10  
-**Related:** A3 Kafka sink · TZ `D:\datasafe_tz\specs\v1.1.1\minio-migration-kit-tz.md` §6.3  
+**Status:** Accepted  
+**Date:** 2026-07-10 (proposed) · 2026-10-11 (accepted)  
+**Related:** E01 durable outbox · E02 Kafka sink (later) · E03 webhook/NATS retry classification (later)
 
 ## Context
 
-NATS notifications exist (`STORAGE_NATS_URL`). Platform teams also ask for Kafka. Multiple buses must not fork delivery logic.
+NATS notifications exist (`STORAGE_NATS_URL`). Platform teams also ask for Kafka. Delivery used to be `go sk.Publish(...)` with the error discarded, so a restart or a down receiver lost the event. A second, unused `EventSink` lived under `internal/events` (ADR-0002 stub) while `internal/api` defined another interface and wired no-op RabbitMQ and Kafka sinks that always succeeded.
 
-## Decision (proposed)
+## Decision
 
-Introduce `internal/events.EventSink` with `Name` / `Publish` / `Close`. Adapt existing NATS code to the interface when A3 lands; add Kafka behind `STORAGE_KAFKA_BROKERS`. **Do not** add Kafka to `go.mod` until A3 implementation.
+One interface, `internal/events.EventSink`:
 
-## Stub
+```go
+Name() string
+Publish(ctx context.Context, e Event) error
+Close() error
+```
 
-Interface file: `internal/events/sink.go` (v1.1.1). No runtime wiring yet.
+`Publish` returns an error when the attempt failed and should be retried. A disabled sink (NATS with an empty `STORAGE_NATS_URL`) returns nil and does not dial.
+
+Events are written to a metadata outbox (bolt buckets `event_outbox` / `event_outbox_due`, Postgres table `event_outbox`, migration `020`) in the same bolt or Postgres transaction as the metadata change when that store method exists. A single `events.Dispatcher` per process delivers due rows. In HA (`STORAGE_HA_ENABLED` with the Postgres metadata backend) only the process that holds the existing leader lease delivers. Backoff is exponential from 1s, capped at 5 minutes, with ±20% jitter. Each sink has its own attempt counter. After `STORAGE_EVENTS_MAX_ATTEMPTS` (default 20) that sink is `dead`. Delivered rows are deleted after `STORAGE_EVENTS_RETENTION` (default 24h). Dead rows, and rows the pending cap marks `dropped`, are deleted after `STORAGE_EVENTS_DEAD_RETENTION` (default 168h). `STORAGE_EVENTS_MAX_PENDING` (default 100000, `0` = unlimited) drops the oldest pending rows instead of failing the object write. Dropped rows record reason `pending cap exceeded`, increment `datasafe_events_dropped_total`, and write Activity action `events_outbox_dropped`.
+
+Webhook and NATS are adapters on this dispatcher. Their configuration is unchanged. Webhook retries every non-2xx until dead; classifying 4xx (except 408/429) as terminal is E03. NATS remains core publish; JetStream ack is E03.
+
+Kafka is not in this decision's runtime. E02 registers a sink with `Dispatcher.Register` only when `STORAGE_KAFKA_BROKERS` is set, and must not add a client or a connection when that variable is empty. **Do not** add a Kafka module to `go.mod` until E02. The RabbitMQ stub is removed. RabbitMQ is not a planned sink.
+
+Delivery is at-least-once. A lost leader lease during `Publish` can duplicate a delivery. Empty sink lists mark the row delivered immediately. Sink names are snapshotted onto the row at insert; a sink registered later does not inherit older rows.
+
+## Consequences
+
+- Single-node bolt, default config, no `STORAGE_NATS_URL`: no broker connection. The dispatcher still persists admin-API notification rows and marks the built-in webhook and NATS adapters successful when they have nothing to send.
+- S3 SigV4 handlers do not emit outbox rows. Per-bucket notification webhooks and the gateway `OnBucketNotification` path stay off the outbox.
+- Paths that cannot share one transaction are documented in [event-outbox.md](../../operations-guide/en/event-outbox.md).
+- Metrics `datasafe_events_outbox_pending`, `datasafe_events_delivered_total`, `datasafe_events_failed_total`, `datasafe_events_dead_total`, `datasafe_events_delivery_lag_seconds`, and `datasafe_events_dropped_total` are emitted by the dispatcher. A Grafana panel is E05.

@@ -3,19 +3,16 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/observability"
 )
-
-// EventSink delivers S3-style notifications to external systems.
-type EventSink interface {
-	Publish(event string, payload map[string]any) error
-	Name() string
-}
 
 type webhookEventSink struct {
 	server *Server
@@ -23,40 +20,85 @@ type webhookEventSink struct {
 
 func (w *webhookEventSink) Name() string { return "webhook" }
 
-func (w *webhookEventSink) Publish(event string, payload map[string]any) error {
-	w.server.fireWebhooks(event, payload)
-	return nil
+func (w *webhookEventSink) Publish(ctx context.Context, e events.Event) error {
+	return w.server.deliverWebhooks(ctx, e)
 }
 
-type rabbitMQEventSink struct{}
+func (w *webhookEventSink) Close() error { return nil }
 
-func (r *rabbitMQEventSink) Name() string { return "rabbitmq" }
-func (r *rabbitMQEventSink) Publish(event string, payload map[string]any) error {
-	return nil
-}
-
-type kafkaEventSink struct{}
-
-func (k *kafkaEventSink) Name() string { return "kafka" }
-func (k *kafkaEventSink) Publish(event string, payload map[string]any) error {
-	return nil
+// defaultEventSinks is webhook + NATS only. RabbitMQ and Kafka no-op sinks are not wired.
+// Kafka (E02) should Dispatcher.Register when STORAGE_KAFKA_BROKERS is non-empty.
+func defaultEventSinks(s *Server) []events.EventSink {
+	return []events.EventSink{
+		&webhookEventSink{server: s},
+		newNATSEventSink(),
+	}
 }
 
 func (s *Server) wireEventSinks() {
-	s.eventSinks = []EventSink{
-		&webhookEventSink{server: s},
-		newNATSEventSink(),
-		&rabbitMQEventSink{},
-		&kafkaEventSink{},
+	cfg := events.ConfigFromEnv()
+	s.eventCfg = cfg
+	if m, ok := s.meta.(metadata.OutboxMutator); ok {
+		m.SetOutboxMaxPending(cfg.MaxPending)
 	}
+	s.eventDisp = events.NewDispatcher(s.outboxStore(), defaultEventSinks(s), cfg, s.isEventLeader, events.Observer{
+		Pending:   observability.SetEventsOutboxPending,
+		Delivered: observability.AddEventsDelivered,
+		Failed:    observability.AddEventsFailed,
+		Dead:      observability.AddEventsDead,
+		Lag:       observability.ObserveEventsDeliveryLag,
+	})
 }
 
-func (s *Server) emitEvent(event string, payload map[string]any) {
-	for _, sink := range s.eventSinks {
-		go func(sk EventSink) {
-			_ = sk.Publish(event, payload)
-		}(sink)
+func (s *Server) outboxStore() events.OutboxStore {
+	st, _ := s.meta.(events.OutboxStore)
+	return st
+}
+
+func (s *Server) isEventLeader(ctx context.Context) bool {
+	if s.haLeader == nil || !s.haLeader.Enabled() {
+		return true
 	}
+	return s.haLeader.IsLeader(ctx)
+}
+
+func (s *Server) outboxRecord(eventType, bucket, key, versionID, tenantID string, payload map[string]any) events.OutboxRecord {
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		raw = []byte(`{}`)
+	}
+	now := time.Now().UTC()
+	rec := events.OutboxRecord{
+		EventType: eventType,
+		Bucket:    bucket,
+		Key:       key,
+		VersionID: versionID,
+		TenantID:  tenantID,
+		Payload:   raw,
+		CreatedAt: now,
+		Attempts:  map[string]events.SinkAttempt{},
+	}
+	var names []string
+	if s.eventDisp != nil {
+		names = s.eventDisp.SinkNames()
+	}
+	for _, name := range names {
+		rec.Attempts[name] = events.SinkAttempt{Status: events.StatusPending, NextAttemptAt: now}
+	}
+	return events.NormalizeOutbox(rec, now)
+}
+
+func (s *Server) noteOutboxDropped(n int) {
+	if n <= 0 {
+		return
+	}
+	observability.AddEventsDropped(n, "pending_cap")
+	msg := fmt.Sprintf("dropped %d pending event(s): %s", n, events.DropReasonCap)
+	s.logActivityAs("system", "", metadata.ActionEventsOutboxDropped, "events", msg)
+	slog.Warn("event outbox pending cap", "dropped", n, "reason", events.DropReasonCap)
 }
 
 type clusterMonitor struct {

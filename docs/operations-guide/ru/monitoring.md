@@ -35,6 +35,12 @@
 | `datasafe_cluster_node_up{node_id,address,role}` | 1 если нода жива |
 | `datasafe_cluster_node_status{…,status}` | Код статуса ноды |
 | `datasafe_ha_enabled` / `datasafe_ha_is_leader` | HA election на этом процессе |
+| `datasafe_events_outbox_pending` | Строки уведомлений, ожидающие доставки |
+| `datasafe_events_delivered_total{sink}` | Успешные доставки sink |
+| `datasafe_events_failed_total{sink,reason}` | Неудачные попытки доставки |
+| `datasafe_events_dead_total{sink}` | Sink, исчерпавшие повторы |
+| `datasafe_events_delivery_lag_seconds{sink}` | От вставки до успешной доставки |
+| `datasafe_events_dropped_total{reason}` | Строки, сброшенные, чтобы запись объектов не блокировалась |
 
 Адреса нод задаются в настройках **Cluster** консоли/Admin API. Scraping `/metrics` с каждой ноды (file_sd) опционален для host-метрик по членам.
 

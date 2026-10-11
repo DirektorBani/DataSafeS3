@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/jackc/pgx/v5"
 )
 
 func (s *Store) GetSystemConfig() (metadata.SystemConfig, error) {
@@ -39,12 +41,28 @@ func (s *Store) PutSystemConfig(cfg metadata.SystemConfig) error {
 }
 
 func (s *Store) PutTrash(rec metadata.TrashRecord) error {
-	_, err := s.pool.Exec(context.Background(), `
-		INSERT INTO trash (id, original_bucket, original_key, trash_key, size, version_id, deleted_by, deleted_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-		ON CONFLICT (id) DO UPDATE SET trash_key=$4, size=$5`,
-		rec.ID, rec.OriginalBucket, rec.OriginalKey, rec.TrashKey, rec.Size, rec.VersionID, rec.DeletedBy, rec.DeletedAt)
+	_, err := s.putTrash(rec, nil)
 	return err
+}
+
+func (s *Store) PutTrashWithOutbox(rec metadata.TrashRecord, evs []events.OutboxRecord) (int, error) {
+	return s.putTrash(rec, evs)
+}
+
+func (s *Store) putTrash(rec metadata.TrashRecord, evs []events.OutboxRecord) (int, error) {
+	ctx := context.Background()
+	run := func(q pgExec) error {
+		_, err := q.Exec(ctx, `
+			INSERT INTO trash (id, original_bucket, original_key, trash_key, size, version_id, deleted_by, deleted_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			ON CONFLICT (id) DO UPDATE SET trash_key=$4, size=$5`,
+			rec.ID, rec.OriginalBucket, rec.OriginalKey, rec.TrashKey, rec.Size, rec.VersionID, rec.DeletedBy, rec.DeletedAt)
+		return err
+	}
+	if len(evs) == 0 {
+		return 0, run(s.pool)
+	}
+	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error { return run(tx) })
 }
 
 func (s *Store) GetTrash(id string) (metadata.TrashRecord, error) {

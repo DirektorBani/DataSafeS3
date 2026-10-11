@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -13,21 +15,36 @@ const userSelect = `
 		last_login, COALESCE(locale,''), COALESCE(webauthn_credentials,''), created_at FROM users`
 
 func (s *Store) PutUser(rec metadata.UserRecord) error {
-	ctx := context.Background()
-	var exists bool
-	_ = s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 OR username=$2)`, rec.ID, rec.Username).Scan(&exists)
-	if exists {
-		return metadata.ErrUserExists
-	}
-	codes, _ := marshalJSON(rec.RecoveryCodes)
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO users (id, username, email, password_hash, role, status, tenant_id, team_id, mfa_enabled,
-			totp_secret, recovery_codes, auth_source, max_size_bytes, max_objects, last_login, locale, webauthn_credentials, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
-		rec.ID, rec.Username, rec.Email, rec.PasswordHash, rec.Role, rec.Status, rec.TenantID, optionalText(rec.TeamID),
-		rec.MFAEnabled, rec.TOTPSecret, codes, rec.AuthSource, rec.MaxSizeBytes, rec.MaxObjects,
-		timestamptzPtr(rec.LastLogin), rec.Locale, rec.WebAuthnCredentials, rec.CreatedAt)
+	_, err := s.putUser(rec, nil)
 	return err
+}
+
+func (s *Store) PutUserWithOutbox(rec metadata.UserRecord, evs []events.OutboxRecord) (int, error) {
+	return s.putUser(rec, evs)
+}
+
+func (s *Store) putUser(rec metadata.UserRecord, evs []events.OutboxRecord) (int, error) {
+	ctx := context.Background()
+	run := func(q pgExec) error {
+		var exists bool
+		_ = q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 OR username=$2)`, rec.ID, rec.Username).Scan(&exists)
+		if exists {
+			return metadata.ErrUserExists
+		}
+		codes, _ := marshalJSON(rec.RecoveryCodes)
+		_, err := q.Exec(ctx, `
+			INSERT INTO users (id, username, email, password_hash, role, status, tenant_id, team_id, mfa_enabled,
+				totp_secret, recovery_codes, auth_source, max_size_bytes, max_objects, last_login, locale, webauthn_credentials, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+			rec.ID, rec.Username, rec.Email, rec.PasswordHash, rec.Role, rec.Status, rec.TenantID, optionalText(rec.TeamID),
+			rec.MFAEnabled, rec.TOTPSecret, codes, rec.AuthSource, rec.MaxSizeBytes, rec.MaxObjects,
+			timestamptzPtr(rec.LastLogin), rec.Locale, rec.WebAuthnCredentials, rec.CreatedAt)
+		return err
+	}
+	if len(evs) == 0 {
+		return 0, run(s.pool)
+	}
+	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error { return run(tx) })
 }
 
 func (s *Store) GetUser(id string) (metadata.UserRecord, error) {

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/jackc/pgx/v5"
 )
@@ -62,12 +63,31 @@ func (s *Store) bucketExistsInScope(ctx context.Context, scope metadata.BucketSc
 }
 
 func (s *Store) PutBucket(rec metadata.BucketRecord) error {
+	_, err := s.putBucket(rec, nil)
+	return err
+}
+
+func (s *Store) PutBucketWithOutbox(rec metadata.BucketRecord, evs []events.OutboxRecord) (int, error) {
+	return s.putBucket(rec, evs)
+}
+
+func (s *Store) putBucket(rec metadata.BucketRecord, evs []events.OutboxRecord) (int, error) {
 	scope := metadata.BucketScopeForRecord(rec.TenantID, rec.OwnerID)
 	if rec.StorageKey == "" {
 		rec.StorageKey = metadata.MakeStorageKey(scope, rec.Name)
 	}
 	ctx := context.Background()
-	exists, err := s.bucketExistsInScope(ctx, scope, rec.Name)
+	run := func(q pgExec) error {
+		return s.putBucketQ(ctx, q, rec, scope)
+	}
+	if len(evs) == 0 {
+		return 0, run(s.pool)
+	}
+	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error { return run(tx) })
+}
+
+func (s *Store) putBucketQ(ctx context.Context, q pgExec, rec metadata.BucketRecord, scope metadata.BucketScope) error {
+	exists, err := bucketExistsInScopeQ(ctx, q, scope, rec.Name)
 	if err != nil {
 		return err
 	}
@@ -76,7 +96,7 @@ func (s *Store) PutBucket(rec metadata.BucketRecord) error {
 	}
 	lifecycle, _ := marshalJSON(rec.LifecycleRules)
 	tags, _ := marshalJSON(rec.Tags)
-	_, err = s.pool.Exec(ctx, `
+	_, err = q.Exec(ctx, `
 		INSERT INTO buckets (storage_key, name, owner, owner_id, team_id, tenant_id, created_at, policy, lifecycle_rules, description,
 			versioning_enabled, versioning_suspended, object_lock_enabled, retention_days, retention_mode, storage_class,
 			visibility, max_size_bytes, max_objects, tags)
@@ -85,6 +105,28 @@ func (s *Store) PutBucket(rec metadata.BucketRecord) error {
 		rec.Versioning, rec.VersioningSuspended, rec.ObjectLock, rec.RetentionDays, rec.RetentionMode, rec.StorageClass,
 		rec.Visibility, rec.MaxSizeBytes, rec.MaxObjects, tags)
 	return err
+}
+
+func bucketExistsInScopeQ(ctx context.Context, q pgExec, scope metadata.BucketScope, name string) (bool, error) {
+	var exists bool
+	var err error
+	switch scope.Kind {
+	case metadata.ScopeTenant:
+		err = q.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM buckets
+				WHERE tenant_id = $1 AND name = $2
+					AND tenant_id IS NOT NULL AND tenant_id <> '' AND tenant_id <> 'default'
+			)`, scope.TenantID, name).Scan(&exists)
+	default:
+		err = q.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM buckets
+				WHERE COALESCE(owner_id, '') = $1 AND name = $2
+					AND (tenant_id IS NULL OR tenant_id = '' OR tenant_id = 'default')
+			)`, scope.OwnerID, name).Scan(&exists)
+	}
+	return exists, err
 }
 
 func (s *Store) GetBucketByKey(storageKey string) (metadata.BucketRecord, error) {
@@ -149,20 +191,35 @@ func (s *Store) ResolveBucket(scope metadata.BucketScope, name string) (metadata
 }
 
 func (s *Store) DeleteBucket(storageKey string) error {
+	_, err := s.deleteBucket(storageKey, nil)
+	return err
+}
+
+func (s *Store) DeleteBucketWithOutbox(storageKey string, evs []events.OutboxRecord) (int, error) {
+	return s.deleteBucket(storageKey, evs)
+}
+
+func (s *Store) deleteBucket(storageKey string, evs []events.OutboxRecord) (int, error) {
 	ctx := context.Background()
-	var objCount int
-	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM objects WHERE bucket=$1 AND is_latest=TRUE AND is_delete_marker=FALSE`, storageKey).Scan(&objCount)
-	if objCount > 0 {
-		return metadata.ErrBucketNotEmpty
+	run := func(q pgExec) error {
+		var objCount int
+		_ = q.QueryRow(ctx, `SELECT COUNT(*) FROM objects WHERE bucket=$1 AND is_latest=TRUE AND is_delete_marker=FALSE`, storageKey).Scan(&objCount)
+		if objCount > 0 {
+			return metadata.ErrBucketNotEmpty
+		}
+		tag, err := q.Exec(ctx, `DELETE FROM buckets WHERE storage_key=$1`, storageKey)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return metadata.ErrNotFound
+		}
+		return nil
 	}
-	tag, err := s.pool.Exec(ctx, `DELETE FROM buckets WHERE storage_key=$1`, storageKey)
-	if err != nil {
-		return err
+	if len(evs) == 0 {
+		return 0, run(s.pool)
 	}
-	if tag.RowsAffected() == 0 {
-		return metadata.ErrNotFound
-	}
-	return nil
+	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error { return run(tx) })
 }
 
 func (s *Store) ListBuckets() ([]metadata.BucketRecord, error) {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/storage"
 )
@@ -317,7 +319,12 @@ func (s *Server) handleCompleteMultipart(w http.ResponseWriter, r *http.Request)
 	for _, p := range req.Parts {
 		parts = append(parts, storage.PartInfo{PartNumber: p.PartNumber, ETag: strings.Trim(p.ETag, `"`)})
 	}
-	rec, err := s.svc.CompleteMultipartUpload(r.Context(), mp.Bucket, mp.Key, uploadID, parts)
+	rec, dropped, err := s.svc.CompleteMultipartNotifying(r.Context(), mp.Bucket, mp.Key, uploadID, parts, func(obj metadata.ObjectRecord) []events.OutboxRecord {
+		return []events.OutboxRecord{
+			s.outboxRecord(metadata.EventObjectCreated, bucket, mp.Key, obj.VersionID, "", map[string]any{"bucket": bucket, "key": mp.Key, "size": obj.Size}),
+			s.outboxRecord(metadata.EventMultipartCompleted, bucket, mp.Key, obj.VersionID, "", map[string]any{"bucket": bucket, "key": mp.Key, "upload_id": uploadID}),
+		}
+	})
 	if err != nil {
 		if err == metadata.ErrQuotaExceeded {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "quota exceeded"})
@@ -326,9 +333,8 @@ func (s *Server) handleCompleteMultipart(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
+	s.noteOutboxDropped(dropped)
 	s.logActivity(r, metadata.ActionObjectUploaded, "object", bucket+"/"+mp.Key)
-	s.emitEvent(metadata.EventObjectCreated, map[string]any{"bucket": bucket, "key": mp.Key, "size": rec.Size})
-	s.emitEvent(metadata.EventMultipartCompleted, map[string]any{"bucket": bucket, "key": mp.Key, "upload_id": uploadID})
 	writeJSON(w, http.StatusOK, map[string]any{"object": rec})
 }
 
@@ -383,7 +389,7 @@ func (s *Server) handleRetryWebhookDelivery(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "delivery not found"})
 		return
 	}
-	go s.deliverWebhook(hook, delivery.Payload, &delivery)
+	go s.deliverWebhook(context.Background(), hook, delivery.Payload, &delivery)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "delivery_id": deliveryID})
 }
 
