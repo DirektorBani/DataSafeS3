@@ -58,10 +58,10 @@ When a rule is created, existing objects are queued for initial replication.
 The test container listens on **9100** (API) and **9101** (console) to avoid conflicting with DataSafeS3 `:9000`.
 
 ```cmd
-docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin minio/minio server /data --console-address ":9001"
+docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
 ```
 
-> Lab only: the `minio/minio` image is a convenient S3-compatible server for local tests; product docs refer to it as an **external S3 test endpoint**, not as a positioning reference.
+> Lab only: `pgsty/silo` is an S3-compatible server for local tests (Docker Hub `minio/minio` is no longer pullable). Product docs refer to it as an **external S3 test endpoint**, not as a positioning reference.
 
 Default credentials:
 
@@ -82,7 +82,7 @@ The S3 test endpoint is a **separate** Docker container (not in the project `doc
 
 ```cmd
 docker rm -f datasafe-minio-test
-docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin minio/minio server /data --console-address ":9001"
+docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
 ```
 
 Check from host (should respond, not "connection refused"):

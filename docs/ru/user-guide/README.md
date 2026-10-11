@@ -516,7 +516,7 @@ docker compose up -d caddy --no-deps
 **Шаг 1 — S3 test container** (если ещё не запущен):
 
 ```cmd
-docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin minio/minio server /data --console-address ":9001"
+docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
 ```
 
 **Шаг 2 — автонастройка Connection + правило репликации:**
@@ -1201,7 +1201,7 @@ HTTP-уведомления при ObjectCreated, ObjectDeleted, BucketCreated/D
 ### Тестовый S3 endpoint
 
 ```cmd
-docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin minio/minio server /data --console-address ":9001"
+docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
 ```
 
 | Сервис | Адрес | Логин / пароль |

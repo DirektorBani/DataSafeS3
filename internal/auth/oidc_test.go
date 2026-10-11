@@ -86,7 +86,7 @@ func TestBrowserOAuthEndpointKeepsPublicAuthURL(t *testing.T) {
 	defer srv.Close()
 
 	issuers := OIDCIssuers{
-		Public:   srv.URL + "/realms/datasafe",
+		Public: srv.URL + "/realms/datasafe",
 		// Closed port so Internal discovery fails even when a local Keycloak is up.
 		Internal: "http://127.0.0.1:1/realms/datasafe",
 	}

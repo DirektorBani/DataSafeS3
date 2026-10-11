@@ -19,6 +19,11 @@ Patch on **v1.4.0**. No new product features.
 
 - **Default install is production-safe.** Compose and `.env.example` default `STORAGE_DEV` to false. The installer writes `STORAGE_DEV=false` unless `-Dev`, `--dev`, or profile `dev`. It generates `STORAGE_JWT_SECRET`, `STORAGE_SECRET_KEY`, and `STORAGE_METRICS_TOKEN` when they are missing or still the published defaults, and the Compose Prometheus service scrapes with that bearer so Grafana keeps working. Profile `identity` sets `STORAGE_DEV=true` so the HTTP lab IdP still works. Dev and audit overlays set `STORAGE_DEV=true` explicitly. Upgrade notes: [EN](docs/operations-guide/en/upgrade.md#upgrading-to-v141) · [RU](docs/operations-guide/ru/upgrade.md#обновление-до-v141).
 - Removed the one-shot workflow `.github/workflows/deferred-release-v1.2.0.yml` (v1.2.0 is already published).
+- **Lab S3 image** — Docker Hub `minio/minio` no longer pulls (`pull access denied`). Feature-audit, `scripts/start-minio-test.cmd`, the Helm lab target, and the EN/RU gateway examples use `pgsty/silo:RELEASE.2026-09-16T00-00-00Z` (same `server /data` arguments and `/minio/health/live`). Anonymous `quay.io/minio/minio` pulls return 401, so that registry is not a substitute.
+
+### Security
+
+- **Go 1.26.9 and golang.org/x/text v0.41.0** — `govulncheck` reported GO-2026-6629 in `golang.org/x/text@v0.38.0` (fixed in v0.41.0) and net/http issues in the Go 1.26.8 standard library (GO-2026-6617, GO-2026-6613, GO-2026-6612, GO-2026-6611, GO-2026-6610, GO-2026-6608, and the rest of that set), fixed in Go 1.26.9. `go.mod` is `go 1.26.9` (that line selects toolchain go1.26.9; `go mod tidy` drops a redundant `toolchain` directive). `deploy/docker/Dockerfile` and CI `setup-go` (including feature-audit) pin **1.26.9**. Release images are built from that Dockerfile.
 
 ### Honesty
 

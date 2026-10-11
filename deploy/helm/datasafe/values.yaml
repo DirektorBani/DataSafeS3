@@ -138,10 +138,12 @@ gateway:
 
 minio:
   # Optional dev-only S3 test target for Gateway replication testing.
+  # Docker Hub minio/minio and anonymous quay.io/minio/minio pulls are closed.
+  # pgsty/silo accepts the same `server /data` args and MINIO_ROOT_* env.
   enabled: false
   image:
-    repository: minio/minio
-    tag: v1.2.0
+    repository: pgsty/silo
+    tag: RELEASE.2026-09-16T00-00-00Z
     pullPolicy: IfNotPresent
   rootUser: minioadmin
   rootPassword: minioadmin

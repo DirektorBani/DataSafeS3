@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.x"
+          go-version: "1.26.9"
 
       - name: Build storage-server linux binary
         run: |
@@ -57,7 +57,7 @@ jobs:
             -p 9100:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio server /data --console-address ":9001"
+            pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
           docker run -d --name datasafe-log-loki --network "$NET" \
             -p 3100:3100 grafana/loki:2.9.4 -config.file=/etc/loki/local-config.yaml
           docker run -d --name datasafe-elasticsearch-test --network "$NET" \
@@ -144,7 +144,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.x"
+          go-version: "1.26.9"
 
       - name: Go vault-tagged tests
         run: |

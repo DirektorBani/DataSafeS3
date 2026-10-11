@@ -72,7 +72,7 @@ HELM_IMAGES = (
     "repository: ghcr.io/direktorbani/datasafe-console",
 )
 THIRD_PARTY_IMAGES = (
-    "repository: minio/minio",
+    "repository: pgsty/silo",
     "repository: prom/prometheus",
     "repository: grafana/grafana",
 )
