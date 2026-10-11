@@ -19,10 +19,12 @@ import (
 
 const (
 	// healthTimeout bounds the broker ping behind a health frame.
+	// The parent waits longer than this (bridgeHealthIPC).
 	healthTimeout = 2 * time.Second
-	// publishTimeout bounds one produce so a stopped broker returns an error
-	// on stdout instead of leaving the parent blocked on the pipe.
-	publishTimeout = 12 * time.Second
+	// publishTimeout bounds one produce. It matches the producer delivery
+	// deadline and is shorter than the parent's IPC wait, so an unreachable
+	// broker returns an error frame while this process keeps running.
+	publishTimeout = 10 * time.Second
 )
 
 func main() {
@@ -93,13 +95,40 @@ func main() {
 func publish(prod *kafkasink.Producer, key string, body []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), publishTimeout)
 	defer cancel()
-	return prod.Publish(ctx, key, body)
+	errc := make(chan error, 1)
+	go func() {
+		errc <- prod.Publish(ctx, key, body)
+	}()
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+		// The broker call may still be inside the client. Reply now and
+		// drop the late result so this process stays up to read the next frame.
+		go func() { <-errc }()
+		return ctx.Err()
+	}
 }
 
 func probe(prod *kafkasink.Producer) (string, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), healthTimeout)
 	defer cancel()
-	return prod.Probe(ctx)
+	type result struct {
+		status string
+		last   string
+	}
+	ch := make(chan result, 1)
+	go func() {
+		status, last := prod.Probe(ctx)
+		ch <- result{status, last}
+	}()
+	select {
+	case r := <-ch:
+		return r.status, r.last
+	case <-ctx.Done():
+		go func() { <-ch }()
+		return "degraded", ctx.Err().Error()
+	}
 }
 
 func oneLine(s string) string {

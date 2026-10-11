@@ -25,8 +25,12 @@ const KafkaBridgePath = "/usr/lib/datasafe/datasafe-kafka-bridge"
 const (
 	bridgeRestartMin = 200 * time.Millisecond
 	bridgeRestartMax = 30 * time.Second
-	bridgeHealthIPC  = 3 * time.Second
-	bridgePublishIPC = 12 * time.Second
+	// Parent deadlines are longer than the child (probe 2s, produce 10s in
+	// the bridge process). The child writes a reply within its own deadline
+	// when the broker is unreachable. A parent deadline that fires while that
+	// process is still running is not a restart.
+	bridgeHealthIPC  = 5 * time.Second
+	bridgePublishIPC = 15 * time.Second
 	bridgeProbeEvery = 5 * time.Second
 )
 
@@ -64,6 +68,10 @@ type execSink struct {
 	stdout   *bufio.Reader
 	waited   chan struct{}
 	quiesced bool
+	// late is a read left in flight when the caller's deadline fired and the
+	// child process was still alive. The next call discards that frame
+	// before writing another request. It is not a process failure.
+	late chan bridgeRead
 
 	statusMu      sync.Mutex
 	status        string
@@ -242,6 +250,11 @@ func (s *execSink) noteProbe(status, last string) {
 	s.lastErr = last
 }
 
+type bridgeRead struct {
+	msg bridgeproto.Message
+	err error
+}
+
 func (s *execSink) roundTrip(ctx context.Context, kind byte, parts ...[]byte) (bridgeproto.Message, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -254,6 +267,9 @@ func (s *execSink) roundTrip(ctx context.Context, kind byte, parts ...[]byte) (b
 	if s.backingOff {
 		return bridgeproto.Message{}, errors.New(s.cachedErrLocked())
 	}
+	if err := s.drainLateLocked(ctx, kind); err != nil {
+		return bridgeproto.Message{}, err
+	}
 	if s.cmd == nil {
 		if err := s.start(); err != nil {
 			s.noteChildDownLocked(err.Error())
@@ -261,36 +277,99 @@ func (s *execSink) roundTrip(ctx context.Context, kind byte, parts ...[]byte) (b
 		}
 	}
 	if err := bridgeproto.Write(s.stdin, kind, parts...); err != nil {
-		reason := "bridge exited: " + err.Error()
-		_ = s.stopLocked()
-		s.noteChildDownLocked(reason)
-		return bridgeproto.Message{}, errors.New(reason)
-	}
-	type result struct {
-		msg bridgeproto.Message
-		err error
+		return bridgeproto.Message{}, s.childFailedLocked("bridge exited: " + err.Error())
 	}
 	stdout := s.stdout
-	ch := make(chan result, 1)
+	ch := make(chan bridgeRead, 1)
 	go func() {
 		msg, err := bridgeproto.Read(stdout)
-		ch <- result{msg, err}
+		ch <- bridgeRead{msg, err}
 	}()
 	select {
-	case <-ctx.Done():
-		reason := "bridge call timed out: " + ctx.Err().Error()
-		_ = s.stopLocked()
-		s.noteChildDownLocked(reason)
-		return bridgeproto.Message{}, errors.New(reason)
 	case res := <-ch:
-		if res.err != nil {
-			reason := "bridge exited: " + res.err.Error()
-			_ = s.stopLocked()
-			s.noteChildDownLocked(reason)
-			return bridgeproto.Message{}, errors.New(reason)
+		return s.finishReadLocked(res)
+	case <-ctx.Done():
+		select {
+		case res := <-ch:
+			return s.finishReadLocked(res)
+		default:
+			if s.childAliveLocked() {
+				s.late = ch
+				return bridgeproto.Message{}, errors.New(timeoutReason(kind, ctx.Err()))
+			}
+			return bridgeproto.Message{}, s.childFailedLocked("bridge exited: " + ctx.Err().Error())
 		}
-		return res.msg, nil
 	}
+}
+
+// drainLateLocked waits for a reply that belongs to a previous call. A frame
+// from a child that is still running is discarded. A read error or a dead
+// process is a real exit.
+func (s *execSink) drainLateLocked(ctx context.Context, kind byte) error {
+	ch := s.late
+	if ch == nil {
+		return nil
+	}
+	var waited <-chan struct{}
+	if s.waited != nil {
+		waited = s.waited
+	}
+	select {
+	case res := <-ch:
+		s.late = nil
+		if res.err != nil {
+			return s.childFailedLocked("bridge exited: " + res.err.Error())
+		}
+		return nil
+	case <-waited:
+		s.late = nil
+		return s.childFailedLocked("bridge exited")
+	case <-ctx.Done():
+		return errors.New(timeoutReason(kind, ctx.Err()))
+	}
+}
+
+func (s *execSink) finishReadLocked(res bridgeRead) (bridgeproto.Message, error) {
+	if res.err != nil {
+		return bridgeproto.Message{}, s.childFailedLocked("bridge exited: " + res.err.Error())
+	}
+	return res.msg, nil
+}
+
+func (s *execSink) childAliveLocked() bool {
+	if s.cmd == nil || s.cmd.Process == nil || s.waited == nil {
+		return false
+	}
+	select {
+	case <-s.waited:
+		return false
+	default:
+		return true
+	}
+}
+
+func (s *execSink) childFailedLocked(reason string) error {
+	_ = s.stopLocked()
+	s.noteChildDownLocked(reason)
+	return errors.New(reason)
+}
+
+// timeoutReason is a broker or deadline failure. It is not a process exit,
+// and the text must not name the child binary (that path matches the
+// single-node log check when brokers are empty; this path only runs when
+// they are set).
+func timeoutReason(kind byte, err error) string {
+	what := "call"
+	switch kind {
+	case bridgeproto.KindPub:
+		what = "produce"
+	case bridgeproto.KindHealth:
+		what = "probe"
+	}
+	if err == nil {
+		return what + " timed out"
+	}
+	return what + " timed out: " + err.Error()
 }
 
 func (s *execSink) cachedErrLocked() string {
@@ -447,6 +526,7 @@ func (s *execSink) watch(cmd *exec.Cmd, waited <-chan struct{}) {
 	s.stdin = nil
 	s.stdout = nil
 	s.waited = nil
+	s.late = nil
 	if s.quiesced {
 		return
 	}
@@ -480,6 +560,7 @@ func (l *limitedBuf) String() string {
 }
 
 func (s *execSink) stopLocked() error {
+	s.late = nil
 	if s.cmd == nil {
 		return nil
 	}
