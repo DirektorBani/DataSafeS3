@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -58,6 +59,9 @@ func ConfigFromEnv() Config {
 type Leader struct {
 	cfg   Config
 	store LeaderStore
+
+	mu   sync.Mutex
+	lost bool
 }
 
 func New(cfg Config, store LeaderStore) *Leader {
@@ -93,20 +97,41 @@ func (l *Leader) Start(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			ok, err := l.store.RenewLeader(ctx, l.cfg.NodeID, l.cfg.LeaderTTL)
-			if err != nil {
-				return err
-			}
-			if !ok {
+			if err != nil || !ok {
+				// A fenced primary (read-only Postgres, or a lease that is no
+				// longer ours) must refuse writes immediately. Waiting out the
+				// old TTL would leave a split brain. The process does not
+				// acquire again; start it on the new primary to lead.
+				l.markLost()
+				if err != nil {
+					return err
+				}
 				return ErrNotLeader
 			}
 		}
 	}
 }
 
+// markLost drops this process's claim. leaderGuard then rejects writes
+// even if the previous lease row has not expired yet.
+func (l *Leader) markLost() {
+	l.mu.Lock()
+	l.lost = true
+	l.mu.Unlock()
+}
+
 // IsLeader returns true when HA disabled or this node holds a valid lease.
+// It is false after a failed renew, including when the metadata primary has
+// been fenced read-only.
 func (l *Leader) IsLeader(ctx context.Context) bool {
 	if !l.cfg.Enabled {
 		return true
+	}
+	l.mu.Lock()
+	lost := l.lost
+	l.mu.Unlock()
+	if lost {
+		return false
 	}
 	holder, exp, ok, err := l.store.CurrentLeader(ctx)
 	if err != nil || !ok {

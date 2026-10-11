@@ -14,23 +14,18 @@ $ErrorActionPreference = "Stop"
 if (-not $StandbyContainer) { $StandbyContainer = "${ComposeProject}-postgres-standby-1" }
 
 Write-Host "=== DataSafe metadata failover $(if ($DryRun) { '(dry-run)' } elseif ($Execute) { '(execute)' } else { '(plan)' }) ==="
-Write-Host "1. Promote postgres standby on port $PgStandbyPort (pg_ctl promote; lab: scripts/postgres-failover.ps1)"
-Write-Host "2. Update STORAGE_POSTGRES_DSN to point at new primary"
-Write-Host "3. Clear leader lock on new primary:"
-$sql = "DELETE FROM ha_leader_lock WHERE lock_id='storage-server';"
-Write-Host "   psql: $sql"
-Write-Host "4. Restart storage-server with STORAGE_HA_ENABLED=true and unique STORAGE_NODE_ID"
-Write-Host "5. Verify /healthz shows is_leader=true"
+Write-Host "Exit codes: 0 ok or already done, 1 usage, 2 precheck, 3 fence, 4 promote, 5 postcheck"
+Write-Host "1. Fence the old primary (default_transaction_read_only=on, not replicated)"
+Write-Host "2. Promote postgres standby ($StandbyContainer) when it is still in recovery"
+Write-Host "3. Point STORAGE_POSTGRES_DSN at the new primary and restart that storage node"
+Write-Host "4. On a fresh promote, clear ha_leader_lock so the new node can acquire it. A re-run leaves a live lease."
+Write-Host "5. Verify /healthz is_leader=true on the new node and the old node refuses writes"
 
-$failoverScript = Join-Path $PSScriptRoot "..\postgres-failover.ps1"
-if ($DryRun -and (Test-Path $failoverScript)) {
-    & $failoverScript -ComposeProject $ComposeProject -StandbyContainer $StandbyContainer -DryRun | Out-Null
-    Write-Host "[failover-metadata] DRY RUN complete"
-    exit 0
-}
-if ($Execute -and (Test-Path $failoverScript)) {
-    Write-Host "Running postgres-failover.ps1 (live)..."
-    & $failoverScript -ComposeProject $ComposeProject -StandbyContainer $StandbyContainer
+$promote = Join-Path $PSScriptRoot "promote.ps1"
+if ($DryRun -or -not $Execute) {
+    & $promote -PrimaryContainer "" -StandbyContainer $StandbyContainer -DryRun
     exit $LASTEXITCODE
 }
-Write-Host "[failover-metadata] Plan only - pass -DryRun or -Execute to invoke postgres-failover.ps1"
+Write-Host "[failover-metadata] executing promote.ps1"
+& $promote -PrimaryContainer $env:PRIMARY_CONTAINER -StandbyContainer $StandbyContainer -Execute
+exit $LASTEXITCODE

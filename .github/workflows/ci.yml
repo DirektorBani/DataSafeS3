@@ -293,3 +293,30 @@ jobs:
           KAFKA_INTEGRATION: "1"
           STORAGE_KAFKA_BROKERS: localhost:9092
         run: go test -count=1 -timeout 12m ./internal/api -run TestKafkaBrokerIntegration
+
+  # Postgres primary + replica, two storage-server nodes, webhook traffic
+  # across a scripted promote. Ports stay off :9000 and :9001.
+  ha-promote-drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+      - name: Scripted promote drill
+        run: bash scripts/ha/run-promote-drill.sh
+      - name: Evidence pack
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dr-evidence
+          if-no-files-found: ignore
+          path: |
+            /tmp/datasafe-promote-drill/evidence/summary.md
+            /tmp/datasafe-promote-drill/evidence/evidence.json
+            /tmp/datasafe-promote-drill/evidence.zip
+            /tmp/datasafe-promote-drill/storage-a.log
+            /tmp/datasafe-promote-drill/storage-b.log
+            /tmp/datasafe-promote-drill/postgres-a.log
+            /tmp/datasafe-promote-drill/postgres-b.log

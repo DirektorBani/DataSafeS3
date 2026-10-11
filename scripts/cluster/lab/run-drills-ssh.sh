@@ -172,6 +172,25 @@ else
   docker exec "$owner" keepalived -f /etc/keepalived/keepalived.conf -l 2>/dev/null || true
 fi
 
+# E04 scripted promote. Dry-run prints the plan and must exit 0.
+# D6 above is the timed Patroni election. This step does not SKIP.
+if bash "$ROOT/scripts/cluster/promote.sh" --dry-run >/dev/null; then
+  record PASS "scripted cluster promote dry-run"
+else
+  record FAIL "scripted cluster promote dry-run"
+fi
+if bash "$ROOT/scripts/ha/promote.sh" --dry-run >/dev/null; then
+  record PASS "scripted HA promote dry-run"
+else
+  record FAIL "scripted HA promote dry-run"
+fi
+ev_dir="$STATE/dr-evidence-ssh"
+if bash "$ROOT/scripts/collect-dr-evidence.sh" --lab --base-url "http://127.0.0.1:9010" --out "$ev_dir" >/dev/null; then
+  record PASS "DR evidence pack $ev_dir"
+else
+  record FAIL "DR evidence pack"
+fi
+
 # Static scripts
 if bash -n "$ROOT/scripts/cluster/remote/apply-node.sh" \
   && bash -n "$ROOT/scripts/cluster/cluster_push_apply.sh"; then

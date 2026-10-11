@@ -2,7 +2,7 @@
 param(
     [string]$BaseUrl = "http://127.0.0.1:8082",
     [string]$PrimaryDirect = "http://127.0.0.1:9002",
-    [string[]]$StandbyUrls = @("http://127.0.0.1:9001", "http://127.0.0.1:9003"),
+    [string[]]$StandbyUrls = @("http://127.0.0.1:19011", "http://127.0.0.1:19013"),
     [string]$ComposeProject = "datasafe-ha",
     [string]$PgPrimaryPort = "5442",
     [string]$PgStandbyPort = "5443"

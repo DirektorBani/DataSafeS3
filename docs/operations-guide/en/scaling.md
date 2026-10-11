@@ -73,6 +73,7 @@ Set `STORAGE_READ_ONLY=true` on a secondary `storage-server` sharing the same me
 | **Erasure object backend** | Implemented (v1.1) | `STORAGE_OBJECT_BACKEND=erasure`, paths via `STORAGE_ERASURE_DATA_PATHS` |
 | **Site replication (peer)** | Implemented (v1.1) | DataSafeS3↔DataSafeS3 async; `STORAGE_SITE_REPLICATION_ENABLED=true` |
 | **Leader lock (single writer)** | Implemented (v1.1) | `STORAGE_HA_ENABLED=true` + Postgres `ha_leader_lock` table |
+| **Scripted promote** | Lab script | `scripts/ha/promote.sh` fences the old primary, then `pg_promote`. Not automatic multi-AZ. [Disaster recovery](./disaster-recovery.md) |
 
 ## Erasure object backend (v1.1)
 

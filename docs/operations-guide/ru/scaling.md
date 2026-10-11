@@ -67,6 +67,7 @@ Community Edition DataSafeS3 — **single-node по умолчанию**. Ниж
 | **Erasure object backend** | Lab foundation (v1.1) | `STORAGE_OBJECT_BACKEND=erasure`, paths через `STORAGE_ERASURE_DATA_PATHS` |
 | **Site replication (peer)** | Реализовано (v1.1) | DataSafeS3↔DataSafeS3 async; `STORAGE_SITE_REPLICATION_ENABLED=true` |
 | **Leader lock (single writer)** | Реализовано (v1.1) | `STORAGE_HA_ENABLED=true` + таблица Postgres `ha_leader_lock` |
+| **Скриптовый promote** | Лабораторный скрипт | `scripts/ha/promote.sh` ограждает старый primary и вызывает `pg_promote`. Это не автоматический multi-AZ. [Аварийное восстановление](./disaster-recovery.md) |
 
 ## Erasure object backend (v1.1)
 
