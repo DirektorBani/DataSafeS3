@@ -68,5 +68,6 @@ Windows, из корня репозитория (Docker Desktop запущен):
 - Входящие клиенты (smoke, Caddy, healthcheck) разрешены. Любой другой сокет не на loopback валит job, включая порт брокера.
 - Zip evidence собирает `scripts/single-node-gate.sh` из Admin API. Linux CI не запускает `collect-evidence-pack.ps1`.
 - Шаг установщика локально перетегирует образ PR в `ghcr.io/direktorbani/datasafe-storage-server:v1.4.1`, чтобы `./install.sh --tag v1.4.1` поднял биты PR. Job этот тег не пушит. Обычная установка без перетегирования тянет опубликованный образ.
+- Вход в `ghcr.io` перед pull baseline необязателен. Fork pull request его пропускает, а неудачный login не валит job. Образ `v1.4.1` публичный.
 - Windows job в CI только проверяет, что `install.ps1` разбирается и документирует `-Yes -Profiles core`.
 - В старт входит время создания контейнера Docker. Процедура одна и та же для обоих образов; лимит применяется к разнице медиан.

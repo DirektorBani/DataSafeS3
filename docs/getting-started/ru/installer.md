@@ -40,6 +40,8 @@ install.cmd
 .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
 ```
 
+`-Yes` ждёт ответ `http://127.0.0.1:8080/healthz` и завершается с кодом 0. Docker Compose пишет прогресс в stderr. В Windows PowerShell 5.1 этот поток — текст, а не ошибка установки, в том числе если вывод скрипта перенаправлен (`*> log`).
+
 Job CI, который проходит этот путь и бюджет ресурсов: [гейт одного узла](../../operations-guide/ru/single-node-gate.md).
 
 В меню:

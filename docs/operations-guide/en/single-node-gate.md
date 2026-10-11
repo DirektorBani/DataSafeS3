@@ -68,5 +68,6 @@ Windows, from the repo root (Docker Desktop running):
 - Inbound clients (the smoke, Caddy, the healthcheck) are allowed. Any other non-loopback socket fails the job, including a broker port.
 - The evidence zip is built by `scripts/single-node-gate.sh` from the Admin API. Linux CI does not run `collect-evidence-pack.ps1`.
 - The installer step retags the PR image as `ghcr.io/direktorbani/datasafe-storage-server:v1.4.1` **locally** so `./install.sh --tag v1.4.1` runs the PR bits. The job does not push that tag. A normal install without that retag pulls the published image.
+- Login to `ghcr.io` before the baseline pull is optional. Fork pull requests skip it, and a failed login does not fail the job. The `v1.4.1` image is public.
 - The Windows CI job only checks that `install.ps1` parses and documents `-Yes -Profiles core`.
 - Startup includes Docker create time. It is the same procedure for both images; the limit applies to the difference of medians.

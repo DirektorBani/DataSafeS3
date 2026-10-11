@@ -93,7 +93,11 @@ jobs:
       - name: Gate assertions self-test
         run: python3 scripts/single-node-gate.py self-test
       - name: Log in to GHCR
-        run: echo "${{ github.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        # The v1.4.1 package is public. Fork PRs do not receive secrets, and a
+        # failed login must not fail the gate.
+        if: github.token != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
+        continue-on-error: true
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Pull v1.4.1 baseline
         run: docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
       - name: Build PR storage-server image
@@ -141,6 +145,28 @@ jobs:
             throw 'install.ps1 must document non-interactive core: -Yes -Profiles core'
           }
           Write-Host 'install.ps1 parsed; non-interactive core profile is documented'
+      - name: Native stderr helper (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $log = Join-Path $env:TEMP 'datasafe-native-51.txt'
+          if (Test-Path $log) { Remove-Item -Force $log }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PWD\scripts\tests\invoke-native-command.ps1" *> $log
+          $code = $LASTEXITCODE
+          Write-Host "powershell 5.1 helper exit $code"
+          Get-Content -LiteralPath $log
+          if ($code -ne 0) { exit $code }
+      - name: Native stderr helper (PowerShell 7)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $log = Join-Path $env:TEMP 'datasafe-native-7.txt'
+          if (Test-Path $log) { Remove-Item -Force $log }
+          & pwsh -NoProfile -File "$PWD\scripts\tests\invoke-native-command.ps1" *> $log
+          $code = $LASTEXITCODE
+          Write-Host "pwsh helper exit $code"
+          Get-Content -LiteralPath $log
+          if ($code -ne 0) { exit $code }
 
   e2e-smoke:
     runs-on: ubuntu-latest

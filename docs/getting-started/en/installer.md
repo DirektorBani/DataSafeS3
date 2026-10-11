@@ -40,6 +40,8 @@ Profile `core` alone is the production single-node path: storage-server and Cadd
 .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
 ```
 
+`-Yes` waits until `http://127.0.0.1:8080/healthz` responds, then exits 0. Docker Compose writes its progress to stderr. On Windows PowerShell 5.1 that stream is text, not a failed install, including when you redirect the script with `*> log`.
+
 The CI job that runs this path and the resource budget is [the single-node gate](../../operations-guide/en/single-node-gate.md).
 
 In the menu:
