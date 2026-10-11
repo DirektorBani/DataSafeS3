@@ -96,6 +96,8 @@ jobs:
       - name: Start compose stack for E2E
         env:
           DATASAFE_DATA_ROOT: ${{ github.workspace }}/.datasafe-data-ci
+          # Dev stack: login rate limit is 200 (production default is 10) and outbound HTTP stays open for the lab.
+          STORAGE_DEV: "true"
         run: |
           mkdir -p "$DATASAFE_DATA_ROOT/storage" "$DATASAFE_DATA_ROOT/postgres"
           docker compose -p datasafe-ci \

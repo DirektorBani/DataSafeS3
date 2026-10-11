@@ -104,6 +104,7 @@ jobs:
           done
 
       - name: Finish first-run setup
+        # Leaves admin/admin so the audit script can sign in after the wizard gate.
         run: bash scripts/ci-complete-setup.sh http://127.0.0.1:8080
 
       - name: Run feature-audit (API smoke subset)
