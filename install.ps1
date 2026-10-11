@@ -6,6 +6,7 @@
 .EXAMPLE
   .\install.ps1
   .\install.ps1 -Yes -Profiles core,postgres,monitoring,data
+  .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
   .\install.ps1 -Yes -Dev -Profiles core,postgres,data
 #>
 param(
@@ -23,6 +24,9 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = if ($PSScriptRoot) { $PSScriptRoot } else { Get-Location }
 Set-Location $Root
+# docker compose writes progress to stderr. Under Windows PowerShell 5.1 that
+# becomes a terminating NativeCommandError when output is redirected (*> log).
+. (Join-Path $Root "scripts\Invoke-NativeCommand.ps1")
 
 function Write-Title([string]$t) {
   Write-Host ""
@@ -39,6 +43,7 @@ DataSafeS3 interactive installer
 
   .\install.ps1
   .\install.ps1 -Yes -Profiles core,postgres,monitoring,data
+  .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
   .\install.ps1 -DryRun -Yes -Profiles core,postgres,data
   .\install.ps1 -Tag v1.4.1 -DataRoot D:/datasafe-data
   .\install.ps1 -Dev -Yes -Profiles core,postgres,data
@@ -116,17 +121,13 @@ function Ensure-Docker {
   Write-Title "2) Prerequisites"
   $dockerOk = $false
   if (Test-CommandExists "docker") {
-    try {
-      docker info 2>$null | Out-Null
-      if ($LASTEXITCODE -eq 0) {
-        $ver = (docker version --format '{{.Server.Version}}' 2>$null)
-        Write-Ok "Docker Engine $ver"
-        $dockerOk = $true
-      } else {
-        Write-Warn "Docker CLI found but engine not reachable (is Docker Desktop running?)"
-      }
-    } catch {
-      Write-Warn "Docker CLI found but engine not reachable"
+    $info = Invoke-NativeCommand -FilePath docker -ArgumentList @('info')
+    if ($info.ExitCode -eq 0) {
+      $ver = Invoke-NativeCommand -FilePath docker -ArgumentList @('version', '--format', '{{.Server.Version}}')
+      Write-Ok ("Docker Engine " + ((@($ver.Stdout) -join '').Trim()))
+      $dockerOk = $true
+    } else {
+      Write-Warn "Docker CLI found but engine not reachable (is Docker Desktop running?)"
     }
   } else {
     Write-Err "Docker not found"
@@ -156,8 +157,8 @@ function Ensure-Docker {
   }
 
   $composeOk = $false
-  docker compose version 2>$null | Out-Null
-  if ($LASTEXITCODE -eq 0) {
+  $compose = Invoke-NativeCommand -FilePath docker -ArgumentList @('compose', 'version')
+  if ($compose.ExitCode -eq 0) {
     Write-Ok "docker compose available"
     $composeOk = $true
   } else {
@@ -235,10 +236,11 @@ function Find-LocalServerImage {
     "datasafe-storage-server:v1.0.0"
   )
   foreach ($img in $candidates) {
-    docker image inspect $img 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { return $img }
+    $inspect = Invoke-NativeCommand -FilePath docker -ArgumentList @('image', 'inspect', $img)
+    if ($inspect.ExitCode -eq 0) { return $img }
   }
-  $listed = @(docker images --format "{{.Repository}}:{{.Tag}}" 2>$null | Where-Object {
+  $images = Invoke-NativeCommand -FilePath docker -ArgumentList @('images', '--format', '{{.Repository}}:{{.Tag}}')
+  $listed = @(@($images.Stdout) | Where-Object {
     $_ -match 'datasafe-storage-server' -and $_ -notmatch '<none>'
   })
   if ($listed.Count -gt 0) { return $listed[0] }
@@ -474,16 +476,13 @@ Then re-run installer with binary selected.
 function Connect-IdentitySidecars {
   $net = "${ProjectName}_default"
   foreach ($c in @("datasafe-ldap-test", "datasafe-keycloak-test")) {
-    $running = docker ps --filter "name=^/${c}$" --format "{{.Names}}" 2>$null
-    if (-not $running) {
+    $running = Invoke-NativeCommand -FilePath docker -ArgumentList @('ps', '--filter', "name=^/${c}$", '--format', '{{.Names}}')
+    if (-not @(@($running.Stdout) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
       Write-Warn "$c not running - start with scripts\start-ldap-test.cmd / start-keycloak-test.cmd"
       continue
     }
-    # Already attached is OK; docker may write to stderr (ErrorAction Stop would abort install).
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    docker network connect $net $c 2>&1 | Out-Null
-    $ErrorActionPreference = $prev
+    # Already attached is OK; a non-zero exit here is not a failed install.
+    [void](Invoke-NativeCommand -FilePath docker -ArgumentList @('network', 'connect', $net, $c))
     Write-Ok "$c on network $net (or already attached)"
   }
 }
@@ -626,8 +625,9 @@ function Invoke-ComposeUp {
 
   if ($DryRun) {
     Write-Info ("DRY-RUN docker " + ($args -join " ") + " config")
-    & docker @args config --quiet
-    if ($LASTEXITCODE -ne 0) { throw "docker compose config failed" }
+    $cfg = Invoke-NativeCommand -FilePath docker -ArgumentList ($args + @('config', '--quiet'))
+    foreach ($line in @($cfg.Lines)) { if (-not [string]::IsNullOrEmpty($line)) { Write-Output $line } }
+    if ($cfg.ExitCode -ne 0) { throw "docker compose config failed" }
     Write-Ok "Compose config valid"
     Write-Info ("Would up -d: " + ($services -join ", "))
     return
@@ -644,8 +644,9 @@ function Invoke-ComposeUp {
   $upArgs += $services
 
   Write-Info ("docker " + ($upArgs -join " "))
-  & docker @upArgs
-  if ($LASTEXITCODE -ne 0) {
+  $up = Invoke-NativeCommand -FilePath docker -ArgumentList $upArgs
+  foreach ($line in @($up.Lines)) { if (-not [string]::IsNullOrEmpty($line)) { Write-Output $line } }
+  if ($up.ExitCode -ne 0) {
     throw @"
 docker compose up failed.
 If the error mentions 127.0.0.1:10801 or registry pull/build:
@@ -672,7 +673,10 @@ function Wait-Healthy {
     } catch {}
     Start-Sleep -Seconds 2
   }
-  Write-Warn "healthz not ready yet - check: docker compose -p datasafe ps / logs"
+  if ($Yes) {
+    throw "healthz not ready yet - check: docker compose -p $ProjectName ps / logs"
+  }
+  Write-Warn "healthz not ready yet - check: docker compose -p $ProjectName ps / logs"
 }
 
 function Show-Done {
