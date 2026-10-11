@@ -26,7 +26,7 @@ services:
 
   storage-server:
 
-    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.3.0}
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.4.1}
 
     restart: unless-stopped
 
@@ -44,7 +44,9 @@ services:
 
       - STORAGE_LOG_LEVEL=${STORAGE_LOG_LEVEL:-info}
 
-      - STORAGE_DEV=${STORAGE_DEV:-true}
+      - STORAGE_DEV=${STORAGE_DEV:-false}
+
+      - STORAGE_METRICS_TOKEN=${STORAGE_METRICS_TOKEN:-}
 
       - STORAGE_DATA_DIR=/data
 
@@ -157,9 +159,33 @@ services:
 
     image: prom/prometheus:latest
 
+    environment:
+
+      - STORAGE_METRICS_TOKEN=${STORAGE_METRICS_TOKEN:-}
+
+    entrypoint: ["/bin/sh", "-c"]
+
     command:
 
-      - "--config.file=/etc/prometheus/prometheus.yml"
+      - |
+        set -eu
+        awk -v token="$$STORAGE_METRICS_TOKEN" '
+          /# metrics_auth/ && token != "" {
+            print "    authorization:"
+            print "      type: Bearer"
+            print "      credentials_file: /tmp/metrics_token"
+            next
+          }
+          { print }
+        ' /etc/prometheus/prometheus.yml > /tmp/prometheus.yml
+        if [ -n "$$STORAGE_METRICS_TOKEN" ]; then
+          printf "%s" "$$STORAGE_METRICS_TOKEN" > /tmp/metrics_token
+        fi
+        exec /bin/prometheus \
+          --config.file=/tmp/prometheus.yml \
+          --storage.tsdb.path=/prometheus \
+          --web.console.libraries=/usr/share/prometheus/console_libraries \
+          --web.console.templates=/usr/share/prometheus/consoles
 
     volumes:
 

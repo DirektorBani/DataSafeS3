@@ -21,6 +21,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check release pins match tag
+        run: bash scripts/check-release-pins.sh "${GITHUB_REF_NAME}"
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:

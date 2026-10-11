@@ -1261,12 +1261,44 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
 
   /inventory/jobs:
+    get:
+      operationId: listInventoryJobs
+      summary: List recent inventory jobs
+      description: |
+        Admin-only. In-process jobs for this server process (not a durable queue; restart clears them).
+        Newest first. `limit` defaults to 50 and is capped at 100.
+      tags: [Admin]
+      security:
+        - BearerJWT: []
+        - BearerAPIToken: []
+      x-required-role: administrator
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Bounded job list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items: { $ref: '#/components/schemas/InventoryJob' }
+                  limit: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       operationId: createInventoryJob
       summary: Create storage inventory CSV job (manual)
       description: |
         Admin-first listing export for operator evidence. Not AWS S3 Inventory.
-        Runs synchronously; returns completed/failed job. Optional dest_bucket writes CSV as an object.
+        The bucket name is resolved the same way as other admin/console routes (tenant- and owner-scoped).
+        Unknown buckets return 404 before a job is stored. Runs synchronously; returns a completed job.
+        Optional dest_bucket writes CSV as an object (also resolved; unknown dest returns 404).
         Only `schedule=manual` (or omitted) is supported; other values return 501.
       tags: [Admin]
       security:
@@ -1289,13 +1321,15 @@ paths:
                 dest_key: { type: string }
       responses:
         '201':
-          description: Job result (status completed or failed)
+          description: Job result (status completed, or failed if the scan/write errors after the bucket resolves)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/InventoryJob' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: bucket or dest_bucket does not resolve for the caller
         '501':
           description: Scheduled/cron inventory not available
           content:

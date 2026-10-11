@@ -21,6 +21,8 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+# Windows PowerShell ships curl.exe. Linux pwsh only has curl on PATH.
+$script:Curl = if (Get-Command curl.exe -ErrorAction SilentlyContinue) { 'curl.exe' } else { 'curl' }
 $results = [System.Collections.Generic.List[object]]::new()
 $fixes = [System.Collections.Generic.List[string]]::new()
 $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
@@ -51,7 +53,7 @@ function Invoke-DS {
         $curlArgs += @('-H', 'Content-Type: application/json', '--data-binary', "@$tmp")
     }
     try {
-        $out = (& curl.exe @curlArgs | Out-String).Trim()
+        $out = (& $script:Curl @curlArgs | Out-String).Trim()
     } finally {
         if ($tmp) { Remove-Item -Force -ErrorAction SilentlyContinue $tmp }
     }
@@ -104,7 +106,7 @@ function Auth($token) { return @{ Authorization = "Bearer $token" } }
 function Put-Object($token, $bucket, $key, $content) {
     $tmp = [System.IO.Path]::GetTempFileName()
     [System.IO.File]::WriteAllText($tmp, $content, [System.Text.UTF8Encoding]::new($false))
-    $out = curl.exe -s -w "`n%{http_code}" -X PUT "$BaseUrl/api/v1/buckets/$bucket/objects/$key" -H "Authorization: Bearer $token" -H "Content-Type: text/plain" --data-binary "@$tmp"
+    $out = & $script:Curl -s -w "`n%{http_code}" -X PUT "$BaseUrl/api/v1/buckets/$bucket/objects/$key" -H "Authorization: Bearer $token" -H "Content-Type: text/plain" --data-binary "@$tmp"
     Remove-Item $tmp -Force
     $code = [int](($out -split "`n")[-1])
     return $code
@@ -220,7 +222,7 @@ function Invoke-S3Signed {
         $curlArgs += @('--data-binary', "@$tmp")
     }
     try {
-        $code = [int]((& curl.exe @curlArgs | Out-String).Trim())
+        $code = [int]((& $script:Curl @curlArgs | Out-String).Trim())
         $bodyText = [System.IO.File]::ReadAllText($bodyFile, [System.Text.UTF8Encoding]::new($false))
         $respHeaders = @{}
         foreach ($line in [System.IO.File]::ReadAllLines($hdrFile)) {
@@ -425,12 +427,12 @@ if ($s3BucketOk) {
     if ($pp.Json.url) {
         $ptmp = [System.IO.Path]::GetTempFileName()
         [System.IO.File]::WriteAllText($ptmp, 'presigned-put-content', [System.Text.UTF8Encoding]::new($false))
-        $pout = curl.exe -s -w "`n%{http_code}" -X PUT $pp.Json.url -H 'Content-Type: text/plain' --data-binary "@$ptmp"
+        $pout = & $script:Curl -s -w "`n%{http_code}" -X PUT $pp.Json.url -H 'Content-Type: text/plain' --data-binary "@$ptmp"
         Remove-Item $ptmp -Force
         $presignPutOk = ([int](($pout -split "`n")[-1]) -in 200,201)
     }
     if ($pg.Json.url) {
-        $gout = curl.exe -s -w "`n%{http_code}" $pg.Json.url
+        $gout = & $script:Curl -s -w "`n%{http_code}" $pg.Json.url
         $gcode = [int](($gout -split "`n")[-1])
         $gbody = (($gout -split "`n")[0..(($gout -split "`n").Count-2)] -join "`n").Trim()
         $presignGetOk = ($gcode -eq 200 -and $gbody -eq $s3PutBody)

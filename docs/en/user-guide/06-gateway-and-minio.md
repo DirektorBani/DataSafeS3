@@ -27,7 +27,7 @@ Copying runs **in the background** — shortly after upload, the object appears 
 For lab testing, run a separate S3-compatible container on ports **9100** (API) and **9101** (web UI) so it does not conflict with DataSafeS3 **9000**:
 
 ```cmd
-docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=s3test -e MINIO_ROOT_PASSWORD=s3testsecret minio/minio server /data --console-address ":9001"
+docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=s3test -e MINIO_ROOT_PASSWORD=s3testsecret pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
 ```
 
 | Service | Address | Credentials (example) |

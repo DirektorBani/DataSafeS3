@@ -3,6 +3,7 @@ package inventory
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"sort"
 	"sync"
 	"time"
 )
@@ -49,6 +50,32 @@ func (s *JobStore) Create(bucket, prefix, format, destBucket, destKey string) In
 	s.jobs[id] = &JobRecord{Job: job}
 	s.mu.Unlock()
 	return job
+}
+
+// List returns newest jobs first, capped by limit (default DefaultListLimit, max MaxListLimit).
+func (s *JobStore) List(limit int) []InventoryJob {
+	if limit <= 0 {
+		limit = DefaultListLimit
+	}
+	if limit > MaxListLimit {
+		limit = MaxListLimit
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]InventoryJob, 0, len(s.jobs))
+	for _, rec := range s.jobs {
+		out = append(out, rec.Job)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID > out[j].ID
+		}
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
 }
 
 // Get returns a copy of the job record (CSV included when completed).

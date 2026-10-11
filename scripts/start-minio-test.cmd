@@ -26,7 +26,7 @@ docker run -d --name %CONTAINER% ^
   -e MINIO_ROOT_USER=minioadmin ^
   -e MINIO_ROOT_PASSWORD=minioadmin ^
   -v "%DATA%:/data" ^
-  minio/minio server /data --console-address ":9001"
+  pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
 if errorlevel 1 exit /b 1
 
 :done

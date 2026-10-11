@@ -4,6 +4,36 @@ All notable changes to DataSafeS3 are documented in this file.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-11
+
+Patch on **v1.4.0**. No new product features.
+
+### Fixed
+
+- **Release pins** — installer defaults, Compose/Helm/lab image tags, the console package version, and the current-release lines in the docs still pointed at v1.3.0 or older, so a README install pulled the previous release. They now track **v1.4.1**. `scripts/bump-release-version.sh` is the release-time bump; `scripts/check-release-pins.sh` fails CI, and `release.yml` fails the tag push, when those pins do not match `VERSION` (or the pushed tag).
+- **Inventory create** — `POST /api/v1/inventory/jobs` for a bucket name that does not resolve returned **201** with status `failed` and error `not found`. It now returns **404** and does not store a job. The scan uses the same tenant- and owner-scoped resolution as the console and other admin routes, including when another tenant has the same logical name. An unknown `dest_bucket` is **404** as well.
+- **Inventory list** — `GET /api/v1/inventory/jobs` was **405**. It is now an admin-only list, newest first, `limit` default 50 and maximum 100. OpenAPI full spec includes the operation.
+- **Windows source builds** — there was no `.gitattributes`, so Git on Windows (`core.autocrlf=true`) checked `*.sh` out as CRLF. Building the server image then crash-looped with `exec /docker-entrypoint.sh: no such file or directory`. `*.sh` and the other files copied or bind-mounted into Linux containers are forced to LF. The server and lab Dockerfiles strip CR from entrypoints before `chmod`. The server image starts through `/usr/local/bin/datasafe-entrypoint`, which strips again so a bind-mounted `docker-entrypoint.sh` (HA local, local-binary) still runs. The HA object-replicator entrypoint and the Vault overlay do the same for their bind-mounted scripts.
+
+### Changed
+
+- **Default install is production-safe.** Compose and `.env.example` default `STORAGE_DEV` to false. The installer writes `STORAGE_DEV=false` unless `-Dev`, `--dev`, or profile `dev`. It generates `STORAGE_JWT_SECRET`, `STORAGE_SECRET_KEY`, and `STORAGE_METRICS_TOKEN` when they are missing or still the published defaults, and the Compose Prometheus service scrapes with that bearer so Grafana keeps working. Profile `identity` sets `STORAGE_DEV=true` so the HTTP lab IdP still works. Dev and audit overlays set `STORAGE_DEV=true` explicitly. Upgrade notes: [EN](docs/operations-guide/en/upgrade.md#upgrading-to-v141) · [RU](docs/operations-guide/ru/upgrade.md#обновление-до-v141).
+- Removed the one-shot workflow `.github/workflows/deferred-release-v1.2.0.yml` (v1.2.0 is already published).
+- **Lab S3 image** — Docker Hub `minio/minio` no longer pulls (`pull access denied`). Feature-audit, `scripts/start-minio-test.cmd`, the Helm lab target, and the EN/RU gateway examples use `pgsty/silo:RELEASE.2026-09-16T00-00-00Z` (same `server /data` arguments and `/minio/health/live`). Anonymous `quay.io/minio/minio` pulls return 401, so that registry is not a substitute.
+
+### Security
+
+- **Go 1.26.9 and golang.org/x/text v0.41.0** — `govulncheck` reported GO-2026-6629 in `golang.org/x/text@v0.38.0` (fixed in v0.41.0) and net/http issues in the Go 1.26.8 standard library (GO-2026-6617, GO-2026-6613, GO-2026-6612, GO-2026-6611, GO-2026-6610, GO-2026-6608, and the rest of that set), fixed in Go 1.26.9. `go.mod` is `go 1.26.9` (that line selects toolchain go1.26.9; `go mod tidy` drops a redundant `toolchain` directive). `deploy/docker/Dockerfile` and CI `setup-go` (including feature-audit) pin **1.26.9**. Release images are built from that Dockerfile.
+
+### Honesty
+
+- An empty `STORAGE_METRICS_TOKEN` still leaves `/metrics` open (v1.1.0 legacy) and logs a warning when dev mode is off. The installer no longer leaves the token empty. A hand-written Compose file that omits it still has open metrics.
+- The identity lab profile enables dev mode because that lab IdP is plain HTTP. It is not a production install.
+- `GET /inventory/jobs` reads the in-process registry (lost on restart) and is capped at 100 rows. It is not a durable export history.
+- Offline lab scripts still fall back to older local image tags when `v1.4.1` is not cached. The preferred default is `v1.4.1`.
+- This patch does not publish container images. `ghcr.io/direktorbani/datasafe-storage-server:v1.4.1` and `datasafe-console:v1.4.1` appear when `release.yml` runs on the git tag.
+- An existing Windows checkout keeps CRLF copies of `*.sh` until Git checks those files out again (`git checkout -- "*.sh"` after pulling). The image build and the entrypoint launcher still strip CR. Postgres init scripts such as `02-replication-hba.sh` are bind-mounted, so they need that refresh (or a fresh clone) before the first database init.
+
 ## [1.4.0] - 2026-08-24
 
 ### Added
@@ -245,6 +275,8 @@ First public **DataSafeS3 Community Edition** release.
 
 Container images: `ghcr.io/direktorbani/datasafe-storage-server:v1.0.0`, `ghcr.io/direktorbani/datasafe-console:v1.0.0`.
 
+[1.4.1]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.4.1
+[1.4.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.4.0
 [1.3.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.3.0
 [1.2.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.2.0
 [1.1.1]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.1.1

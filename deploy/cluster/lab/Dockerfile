@@ -17,7 +17,10 @@ RUN apk add --no-cache \
 # Lab-only NOPASSWD:ALL — production Apply uses scoped sudoers template.
 
 COPY lab-entrypoint.sh /usr/local/bin/lab-entrypoint.sh
-RUN chmod +x /usr/local/bin/lab-entrypoint.sh
+# Strip CR so a Windows checkout (core.autocrlf) does not break the shebang.
+RUN tr -d '\015' < /usr/local/bin/lab-entrypoint.sh > /tmp/lab-entrypoint.lf \
+ && mv /tmp/lab-entrypoint.lf /usr/local/bin/lab-entrypoint.sh \
+ && chmod +x /usr/local/bin/lab-entrypoint.sh
 
 EXPOSE 22 2379 2380 5432 8008 8080 9000 8404
 

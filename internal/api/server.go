@@ -509,6 +509,7 @@ func (s *Server) routes() {
 
 	mux.HandleFunc("GET /api/v1/activity", adminOnly(s.handleListActivity))
 	mux.HandleFunc("GET /api/v1/activity/export", adminOnly(s.handleExportActivity))
+	mux.HandleFunc("GET /api/v1/inventory/jobs", adminOnly(s.handleListInventoryJobs))
 	mux.HandleFunc("POST /api/v1/inventory/jobs", adminOnly(s.handleCreateInventoryJob))
 	mux.HandleFunc("GET /api/v1/inventory/jobs/{id}", adminOnly(s.handleGetInventoryJob))
 	mux.HandleFunc("GET /api/v1/inventory/jobs/{id}/download", adminOnly(s.handleDownloadInventoryJob))

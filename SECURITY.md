@@ -45,6 +45,10 @@ SBOM files (`sbom-storage-server.cdx.json`, `sbom-console.cdx.json`) are attache
 - Dependencies are pinned in `go.mod` / `package-lock.json`.
 - External assessment checklist: [pen-test preparation](docs/operations-guide/en/pen-test-preparation.md).
 
+### v1.4.1 dependency fixes (2026-10-11)
+
+Release **v1.4.1** bumps the Go toolchain to **1.26.9** and `golang.org/x/text` to **v0.41.0**. `govulncheck` on Go 1.26.8 reported GO-2026-6629 (`golang.org/x/text@v0.38.0`) and net/http standard-library issues GO-2026-6617, GO-2026-6613, GO-2026-6612, GO-2026-6611, GO-2026-6610, GO-2026-6608 (and the rest of that Go 1.26.8 set). Those are closed by the versions above. Pins: `go.mod` `go 1.26.9` (selects toolchain go1.26.9), `deploy/docker/Dockerfile` (`golang:1.26.9-alpine`), and `setup-go` in CI. Details: [CHANGELOG](CHANGELOG.md#141---2026-10-11).
+
 ## Community Edition scope
 
 All security features (HA, Object Lock, audit, STS MVP) ship under **Apache-2.0** with **no license gates**.

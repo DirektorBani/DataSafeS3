@@ -1128,6 +1128,21 @@ export const api = {
     await downloadAuthenticated(`/activity/export?${qs}`, `activity-export.${params?.format ?? "csv"}`);
   },
 
+  listInventoryJobs: (limit?: number) => {
+    const q = limit != null ? `?limit=${encodeURIComponent(String(limit))}` : "";
+    return fetchJSON<{
+      jobs: Array<{
+        id: string;
+        bucket: string;
+        status: string;
+        error?: string;
+        object_count?: number;
+        created_at?: string;
+      }>;
+      limit: number;
+    }>(`/inventory/jobs${q}`);
+  },
+
   createInventoryJob: (body: {
     bucket: string;
     prefix?: string;

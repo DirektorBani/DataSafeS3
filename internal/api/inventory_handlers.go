@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,15 +50,24 @@ func (s *Server) handleCreateInventoryJob(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}
-	if _, err := s.resolveBucketForUser(info, req.Bucket); err != nil {
+	// Same resolution as other admin/console bucket routes (tenant- and owner-scoped names).
+	src, err := s.resolveBucketForUser(info, req.Bucket)
+	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "bucket not found"})
 		return
 	}
+	var dest *metadata.BucketRecord
 	if req.DestBucket != "" {
 		if !s.canWriteBucket(info, req.DestBucket) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden dest_bucket"})
 			return
 		}
+		d, err := s.resolveBucketForUser(info, req.DestBucket)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "dest bucket not found"})
+			return
+		}
+		dest = &d
 		if req.DestKey == "" {
 			req.DestKey = fmt.Sprintf("inventory/%s/%s.csv", req.Bucket, time.Now().UTC().Format("20060102T150405Z"))
 		}
@@ -67,7 +77,7 @@ func (s *Server) handleCreateInventoryJob(w http.ResponseWriter, r *http.Request
 	s.logActivity(r, metadata.ActionInventoryExported, "bucket", req.Bucket)
 
 	// Manual jobs run synchronously so Bolt/Postgres operators get an immediate downloadable result.
-	s.runInventoryJob(r, job.ID)
+	s.runInventoryJob(r, job.ID, src, dest)
 
 	rec, ok := s.invJobs.Get(job.ID)
 	if !ok {
@@ -75,6 +85,31 @@ func (s *Server) handleCreateInventoryJob(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusCreated, rec.Job)
+}
+
+func (s *Server) handleListInventoryJobs(w http.ResponseWriter, r *http.Request) {
+	limit, err := parseInventoryListLimit(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	jobs := s.invJobs.List(limit)
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs, "limit": limit})
+}
+
+func parseInventoryListLimit(r *http.Request) (int, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get("limit"))
+	if raw == "" {
+		return inventory.DefaultListLimit, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("limit must be a positive integer")
+	}
+	if n > inventory.MaxListLimit {
+		n = inventory.MaxListLimit
+	}
+	return n, nil
 }
 
 func (s *Server) handleGetInventoryJob(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +144,7 @@ func (s *Server) handleDownloadInventoryJob(w http.ResponseWriter, r *http.Reque
 	_, _ = w.Write(rec.CSV)
 }
 
-func (s *Server) runInventoryJob(r *http.Request, id string) {
+func (s *Server) runInventoryJob(r *http.Request, id string, src metadata.BucketRecord, dest *metadata.BucketRecord) {
 	s.invJobs.Update(id, func(rec *inventory.JobRecord) {
 		rec.Job.Status = inventory.StatusRunning
 	})
@@ -120,16 +155,11 @@ func (s *Server) runInventoryJob(r *http.Request, id string) {
 	}
 	job := rec.Job
 
-	brec, err := s.meta.GetBucket(job.Bucket)
-	if err != nil {
-		s.failInventoryJob(id, err.Error())
-		return
-	}
-	storageKey := brec.EffectiveStorageKey()
+	storageKey := src.EffectiveStorageKey()
 	lock := inventory.BucketLockMeta{
-		ObjectLock:    brec.ObjectLock,
-		RetentionDays: brec.RetentionDays,
-		RetentionMode: brec.RetentionMode,
+		ObjectLock:    src.ObjectLock,
+		RetentionDays: src.RetentionDays,
+		RetentionMode: src.RetentionMode,
 	}
 
 	var objs []inventory.ObjectMeta
@@ -176,14 +206,8 @@ func (s *Server) runInventoryJob(r *http.Request, id string) {
 	}
 	csvBytes := buf.Bytes()
 
-	if job.DestBucket != "" && job.DestKey != "" {
-		destRec, err := s.meta.GetBucket(job.DestBucket)
-		if err != nil {
-			s.failInventoryJob(id, "dest_bucket: "+err.Error())
-			return
-		}
-		destKey := destRec.EffectiveStorageKey()
-		_, err = s.svc.PutObject(r.Context(), destKey, job.DestKey, bytes.NewReader(csvBytes), int64(len(csvBytes)), "text/csv", nil)
+	if dest != nil && job.DestKey != "" {
+		_, err := s.svc.PutObject(r.Context(), dest.EffectiveStorageKey(), job.DestKey, bytes.NewReader(csvBytes), int64(len(csvBytes)), "text/csv", nil)
 		if err != nil {
 			s.failInventoryJob(id, "dest write: "+err.Error())
 			return

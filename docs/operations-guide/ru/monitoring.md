@@ -13,7 +13,7 @@
 - Scrape: `storage-server:9000/metrics`
 - Конфиг: `deploy/docker/prometheus.yml`
 - **Ноды кластера (опционально):** правьте `deploy/docker/prometheus/targets/cluster-nodes.json` (см. `cluster-nodes.example.json`) — адреса `host:9000`. Compose монтирует каталог в Prometheus (`file_sd`).
-- **v1.1.0+:** при `STORAGE_METRICS_TOKEN` настройте bearer в Prometheus — см. `deploy/docker/prometheus.yml` и [upgrade § v1.1.0](upgrade.md#обновление-до-v110).
+- **v1.1.0+:** при `STORAGE_METRICS_TOKEN` `GET /metrics` требует этот bearer. **v1.4.1:** корневой установщик генерирует токен, а Prometheus в Compose подставляет его, если переменная непустая (`# metrics_auth` в `deploy/docker/prometheus.yml`). См. [обновление до v1.4.1](upgrade.md#обновление-до-v141).
 - **Консоль:** без bearer дашборд может показывать нули — используйте Grafana/Prometheus.
 
 ## Grafana

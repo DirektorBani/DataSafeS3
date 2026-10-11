@@ -58,10 +58,10 @@ Gateway реплицирует объекты из локальных бакет
 Тестовый контейнер слушает **9100** (API) и **9101** (консоль), чтобы не конфликтовать с DataSafeS3 `:9000`.
 
 ```cmd
-docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin minio/minio server /data --console-address ":9001"
+docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
 ```
 
-> Только для lab: образ `minio/minio` — удобный S3-совместимый сервер для локальных тестов; в документации это **тестовый внешний S3 endpoint**, а не референс для позиционирования.
+> Только для lab: `pgsty/silo` — S3-совместимый сервер для локальных тестов (Docker Hub `minio/minio` больше не скачивается). В документации это **тестовый внешний S3 endpoint**, а не референс для позиционирования.
 
 Учётные данные по умолчанию:
 
@@ -82,7 +82,7 @@ docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT
 
 ```cmd
 docker rm -f datasafe-minio-test
-docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin minio/minio server /data --console-address ":9001"
+docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
 ```
 
 Проверка с хоста (должен быть ответ, не «connection refused»):

@@ -2,11 +2,11 @@ English | **[Русский](../../ru/context/project-status.md)**
 
 # Project Status
 
-**Last updated:** 2026-08-03 · **Current release:** [v1.3.0](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.3.0)
+**Last updated:** 2026-10-11 · **Current release:** [v1.4.1](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.4.1)
 
 ## Summary
 
-DataSafeS3 **Community Edition v1.3.0** is the current release: **cluster installer** (Waves 1–2) and SSH Docker lab release gate (Apply + Patroni promote + unicast VIP, 0 SKIP), cluster Grafana metrics, and root `install.*` entrypoints. Prior: immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Core platform: S3-compatible API, web console (EN/RU/DE/FR), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, Teams, metrics-token protection, share-token hashing, and HA v2 lab tooling.
+DataSafeS3 **Community Edition v1.4.1** is the current release: a patch on **v1.4.0 Governance Evidence Pack** (release pins, production-safe default install, inventory job API). Prior: Governance Evidence Pack (v1.4.0), **cluster installer** (v1.3.0, Waves 1–2) and SSH Docker lab release gate, immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Core platform: S3-compatible API, web console (EN/RU/DE/FR), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, Teams, metrics-token protection, share-token hashing, and HA v2 lab tooling.
 
 **v1.1.0** burns down trust-debt C01-C21 and ships **HA v2 CE lab foundation**: erasure backend, Postgres leader lock, site replication, and local validation scripts. This HA scope is explicitly **lab / not production multi-AZ**: no automatic failover orchestrator, no Patroni-certified production cluster, and no petabyte 4+2 multi-host promise.
 

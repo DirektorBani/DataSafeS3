@@ -516,7 +516,7 @@ Full LDAP/Keycloak guide: [ldap-keycloak-standalone.md](../integrations/ldap-key
 **Step 1 — S3 test container** (if not already running):
 
 ```cmd
-docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin minio/minio server /data --console-address ":9001"
+docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
 ```
 
 **Step 2 — auto-configure Connection + replication rule:**
@@ -1201,7 +1201,7 @@ HTTP notifications on ObjectCreated, ObjectDeleted, BucketCreated/Deleted, UserC
 ### External S3 test endpoint
 
 ```cmd
-docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin minio/minio server /data --console-address ":9001"
+docker run -d --name datasafe-minio-test -p 9100:9000 -p 9101:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
 ```
 
 | Service | Address | Login / password |
