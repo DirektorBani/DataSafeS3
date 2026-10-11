@@ -17,9 +17,13 @@ var (
 )
 
 // BucketNotificationConfig holds S3-style event notification rules for a bucket.
+// Empty Prefix and Suffix match every key. Older tags omit those fields and
+// keep that meaning.
 type BucketNotificationConfig struct {
 	WebhookURL string   `json:"webhook_url,omitempty"`
 	Events     []string `json:"events,omitempty"`
+	Prefix     string   `json:"prefix,omitempty"`
+	Suffix     string   `json:"suffix,omitempty"`
 }
 
 func BucketNotificationFromTags(tags map[string]string) (BucketNotificationConfig, bool) {
@@ -48,6 +52,70 @@ func SetBucketNotificationTag(tags map[string]string, cfg BucketNotificationConf
 	data, _ := json.Marshal(cfg)
 	tags[bucketNotificationTagKey] = string(data)
 	return tags
+}
+
+// BucketNotificationMatches reports whether cfg wants a notification for kind and key.
+// kind is "put" (including copy), "delete" (including a delete marker), or "multipart".
+// An empty prefix or suffix does not filter that side of the key.
+func BucketNotificationMatches(cfg BucketNotificationConfig, kind, key string) bool {
+	if cfg.WebhookURL == "" || len(cfg.Events) == 0 {
+		return false
+	}
+	if cfg.Prefix != "" && !strings.HasPrefix(key, cfg.Prefix) {
+		return false
+	}
+	if cfg.Suffix != "" && !strings.HasSuffix(key, cfg.Suffix) {
+		return false
+	}
+	for _, rule := range cfg.Events {
+		if NotificationRuleMatches(rule, kind) {
+			return true
+		}
+	}
+	return false
+}
+
+// NotificationRuleMatches compares one configured event name with kind.
+// s3:ObjectCreated:* matches put and multipart. A specific Put/Copy/Post rule
+// matches put only. CompleteMultipartUpload matches multipart only.
+// s3:ObjectRemoved:* , Delete, and DeleteMarkerCreated all match delete:
+// the stored event does not distinguish a delete marker from a hard delete.
+func NotificationRuleMatches(rule, kind string) bool {
+	rule = strings.TrimSpace(rule)
+	switch kind {
+	case "delete":
+		switch rule {
+		case "s3:ObjectRemoved:*", "s3:ObjectRemoved:Delete", "s3:ObjectRemoved:DeleteMarkerCreated",
+			ReplEventDelete, "ObjectRemoved", "*":
+			return true
+		}
+	case "multipart":
+		switch rule {
+		case "s3:ObjectCreated:*", "s3:ObjectCreated:CompleteMultipartUpload",
+			ReplEventPut, "ObjectCreated", "*":
+			return true
+		}
+	default:
+		switch rule {
+		case "s3:ObjectCreated:*", "s3:ObjectCreated:Put", "s3:ObjectCreated:Post", "s3:ObjectCreated:Copy",
+			ReplEventPut, "ObjectCreated", "*":
+			return true
+		}
+	}
+	ev := ReplEventPut
+	if kind == "delete" {
+		ev = ReplEventDelete
+	}
+	if rule == ev {
+		return true
+	}
+	if strings.HasSuffix(rule, ":*") {
+		return strings.HasPrefix(ev, strings.TrimSuffix(rule, ":*"))
+	}
+	if strings.Contains(rule, "*") {
+		return strings.Contains(ev, strings.Trim(rule, "*"))
+	}
+	return false
 }
 
 func S3StorageClassDisplay(class string) string {

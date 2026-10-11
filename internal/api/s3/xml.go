@@ -272,15 +272,33 @@ type NotificationConfiguration struct {
 }
 
 type QueueConfiguration struct {
-	Id     string   `xml:"Id,omitempty"`
-	Queue  string   `xml:"Queue,omitempty"`
-	Events []string `xml:"Event"`
+	Id     string              `xml:"Id,omitempty"`
+	Queue  string              `xml:"Queue,omitempty"`
+	Filter *NotificationFilter `xml:"Filter,omitempty"`
+	Events []string            `xml:"Event"`
 }
 
 type TopicConfiguration struct {
-	Id     string   `xml:"Id,omitempty"`
-	Topic  string   `xml:"Topic,omitempty"`
-	Events []string `xml:"Event"`
+	Id     string              `xml:"Id,omitempty"`
+	Topic  string              `xml:"Topic,omitempty"`
+	Filter *NotificationFilter `xml:"Filter,omitempty"`
+	Events []string            `xml:"Event"`
+}
+
+// NotificationFilter is the S3 key filter. Prefix and suffix are optional.
+// A missing filter matches every key.
+type NotificationFilter struct {
+	S3Key *NotificationKeyFilter `xml:"S3Key,omitempty"`
+	Key   *NotificationKeyFilter `xml:"Key,omitempty"`
+}
+
+type NotificationKeyFilter struct {
+	Rules []NotificationFilterRule `xml:"FilterRule,omitempty"`
+}
+
+type NotificationFilterRule struct {
+	Name  string `xml:"Name"`
+	Value string `xml:"Value"`
 }
 
 type CloudFunctionConfiguration struct {

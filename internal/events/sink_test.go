@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -277,5 +278,78 @@ func TestRetentionPurge(t *testing.T) {
 	}
 	if _, err := store.GetOutbox(context.Background(), rec.ID); err == nil {
 		t.Fatal("delivered row should have been purged")
+	}
+}
+
+type staticErrSink struct {
+	name string
+	err  error
+}
+
+func (s *staticErrSink) Name() string { return s.name }
+func (s *staticErrSink) Publish(context.Context, Event) error {
+	return s.err
+}
+func (s *staticErrSink) Close() error { return nil }
+
+func TestDispatcherTerminalErrorIsDeadImmediately(t *testing.T) {
+	store := newMemOutbox()
+	sink := &staticErrSink{name: "webhook", err: &TerminalError{Err: errors.New("webhook wh: 400 Bad Request")}}
+	d := NewDispatcher(store, []EventSink{sink}, Config{MaxAttempts: 20, Retention: time.Hour, DeadRetention: time.Hour}, nil, Observer{})
+	d.purgeEvery = time.Hour
+	now := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+	rec := NormalizeOutbox(OutboxRecord{
+		EventType: "ObjectCreated",
+		Attempts: map[string]SinkAttempt{
+			"webhook": {Status: StatusPending, NextAttemptAt: now},
+		},
+	}, now)
+	if _, err := store.InsertOutbox(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.ProcessOnce(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetOutbox(context.Background(), rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != StatusDead {
+		t.Fatalf("status %s %+v", got.Status, got.Attempts)
+	}
+	att := got.Attempts["webhook"]
+	if att.Attempts != 1 || att.Status != StatusDead || !strings.Contains(att.LastError, "400") {
+		t.Fatalf("attempt %+v", att)
+	}
+}
+
+func TestDispatcherRetryAfterIsCapped(t *testing.T) {
+	store := newMemOutbox()
+	sink := &staticErrSink{name: "webhook", err: &RetryAfterError{Err: errors.New("429 Too Many Requests"), After: 10 * time.Minute}}
+	d := NewDispatcher(store, []EventSink{sink}, Config{MaxAttempts: 20, Retention: time.Hour, DeadRetention: time.Hour}, nil, Observer{})
+	d.purgeEvery = time.Hour
+	now := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+	rec := NormalizeOutbox(OutboxRecord{
+		EventType: "ObjectCreated",
+		Attempts: map[string]SinkAttempt{
+			"webhook": {Status: StatusPending, NextAttemptAt: now},
+		},
+	}, now)
+	if _, err := store.InsertOutbox(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.ProcessOnce(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.GetOutbox(context.Background(), rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != StatusPending {
+		t.Fatalf("status %s", got.Status)
+	}
+	att := got.Attempts["webhook"]
+	if att.Attempts != 1 || !att.NextAttemptAt.Equal(now.Add(maxBackoff)) {
+		t.Fatalf("next %s want %s (%+v)", att.NextAttemptAt, now.Add(maxBackoff), att)
 	}
 }

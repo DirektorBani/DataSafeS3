@@ -319,7 +319,7 @@ func (s *Server) handleCompleteMultipart(w http.ResponseWriter, r *http.Request)
 	for _, p := range req.Parts {
 		parts = append(parts, storage.PartInfo{PartNumber: p.PartNumber, ETag: strings.Trim(p.ETag, `"`)})
 	}
-	rec, dropped, err := s.svc.CompleteMultipartNotifying(r.Context(), mp.Bucket, mp.Key, uploadID, parts, func(obj metadata.ObjectRecord) []events.OutboxRecord {
+	rec, _, err := s.svc.CompleteMultipartNotifying(r.Context(), mp.Bucket, mp.Key, uploadID, parts, func(obj metadata.ObjectRecord) []events.OutboxRecord {
 		var evs []events.OutboxRecord
 		evs = append(evs, s.outboxRecords(metadata.EventObjectCreated, bucket, mp.Key, obj.VersionID, "", map[string]any{"bucket": bucket, "key": mp.Key, "size": obj.Size})...)
 		evs = append(evs, s.outboxRecords(metadata.EventMultipartCompleted, bucket, mp.Key, obj.VersionID, "", map[string]any{"bucket": bucket, "key": mp.Key, "upload_id": uploadID})...)
@@ -333,7 +333,6 @@ func (s *Server) handleCompleteMultipart(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	s.noteOutboxDropped(dropped)
 	s.logActivity(r, metadata.ActionObjectUploaded, "object", bucket+"/"+mp.Key)
 	writeJSON(w, http.StatusOK, map[string]any{"object": rec})
 }

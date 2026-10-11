@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,7 +15,6 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/metadata"
-	"github.com/DirektorBani/datasafe/internal/security/urlpolicy"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -33,39 +31,9 @@ func (s *Server) wireReplicationHooks() {
 	s.svc.OnObjectEvent = func(event, bucket, key string) {
 		s.enqueueObjectReplication(event, bucket, key)
 		s.enqueueSiteReplication(event, bucket, key)
-		var size int64
-		if obj, err := s.meta.GetObject(bucket, key); err == nil {
-			size = obj.Size
-		}
-		s.svc.EmitBucketNotification(bucket, event, key, size)
 	}
-	s.svc.OnBucketNotification = s.deliverBucketNotification
-}
-
-func (s *Server) deliverBucketNotification(webhookURL, event, bucket, key string, size int64) {
-	if err := urlpolicy.ValidateOutboundURL(webhookURL, urlpolicy.DefaultOptions()); err != nil {
-		return
-	}
-	payload := map[string]any{
-		"event":  event,
-		"bucket": bucket,
-		"key":    key,
-		"size":   size,
-		"time":   time.Now().UTC().Format(time.RFC3339),
-	}
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewReader(body))
-	if err != nil {
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-DataSafe-Event", event)
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return
-	}
-	resp.Body.Close()
+	s.svc.ObjectOutbox = s.objectOutbox
+	s.svc.OnOutboxDropped = s.noteOutboxDropped
 }
 
 func (s *Server) enqueueObjectReplication(event, bucket, key string) {

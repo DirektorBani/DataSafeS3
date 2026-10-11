@@ -20,7 +20,7 @@ restic backup /data/to/archive
 | Приёмник | Настройка |
 |----------|-----------|
 | Webhook | Admin → Webhooks |
-| NATS | `STORAGE_NATS_URL=nats://nats:4222`, профиль compose `nats` |
+| NATS | `STORAGE_NATS_URL=nats://nats:4222`, профиль compose `nats`. Если JetStream включён и stream покрывает `STORAGE_NATS_SUBJECT.<событие>` (по умолчанию `datasafe.events.>`), публикация ждёт ack. Иначе core publish не подтверждает доставку подписчику. Отдельной переменной нет; определяется при соединении. |
 
 ## STS (ограниченная загрузка)
 

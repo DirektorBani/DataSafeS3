@@ -291,6 +291,22 @@ func (d *Dispatcher) deliver(ctx context.Context, sinks map[string]EventSink, re
 			}
 			continue
 		}
+		var terminal *TerminalError
+		if errors.As(pubErr, &terminal) {
+			att.Attempts++
+			att.LastError = pubErr.Error()
+			att.Status = StatusDead
+			rec.Attempts[name] = att
+			if d.obs.Failed != nil {
+				d.obs.Failed(name, "terminal")
+			}
+			if d.obs.Dead != nil {
+				d.obs.Dead(name)
+			}
+			slog.Warn("event sink rejected",
+				"event_id", rec.ID, "sink", name, "attempts", att.Attempts, "err", att.LastError)
+			continue
+		}
 		att.Attempts++
 		att.LastError = pubErr.Error()
 		if d.obs.Failed != nil {
@@ -306,8 +322,16 @@ func (d *Dispatcher) deliver(ctx context.Context, sinks map[string]EventSink, re
 				"event_id", rec.ID, "sink", name, "attempts", att.Attempts, "err", att.LastError)
 			continue
 		}
+		delay := BackoffDuration(att.Attempts)
+		var retryAfter *RetryAfterError
+		if errors.As(pubErr, &retryAfter) && retryAfter.After > delay {
+			delay = retryAfter.After
+		}
+		if delay > maxBackoff {
+			delay = maxBackoff
+		}
 		att.Status = StatusPending
-		att.NextAttemptAt = now.Add(BackoffDuration(att.Attempts))
+		att.NextAttemptAt = now.Add(delay)
 		rec.Attempts[name] = att
 		slog.Warn("event sink delivery failed",
 			"event_id", rec.ID, "sink", name, "attempts", att.Attempts, "next_attempt_at", att.NextAttemptAt, "err", att.LastError)

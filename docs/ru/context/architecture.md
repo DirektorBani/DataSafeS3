@@ -21,7 +21,7 @@ Community Edition по умолчанию — **один процесс `storage
 | Read-only standby `storage-server` | **Реализовано** — `STORAGE_READ_ONLY`, `deploy/compose/docker-compose.ha.yml` |
 | Erasure coding / multi-AZ | **Lab foundation** — `STORAGE_OBJECT_BACKEND=erasure`; не production multi-AZ |
 | STS session tokens (scoped S3) | **Реализовано** — `POST /api/v1/sts/assume-role`; credentials привязаны к вызывающему пользователю; `X-Amz-Security-Token` в SigV4 |
-| Уведомления о событиях | **Реализовано** — долговечный outbox для webhook Admin API и опционального NATS (`STORAGE_NATS_URL`); см. [outbox](../../operations-guide/ru/event-outbox.md) |
+| Уведомления о событиях | **Реализовано** — долговечный outbox для Admin API и событий объектов S3 SigV4, webhook консоли, уведомлений бакета и опционального NATS (`STORAGE_NATS_URL`, ack JetStream если stream покрывает субъект); см. [outbox](../../operations-guide/ru/event-outbox.md) |
 
 ## Components
 

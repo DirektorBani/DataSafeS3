@@ -37,7 +37,10 @@ type Event struct {
 }
 
 // EventSink delivers one event to an external system.
-// Publish must return a non-nil error when the attempt failed and should be retried.
+// Publish returns a non-nil error when the attempt failed.
+// A *TerminalError is not retried: the sink is marked dead on that row.
+// A *RetryAfterError is retried, waiting at least After and still capped by
+// the dispatcher backoff maximum. Any other error is retried until MaxAttempts.
 // A disabled sink (for example NATS with an empty URL) returns nil and must not dial.
 type EventSink interface {
 	Name() string
