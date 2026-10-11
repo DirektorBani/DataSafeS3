@@ -3,6 +3,10 @@
 #   docker compose -p datasafe --profile dev -f docker-compose.yml -f deploy/compose/docker-compose.dev.yml up -d
 
 services:
+  storage-server:
+    environment:
+      - STORAGE_DEV=true
+
   console-dev:
     profiles:
       - dev

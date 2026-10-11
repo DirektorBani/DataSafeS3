@@ -6,15 +6,17 @@
 .EXAMPLE
   .\install.ps1
   .\install.ps1 -Yes -Profiles core,postgres,monitoring,data
+  .\install.ps1 -Yes -Dev -Profiles core,postgres,data
 #>
 param(
   [switch]$Yes,
-  [string]$Tag = "v1.3.0",
+  [string]$Tag = "v1.4.1",
   [string]$DataRoot = "",
   [string]$Profiles = "",
   [string]$ProjectName = "datasafe",
   [switch]$DryRun,
   [switch]$Cluster,
+  [switch]$Dev,
   [switch]$Help
 )
 
@@ -38,10 +40,12 @@ DataSafeS3 interactive installer
   .\install.ps1
   .\install.ps1 -Yes -Profiles core,postgres,monitoring,data
   .\install.ps1 -DryRun -Yes -Profiles core,postgres,data
-  .\install.ps1 -Tag v1.3.0 -DataRoot D:/datasafe-data
+  .\install.ps1 -Tag v1.4.1 -DataRoot D:/datasafe-data
+  .\install.ps1 -Dev -Yes -Profiles core,postgres,data
   .\install.ps1 -Cluster -DryRun
 
-Profiles: core, postgres, monitoring, data, binary, identity
+Profiles: core, postgres, monitoring, data, binary, identity, dev
+  -Dev or profile dev opts into STORAGE_DEV=true. Default install is production-safe.
 Cluster Wave 1: inventory + SSH mode [P]/[K] (Apply/Patroni = Wave 2)
 Docs: docs/getting-started/en/installer.md
 "@
@@ -56,8 +60,9 @@ $script:Opts = [ordered]@{
   data       = @{ On = $true;  Locked = $false; Label = "Persist data on host (local-data overlay)" }
   binary     = @{ On = $false; Locked = $false; Label = "Build from source (local Linux binary)" }
   identity   = @{ On = $false; Locked = $false; Label = "Identity lab (LDAP + Keycloak)" }
+  dev        = @{ On = $false; Locked = $false; Label = "Dev mode (STORAGE_DEV=true; HTTP/private outbound)" }
 }
-$script:OptOrder = @("core", "postgres", "monitoring", "data", "binary", "identity")
+$script:OptOrder = @("core", "postgres", "monitoring", "data", "binary", "identity", "dev")
 
 function Set-ProfilesFromString([string]$raw) {
   if ([string]::IsNullOrWhiteSpace($raw)) { return }
@@ -222,6 +227,7 @@ function Normalize-MenuKey([string]$ans) {
 function Find-LocalServerImage {
   $candidates = @(
     "datasafe-storage-server:latest",
+    "ghcr.io/direktorbani/datasafe-storage-server:v1.4.1",
     "ghcr.io/direktorbani/datasafe-storage-server:v1.1.0",
     "ghcr.io/direktorbani/datasafe-storage-server:v1.0.3",
     "ghcr.io/direktorbani/datasafe-storage-server:v1.0.2",
@@ -362,6 +368,33 @@ function Show-Plan([string]$dataRootPath) {
   }
 }
 
+function New-HexSecret {
+  $buf = New-Object byte[] 32
+  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $rng.GetBytes($buf) } finally { $rng.Dispose() }
+  return -join ($buf | ForEach-Object { $_.ToString("x2") })
+}
+
+function Get-EnvValue([string]$path, [string]$key) {
+  $line = @(Get-Content -LiteralPath $path | Where-Object { $_ -match ("^\s*" + [regex]::Escape($key) + "\s*=") } | Select-Object -Last 1)
+  if (-not $line) { return "" }
+  return ($line -replace ("^\s*" + [regex]::Escape($key) + "\s*="), "").Trim()
+}
+
+function Ensure-GeneratedSecret([string]$path, [string]$key, [string[]]$placeholders) {
+  $cur = Get-EnvValue $path $key
+  $weak = [string]::IsNullOrWhiteSpace($cur)
+  if (-not $weak) {
+    foreach ($p in $placeholders) {
+      if ($cur -eq $p) { $weak = $true; break }
+    }
+  }
+  if ($weak) {
+    Set-EnvKey $path $key (New-HexSecret)
+    Write-Ok "Generated $key"
+  }
+}
+
 function Set-EnvKey([string]$path, [string]$key, [string]$value) {
   $lines = @(Get-Content -LiteralPath $path -ErrorAction Stop)
   $found = $false
@@ -393,7 +426,7 @@ function Ensure-EnvFile([string]$dataRootPath) {
       throw @"
 No local storage-server image found, and binary mode must not rebuild (Docker Hub/GHCR pull is broken via proxy 127.0.0.1:10801).
 Fix: run scripts\ensure-docker-pull-proxy.cmd, or pull once:
-  docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.1.0
+  docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
 Then re-run installer with binary selected.
 "@
     }
@@ -402,6 +435,21 @@ Then re-run installer with binary selected.
   } else {
     Set-EnvKey $envPath "DATASAFE_SERVER_IMAGE" "ghcr.io/direktorbani/datasafe-storage-server:$Tag"
     Set-EnvKey $envPath "DATASAFE_CONSOLE_IMAGE" "ghcr.io/direktorbani/datasafe-console:$Tag"
+  }
+  Ensure-GeneratedSecret $envPath "STORAGE_JWT_SECRET" @("datasafe-jwt-secret")
+  Ensure-GeneratedSecret $envPath "STORAGE_SECRET_KEY" @("datasafesecret")
+  Ensure-GeneratedSecret $envPath "STORAGE_METRICS_TOKEN" @("change-me-metrics-bearer")
+  $devOn = [bool]($script:Opts["dev"].On -or $Dev)
+  if ($script:Opts["identity"].On -and -not $devOn) {
+    Write-Warn "Identity lab enables STORAGE_DEV=true (lab IdP is plain HTTP). Do not use this profile in production."
+    $devOn = $true
+  }
+  if ($devOn) {
+    Set-EnvKey $envPath "STORAGE_DEV" "true"
+    Write-Ok "STORAGE_DEV=true (explicit dev opt-in)"
+  } else {
+    Set-EnvKey $envPath "STORAGE_DEV" "false"
+    Write-Ok "STORAGE_DEV=false (production default). Metrics token is in .env; Prometheus uses it when monitoring is on."
   }
   if ($script:Opts["identity"].On) {
     # Docker network DNS after start-*-test.cmd joins datasafe_default; host.docker.internal as fallback.
@@ -654,6 +702,14 @@ function Show-Done {
     Write-Host "  SSO / Keycloak user: ssouser / password"
   }
   Write-Host ""
+  if ($script:Opts["monitoring"].On) {
+    Write-Host "  Prometheus scrapes /metrics with STORAGE_METRICS_TOKEN from .env (not printed)."
+  }
+  if ($script:Opts["dev"].On -or $Dev -or $script:Opts["identity"].On) {
+    Write-Host "  Dev mode is ON (STORAGE_DEV=true)."
+  } else {
+    Write-Host "  Dev mode is OFF. Opt in with -Dev or profile dev."
+  }
   Write-Host "  Next: open console -> change password -> finish setup wizard."
   Write-Host "  Docs: docs/getting-started/en/onboarding.md"
   Write-Host ""

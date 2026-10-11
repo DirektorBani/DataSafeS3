@@ -13,6 +13,12 @@ const (
 // DefaultMaxObjects caps a single inventory scan (operator evidence, not full-warehouse dump).
 const DefaultMaxObjects = 100_000
 
+// List bounds for GET /api/v1/inventory/jobs (in-process registry, newest first).
+const (
+	DefaultListLimit = 50
+	MaxListLimit     = 100
+)
+
 // InventoryJob describes a storage listing export job.
 type InventoryJob struct {
 	ID          string     `json:"id"`

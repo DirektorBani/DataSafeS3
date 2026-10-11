@@ -77,11 +77,20 @@ storage-server ставится на leader Apply-скриптом или offlin
 | 3 | `monitoring` | on | Prometheus + Grafana (если off — не стартуют) |
 | 4 | `data` | on | `docker-compose.local-data.yml` + каталог `DATASAFE_DATA_ROOT` |
 | 5 | `binary` | off | `deploy/compose/docker-compose.local-binary.yml` + сборка бинарника и console |
-| 6 | `identity` | off | LDAP + Keycloak lab (`scripts/start-*-test`) |
+| 6 | `identity` | off | LDAP + Keycloak lab (`scripts/start-*-test`). Включает **dev mode**, чтобы HTTP IdP лаборатории был доступен. |
+| 7 | `dev` | off | `STORAGE_DEV=true` (HTTP/private outbound, без предупреждений о дефолтных секретах). Также `-Dev` / `--dev`. |
 
 SSO в консоли — через **OIDC** (Keycloak / другой IdP в Settings), без edge oauth2-proxy.
 
-Тег образа (по умолчанию `v1.3.0`) задаёт `DATASAFE_*_IMAGE`, если не выбран пункт **5**.
+Тег образа (по умолчанию `v1.4.1`) задаёт `DATASAFE_*_IMAGE`, если не выбран пункт **5**.
+
+## Dev mode и metrics (v1.4.1)
+
+Установка по умолчанию ставит `STORAGE_DEV=false`. Dev mode — явный opt-in (`-Dev`, `--dev` или профиль `dev`). Профиль **identity** тоже ставит `STORAGE_DEV=true`, потому что issuer Keycloak в лаборатории — обычный HTTP. Не используйте этот профиль в production.
+
+Установщик генерирует `STORAGE_JWT_SECRET`, `STORAGE_SECRET_KEY` и `STORAGE_METRICS_TOKEN`, если их нет или они всё ещё равны опубликованным дефолтам. `STORAGE_ADMIN_PASSWORD` не меняется (`admin` / `admin` до мастера настройки). При включённом monitoring Prometheus скрейпит `/metrics` с этим bearer-токеном, и дашборды Grafana продолжают работать. Повторный запуск сохраняет уже заданные недефолтные секреты.
+
+Первый запуск без изменений: открыть консоль, сменить пароль admin, пройти setup wizard (внешний S3 необязателен).
 
 ## Пререквизиты
 

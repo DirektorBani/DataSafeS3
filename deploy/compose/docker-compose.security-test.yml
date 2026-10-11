@@ -3,6 +3,7 @@
 services:
   storage-server:
     environment:
+      - STORAGE_DEV=false
       - STORAGE_STRICT_SECRETS=${STORAGE_STRICT_SECRETS:-false}
       - STORAGE_RATE_LIMIT_LOGIN=${STORAGE_RATE_LIMIT_LOGIN:-5}
       - STORAGE_RATE_LIMIT_WINDOW=${STORAGE_RATE_LIMIT_WINDOW:-1m}

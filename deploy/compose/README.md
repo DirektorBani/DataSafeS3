@@ -6,7 +6,7 @@ Canonical entrypoints stay at the **repository root**:
 
 | File | Role |
 |------|------|
-| [`docker-compose.yml`](../../docker-compose.yml) | Core stack (storage-server, Caddy, Prometheus, Grafana; optional `postgres` profile) |
+| [`docker-compose.yml`](../../docker-compose.yml) | Core stack (storage-server, Caddy, Prometheus, Grafana; optional `postgres` profile). `STORAGE_DEV` defaults to **false** |
 | [`docker-compose.local-data.yml`](../../docker-compose.local-data.yml) | Bind object + Postgres data to `DATASAFE_DATA_ROOT` on the host |
 | [`.env.example`](../../.env.example) | Default env template → copy to `.env` |
 
@@ -36,8 +36,8 @@ cp deploy/compose/env/.env.ha.example .env.ha
 | Overlay | Purpose |
 |---------|---------|
 | `docker-compose.local-binary.yml` | Mount prebuilt `deploy/docker/storage-server-linux` + console dist |
-| `docker-compose.dev.yml` | Vite HMR console (`--profile dev`) |
-| `docker-compose.audit.yml` | Feature-audit / CI (higher login rate limit, `STORAGE_DEV`) |
+| `docker-compose.dev.yml` | Vite HMR console (`--profile dev`) and explicit `STORAGE_DEV=true` |
+| `docker-compose.audit.yml` | Feature-audit / CI (higher login rate limit, explicit `STORAGE_DEV=true`) |
 | `docker-compose.security-test.yml` | Stricter security QA defaults |
 | `docker-compose.vault.yml` | HashiCorp Vault Agent lab (`--profile vault`) |
 | `docker-compose.vault-product.yml` | Vault + production-like strict secrets |

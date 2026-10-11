@@ -2,7 +2,7 @@
 
 **[English](docs/en/README.md)** · **[Русский](docs/ru/README.md)** · **[Documentation](docs/README.md)**
 
-**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.3.0](CHANGELOG.md#130---2026-08-03)
+**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.4.1](CHANGELOG.md#141---2026-10-11)
 
 ---
 
@@ -118,7 +118,9 @@ docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-co
 
 Production console is served from `web/console/dist` (build with `cd web/console && npm run build`). For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
 
-Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.3.0` and `ghcr.io/direktorbani/datasafe-console:v1.3.0`.
+Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.4.1` and `ghcr.io/direktorbani/datasafe-console:v1.4.1`.
+
+Default Compose install is production-safe: `STORAGE_DEV` is off unless you pass installer `-Dev` / `--dev` (or profile `dev`). The installer generates `STORAGE_METRICS_TOKEN` and wires Prometheus. First login is still `admin` / `admin`, then the setup wizard.
 
 **Rolling `main` builds** (for testers, not cosign/SBOM): on each push to `main`, [`.github/workflows/publish-main.yml`](.github/workflows/publish-main.yml) publishes `:main` and `:sha-<commit>` tags for both images, e.g. `ghcr.io/direktorbani/datasafe-storage-server:main`. Versioned releases (`v*`) remain the supported production path with SBOM and cosign signatures.
 

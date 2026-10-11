@@ -10,7 +10,8 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 YES=0
-TAG="v1.3.0"
+TAG="v1.4.1"
+DEV=0
 DATA_ROOT=""
 PROFILES=""
 PROJECT_NAME="datasafe"
@@ -18,9 +19,9 @@ DRY_RUN=0
 CLUSTER=0
 
 # Parallel arrays (bash 3.2-safe)
-OPT_IDS=(core postgres monitoring data binary identity)
-OPT_ON=(1 1 1 1 0 0)
-OPT_LOCKED=(1 0 0 0 0 0)
+OPT_IDS=(core postgres monitoring data binary identity dev)
+OPT_ON=(1 1 1 1 0 0 0)
+OPT_LOCKED=(1 0 0 0 0 0 0)
 OPT_LABEL=(
   "Core (console + S3 API)"
   "PostgreSQL metadata"
@@ -28,6 +29,7 @@ OPT_LABEL=(
   "Persist data on host (local-data overlay)"
   "Build from source (local Linux binary)"
   "Identity lab (LDAP + Keycloak)"
+  "Dev mode (STORAGE_DEV=true; HTTP/private outbound)"
 )
 
 usage() {
@@ -38,9 +40,11 @@ DataSafeS3 interactive installer
   ./install.sh --yes --profiles core,postgres,monitoring,data
   ./install.sh --dry-run --yes --profiles core,postgres,data
   ./install.sh --cluster --dry-run --yes
-  ./install.sh --project datasafe --tag v1.2.0 --data-root "$HOME/.local/share/datasafe"
+  ./install.sh --project datasafe --tag v1.4.1 --data-root "$HOME/.local/share/datasafe"
+  ./install.sh --dev --yes --profiles core,postgres,data
 
-Profiles: core, postgres, monitoring, data, binary, identity
+Profiles: core, postgres, monitoring, data, binary, identity, dev
+  --dev or profile dev opts into STORAGE_DEV=true. Default install is production-safe.
 Cluster Wave 1+2 DryRun: inventory + render (live Apply later)
 Docs: docs/getting-started/en/installer.md
 EOF
@@ -52,6 +56,7 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY_RUN=1; shift ;;
     --cluster) CLUSTER=1; shift ;;
     --tag) TAG="$2"; shift 2 ;;
+    --dev) DEV=1; shift ;;
     --data-root) DATA_ROOT="$2"; shift 2 ;;
     --profiles) PROFILES="$2"; shift 2 ;;
     --project) PROJECT_NAME="$2"; shift 2 ;;
@@ -353,6 +358,34 @@ show_plan() {
   fi
 }
 
+rand_hex() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32
+    return
+  fi
+  od -An -tx1 -N 32 /dev/urandom | tr -d ' \n'
+}
+
+env_value() {
+  local key="$1" line=""
+  line="$(grep -E "^[[:space:]]*${key}=" .env 2>/dev/null | tail -n 1 || true)"
+  printf '%s' "${line#*=}"
+}
+
+ensure_generated_secret() {
+  local key="$1" cur="" p weak=0
+  shift
+  cur="$(env_value "$key")"
+  if [ -z "$cur" ]; then weak=1; fi
+  for p in "$@"; do
+    if [ "$cur" = "$p" ]; then weak=1; fi
+  done
+  if [ "$weak" = "1" ]; then
+    set_env_key .env "$key" "$(rand_hex)"
+    ok "Generated $key"
+  fi
+}
+
 set_env_key() {
   local file="$1" key="$2" value="$3" tmp
   tmp="$(mktemp)"
@@ -373,6 +406,7 @@ set_env_key() {
 
 find_local_server_image() {
   local img candidates="datasafe-storage-server:latest
+ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
 ghcr.io/direktorbani/datasafe-storage-server:v1.1.0
 ghcr.io/direktorbani/datasafe-storage-server:v1.0.3
 ghcr.io/direktorbani/datasafe-storage-server:v1.0.2
@@ -414,6 +448,39 @@ ensure_env() {
   else
     set_env_key .env DATASAFE_SERVER_IMAGE "ghcr.io/direktorbani/datasafe-storage-server:$TAG"
     set_env_key .env DATASAFE_CONSOLE_IMAGE "ghcr.io/direktorbani/datasafe-console:$TAG"
+  fi
+  ensure_generated_secret STORAGE_JWT_SECRET datasafe-jwt-secret
+  ensure_generated_secret STORAGE_SECRET_KEY datasafesecret
+  ensure_generated_secret STORAGE_METRICS_TOKEN change-me-metrics-bearer
+  dev_on=0
+  if [ "$DEV" = "1" ] || [ "$(opt_get dev)" = "1" ]; then dev_on=1; fi
+  if [ "$(opt_get identity)" = "1" ] && [ "$dev_on" != "1" ]; then
+    warn "Identity lab enables STORAGE_DEV=true (lab IdP is plain HTTP). Do not use this profile in production."
+    dev_on=1
+  fi
+  if [ "$dev_on" = "1" ]; then
+    set_env_key .env STORAGE_DEV true
+    ok "STORAGE_DEV=true (explicit dev opt-in)"
+  else
+    set_env_key .env STORAGE_DEV false
+    ok "STORAGE_DEV=false (production default). Metrics token is in .env."
+  fi
+  if [ "$(opt_get identity)" = "1" ]; then
+    set_env_key .env STORAGE_LDAP_ENABLED true
+    set_env_key .env STORAGE_LDAP_URL "ldap://datasafe-ldap-test:389"
+    set_env_key .env STORAGE_LDAP_BIND_DN "cn=admin,dc=datasafe,dc=local"
+    set_env_key .env STORAGE_LDAP_BIND_PASSWORD ldapadmin
+    set_env_key .env STORAGE_LDAP_BASE_DN "ou=users,dc=datasafe,dc=local"
+    set_env_key .env STORAGE_LDAP_GROUP_DN "ou=groups,dc=datasafe,dc=local"
+    set_env_key .env STORAGE_LDAP_REQUIRE_TLS false
+    set_env_key .env STORAGE_OIDC_ENABLED true
+    set_env_key .env STORAGE_OIDC_ISSUER "http://localhost:8180/realms/datasafe"
+    set_env_key .env STORAGE_OIDC_INTERNAL_ISSUER "http://datasafe-keycloak-test:8080/realms/datasafe"
+    set_env_key .env STORAGE_OIDC_CLIENT_ID datasafe-console
+    set_env_key .env STORAGE_OIDC_CLIENT_SECRET datasafe-console-secret
+    set_env_key .env STORAGE_OIDC_REDIRECT_URL "http://localhost:8080/api/v1/auth/oidc/callback"
+    set_env_key .env STORAGE_OIDC_ROPC_ENABLED true
+    ok "Identity lab env keys patched (LDAP + OIDC test defaults)"
   fi
 }
 
@@ -516,6 +583,14 @@ show_done() {
     echo "  SSO / Keycloak user: ssouser / password"
   fi
   echo ""
+  if [ "$(opt_get monitoring)" = "1" ]; then
+    echo "  Prometheus scrapes /metrics with STORAGE_METRICS_TOKEN from .env (not printed)."
+  fi
+  if [ "$DEV" = "1" ] || [ "$(opt_get dev)" = "1" ] || [ "$(opt_get identity)" = "1" ]; then
+    echo "  Dev mode is ON (STORAGE_DEV=true)."
+  else
+    echo "  Dev mode is OFF. Opt in with --dev or profile dev."
+  fi
   echo "  Next: open console → change password → finish setup wizard."
   echo "  Docs: docs/getting-started/en/onboarding.md"
   echo ""

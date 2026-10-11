@@ -203,6 +203,41 @@ docker compose --profile postgres up -d
 
 Подробно: [trusted-clusters.md](trusted-clusters.md) · [EN](../en/trusted-clusters.md)
 
+## Обновление до v1.4.1
+
+Патч поверх **v1.4.0**. Миграции БД нет. Берите storage-server и console одного тега.
+
+### Dev mode — явный opt-in
+
+| До (дефолт compose v1.4.0) | После (v1.4.1) |
+|----------------------------|----------------|
+| `STORAGE_DEV` по умолчанию `true` | В `docker-compose.yml` и `.env.example` по умолчанию `false` |
+| Установщик не выключал dev mode | Пишет `STORAGE_DEV=false`, если нет `-Dev`, `--dev` или профиля `dev` |
+| `/metrics` на установке по умолчанию был открыт | Установщик генерирует `STORAGE_METRICS_TOKEN`; Prometheus скрейпит с этим bearer |
+
+Если в `.env` уже задано `STORAGE_DEV=true`, значение сохранится, пока вы его не смените. Стек, который брал старый дефолт compose (переменная не задана), выйдет из dev mode при следующем `up`.
+
+Opt-in для локальных HTTP sink: `-Dev` / `--dev` / профиль `dev`, `STORAGE_DEV=true`, либо overlay `deploy/compose/docker-compose.dev.yml` и `docker-compose.audit.yml` (оба явно ставят `STORAGE_DEV=true`).
+
+Профиль **identity** включает `STORAGE_DEV=true`, потому что issuer Keycloak в лаборатории — обычный HTTP. Не используйте этот профиль на production-хосте.
+
+Мастер первого запуска не изменился: вход `admin` / `admin`, смена пароля, setup wizard (внешний S3 необязателен). Установщик не ротирует `STORAGE_ADMIN_PASSWORD`. `STORAGE_JWT_SECRET` и `STORAGE_SECRET_KEY` заменяются только пока они равны опубликованным дефолтам. `STORAGE_METRICS_TOKEN` генерируется, если его нет. Повторный запуск сохраняет уже заданные недефолтные секреты.
+
+Ручной `docker compose` без установщика: задайте `STORAGE_METRICS_TOKEN` сами. Пока он пуст, `/metrics` остаётся открытым (legacy) и сервер пишет warning при `STORAGE_DEV=false`. Если переменная задана, сервис Prometheus читает то же значение.
+
+Grafana на стеке установщика продолжает работать, потому что Prometheus передаёт bearer. Консоль bearer не шлёт — смотрите gauges в Grafana.
+
+### Шаги (v1.4.1)
+
+```bash
+git pull
+export TAG=v1.4.1
+docker compose --profile postgres pull
+docker compose --profile postgres up -d
+```
+
+Либо снова запустите `install.ps1` / `install.sh`, чтобы получить сгенерированные секреты и токен метрик. Проверьте: `GET /metrics` без bearer даёт **401**, когда токен задан, а Grafana Overview по-прежнему показывает данные.
+
 ## Чеклист
 
 - [ ] Backup метаданных и объектов
@@ -213,3 +248,4 @@ docker compose --profile postgres up -d
 - [ ] v1.0.2: проверить outbound URL и `STORAGE_RATE_LIMIT_LOGIN` для автоматизации
 - [ ] v1.0.3 (опционально): включить [field encryption](field-encryption.md) — KEK, env, security-status
 - [ ] v1.1.0: убрать `STORAGE_OUTBOUND_HTTP_ALLOW`; настроить `STORAGE_METRICS_TOKEN` и Prometheus bearer
+- [ ] v1.4.1: `STORAGE_DEV` выключен, если вы не включали его явно; в установщике или `.env` есть `STORAGE_METRICS_TOKEN`; скрейп Prometheus работает

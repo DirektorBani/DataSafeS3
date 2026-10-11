@@ -13,7 +13,7 @@ Full per-node table and erasure health: Grafana dashboard **DataSafeS3 Cluster S
 - Scrape target: `storage-server:9000/metrics`
 - Config: `deploy/docker/prometheus.yml`
 - **Cluster nodes (optional):** edit `deploy/docker/prometheus/targets/cluster-nodes.json` (see `cluster-nodes.example.json`) with each node `host:9000`. Compose mounts that directory into Prometheus for `file_sd`.
-- **v1.1.0+:** when `STORAGE_METRICS_TOKEN` is set, configure Prometheus `authorization` bearer credentials (see `deploy/docker/prometheus.yml` comments and [upgrade guide § v1.1.0](upgrade.md#upgrading-to-v110)).
+- **v1.1.0+:** when `STORAGE_METRICS_TOKEN` is set, `GET /metrics` requires that bearer. **v1.4.1:** the root installer generates the token, and the Compose Prometheus service injects it when the variable is non-empty (`# metrics_auth` in `deploy/docker/prometheus.yml`). See [upgrade § v1.4.1](upgrade.md#upgrading-to-v141).
 - **Console note:** the web dashboard reads `/metrics` without a bearer token; when metrics are protected, use Grafana/Prometheus for gauges (console degrades gracefully to zeros).
 
 ## Grafana

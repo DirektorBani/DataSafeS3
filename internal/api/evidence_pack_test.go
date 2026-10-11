@@ -319,3 +319,240 @@ func TestInventoryJobDestBucket(t *testing.T) {
 		t.Fatalf("dest csv missing object: %s", data)
 	}
 }
+
+func TestInventoryMissingBucketIs404(t *testing.T) {
+	s := testServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+	jobBody, _ := json.Marshal(map[string]string{"bucket": "does-not-exist", "format": "csv"})
+	req := authReq(http.MethodPost, "/api/v1/inventory/jobs", tok, jobBody)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 got %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "bucket not found") {
+		t.Fatalf("body %s", rec.Body.String())
+	}
+
+	req = authReq(http.MethodGet, "/api/v1/inventory/jobs", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list %d %s", rec.Code, rec.Body.String())
+	}
+	var list struct {
+		Jobs []map[string]any `json:"jobs"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Jobs) != 0 {
+		t.Fatalf("missing bucket must not create a job, got %+v", list.Jobs)
+	}
+}
+
+func TestInventoryListAdminOnlyAndLimit(t *testing.T) {
+	s := testServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+	userTok := createUser(t, s, tok, "invuser", auth.RoleUser)
+
+	req := authReq(http.MethodGet, "/api/v1/inventory/jobs", userTok, nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("user list want 403 got %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = authReq(http.MethodPost, "/api/v1/buckets/inv-list", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code >= 300 {
+		t.Fatalf("bucket %d %s", rec.Code, rec.Body.String())
+	}
+	for i := 0; i < 3; i++ {
+		jobBody, _ := json.Marshal(map[string]string{"bucket": "inv-list", "format": "csv"})
+		req = authReq(http.MethodPost, "/api/v1/inventory/jobs", tok, jobBody)
+		rec = httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("job %d %s", rec.Code, rec.Body.String())
+		}
+	}
+
+	var list struct {
+		Jobs  []map[string]any `json:"jobs"`
+		Limit int              `json:"limit"`
+	}
+	req = authReq(http.MethodGet, "/api/v1/inventory/jobs?limit=1", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list %d %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if list.Limit != 1 || len(list.Jobs) != 1 {
+		t.Fatalf("limit=%d jobs=%d", list.Limit, len(list.Jobs))
+	}
+
+	req = authReq(http.MethodGet, "/api/v1/inventory/jobs?limit=nope", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad limit %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = authReq(http.MethodGet, "/api/v1/inventory/jobs?limit=500", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	if list.Limit != 100 || len(list.Jobs) != 3 {
+		t.Fatalf("clamp limit=%d jobs=%d", list.Limit, len(list.Jobs))
+	}
+}
+
+func TestInventoryTenantScopedConsoleName(t *testing.T) {
+	s := testServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+	admin, err := s.Meta().GetUserByUsername("admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tenantBody, _ := json.Marshal(map[string]string{"name": "InvCorp"})
+	req := authReq(http.MethodPost, "/api/v1/tenants", tok, tenantBody)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code >= 300 {
+		t.Fatalf("tenant %d %s", rec.Code, rec.Body.String())
+	}
+	var tenantResp struct {
+		Tenant struct {
+			ID string `json:"id"`
+		} `json:"tenant"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &tenantResp)
+	admin.TenantID = tenantResp.Tenant.ID
+	if err := s.Meta().UpdateUser(admin); err != nil {
+		t.Fatal(err)
+	}
+
+	req = authReq(http.MethodPost, "/api/v1/buckets/console-corp", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code >= 300 {
+		t.Fatalf("bucket %d %s", rec.Code, rec.Body.String())
+	}
+	brec, err := s.Meta().GetBucket("console-corp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if brec.EffectiveStorageKey() == brec.Name || brec.TenantID != tenantResp.Tenant.ID {
+		t.Fatalf("expected tenant-scoped bucket, got %+v", brec)
+	}
+
+	req = authReq(http.MethodPut, "/api/v1/buckets/console-corp/objects/from-console.txt", tok, []byte("corp"))
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code >= 300 {
+		t.Fatalf("upload %d %s", rec.Code, rec.Body.String())
+	}
+	req = authReq(http.MethodGet, "/api/v1/buckets/console-corp/settings", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("settings %d %s", rec.Code, rec.Body.String())
+	}
+
+	jobBody, _ := json.Marshal(map[string]string{"bucket": "console-corp", "format": "csv"})
+	req = authReq(http.MethodPost, "/api/v1/inventory/jobs", tok, jobBody)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("job %d %s", rec.Code, rec.Body.String())
+	}
+	var job map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &job)
+	if job["status"] != "completed" {
+		t.Fatalf("%+v", job)
+	}
+	id, _ := job["id"].(string)
+	req = authReq(http.MethodGet, "/api/v1/inventory/jobs/"+id+"/download", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "from-console.txt") {
+		t.Fatalf("csv %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestInventoryNameCollisionUsesResolvedBucket(t *testing.T) {
+	s := testServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+	const name = "shared-inv"
+	req := authReq(http.MethodPost, "/api/v1/buckets/"+name, tok, nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code >= 300 {
+		t.Fatalf("bucket %d %s", rec.Code, rec.Body.String())
+	}
+	req = authReq(http.MethodPut, "/api/v1/buckets/"+name+"/objects/admin-only.txt", tok, []byte("admin"))
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code >= 300 {
+		t.Fatalf("upload %d %s", rec.Code, rec.Body.String())
+	}
+
+	otherKey := metadata.MakeStorageKey(metadata.BucketScope{Kind: metadata.ScopeTenant, TenantID: "tenant-other"}, name)
+	if err := s.Meta().PutBucket(metadata.BucketRecord{
+		Name: name, StorageKey: otherKey, TenantID: "tenant-other", Owner: "other", OwnerID: "other-user",
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Svc().PutObject(context.Background(), otherKey, "other.txt", bytes.NewReader([]byte("x")), 1, "text/plain", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	jobBody, _ := json.Marshal(map[string]string{"bucket": name, "format": "csv"})
+	req = authReq(http.MethodPost, "/api/v1/inventory/jobs", tok, jobBody)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("job %d %s", rec.Code, rec.Body.String())
+	}
+	var job map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &job)
+	if job["status"] != "completed" {
+		t.Fatalf("expected the console-resolved bucket, got %+v", job)
+	}
+	id, _ := job["id"].(string)
+	req = authReq(http.MethodGet, "/api/v1/inventory/jobs/"+id+"/download", tok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	csv := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(csv, "admin-only.txt") || strings.Contains(csv, "other.txt") {
+		t.Fatalf("csv %d %s", rec.Code, csv)
+	}
+}
+
+func TestInventoryMissingDestBucketIs404(t *testing.T) {
+	s := testServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+	req := authReq(http.MethodPost, "/api/v1/buckets/inv-src-only", tok, nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code >= 300 {
+		t.Fatalf("bucket %d %s", rec.Code, rec.Body.String())
+	}
+	jobBody, _ := json.Marshal(map[string]string{
+		"bucket": "inv-src-only", "format": "csv", "dest_bucket": "missing-dest",
+	})
+	req = authReq(http.MethodPost, "/api/v1/inventory/jobs", tok, jobBody)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 got %d %s", rec.Code, rec.Body.String())
+	}
+}

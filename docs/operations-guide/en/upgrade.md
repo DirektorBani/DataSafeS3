@@ -255,6 +255,41 @@ Migrations apply automatically on `storage-server` start. No manual SQL required
 
 Full guide: [trusted-clusters.md](trusted-clusters.md) (EN) · [RU](../ru/trusted-clusters.md)
 
+## Upgrading to v1.4.1
+
+Patch on **v1.4.0**. No database migration. Take storage-server and console from the same tag.
+
+### Dev mode is opt-in
+
+| Before (v1.4.0 compose default) | After (v1.4.1) |
+|---------------------------------|----------------|
+| `STORAGE_DEV` defaulted to `true` | Default is `false` in `docker-compose.yml` and `.env.example` |
+| Installer left dev mode on | Installer writes `STORAGE_DEV=false` unless `-Dev`, `--dev`, or profile `dev` |
+| Default install left `/metrics` open | Installer generates `STORAGE_METRICS_TOKEN`; Prometheus scrapes with that bearer |
+
+If `.env` already sets `STORAGE_DEV=true`, that value stays until you change it. A stack that inherited the old compose default (variable unset) leaves dev mode on the next `up`.
+
+Opt in for local HTTP sinks: `-Dev` / `--dev` / profile `dev`, `STORAGE_DEV=true`, or the dev and audit overlays (`deploy/compose/docker-compose.dev.yml`, `docker-compose.audit.yml`), which set `STORAGE_DEV=true` explicitly.
+
+The **identity** lab profile sets `STORAGE_DEV=true` because the lab Keycloak issuer is plain HTTP. Do not use that profile on a production host.
+
+The first-run wizard is unchanged: sign in as `admin` / `admin`, change the password, finish setup (external S3 is optional). The installer does not rotate `STORAGE_ADMIN_PASSWORD`. It replaces `STORAGE_JWT_SECRET` and `STORAGE_SECRET_KEY` only while they are still the published defaults, and it generates `STORAGE_METRICS_TOKEN` when that value is missing. A later run keeps non-default secrets.
+
+Manual `docker compose` without the installer: set `STORAGE_METRICS_TOKEN` yourself. While it is empty, `/metrics` stays open (legacy) and the server logs a warning when `STORAGE_DEV=false`. When the variable is set, the Prometheus service reads the same value.
+
+Grafana on an installer-managed stack keeps working because Prometheus sends the bearer. The console does not; use Grafana for gauges.
+
+### Upgrade steps (v1.4.1)
+
+```bash
+git pull
+export TAG=v1.4.1
+docker compose --profile postgres pull
+docker compose --profile postgres up -d
+```
+
+Re-run `install.ps1` / `install.sh` if you want generated secrets and the metrics token wired for you. Confirm `GET /metrics` without a bearer is **401** when the token is set, and that Grafana still shows the Overview dashboard.
+
 ## Checklist
 
 - [ ] Backup metadata and objects
@@ -265,3 +300,4 @@ Full guide: [trusted-clusters.md](trusted-clusters.md) (EN) · [RU](../ru/truste
 - [ ] v1.0.2: review outbound URLs and `STORAGE_RATE_LIMIT_LOGIN` for automation
 - [ ] v1.0.3 (optional): enable [field encryption](field-encryption.md) — generate KEK, set env, verify security-status
 - [ ] v1.1.0: remove `STORAGE_OUTBOUND_HTTP_ALLOW`; configure `STORAGE_METRICS_TOKEN` + Prometheus bearer if used
+- [ ] v1.4.1: `STORAGE_DEV` is false unless you opted in; installer or `.env` has `STORAGE_METRICS_TOKEN`; Prometheus scrape still works
