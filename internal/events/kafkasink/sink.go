@@ -1,4 +1,8 @@
-package events
+// Package kafkasink is the franz-go producer. The storage-server image does
+// not import this package. The child process datasafe-kafka-bridge does, and
+// the server starts that process only when STORAGE_KAFKA_BROKERS is set.
+// go test and a normal go build import it through package events.
+package kafkasink
 
 import (
 	"context"
@@ -14,10 +18,24 @@ import (
 	"github.com/twmb/franz-go/pkg/sasl/scram"
 )
 
-// KafkaSink publishes NotificationJSON with acks=all and the franz-go
-// idempotent producer (the default when idempotent writes are not disabled).
-// The record key is tenant/bucket/key.
-type KafkaSink struct {
+// Config is the producer. Brokers must be non-empty. TLS and SASL rules match
+// events.KafkaConfig.Validate, which the caller runs first.
+type Config struct {
+	Brokers       []string
+	Topic         string
+	ClientID      string
+	TLS           bool
+	CAFile        string
+	CertFile      string
+	KeyFile       string
+	SASLMechanism string
+	SASLUser      string
+	SASLPassword  string
+}
+
+// Producer publishes one record with acks=all and the franz-go idempotent
+// producer (the default when idempotent writes are not disabled).
+type Producer struct {
 	client *kgo.Client
 	topic  string
 
@@ -25,14 +43,13 @@ type KafkaSink struct {
 	lastErr string
 }
 
-// NewKafkaSink builds a producer. Call it only when cfg.Enabled() is true.
-// A disabled config returns an error and does not dial.
-func NewKafkaSink(cfg KafkaConfig) (*KafkaSink, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-	if !cfg.Enabled() {
+// New builds a producer. An empty broker list returns an error and does not dial.
+func New(cfg Config) (*Producer, error) {
+	if len(cfg.Brokers) == 0 {
 		return nil, fmt.Errorf("STORAGE_KAFKA_BROKERS is empty")
+	}
+	if cfg.Topic == "" {
+		return nil, fmt.Errorf("STORAGE_KAFKA_TOPIC is empty")
 	}
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(cfg.Brokers...),
@@ -61,64 +78,63 @@ func NewKafkaSink(cfg KafkaConfig) (*KafkaSink, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &KafkaSink{client: cl, topic: cfg.Topic}, nil
+	return &Producer{client: cl, topic: cfg.Topic}, nil
 }
 
-func (k *KafkaSink) Name() string { return "kafka" }
-
-func (k *KafkaSink) Publish(ctx context.Context, e Event) error {
+// Publish sends body under key. key is tenant/bucket/key.
+func (p *Producer) Publish(ctx context.Context, key string, body []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	body, err := NotificationJSON(e)
-	if err != nil {
-		return err
-	}
 	rec := &kgo.Record{
-		Topic: k.topic,
-		Key:   []byte(KafkaRecordKey(e.TenantID, e.Bucket, e.Key)),
+		Topic: p.topic,
+		Key:   []byte(key),
 		Value: body,
 	}
-	err = k.client.ProduceSync(ctx, rec).FirstErr()
-	k.note(err)
+	err := p.client.ProduceSync(ctx, rec).FirstErr()
+	p.note(err)
 	return err
 }
 
-func (k *KafkaSink) Close() error {
-	if k == nil || k.client == nil {
+func (p *Producer) Close() error {
+	if p == nil || p.client == nil {
 		return nil
 	}
-	k.client.Close()
+	p.client.Close()
 	return nil
 }
 
 // Health pings the cluster when the last publish succeeded. "connected"
-// means the sink is registered and the last produce plus this ping succeeded.
-// It does not mean a consumer group is caught up.
-func (k *KafkaSink) Health(ctx context.Context) (string, string) {
-	k.mu.Lock()
-	last := k.lastErr
-	k.mu.Unlock()
+// means the last produce plus this ping succeeded. It does not mean a
+// consumer group is caught up.
+func (p *Producer) Health(ctx context.Context) (string, string) {
+	p.mu.Lock()
+	last := p.lastErr
+	p.mu.Unlock()
 	if last != "" {
 		return "degraded", last
 	}
-	if err := k.client.Ping(ctx); err != nil {
+	if err := p.client.Ping(ctx); err != nil {
 		return "degraded", err.Error()
 	}
 	return "connected", ""
 }
 
-func (k *KafkaSink) note(err error) {
-	k.mu.Lock()
-	defer k.mu.Unlock()
+func (p *Producer) note(err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if err == nil {
-		k.lastErr = ""
+		p.lastErr = ""
 		return
 	}
-	k.lastErr = err.Error()
+	p.lastErr = err.Error()
 }
 
-func kafkaTLSConfig(cfg KafkaConfig) (*tls.Config, error) {
+func (c Config) tlsOn() bool {
+	return c.TLS || c.CAFile != "" || c.CertFile != "" || c.KeyFile != ""
+}
+
+func kafkaTLSConfig(cfg Config) (*tls.Config, error) {
 	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
 	if cfg.CAFile != "" {
 		pem, err := os.ReadFile(cfg.CAFile)
@@ -141,7 +157,7 @@ func kafkaTLSConfig(cfg KafkaConfig) (*tls.Config, error) {
 	return tlsCfg, nil
 }
 
-func kafkaSASL(cfg KafkaConfig) (sasl.Mechanism, error) {
+func kafkaSASL(cfg Config) (sasl.Mechanism, error) {
 	switch cfg.SASLMechanism {
 	case "plain":
 		return plain.Auth{User: cfg.SASLUser, Pass: cfg.SASLPassword}.AsMechanism(), nil

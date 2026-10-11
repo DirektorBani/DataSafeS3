@@ -4,7 +4,7 @@
 
 Kafka — sink событий только по включению. Установка по умолчанию не задаёт `STORAGE_KAFKA_BROKERS`, не поднимает брокер и не открывает соединение. `VERSION` по-прежнему 1.4.1. Это незарелиженная работа.
 
-Клиент — [franz-go](https://github.com/twmb/franz-go) (`github.com/twmb/franz-go`), чистый Go, без CGO. Выбор записан в [ADR-0002](../../architecture/adr/0002-event-sink-interface.md). Модуль слинкован в бинарь storage-server. Объект клиента, его горутины и любой dial появляются только когда `STORAGE_KAFKA_BROKERS` непустой.
+Клиент — [franz-go](https://github.com/twmb/franz-go) (`github.com/twmb/franz-go`), чистый Go, без CGO. Выбор записан в [ADR-0002](../../architecture/adr/0002-event-sink-interface.md). Образ контейнера держит клиент во втором статическом бинаре, `/usr/lib/datasafe/datasafe-kafka-bridge`. Процесс сервера модуль не импортирует. Он запускает эту программу только когда `STORAGE_KAFKA_BROKERS` непустой, поэтому процесс по умолчанию не отображает клиент в память и не стартует дочерний процесс. `go build` без `-tags datasafe_sinkexec` линкует клиент в бинарь сервера; `go test` идёт этим путём. В обоих случаях объект клиента, его горутины и любой dial появляются только при непустом списке брокеров.
 
 ## Настройка
 
@@ -40,7 +40,9 @@ Kafka — sink событий только по включению. Устано
 ./install.sh --yes --profiles core,kafka
 ```
 
-Подключается `deploy/compose/docker-compose.kafka.yml`: один брокер KRaft, образ `apache/kafka:3.9.2`, bootstrap внутри стека `kafka:19092`, порт хоста `localhost:9092`. Оверлей задаёт `storage-server` переменную `STORAGE_KAFKA_BROKERS=kafka:19092`. Windows: `.\install.ps1 -Yes -Profiles core,kafka`.
+Подключается `deploy/compose/docker-compose.kafka.yml`: один брокер KRaft, образ `apache/kafka:3.9.2`, bootstrap внутри стека `kafka:19092`, порт хоста `localhost:9092`. Оверлей задаёт `storage-server` переменную `STORAGE_KAFKA_BROKERS=kafka:19092` и включает автосоздание топиков в лаборатории. Windows: `.\install.ps1 -Yes -Profiles core,kafka`.
+
+Создайте `STORAGE_KAFKA_TOPIC` до первого события в промышленной среде. Идемпотентный продюсер не считает отсутствующий топик успехом: Apache Kafka 3.9 отвечал `UNKNOWN_TOPIC_OR_PARTITION`, пока топика не было. Лабораторный брокер ставит `auto.create.topics.enable=true` для удобства. Это не замена созданию топика на своём кластере.
 
 Смена `STORAGE_KAFKA_BROKERS` между стартами процесса — действие Activity `kafka_brokers_changed`. Имя ресурса — новый список брокеров. Секреты SASL не пишутся.
 

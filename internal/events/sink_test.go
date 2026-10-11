@@ -380,9 +380,12 @@ func orderRow(id, eventType, tenant, bucket, key string, at time.Time) OutboxRec
 func TestDispatcherDeliversSameKeyInOrderAfterFailure(t *testing.T) {
 	store := newMemOutbox()
 	sink := &memSink{name: "kafka", failFor: 1, failKey: "obj"}
-	d := NewDispatcher(store, []EventSink{sink}, Config{MaxAttempts: 5, Retention: time.Hour, DeadRetention: time.Hour}, nil, Observer{})
-	d.purgeEvery = time.Hour
+	d := NewDispatcher(store, []EventSink{sink}, Config{MaxAttempts: 5, Retention: 24 * time.Hour, DeadRetention: 24 * time.Hour}, nil, Observer{})
+	d.purgeEvery = 24 * time.Hour
 	t0 := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	// The first tick purges when lastPurge is zero. Delivered rows must still
+	// be readable after the loop, so this test does not purge inside the window.
+	d.lastPurge = t0
 	created := orderRow("01CREATE000000000000000000", "ObjectCreated", "ten", "b", "obj", t0)
 	deleted := orderRow("01DELETE000000000000000000", "ObjectDeleted", "ten", "b", "obj", t0.Add(time.Second))
 	other := orderRow("01OTHER0000000000000000000", "ObjectCreated", "ten", "b", "other", t0.Add(2*time.Second))

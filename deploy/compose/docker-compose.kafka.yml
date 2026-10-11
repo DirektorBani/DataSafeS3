@@ -24,6 +24,10 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      # Lab convenience. An idempotent producer still wants the topic to exist
+      # before the first produce; create datasafe.events if the first event
+      # returns UNKNOWN_TOPIC_OR_PARTITION.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
   storage-server:
     environment:

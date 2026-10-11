@@ -51,6 +51,8 @@ jobs:
         env:
           TEST_POSTGRES_DSN: postgres://datasafe:datasafe@localhost:5432/datasafe?sslmode=disable
         run: go test ./...
+      - name: kafka bridge protocol
+        run: go test -tags datasafe_sinkexec -count=1 -timeout 10m ./internal/events/ -run TestKafkaExecFakeBridge
       - name: Compile API guide Go examples
         run: |
           go build -o /dev/null docs/api-guide/en/examples/go/list_buckets.go
@@ -251,6 +253,7 @@ jobs:
           KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
           KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
           KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+          KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

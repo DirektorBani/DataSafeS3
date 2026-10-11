@@ -5,11 +5,15 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/storage-server ./cmd/storage-server
+# franz-go lives in a second static binary. The server does not import it.
+# The child is started only when STORAGE_KAFKA_BROKERS is set. No CGO.
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -tags datasafe_sinkexec -ldflags="-s -w" -o /out/storage-server ./cmd/storage-server \
+ && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/datasafe-kafka-bridge ./cmd/datasafe-kafka-bridge
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates wget su-exec
 COPY --from=build /out/storage-server /storage-server
+COPY --from=build /out/datasafe-kafka-bridge /usr/lib/datasafe/datasafe-kafka-bridge
 COPY deploy/docker/docker-entrypoint.sh /docker-entrypoint.sh
 # Windows checkouts can deliver CRLF. A CR on the shebang is "no such file or directory".
 # The launcher is created here (always LF) so a bind-mount over /docker-entrypoint.sh

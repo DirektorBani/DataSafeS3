@@ -26,7 +26,8 @@ func (c KafkaConfig) Enabled() bool {
 	return len(c.Brokers) > 0
 }
 
-func (c KafkaConfig) tlsOn() bool {
+// TLSOn is true when STORAGE_KAFKA_TLS is set or any TLS file is set.
+func (c KafkaConfig) TLSOn() bool {
 	return c.TLS || c.CAFile != "" || c.CertFile != "" || c.KeyFile != ""
 }
 
@@ -88,7 +89,7 @@ func (c KafkaConfig) Validate() error {
 			return fmt.Errorf("STORAGE_KAFKA_SASL_USERNAME and STORAGE_KAFKA_SASL_PASSWORD are required when SASL is set")
 		}
 	}
-	if c.SASLMechanism == "plain" && !c.tlsOn() {
+	if c.SASLMechanism == "plain" && !c.TLSOn() {
 		return fmt.Errorf("STORAGE_KAFKA_SASL_MECHANISM=PLAIN requires TLS (set STORAGE_KAFKA_TLS=true or provide CA/cert/key files); refusing to start")
 	}
 	return nil

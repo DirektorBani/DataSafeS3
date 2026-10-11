@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,7 +13,9 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/events"
+	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
 // TestKafkaBrokerIntegration needs a real broker.
@@ -27,6 +30,9 @@ func TestKafkaBrokerIntegration(t *testing.T) {
 		brokers = "localhost:9092"
 	}
 	topic := "datasafe.it." + strings.ReplaceAll(time.Now().UTC().Format("20060102T150405.000"), ".", "")
+	// Apache Kafka 3.9 in this job does not host a missing topic. The idempotent
+	// producer then fails with UNKNOWN_TOPIC_OR_PARTITION and nothing is consumed.
+	ensureKafkaTopic(t, brokers, topic)
 	srv, creds := e03Server(t)
 	// e03Server clears brokers so the no-sink tests stay quiet. Register after that.
 	t.Setenv("STORAGE_KAFKA_BROKERS", brokers)
@@ -139,6 +145,50 @@ func TestKafkaBrokerIntegration(t *testing.T) {
 	if len(ordered) != 2 || ordered[0] != "s3:ObjectCreated:Put" || ordered[1] != "s3:ObjectRemoved:Delete" {
 		t.Fatalf("per-key order %v", ordered)
 	}
+}
+
+func ensureKafkaTopic(t *testing.T, brokers, topic string) {
+	t.Helper()
+	cl, err := kgo.NewClient(kgo.SeedBrokers(strings.Split(brokers, ",")...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cl.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	req := kmsg.NewPtrCreateTopicsRequest()
+	req.Topics = []kmsg.CreateTopicsRequestTopic{{
+		Topic:             topic,
+		NumPartitions:     1,
+		ReplicationFactor: 1,
+	}}
+	resp, err := req.RequestWith(ctx, cl)
+	if err != nil {
+		t.Fatalf("create topic %s: %v", topic, err)
+	}
+	for _, top := range resp.Topics {
+		if err := kerr.ErrorForCode(top.ErrorCode); err != nil && !errors.Is(err, kerr.TopicAlreadyExists) {
+			t.Fatalf("create topic %s: %v", topic, err)
+		}
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		mreq := kmsg.NewPtrMetadataRequest()
+		mreq.Topics = []kmsg.MetadataRequestTopic{{Topic: kmsg.StringPtr(topic)}}
+		mresp, err := mreq.RequestWith(ctx, cl)
+		if err == nil {
+			for _, top := range mresp.Topics {
+				if kerr.ErrorForCode(top.ErrorCode) != nil || len(top.Partitions) == 0 {
+					continue
+				}
+				if top.Partitions[0].Leader >= 0 {
+					return
+				}
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("topic %s has no leader", topic)
 }
 
 func assertKafkaRecord(t *testing.T, rec *kgo.Record, bucket, key string) {

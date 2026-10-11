@@ -4,7 +4,7 @@
 
 Kafka is an opt-in event sink. A default install does not set `STORAGE_KAFKA_BROKERS`, does not start a broker, and does not open a connection. `VERSION` is still 1.4.1. This page is unreleased work.
 
-The client is [franz-go](https://github.com/twmb/franz-go) (`github.com/twmb/franz-go`), pure Go, no CGO. That choice is recorded in [ADR-0002](../../architecture/adr/0002-event-sink-interface.md). The module is linked into the storage-server binary. The client object, its goroutines, and any dial exist only when `STORAGE_KAFKA_BROKERS` is non-empty.
+The client is [franz-go](https://github.com/twmb/franz-go) (`github.com/twmb/franz-go`), pure Go, no CGO. That choice is recorded in [ADR-0002](../../architecture/adr/0002-event-sink-interface.md). The container image keeps the client in a second static binary, `/usr/lib/datasafe/datasafe-kafka-bridge`. The server process does not import the module. It starts that program only when `STORAGE_KAFKA_BROKERS` is non-empty, so a default process does not map the client and does not start a child. A `go build` without `-tags datasafe_sinkexec` links the client into the server binary instead; `go test` uses that path. Either way, the client object, its goroutines, and any dial exist only when the broker list is non-empty.
 
 ## Setup
 
@@ -40,7 +40,9 @@ Lab broker, not part of the default installer profiles:
 ./install.sh --yes --profiles core,kafka
 ```
 
-That applies `deploy/compose/docker-compose.kafka.yml`: one KRaft broker, image `apache/kafka:3.9.2`, in-stack bootstrap `kafka:19092`, host port `localhost:9092`. The overlay sets `STORAGE_KAFKA_BROKERS=kafka:19092` on `storage-server`. Windows: `.\install.ps1 -Yes -Profiles core,kafka`.
+That applies `deploy/compose/docker-compose.kafka.yml`: one KRaft broker, image `apache/kafka:3.9.2`, in-stack bootstrap `kafka:19092`, host port `localhost:9092`. The overlay sets `STORAGE_KAFKA_BROKERS=kafka:19092` on `storage-server` and turns broker auto-create on for the lab. Windows: `.\install.ps1 -Yes -Profiles core,kafka`.
+
+Create `STORAGE_KAFKA_TOPIC` before the first event in production. The idempotent producer does not treat a missing topic as success: Apache Kafka 3.9 returned `UNKNOWN_TOPIC_OR_PARTITION` until the topic existed. The lab broker sets `auto.create.topics.enable=true` as a convenience. That is not a substitute for creating the topic when you run your own cluster.
 
 A change of `STORAGE_KAFKA_BROKERS` between process starts is Activity action `kafka_brokers_changed`. The resource name is the new broker list. SASL secrets are not logged.
 
