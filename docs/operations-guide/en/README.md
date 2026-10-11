@@ -15,6 +15,7 @@ Run DataSafeS3 in production: backup, upgrades, scaling, and incident response.
 | Disaster recovery | [disaster-recovery.md](disaster-recovery.md) |
 | Monitoring | [monitoring.md](monitoring.md) |
 | Event outbox | [event-outbox.md](event-outbox.md) |
+| Single-node regression gate | [single-node-gate.md](single-node-gate.md) |
 | Security self-assessment | [security-self-assessment.md](security-self-assessment.md) |
 | Field encryption (metadata) | [field-encryption.md](field-encryption.md) |
 | Vault secrets injection | [secrets-vault.md](secrets-vault.md) |

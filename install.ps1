@@ -6,6 +6,7 @@
 .EXAMPLE
   .\install.ps1
   .\install.ps1 -Yes -Profiles core,postgres,monitoring,data
+  .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
   .\install.ps1 -Yes -Dev -Profiles core,postgres,data
 #>
 param(
@@ -39,6 +40,7 @@ DataSafeS3 interactive installer
 
   .\install.ps1
   .\install.ps1 -Yes -Profiles core,postgres,monitoring,data
+  .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
   .\install.ps1 -DryRun -Yes -Profiles core,postgres,data
   .\install.ps1 -Tag v1.4.1 -DataRoot D:/datasafe-data
   .\install.ps1 -Dev -Yes -Profiles core,postgres,data
@@ -672,7 +674,10 @@ function Wait-Healthy {
     } catch {}
     Start-Sleep -Seconds 2
   }
-  Write-Warn "healthz not ready yet - check: docker compose -p datasafe ps / logs"
+  if ($Yes) {
+    throw "healthz not ready yet - check: docker compose -p $ProjectName ps / logs"
+  }
+  Write-Warn "healthz not ready yet - check: docker compose -p $ProjectName ps / logs"
 }
 
 function Show-Done {

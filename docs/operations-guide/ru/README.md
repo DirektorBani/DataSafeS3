@@ -15,6 +15,7 @@
 | Аварийное восстановление | [disaster-recovery.md](disaster-recovery.md) |
 | Мониторинг | [monitoring.md](monitoring.md) |
 | Outbox событий | [event-outbox.md](event-outbox.md) |
+| Регрессионный гейт одного узла | [single-node-gate.md](single-node-gate.md) |
 | Security self-assessment | [security-self-assessment.md](security-self-assessment.md) |
 | Field encryption (метаданные) | [field-encryption.md](field-encryption.md) |
 | Vault (инъекция секретов) | [secrets-vault.md](secrets-vault.md) |

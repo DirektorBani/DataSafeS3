@@ -30,8 +30,17 @@ install.cmd
 
 ```bash
 ./install.sh --yes --profiles core,postgres,monitoring,data
+./install.sh --yes --profiles core
 ./install.sh --dry-run --yes --profiles core,postgres,data
 ```
+
+Один профиль `core` — production-путь одного узла: storage-server и Caddy, метаданные Bolt, dev mode выключен, без Postgres и без мониторинга. `--yes` ничего не спрашивает. Если `http://127.0.0.1:8080/healthz` не готов, `--yes` завершается с ошибкой.
+
+```powershell
+.\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
+```
+
+Job CI, который проходит этот путь и бюджет ресурсов: [гейт одного узла](../../operations-guide/ru/single-node-gate.md).
 
 В меню:
 

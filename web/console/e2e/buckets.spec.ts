@@ -26,6 +26,8 @@ test("admin can list buckets and create a disposable bucket", async ({ page }) =
     refresh.click(),
   ]);
 
-  await page.getByPlaceholder(/^search buckets\.\.\.$|^поиск бакетов/i).fill(bucketName);
+  // The command palette placeholder starts with the same Russian prefix
+  // ("Поиск бакетов, объектов…"). Match only the table field.
+  await page.getByPlaceholder(/^(?:search buckets\.\.\.|поиск бакетов\.\.\.)$/i).fill(bucketName);
   await expect(page.getByRole("link", { name: bucketName })).toBeVisible({ timeout: 15_000 });
 });

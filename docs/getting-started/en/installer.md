@@ -30,8 +30,17 @@ Non-interactive (CI / scripts):
 
 ```bash
 ./install.sh --yes --profiles core,postgres,monitoring,data
+./install.sh --yes --profiles core
 ./install.sh --dry-run --yes --profiles core,postgres,data
 ```
+
+Profile `core` alone is the production single-node path: storage-server and Caddy, Bolt metadata, dev mode off, no Postgres and no monitoring. `--yes` does not prompt. If `http://127.0.0.1:8080/healthz` is not ready, `--yes` exits with an error.
+
+```powershell
+.\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
+```
+
+The CI job that runs this path and the resource budget is [the single-node gate](../../operations-guide/en/single-node-gate.md).
 
 In the menu:
 

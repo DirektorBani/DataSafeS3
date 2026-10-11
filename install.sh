@@ -38,6 +38,7 @@ DataSafeS3 interactive installer
 
   ./install.sh
   ./install.sh --yes --profiles core,postgres,monitoring,data
+  ./install.sh --yes --profiles core
   ./install.sh --dry-run --yes --profiles core,postgres,data
   ./install.sh --cluster --dry-run --yes
   ./install.sh --project datasafe --tag v1.4.1 --data-root "$HOME/.local/share/datasafe"
@@ -557,7 +558,11 @@ wait_healthy() {
     sleep 2
     i=$((i + 1))
   done
-  warn "healthz not ready yet - check docker compose -p datasafe ps"
+  warn "healthz not ready yet - check docker compose -p $PROJECT_NAME ps"
+  if [ "$YES" = "1" ]; then
+    err "healthz not ready"
+    exit 1
+  fi
 }
 
 show_done() {
