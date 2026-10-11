@@ -9,8 +9,10 @@
 # HA_DRILL_PG_A=15442 HA_DRILL_PG_B=15443 HA_DRILL_WEBHOOK=18080
 # They do not use :9000 or :9001.
 #
-# KEEP_DRILL=1 leaves the compose project up. The image is a locally compiled
-# server in alpine, not a second full release-image build.
+# KEEP_DRILL=1 leaves the compose project up.
+# The image is deploy/docker/Dockerfile, the same build docker-build produces.
+# PROMOTE_DRILL_SKIP_BUILD=1 uses an image that is already loaded
+# (CI loads the docker-build artifact and sets PROMOTE_DRILL_IMAGE).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -32,8 +34,6 @@ export HA_DRILL_WEBHOOK="${HA_DRILL_WEBHOOK:-18080}"
 export HA_DRILL_ROOT="$ROOT"
 export HA_DRILL_STATE="${HA_DRILL_STATE:-/tmp/datasafe-promote-drill}"
 export PROMOTE_DRILL_IMAGE="${PROMOTE_DRILL_IMAGE:-datasafe-promote-drill}"
-export GOCACHE="${GOCACHE:-/tmp/datasafe-promote-gocache}"
-export GOMODCACHE="${GOMODCACHE:-/tmp/datasafe-promote-modcache}"
 
 STATE="$HA_DRILL_STATE"
 mkdir -p "$STATE/webhook" "$STATE/work"
@@ -84,26 +84,17 @@ for p in "$HA_DRILL_HTTP_A" "$HA_DRILL_HTTP_B" "$HA_DRILL_PG_A" "$HA_DRILL_PG_B"
   fi
 done
 
-echo "[drill] building $PROMOTE_DRILL_IMAGE"
-imgdir="$STATE/image"
-rm -rf "$imgdir"
-mkdir -p "$imgdir"
-CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$imgdir/storage-server" ./cmd/storage-server
-cp deploy/docker/docker-entrypoint.sh "$imgdir/docker-entrypoint.sh"
-cat >"$imgdir/Dockerfile" <<'EOF'
-FROM alpine:3.20
-RUN apk add --no-cache ca-certificates wget su-exec
-COPY storage-server /storage-server
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod 755 /storage-server /docker-entrypoint.sh
-EXPOSE 9000
-ENTRYPOINT ["/docker-entrypoint.sh"]
-EOF
-docker build -t "$PROMOTE_DRILL_IMAGE" "$imgdir"
+if [[ "${PROMOTE_DRILL_SKIP_BUILD:-}" == "1" ]]; then
+  echo "[drill] using existing image $PROMOTE_DRILL_IMAGE"
+  docker image inspect "$PROMOTE_DRILL_IMAGE" >/dev/null
+else
+  echo "[drill] building release image $PROMOTE_DRILL_IMAGE from deploy/docker/Dockerfile"
+  docker build -t "$PROMOTE_DRILL_IMAGE" -f deploy/docker/Dockerfile .
+fi
 
-echo "[drill] starting compose project datasafe-promote-drill"
+echo "[drill] starting postgres, webhook, and node-a"
 "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
-"${COMPOSE[@]}" up -d
+"${COMPOSE[@]}" up -d postgres-a postgres-b webhook storage-a
 
 wait_http() {
   local url="$1" i
@@ -117,11 +108,10 @@ wait_http() {
   return 1
 }
 
-wait_http "http://127.0.0.1:${HA_DRILL_WEBHOOK}/" 
+wait_http "http://127.0.0.1:${HA_DRILL_WEBHOOK}/"
 wait_http "$A/healthz"
-wait_http "$B/healthz"
 
-echo "[drill] waiting for node-a to hold the leader lease"
+echo "[drill] waiting for node-a to hold the leader lease before node-b starts"
 leader="no"
 for _ in $(seq 1 40); do
   if curl -fsS --max-time 2 "$A/healthz" | grep -q '"is_leader":true'; then
@@ -135,6 +125,21 @@ if [[ "$leader" != "yes" ]]; then
   curl -fsS "$A/healthz" || true
   exit 1
 fi
+
+echo "[drill] starting node-b"
+"${COMPOSE[@]}" up -d storage-b
+wait_http "$B/healthz"
+for _ in $(seq 1 8); do
+  if curl -fsS --max-time 2 "$B/healthz" | grep -q '"is_leader":true'; then
+    echo "promote-drill: node-b holds the lease before promote" >&2
+    exit 1
+  fi
+  if ! curl -fsS --max-time 2 "$A/healthz" | grep -q '"is_leader":true'; then
+    echo "promote-drill: node-a lost the lease when node-b started" >&2
+    exit 1
+  fi
+  sleep 1
+done
 
 json_get() {
   python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"
@@ -267,9 +272,29 @@ if [[ "$led" -ne 1 ]]; then
 fi
 
 echo "[drill] idempotent re-run (must leave node-b's lease in place)"
+set +e
 bash "$ROOT/scripts/ha/promote.sh" --execute \
   --primary ds-promote-pg-a --standby ds-promote-pg-b \
   --timing-file "$STATE/promote-timing-rerun.json"
+rerun_rc=$?
+set -e
+python3 - "$STATE/promote-timing-rerun.json" "$rerun_rc" "$STATE/rerun.json" <<'PY'
+import json, sys
+timing = {}
+try:
+    timing = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception:
+    timing = {}
+json.dump({
+    "ran": True,
+    "exit_code": int(sys.argv[2]),
+    "skipped": timing.get("skipped") or [],
+}, open(sys.argv[3], "w", encoding="utf-8"))
+PY
+if [[ "$rerun_rc" -ne 0 ]]; then
+  echo "promote-drill: idempotent re-run exited $rerun_rc" >&2
+  exit "$rerun_rc"
+fi
 if ! node_b_leads; then
   echo "promote-drill: idempotent re-run dropped the new leader" >&2
   exit 1
@@ -326,6 +351,7 @@ bash "$ROOT/scripts/collect-dr-evidence.sh" \
   --pg-new ds-promote-pg-b \
   --pg-old ds-promote-pg-a \
   --timing-file "$STATE/promote-timing.json" \
+  --rerun-file "$STATE/rerun.json" \
   --keys-file "$STATE/ok-keys" \
   --webhook-log "$STATE/webhook/events.jsonl" \
   --bucket dr-drill \

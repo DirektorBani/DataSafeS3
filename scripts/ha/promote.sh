@@ -182,15 +182,29 @@ can_write() {
   return 1
 }
 
+skipped_json() {
+  local out="[" first=1 item
+  for item in "$@"; do
+    [[ -n "$item" ]] || continue
+    if [[ "$first" -eq 0 ]]; then
+      out+=","
+    fi
+    first=0
+    out+="\"$item\""
+  done
+  out+="]"
+  printf '%s' "$out"
+}
+
 write_timing() {
-  local started="$1" lag_before="$2" lag_after="$3" idempotent="$4"
+  local started="$1" lag_before="$2" lag_after="$3" idempotent="$4" skipped="${5:-[]}"
   [[ -n "$PROMOTE_TIMING_FILE" ]] || return 0
   local finished now_s
   finished="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   now_s="$(date +%s)"
   mkdir -p "$(dirname "$PROMOTE_TIMING_FILE")"
   cat >"$PROMOTE_TIMING_FILE" <<EOF
-{"started_at":"$started","finished_at":"$finished","seconds":$((now_s - started_epoch)),"lag_bytes_before":$lag_before,"lag_bytes_after":$lag_after,"idempotent_rerun":$idempotent,"mode":"$MODE"}
+{"started_at":"$started","finished_at":"$finished","seconds":$((now_s - started_epoch)),"lag_bytes_before":$lag_before,"lag_bytes_after":$lag_after,"idempotent_rerun":$idempotent,"skipped":$skipped,"mode":"$MODE"}
 EOF
 }
 
@@ -218,7 +232,7 @@ if [[ "$MODE" != "execute" ]]; then
     log "observed standby: not queried (container unset or stopped)"
   fi
   log "dry-run: no changes"
-  write_timing "$started_at" "null" "null" "false"
+  write_timing "$started_at" "null" "null" "false" "[]"
   exit 0
 fi
 
@@ -266,6 +280,20 @@ else
   idempotent="true"
 fi
 
+skipped_fence=""
+skipped_promote=""
+skipped_lock=""
+if ! container_running "$PRIMARY_CONTAINER" || is_fenced "$PRIMARY_CONTAINER"; then
+  skipped_fence="fence"
+fi
+if [[ "$standby_recovery" != "yes" ]]; then
+  skipped_promote="pg_promote"
+fi
+if [[ "$idempotent" == "true" ]]; then
+  skipped_lock="ha_leader_lock delete"
+fi
+skipped="$(skipped_json "$skipped_fence" "$skipped_promote" "$skipped_lock")"
+
 set +e
 apply_fence "$PRIMARY_CONTAINER"
 rc=$?
@@ -309,5 +337,5 @@ if container_running "$STANDBY_CONTAINER"; then
   lag_after="$(lag_bytes "$STANDBY_CONTAINER")"
 fi
 log "postcheck ok; lag_bytes_after=$lag_after (no replica reads as -1)"
-write_timing "$started_at" "$lag_before" "$lag_after" "$idempotent"
+write_timing "$started_at" "$lag_before" "$lag_after" "$idempotent" "$skipped"
 exit 0

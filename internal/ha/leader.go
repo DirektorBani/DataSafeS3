@@ -112,6 +112,16 @@ func (l *Leader) Start(ctx context.Context) error {
 	}
 }
 
+// Resign drops this process's lease claim immediately. The event dispatcher
+// calls it when an outbox write hits a read-only database, so delivery stops
+// without waiting for the next renew.
+func (l *Leader) Resign() {
+	if l == nil {
+		return
+	}
+	l.markLost()
+}
+
 // markLost drops this process's claim. leaderGuard then rejects writes
 // even if the previous lease row has not expired yet.
 func (l *Leader) markLost() {

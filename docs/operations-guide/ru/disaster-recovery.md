@@ -42,6 +42,8 @@ Windows: `scripts\ha\promote.ps1 -DryRun` или `-Execute -PrimaryContainer <с
 
 Это не отключение питания. Суперпользователь может в сессии выполнить `SET transaction_read_only = off`. storage-server так не делает. Когда продление leader-аренды падает на read-only базе, процесс сразу снимает с себя аренду (`internal/ha`), и `leaderGuard` отвечает на запись `not cluster leader`. Старый TTL не выжидается. Повторно аренду процесс берёт только после запуска уже на новом primary.
 
+Диспетчер событий делает то же самое, как только запись в outbox отвергнута. Транзакция read-only (`SQLSTATE 25006`) или ответ хранилища «не лидер» останавливает цикл и снимает аренду. Этот процесс строку больше не публикует. Строка, которую уже отдали получателю и не успели отметить доставленной, может быть доставлена новым лидером ещё один раз.
+
 Patroni вместо этого понижает старый primary: узел снова входит в recovery и отказывает в записи. Кластерный скрипт `ALTER SYSTEM` не выполняет.
 
 После promote укажите новому storage-server DSN нового Postgres и перезапустите его. Первый promote удаляет `ha_leader_lock` на новом primary, чтобы этот узел мог взять аренду. Повторный запуск живую аренду не трогает и не снимает нового лидера. Диспетчер событий работает только на держателе аренды.
@@ -52,7 +54,7 @@ Patroni вместо этого понижает старый primary: узел 
 bash scripts/ha/run-promote-drill.sh
 ```
 
-Задание CI `ha-promote-drill` запускает эту команду. Поднимаются Postgres primary и replica, два процесса storage-server и webhook. Во время promote идут записи объектов, затем `scripts/collect-dr-evidence.sh` пишет каталог, `summary.md`, `evidence.json` и zip. Порты хоста по умолчанию 19100, 19101, 15442, 15443 и 18080: лаб не занимает `:9000` и `:9001` (стенд Vault). Переопределение: `HA_DRILL_HTTP_A`, `HA_DRILL_HTTP_B`, `HA_DRILL_PG_A`, `HA_DRILL_PG_B`, `HA_DRILL_WEBHOOK`. Публичные порты standby HA-стека по умолчанию **19011** и **19013** (`HA_STANDBY_HTTP_PORT`, `HA_STANDBY2_HTTP_PORT`).
+Задание CI `ha-promote-drill` запускает эту команду на образе из `deploy/docker/Dockerfile` (артефакт `docker-build`). Поднимаются Postgres primary и replica, узел A, затем узел B только после того как A держит аренду, и webhook. Во время promote идут записи объектов, затем `scripts/collect-dr-evidence.sh` пишет каталог, `summary.md`, `evidence.json` и zip. Порты хоста по умолчанию 19100, 19101, 15442, 15443 и 18080: лаб не занимает `:9000` и `:9001` (стенд Vault). Переопределение: `HA_DRILL_HTTP_A`, `HA_DRILL_HTTP_B`, `HA_DRILL_PG_A`, `HA_DRILL_PG_B`, `HA_DRILL_WEBHOOK`. Публичные порты standby HA-стека по умолчанию **19011** и **19013** (`HA_STANDBY_HTTP_PORT`, `HA_STANDBY2_HTTP_PORT`).
 
 ## Восстановление
 
@@ -75,7 +77,7 @@ bash scripts/ha/run-promote-drill.sh
 
 Ежеквартальный DR drill: восстановление в изолированное окружение, `bash scripts/ha/run-promote-drill.sh` или `scripts\ha\test-ha-cluster.ps1`, затем `summary.md` из пакета.
 
-`scripts/collect-dr-evidence.sh` (и `.ps1`) записывает время promote, lag репликации до и после, healthz, запись и чтение объекта на новом лидере, состояние outbox, что диспетчер работает на новом лидере, потерю (пакет при этом неуспешен), дубликаты сверх at-least-once (фиксируются, это не ошибка) и версии компонентов.
+`scripts/collect-dr-evidence.sh` (и `.ps1`) записывает время promote, lag репликации до и после (или `n/a`, если старый primary ограждён и репликации нет), повторный запуск (был ли он, код выхода и что пропущено), healthz, запись и чтение объекта на новом лидере, состояние outbox, что диспетчер работает на новом лидере, потерю (пакет при этом неуспешен) и версии компонентов. Одна лишняя доставка ключа, который был в полёте, допустима. Вторая лишняя доставка того же ключа делает пакет неуспешным. В `evidence.json` на верхнем уровне есть `verdicts`: по одному `PASS` или `FAIL` на каждую проверку.
 
 ### Чем это не является
 

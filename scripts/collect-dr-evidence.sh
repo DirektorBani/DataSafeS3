@@ -18,6 +18,7 @@ BASE_URL=""
 PG_NEW=""
 PG_OLD=""
 TIMING=""
+RERUN=""
 KEYS=""
 WEBHOOK=""
 BUCKET="dr-drill"
@@ -35,7 +36,8 @@ usage: collect-dr-evidence.sh --out DIR [options]
   --old-url URL            fenced storage-server
   --pg-new NAME            new Postgres container
   --pg-old NAME            old Postgres container
-  --timing-file PATH       JSON from promote.sh --timing-file
+  --timing-file PATH       JSON from the promote that changed state
+  --rerun-file PATH        JSON {ran, exit_code, skipped} for the idempotent re-run
   --keys-file PATH         one object key per line that returned HTTP 200
   --webhook-log PATH       JSON lines posted by the sink
   --bucket NAME            bucket for the post-promote write/read (default dr-drill)
@@ -52,6 +54,7 @@ while [[ $# -gt 0 ]]; do
     --pg-new) PG_NEW="${2:-}"; shift 2 ;;
     --pg-old) PG_OLD="${2:-}"; shift 2 ;;
     --timing-file) TIMING="${2:-}"; shift 2 ;;
+    --rerun-file) RERUN="${2:-}"; shift 2 ;;
     --keys-file) KEYS="${2:-}"; shift 2 ;;
     --webhook-log) WEBHOOK="${2:-}"; shift 2 ;;
     --bucket) BUCKET="${2:-}"; shift 2 ;;
@@ -83,7 +86,7 @@ mkdir -p "$OUT"
 S3="$ROOT/scripts/ha/drill_s3.py"
 
 export DR_OUT="$OUT" DR_NEW="$NEW_URL" DR_OLD="$OLD_URL" DR_BASE="$BASE_URL" \
-  DR_PG_NEW="$PG_NEW" DR_PG_OLD="$PG_OLD" DR_TIMING="$TIMING" DR_KEYS="$KEYS" \
+  DR_PG_NEW="$PG_NEW" DR_PG_OLD="$PG_OLD" DR_TIMING="$TIMING" DR_RERUN="$RERUN" DR_KEYS="$KEYS" \
   DR_WEBHOOK="$WEBHOOK" DR_BUCKET="$BUCKET" DR_VERSION="$VERSION_FILE" \
   DR_LAB="$LAB" DR_PGUSER="$PGUSER" DR_PGDATABASE="$PGDATABASE" DR_S3="$S3" DR_ROOT="$ROOT"
 
@@ -97,9 +100,23 @@ checks = []
 fail = []
 
 def add(name, ok, detail):
-    checks.append({"name": name, "ok": bool(ok), "detail": detail})
+    verdict = "PASS" if ok else "FAIL"
+    checks.append({"verdict": verdict, "name": name, "ok": bool(ok), "detail": detail})
     if not ok:
         fail.append(name)
+
+def lag_after_value(raw):
+    if raw in (None, -1, "-1"):
+        return "n/a (old primary fenced, no replication)"
+    return raw
+
+def load_json(path):
+    if not path or not os.path.isfile(path):
+        return {}
+    try:
+        return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"error": str(exc)}
 
 def curl_json(url):
     with urllib.request.urlopen(url, timeout=8) as resp:
@@ -130,12 +147,16 @@ def read_text(path):
 
 now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 version = read_text(os.environ["DR_VERSION"]) or "unknown"
-timing = {}
-if os.environ["DR_TIMING"] and os.path.isfile(os.environ["DR_TIMING"]):
-    try:
-        timing = json.loads(pathlib.Path(os.environ["DR_TIMING"]).read_text(encoding="utf-8"))
-    except Exception as exc:
-        timing = {"error": str(exc)}
+timing = load_json(os.environ["DR_TIMING"])
+rerun_raw = load_json(os.environ.get("DR_RERUN", ""))
+if rerun_raw:
+    rerun = {
+        "ran": bool(rerun_raw.get("ran")),
+        "exit_code": rerun_raw.get("exit_code"),
+        "skipped": rerun_raw.get("skipped") or [],
+    }
+else:
+    rerun = {"ran": False, "exit_code": None, "skipped": []}
 
 if lab:
     url = os.environ["DR_BASE"]
@@ -145,6 +166,7 @@ if lab:
         "generated_at": now,
         "mode": "lab",
         "result": "pass" if not fail else "fail",
+        "verdicts": {c["name"]: c["verdict"] for c in checks},
         "base_url": url,
         "healthz": body,
         "promote": timing or None,
@@ -229,9 +251,16 @@ else:
     elif keys:
         hook_err = "webhook log missing"
     missing = [k for k in keys if counts.get(k, 0) < 1]
-    dupes = {k: n for k, n in counts.items() if n > 1 and k in keys}
+    dupes = {k: n for k, n in counts.items() if n > 1 and k in set(keys)}
+    extra_by_key = {k: n - 1 for k, n in dupes.items()}
+    extra_total = sum(extra_by_key.values())
+    extra_max = max(extra_by_key.values()) if extra_by_key else 0
     add("no lost objects", not missing and not hook_err, hook_err or ("missing " + ", ".join(missing) if missing else f"{len(keys)} keys delivered"))
-    add("duplicates within at-least-once", True, f"{sum(n-1 for n in dupes.values())} extra deliveries across {len(dupes)} keys" if dupes else "none")
+    add(
+        "duplicates within at-least-once",
+        extra_max <= 1 and not hook_err,
+        "none" if extra_total == 0 else f"{extra_total} extra deliveries across {len(extra_by_key)} keys (max {extra_max} per key)",
+    )
 
     outbox = {}
     text, err = psql(os.environ["DR_PG_NEW"], "SELECT status || ' ' || count(*) FROM event_outbox GROUP BY status ORDER BY status;")
@@ -265,14 +294,15 @@ else:
         "generated_at": now,
         "mode": "promote",
         "result": "pass" if not fail else "fail",
+        "verdicts": {c["name"]: c["verdict"] for c in checks},
         "promote": {
             "started_at": timing.get("started_at"),
             "finished_at": timing.get("finished_at"),
             "seconds": timing.get("seconds"),
             "lag_bytes_before": timing.get("lag_bytes_before"),
-            "lag_bytes_after": timing.get("lag_bytes_after"),
-            "idempotent_rerun": timing.get("idempotent_rerun"),
+            "lag_bytes_after": lag_after_value(timing.get("lag_bytes_after")),
         },
+        "idempotent_rerun": rerun,
         "healthz": {"new": new_h, "old": old_h},
         "object_write_read": {"bucket": bucket, "key": key, "ok": put.returncode == 0 and match},
         "outbox": outbox,
@@ -280,7 +310,8 @@ else:
             "committed_keys": len(keys),
             "webhook_keys": len(counts),
             "missing": missing,
-            "duplicate_extra": sum(n - 1 for n in dupes.values()),
+            "duplicate_extra": extra_total,
+            "duplicate_max_per_key": extra_max,
         },
         "dispatcher_node": (new_h or {}).get("node_id"),
         "versions": {
@@ -292,10 +323,10 @@ else:
         "checks": checks,
         "notes": [
             "Scripted promote of one Postgres standby. Not automatic multi-AZ failover.",
-            "Delivery is at-least-once. Extra webhook posts are recorded and do not fail the pack.",
+            "Delivery is at-least-once. One extra post per in-flight row is allowed. A second extra of the same key fails the pack.",
             "A missing key is loss and fails the pack.",
             "Object bytes are local to each storage node. The post-promote read is a new object on the new leader.",
-            "The old primary is fenced with default_transaction_read_only (ALTER SYSTEM, not replicated) and the storage process drops its leader lease when renew fails.",
+            "The old primary is fenced with default_transaction_read_only (ALTER SYSTEM, not replicated). An outbox write on that database stops the dispatcher and drops the lease without another publish.",
         ],
     }
 
@@ -326,7 +357,12 @@ else:
         md_line("seconds", prom.get("seconds")),
         md_line("replication lag bytes before", prom.get("lag_bytes_before")),
         md_line("replication lag bytes after", prom.get("lag_bytes_after")),
-        md_line("idempotent re-run", prom.get("idempotent_rerun")),
+        "",
+        "## Idempotent re-run",
+        "",
+        md_line("ran", "yes" if (evidence.get("idempotent_rerun") or {}).get("ran") else "no"),
+        md_line("exit code", (evidence.get("idempotent_rerun") or {}).get("exit_code")),
+        md_line("skipped", ", ".join((evidence.get("idempotent_rerun") or {}).get("skipped") or []) or "nothing"),
         "",
         "## Post-promote checks",
         "",

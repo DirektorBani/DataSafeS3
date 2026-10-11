@@ -5,9 +5,32 @@ import (
 	"errors"
 	"log/slog"
 	"math/rand/v2"
+	"strings"
 	"sync"
 	"time"
 )
+
+// ErrStoreFenced means a metadata write was refused because this process
+// must not keep delivering. The dispatcher stops and drops the leader lease.
+// A row already published and then not marked delivered can be sent once
+// more by the next leader. It is not published again by this process.
+var ErrStoreFenced = errors.New("events: store refused a leader write")
+
+// StoreFenced reports a read-only transaction or an explicit not-leader
+// failure from the metadata store.
+func StoreFenced(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrStoreFenced) {
+		return true
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "SQLSTATE 25006") || strings.Contains(msg, "read-only transaction") {
+		return true
+	}
+	return strings.Contains(msg, "not cluster leader")
+}
 
 // LeaderFunc reports whether this process should deliver.
 // Nil, or HA disabled, means always deliver. In HA only the leader returns true.
@@ -60,6 +83,8 @@ type Dispatcher struct {
 	lastPurge time.Time
 	cancel    context.CancelFunc
 	closed    bool
+	fenced    bool
+	onFence   func()
 }
 
 // NewDispatcher builds a dispatcher. store may be nil only in tests that never tick.
@@ -85,6 +110,39 @@ func NewDispatcher(store OutboxStore, sinks []EventSink, cfg Config, leader Lead
 		d.registerLocked(sk)
 	}
 	return d
+}
+
+// SetOnFence registers the callback that drops this process's leader lease.
+// The API process passes ha.Leader.Resign. Nil leaves the lease to renew.
+func (d *Dispatcher) SetOnFence(fn func()) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	d.onFence = fn
+	d.mu.Unlock()
+}
+
+func (d *Dispatcher) fencedAlready() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.fenced
+}
+
+// noteFenced stops this dispatcher and drops the lease once.
+func (d *Dispatcher) noteFenced(cause error) {
+	d.mu.Lock()
+	if d.fenced {
+		d.mu.Unlock()
+		return
+	}
+	d.fenced = true
+	fn := d.onFence
+	d.mu.Unlock()
+	slog.Warn("event dispatcher stopped", "err", cause)
+	if fn != nil {
+		fn()
+	}
 }
 
 // Register adds a sink. Safe to call before Run. Replacing a name closes the previous sink.
@@ -208,13 +266,17 @@ func (d *Dispatcher) Run(ctx context.Context) {
 	defer cancel()
 	ticker := time.NewTicker(PollInterval)
 	defer ticker.Stop()
-	_ = d.ProcessOnce(ctx, time.Now().UTC())
+	if errors.Is(d.ProcessOnce(ctx, time.Now().UTC()), ErrStoreFenced) {
+		return
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = d.ProcessOnce(ctx, time.Now().UTC())
+			if errors.Is(d.ProcessOnce(ctx, time.Now().UTC()), ErrStoreFenced) {
+				return
+			}
 		}
 	}
 }
@@ -243,6 +305,9 @@ func (d *Dispatcher) ProcessOnce(ctx context.Context, now time.Time) error {
 	if d == nil || d.store == nil {
 		return nil
 	}
+	if d.fencedAlready() {
+		return ErrStoreFenced
+	}
 	now = now.UTC()
 	if n, err := d.store.CountOutbox(ctx, StatusPending); err == nil && d.obs.Pending != nil {
 		d.obs.Pending(n)
@@ -260,18 +325,34 @@ func (d *Dispatcher) ProcessOnce(ctx context.Context, now time.Time) error {
 	var errs error
 	if purge {
 		if err := d.purge(ctx, now); err != nil {
+			if StoreFenced(err) {
+				d.noteFenced(err)
+				return ErrStoreFenced
+			}
 			errs = errors.Join(errs, err)
 		}
 	}
 	due, err := d.store.ListDueOutbox(ctx, now, 64)
 	if err != nil {
+		if StoreFenced(err) {
+			d.noteFenced(err)
+			return ErrStoreFenced
+		}
 		return errors.Join(errs, err)
 	}
 	for i := range due {
 		if ctx.Err() != nil {
 			return errors.Join(errs, ctx.Err())
 		}
+		if d.leader != nil && !d.leader(ctx) {
+			d.noteFenced(ErrStoreFenced)
+			return ErrStoreFenced
+		}
 		if err := d.deliver(ctx, sinks, &due[i], now); err != nil {
+			if StoreFenced(err) {
+				d.noteFenced(err)
+				return ErrStoreFenced
+			}
 			errs = errors.Join(errs, err)
 		}
 	}
@@ -395,6 +476,9 @@ func (d *Dispatcher) deliver(ctx context.Context, sinks map[string]EventSink, re
 				// not rewritten on every tick. Other keys still deliver.
 				continue
 			}
+		}
+		if d.fencedAlready() || (d.leader != nil && !d.leader(ctx)) {
+			return ErrStoreFenced
 		}
 		dirty = true
 		sink := sinks[name]

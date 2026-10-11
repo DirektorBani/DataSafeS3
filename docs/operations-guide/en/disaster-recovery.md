@@ -57,6 +57,8 @@ Before `pg_promote`, the script sets `default_transaction_read_only=on` on the o
 
 That is not a power fence. A superuser can still `SET transaction_read_only = off` in a session. The storage-server does not. When its leader-lease renew fails against the read-only database, the process drops the lease immediately (`internal/ha`) and `leaderGuard` rejects HTTP writes with `not cluster leader`. It does not wait for the old TTL, and it does not acquire the lease again until the process is started against the new primary.
 
+The event dispatcher does the same as soon as an outbox write is refused. A read-only transaction (`SQLSTATE 25006`) or a not-leader error from the store stops the loop and drops the lease. This process does not publish that row again. A row that was already handed to the sink, and then could not be marked delivered, can be delivered once more by the new leader.
+
 Patroni demotes the old primary instead. That node re-enters recovery and refuses writes. The cluster script does not issue `ALTER SYSTEM`.
 
 After promote, point the new storage node at the new Postgres DSN and restart it. A fresh promote deletes `ha_leader_lock` on the new primary so that node can acquire the lease. A re-run leaves a live lease in place, so it does not drop the new leader. Only the lease holder runs the event dispatcher.
@@ -67,7 +69,7 @@ After promote, point the new storage node at the new Postgres DSN and restart it
 bash scripts/ha/run-promote-drill.sh
 ```
 
-CI job `ha-promote-drill` runs that command. It starts Postgres primary and replica, two storage-server processes, and a webhook sink, writes objects while promote runs, then writes `scripts/collect-dr-evidence.sh` output (folder, `summary.md`, `evidence.json`, zip). Host ports default to 19100, 19101, 15442, 15443, and 18080 so the lab does not use `:9000` or `:9001` (the vault stand). Override `HA_DRILL_HTTP_A`, `HA_DRILL_HTTP_B`, `HA_DRILL_PG_A`, `HA_DRILL_PG_B`, and `HA_DRILL_WEBHOOK`. The HA stack's published standby ports default to **19011** and **19013** (`HA_STANDBY_HTTP_PORT`, `HA_STANDBY2_HTTP_PORT`).
+CI job `ha-promote-drill` runs that command on the image produced by `deploy/docker/Dockerfile` (the `docker-build` artifact). It starts Postgres primary and replica, node-a, then node-b only after node-a holds the lease, and a webhook sink. It writes objects while promote runs, then writes `scripts/collect-dr-evidence.sh` output (folder, `summary.md`, `evidence.json`, zip). Host ports default to 19100, 19101, 15442, 15443, and 18080 so the lab does not use `:9000` or `:9001` (the vault stand). Override `HA_DRILL_HTTP_A`, `HA_DRILL_HTTP_B`, `HA_DRILL_PG_A`, `HA_DRILL_PG_B`, and `HA_DRILL_WEBHOOK`. The HA stack's published standby ports default to **19011** and **19013** (`HA_STANDBY_HTTP_PORT`, `HA_STANDBY2_HTTP_PORT`).
 
 ## Recovery steps
 
@@ -92,7 +94,7 @@ CI job `ha-promote-drill` runs that command. It starts Postgres primary and repl
 
 Run quarterly DR drill: restore backup to an isolated environment, run `bash scripts/ha/run-promote-drill.sh` or `scripts\ha\test-ha-cluster.ps1`, and read the evidence `summary.md`.
 
-`scripts/collect-dr-evidence.sh` (and `.ps1`) records promote timing, replication lag before and after, healthz, an object write/read on the new leader, outbox counts, that the dispatcher runs on the new leader, loss (fails the pack), duplicates beyond at-least-once (recorded, not a failure), and component versions.
+`scripts/collect-dr-evidence.sh` (and `.ps1`) records promote timing, replication lag before and after (or `n/a` when the old primary is fenced and nothing is replicating), the idempotent re-run (whether it ran, its exit code, and what it skipped), healthz, an object write/read on the new leader, outbox counts, that the dispatcher runs on the new leader, loss (fails the pack), and component versions. One extra delivery of an in-flight key is allowed. A second extra of the same key fails the pack. `evidence.json` has a top-level `verdicts` map, one `PASS` or `FAIL` per check.
 
 ### Not covered
 
