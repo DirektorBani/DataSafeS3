@@ -864,9 +864,7 @@ func (s *Server) handleUploadObjectJSON(w http.ResponseWriter, r *http.Request) 
 		prevSize = prev.Size
 	}
 	rec, _, err := s.svc.PutObjectNotifying(r.Context(), sk, key, r.Body, r.ContentLength, contentType, nil, func(obj metadata.ObjectRecord) []events.OutboxRecord {
-		return s.outboxRecords(metadata.EventObjectCreated, bucket, key, obj.VersionID, "", map[string]any{
-			"bucket": bucket, "key": key, "size": obj.Size,
-		})
+		return s.outboxRecords(metadata.EventObjectCreated, bucket, key, obj.VersionID, "", objectEventFields(bucket, key, obj, nil))
 	})
 	if err != nil {
 		if err == metadata.ErrQuotaExceeded {

@@ -63,7 +63,7 @@ Kafka does not reuse the webhook or NATS body. Those stay as they are.
         "object": {
           "key": "a/b.jpg",
           "size": 12,
-          "eTag": "",
+          "eTag": "d41d8cd98f00b204e9800998ecf8427e",
           "versionId": ""
         }
       }
@@ -88,7 +88,7 @@ Kafka does not reuse the webhook or NATS body. Those stay as they are.
 | `ShareCreated` | `datasafe:ShareCreated` |
 | `TestEvent` | `datasafe:TestEvent` |
 
-`ObjectCreated` covers a copy as well as a put. The stored type does not distinguish them. `key` is the raw object key, not the URL-encoded form AWS notifications use. `size` and `eTag` are taken from the stored payload when those fields exist; otherwise size is `0` and `eTag` is empty. `versionId` is the outbox version id. `schema_version` is `1`.
+`ObjectCreated` covers a copy as well as a put. The stored type does not distinguish them. `key` is the raw object key, not the URL-encoded form AWS notifications use. For put, copy, and multipart completion, `size`, `eTag`, and the outbox `versionId` are copied from the committed object row when the outbox row is inserted. They are not looked up again at publish time. `versionId` is empty when the bucket is unversioned. A delete row does not carry an eTag. `schema_version` is `1`. Webhook and NATS keep their own envelopes. The stored object payload for those three writes now includes `etag` and `size`, so webhook `data` and the NATS `payload` object include them too. A bucket-notification POST stays `{"event","bucket","key","size","time"}`.
 
 ## Delivery
 
@@ -98,4 +98,10 @@ Order is per sink and per object key. The dispatcher does not publish a later ro
 
 If the earlier row's Kafka attempt goes `dead` (attempts exhausted, or a terminal error), later rows for that key are published. The dead row is not. That is a gap. Do not assume every change of the object is in the topic.
 
-`GET /api/v1/events/delivery` (administrator) returns `connected`, `degraded`, or `disabled`, the last error, and queue depth. For Kafka, `connected` means the sink is registered, the last publish did not fail, and a ping on that request succeeded. It is not consumer lag. `POST /api/v1/events/test` queues one `TestEvent` for each registered sink. The console page is **Settings → Event delivery**.
+`GET /api/v1/events/delivery` (administrator) returns `connected`, `degraded`, or `disabled`, the last error, and queue depth. The handler reads a cached Kafka status. It does not ping the broker and it does not wait on the bridge, so the call still returns when the broker is down. A background probe pings with a 2 second timeout, and each publish updates the same cache. `connected` means the sink is registered, a probe or a publish has succeeded, and the last publish did not fail. It is not consumer lag. With the broker down the status is `degraded` and `last_error` is the dial error (connection refused, timeout) or `topic does not exist` when the topic is missing. `POST /api/v1/events/test` only inserts an outbox row. It does not call the broker. The console page is **Settings → Event delivery**.
+
+## Bridge process
+
+The child is a local helper of `storage-server`. It is not a separate container and it does not open a TCP port. Frames go over the child's stdin and stdout. Its stderr is copied into the server log.
+
+If the child exits, the server logs `event bridge exited`, marks the Kafka sink `degraded`, and starts the child again after a backoff (200ms, doubling, capped at 30s). Rows that were in flight stay `pending` and are retried. They are not marked delivered because the child died. A new child is a new idempotent producer session, the same as a server restart. When `storage-server` exits, the child exits with it. A killed server does not leave the bridge running. An empty `STORAGE_KAFKA_BROKERS` still starts no child.

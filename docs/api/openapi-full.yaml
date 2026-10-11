@@ -1867,7 +1867,8 @@ paths:
         the last publish error, and how many pending outbox rows still name that sink.
         queue_depth is the total pending outbox count. Kafka is disabled when
         STORAGE_KAFKA_BROKERS is empty. connected means the sink is registered and the
-        last publish did not fail; Kafka also pings the cluster on this call.
+        last publish did not fail. Kafka status is a cache updated by publish
+        and by a background probe (2s timeout). This call does not ping the broker.
       tags: [Events]
       security:
         - BearerJWT: []

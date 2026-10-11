@@ -52,7 +52,7 @@ jobs:
           TEST_POSTGRES_DSN: postgres://datasafe:datasafe@localhost:5432/datasafe?sslmode=disable
         run: go test ./...
       - name: kafka bridge protocol
-        run: go test -tags datasafe_sinkexec -count=1 -timeout 10m ./internal/events/ -run TestKafkaExecFakeBridge
+        run: go test -tags datasafe_sinkexec -count=1 -timeout 10m ./internal/events/ -run '^TestKafkaExec'
       - name: Compile API guide Go examples
         run: |
           go build -o /dev/null docs/api-guide/en/examples/go/list_buckets.go

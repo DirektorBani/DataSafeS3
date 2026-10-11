@@ -99,9 +99,7 @@ func (s *Server) handleRestoreTrash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rec, _, err := s.svc.RestoreFromTrashNotifying(r.Context(), id, func(obj metadata.ObjectRecord) []events.OutboxRecord {
-		return s.outboxRecords(metadata.EventObjectCreated, tr.OriginalBucket, tr.OriginalKey, obj.VersionID, "", map[string]any{
-			"bucket": tr.OriginalBucket, "key": tr.OriginalKey,
-		})
+		return s.outboxRecords(metadata.EventObjectCreated, tr.OriginalBucket, tr.OriginalKey, obj.VersionID, "", objectEventFields(tr.OriginalBucket, tr.OriginalKey, obj, nil))
 	})
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})

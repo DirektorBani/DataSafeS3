@@ -216,8 +216,17 @@ func assertKafkaRecord(t *testing.T, rec *kgo.Record, bucket, key string) {
 	if _, ok := obj["size"]; !ok {
 		t.Fatal("missing size")
 	}
-	if _, ok := obj["eTag"]; !ok {
-		t.Fatal("missing eTag")
+	etag, _ := obj["eTag"].(string)
+	if etag == "" {
+		t.Fatalf("empty eTag in %#v", obj)
+	}
+	switch sz := obj["size"].(type) {
+	case float64:
+		if sz <= 0 {
+			t.Fatalf("size %v", obj["size"])
+		}
+	default:
+		t.Fatalf("size %T", obj["size"])
 	}
 	if _, ok := obj["versionId"]; !ok {
 		t.Fatal("missing versionId")

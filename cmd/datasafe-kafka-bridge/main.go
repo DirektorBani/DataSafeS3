@@ -10,10 +10,19 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/events/bridgeproto"
 	"github.com/DirektorBani/datasafe/internal/events/kafkasink"
+)
+
+const (
+	// healthTimeout bounds the broker ping behind a health frame.
+	healthTimeout = 2 * time.Second
+	// publishTimeout bounds one produce so a stopped broker returns an error
+	// on stdout instead of leaving the parent blocked on the pipe.
+	publishTimeout = 12 * time.Second
 )
 
 func main() {
@@ -64,13 +73,13 @@ func main() {
 			body, err2 := msg.Part(1)
 			if err1 != nil || err2 != nil {
 				_ = bridgeproto.Write(out, bridgeproto.KindErr, []byte("short publish frame"))
-			} else if err := prod.Publish(context.Background(), string(key), body); err != nil {
+			} else if err := publish(prod, string(key), body); err != nil {
 				_ = bridgeproto.Write(out, bridgeproto.KindErr, []byte(oneLine(err.Error())))
 			} else {
 				_ = bridgeproto.Write(out, bridgeproto.KindOK)
 			}
 		case bridgeproto.KindHealth:
-			status, last := prod.Health(context.Background())
+			status, last := probe(prod)
 			_ = bridgeproto.Write(out, bridgeproto.KindStatus, []byte(status), []byte(oneLine(last)))
 		default:
 			_ = bridgeproto.Write(out, bridgeproto.KindErr, []byte(fmt.Sprintf("unknown frame %d", msg.Kind)))
@@ -79,6 +88,18 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func publish(prod *kafkasink.Producer, key string, body []byte) error {
+	ctx, cancel := context.WithTimeout(context.Background(), publishTimeout)
+	defer cancel()
+	return prod.Publish(ctx, key, body)
+}
+
+func probe(prod *kafkasink.Producer) (string, string) {
+	ctx, cancel := context.WithTimeout(context.Background(), healthTimeout)
+	defer cancel()
+	return prod.Probe(ctx)
 }
 
 func oneLine(s string) string {

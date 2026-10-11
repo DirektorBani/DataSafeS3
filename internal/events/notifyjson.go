@@ -52,8 +52,9 @@ type datasafeBlock struct {
 // eventName maps ObjectCreated to s3:ObjectCreated:Put (copy is not a
 // separate stored type), ObjectDeleted to s3:ObjectRemoved:Delete, and
 // MultipartCompleted to s3:ObjectCreated:CompleteMultipartUpload. Other
-// types use a datasafe: prefix. eTag and size come from the stored payload
-// when those fields exist; otherwise they are empty and zero.
+// types use a datasafe: prefix. eTag and size come from the stored payload.
+// Put, copy, and multipart copy them from the committed object at insert.
+// versionId is the outbox version id, also copied from that object at insert.
 func NotificationJSON(e Event) ([]byte, error) {
 	when := e.CreatedAt.UTC().Format("2006-01-02T15:04:05.000Z")
 	msg := notificationMessage{

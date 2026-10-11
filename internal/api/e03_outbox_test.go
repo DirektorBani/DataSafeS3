@@ -446,6 +446,7 @@ func TestS3DeleteCopyAndMultipartEmit(t *testing.T) {
 		switch row.EventType {
 		case metadata.EventObjectCreated:
 			created++
+			assertCommittedObjectPayload(t, srv, row)
 		case metadata.EventObjectDeleted:
 			deleted++
 			if row.Key != "src.txt" {
@@ -456,12 +457,94 @@ func TestS3DeleteCopyAndMultipartEmit(t *testing.T) {
 			if row.Key != "large.bin" {
 				t.Fatalf("multipart key %s", row.Key)
 			}
+			assertCommittedObjectPayload(t, srv, row)
 		default:
 			t.Fatalf("unexpected %s", row.EventType)
 		}
 	}
 	if created < 3 || deleted != 1 || multipart != 1 {
 		t.Fatalf("created %d deleted %d multipart %d", created, deleted, multipart)
+	}
+}
+
+func assertCommittedObjectPayload(t *testing.T, srv *Server, row events.OutboxRecord) {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal(row.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	etag, _ := payload["etag"].(string)
+	if etag == "" {
+		t.Fatalf("%s %s payload missing etag: %s", row.EventType, row.Key, row.Payload)
+	}
+	sz, ok := payload["size"].(float64)
+	if !ok || sz <= 0 {
+		t.Fatalf("%s %s size %#v", row.EventType, row.Key, payload["size"])
+	}
+	obj, err := srv.Meta().GetObject(row.Bucket, row.Key)
+	if err != nil {
+		return
+	}
+	if obj.IsDeleteMarker {
+		return
+	}
+	if etag != obj.ETag {
+		t.Fatalf("%s %s etag %q object %q", row.EventType, row.Key, etag, obj.ETag)
+	}
+	if int64(sz) != obj.Size {
+		t.Fatalf("%s %s size %v object %d", row.EventType, row.Key, sz, obj.Size)
+	}
+	if row.VersionID != obj.VersionID {
+		t.Fatalf("%s %s version %q object %q", row.EventType, row.Key, row.VersionID, obj.VersionID)
+	}
+	if obj.VersionID != "" {
+		if payload["versionId"] != obj.VersionID {
+			t.Fatalf("payload versionId %#v", payload["versionId"])
+		}
+	}
+}
+
+func TestVersionedPutAndCopyOutboxUsesObjectRecord(t *testing.T) {
+	srv, creds := e03Server(t)
+	if err := srv.Meta().PutWebhook(metadata.WebhookRecord{
+		ID: "whv", Name: "created", URL: "http://127.0.0.1:9/unused",
+		Events: []string{metadata.EventObjectCreated}, Enabled: true, CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv.syncEventSinks()
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	e03MustStatus(t, e03Do(t, http.MethodPut, ts.URL+"/ver", nil, creds, nil), http.StatusOK)
+	buckets, err := srv.Meta().ListBuckets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range buckets {
+		if b.Name == "ver" {
+			b.Versioning = true
+			if err := srv.Meta().UpdateBucket(b); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	e03MustStatus(t, e03Do(t, http.MethodPut, ts.URL+"/ver/src.txt", []byte("src-bytes"), creds, nil), http.StatusOK)
+	e03MustStatus(t, e03Do(t, http.MethodPut, ts.URL+"/ver/dst.txt", nil, creds, map[string]string{
+		"x-amz-copy-source": "/ver/src.txt",
+	}), http.StatusOK)
+	var n int
+	for _, row := range e03Due(t, srv.Meta()) {
+		if row.EventType != metadata.EventObjectCreated {
+			continue
+		}
+		n++
+		assertCommittedObjectPayload(t, srv, row)
+		if row.VersionID == "" {
+			t.Fatalf("%s version id empty", row.Key)
+		}
+	}
+	if n != 2 {
+		t.Fatalf("created rows %d", n)
 	}
 }
 

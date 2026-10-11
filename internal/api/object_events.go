@@ -47,16 +47,10 @@ func (s *Server) objectOutbox(ctx context.Context, bucketRec metadata.BucketReco
 				"bucket": logical, "key": obj.Key,
 			})...)
 		case "multipart":
-			out = append(out, s.outboxRecords(metadata.EventObjectCreated, logical, obj.Key, obj.VersionID, bucketRec.TenantID, map[string]any{
-				"bucket": logical, "key": obj.Key, "size": obj.Size,
-			})...)
-			out = append(out, s.outboxRecords(metadata.EventMultipartCompleted, logical, obj.Key, obj.VersionID, bucketRec.TenantID, map[string]any{
-				"bucket": logical, "key": obj.Key, "size": obj.Size,
-			})...)
+			out = append(out, s.outboxRecords(metadata.EventObjectCreated, logical, obj.Key, obj.VersionID, bucketRec.TenantID, objectEventFields(logical, obj.Key, obj, nil))...)
+			out = append(out, s.outboxRecords(metadata.EventMultipartCompleted, logical, obj.Key, obj.VersionID, bucketRec.TenantID, objectEventFields(logical, obj.Key, obj, nil))...)
 		default:
-			out = append(out, s.outboxRecords(metadata.EventObjectCreated, logical, obj.Key, obj.VersionID, bucketRec.TenantID, map[string]any{
-				"bucket": logical, "key": obj.Key, "size": obj.Size,
-			})...)
+			out = append(out, s.outboxRecords(metadata.EventObjectCreated, logical, obj.Key, obj.VersionID, bucketRec.TenantID, objectEventFields(logical, obj.Key, obj, nil))...)
 		}
 	}
 	if !notify {
@@ -100,6 +94,26 @@ func (s *Server) objectOutbox(ctx context.Context, bucketRec metadata.BucketReco
 		},
 	}, now))
 	return out
+}
+
+// objectEventFields is the outbox payload for a committed object mutation.
+// etag, size, and versionId are copied from that row at insert. Publish does
+// not look the object up again. versionId is also stored on the outbox row;
+// it is omitted from the payload map when the bucket is unversioned.
+func objectEventFields(bucket, key string, obj metadata.ObjectRecord, extra map[string]any) map[string]any {
+	payload := map[string]any{
+		"bucket": bucket,
+		"key":    key,
+		"size":   obj.Size,
+		"etag":   obj.ETag,
+	}
+	if obj.VersionID != "" {
+		payload["versionId"] = obj.VersionID
+	}
+	for k, v := range extra {
+		payload[k] = v
+	}
+	return payload
 }
 
 func (s *Server) ensureBucketWebhookSink() {
