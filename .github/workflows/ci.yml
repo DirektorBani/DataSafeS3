@@ -75,6 +75,13 @@ jobs:
           npm ci
           npm run build
 
+  event-observability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prometheus rules and Grafana dashboard
+        run: bash scripts/check-event-observability.sh
+
   docker-build:
     runs-on: ubuntu-latest
     steps:

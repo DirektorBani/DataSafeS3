@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/DirektorBani/datasafe/internal/events/bridgeproto"
 )
 
@@ -118,8 +120,12 @@ func TestKafkaExecCrashRestartsWithBackoffAndKeepsRowsPending(t *testing.T) {
 
 	ctx := context.Background()
 	ev := Event{TenantID: "ten", Bucket: "b", Key: "obj", Type: "ObjectCreated", CreatedAt: time.Now().UTC()}
+	before := bridgeRestartCount(t)
 	if err := sink.Publish(ctx, ev); err == nil || !strings.Contains(err.Error(), "bridge exited") {
 		t.Fatalf("crash publish %v", err)
+	}
+	if got := bridgeRestartCount(t); got != before+1 {
+		t.Fatalf("bridge restarts %v, before %v", got, before)
 	}
 	os.Unsetenv("CRASH_ON")
 
@@ -304,6 +310,25 @@ func listens(t *testing.T, inodes map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+func bridgeRestartCount(t *testing.T) float64 {
+	t.Helper()
+	families, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mf := range families {
+		if mf.GetName() != "datasafe_events_bridge_restarts_total" {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			if c := m.GetCounter(); c != nil {
+				return c.GetValue()
+			}
+		}
+	}
+	return 0
 }
 
 func processAlive(pid int) bool {

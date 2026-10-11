@@ -4,7 +4,7 @@
 
 ![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/monitoring.png)
 
-Панели обзора: **HTTP / S3** (RPS, счётчики, объём, latency, ошибки, топ бакетов), **Cluster (summary)** (общий статус, healthy/offline, HA leader) и **Host** (диск, CPU, память, сеть, lag Postgres).
+Панели обзора: **HTTP / S3** (RPS, счётчики, объём, latency, ошибки, топ бакетов), **Cluster (summary)** (общий статус, healthy/offline, HA leader), **Host** (диск, CPU, память, сеть, lag Postgres) и **Event delivery** (очередь, скорость доставки, задержка, перезапуски моста).
 
 Полный статус нод и erasure: дашборд **DataSafeS3 Cluster Status** (`deploy/docker/grafana/dashboards/datasafe-cluster.json`, uid `datasafe-cluster`).
 
@@ -23,6 +23,30 @@
   - **Overview** — `datasafe-overview`
   - **Cluster Status** — `datasafe-cluster` (таблица UP/DOWN, overall, HA, erasure, heal, PG lag)
   - **Buckets** — `datasafe-buckets`
+- В Compose зафиксированы образы `grafana/grafana:13.2.3` и `prom/prometheus:v3.15.0`. Задача CI `event-observability` запускает `promtool check rules` для файла алертов и поднимает этот образ Grafana, затем читает дашборд `datasafe-overview` через HTTP API.
+
+## Доставка событий
+
+Ряд **Event delivery** на дашборде обзора (`deploy/docker/grafana/dashboards/datasafe-overview.json` и копия в чарте Helm) строится по метрикам диспетчера:
+
+| Панель | Запрос |
+|--------|--------|
+| Outbox pending | `datasafe_events_outbox_pending` — сколько событий ждёт доставки |
+| Delivery rates | `rate` успешных, неудачных и окончательно не доставленных событий по получателю, и сброшенных по причине (`pending_cap` — это переполнение очереди, не имя получателя) |
+| Delivery lag | `histogram_quantile` 0.50 / 0.95 / 0.99 задержки от записи в очередь до успешной доставки |
+| Sink degraded | `datasafe_events_sink_degraded` равен 1, пока получатель в ошибке, в том числе до первого успешного соединения |
+| Event bridge restarts | `datasafe_events_bridge_restarts_total` — сколько раз процесс перезапустил дочерний мост Kafka |
+
+Пример правил: `deploy/docker/prometheus/alerts.yml`. Compose монтирует файл, `deploy/docker/prometheus.yml` подключает его через `rule_files`. Порог очереди меняется в этом файле.
+
+| Алерт | Когда срабатывает |
+|-------|-------------------|
+| `DataSafeEventOutboxPending` | В очереди больше 1000 событий, или счётчик очереди вырос за 10 минут и события ещё ждут, и это длится 10 минут |
+| `DataSafeEventSinkDegraded` | У любого получателя `datasafe_events_sink_degraded` равен 1 в течение 5 минут |
+| `DataSafeEventDeadIncreasing` | `datasafe_events_dead_total` вырос за последние 10 минут |
+| `DataSafeEventDroppedIncreasing` | `datasafe_events_dropped_total{reason="pending_cap"}` вырос за последние 10 минут |
+
+В журнале Activity строка `events_sink_degraded` пишется при первой настоящей ошибке получателя, а `events_sink_recovered` — когда соединение снова удалось. Повторы той же ошибки новых строк не добавляют. Фраза `waiting for first successful connection` — причина статуса до первой проверки; в Activity она не попадает. `events_outbox_dropped` — переполнение очереди. Эти действия есть в фильтре Activity в консоли. `POST /api/v1/events/test` только ставит проверочное событие в очередь.
 
 ## Метрики кластера (Wave 2+)
 
@@ -41,6 +65,8 @@
 | `datasafe_events_dead_total{sink}` | Sink, исчерпавшие повторы |
 | `datasafe_events_delivery_lag_seconds{sink}` | От вставки до успешной доставки |
 | `datasafe_events_dropped_total{reason}` | Строки, сброшенные, чтобы запись объектов не блокировалась |
+| `datasafe_events_sink_degraded{sink}` | 1, пока этот получатель в ошибке |
+| `datasafe_events_bridge_restarts_total` | Перезапуски дочернего моста Kafka |
 
 Адреса нод задаются в настройках **Cluster** консоли/Admin API. Scraping `/metrics` с каждой ноды (file_sd) опционален для host-метрик по членам.
 

@@ -58,7 +58,7 @@ Prioritized backlog from [feature audit 2026-06-17](../../testing/feature-audit-
 | AUD-19 | Testing | Versioning / object versions cycle in audit script | S | **done** | Enable → put×2 → list `/versions` → GET `?versionId=` in `feature-audit-test.ps1` |
 | AUD-20 | Testing | Webhook delivery retry — verify delivery log + retry under load | M | planned | Audit only created config |
 | AUD-21 | Ops | Cross-platform binary smoke test — Linux binary in `alpine:3.20` before publish | M | planned | Catch mount/startup issues |
-| AUD-22 | Ops | Log sink delivery errors — surface failed HTTP responses; optional admin diagnostics via `EmitTestRecord` | M | planned | Errors swallowed in async goroutines |
+| AUD-22 | Ops | Log sink delivery errors — surface failed HTTP responses; optional admin diagnostics via `EmitTestRecord` | M | **done** | Activity `events_sink_degraded` / `events_sink_recovered` on the first real failure and on recovery. `POST /api/v1/events/test` queues a diagnostic event |
 
 ### Audit fixes already merged
 

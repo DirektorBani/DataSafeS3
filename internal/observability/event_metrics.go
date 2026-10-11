@@ -5,7 +5,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-// Event delivery metrics. The dispatcher increments these. A Grafana panel is a later step.
+// Event delivery metrics. The dispatcher updates these.
+// The overview dashboard row "Event delivery" and deploy/docker/prometheus/alerts.yml read them.
 var (
 	eventsOutboxPending = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "datasafe_events_outbox_pending",
@@ -32,6 +33,10 @@ var (
 		Name: "datasafe_events_dropped_total",
 		Help: "Outbox rows marked dropped so object writes are not blocked, by reason.",
 	}, []string{"reason"})
+	eventsSinkDegraded = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "datasafe_events_sink_degraded",
+		Help: "1 while a delivery destination is degraded, including before the first successful connection, else 0.",
+	}, []string{"sink"})
 )
 
 func SetEventsOutboxPending(n int) {
@@ -59,4 +64,24 @@ func AddEventsDropped(n int, reason string) {
 		return
 	}
 	eventsDroppedTotal.WithLabelValues(reason).Add(float64(n))
+}
+
+// SetEventsSinkDegraded sets the 0/1 gauge for one destination.
+func SetEventsSinkDegraded(sink string, degraded bool) {
+	if sink == "" {
+		return
+	}
+	v := 0.0
+	if degraded {
+		v = 1
+	}
+	eventsSinkDegraded.WithLabelValues(sink).Set(v)
+}
+
+// ClearEventsSinkDegraded removes the series so an unregistered destination does not stay alerting.
+func ClearEventsSinkDegraded(sink string) {
+	if sink == "" {
+		return
+	}
+	eventsSinkDegraded.DeleteLabelValues(sink)
 }

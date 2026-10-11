@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -113,11 +114,14 @@ func (s *Server) wireEventSinks() error {
 		m.SetOutboxMaxPending(cfg.MaxPending)
 	}
 	s.eventDisp = events.NewDispatcher(s.outboxStore(), nil, cfg, s.isEventLeader, events.Observer{
-		Pending:   observability.SetEventsOutboxPending,
-		Delivered: observability.AddEventsDelivered,
-		Failed:    observability.AddEventsFailed,
-		Dead:      observability.AddEventsDead,
-		Lag:       observability.ObserveEventsDeliveryLag,
+		Pending:     observability.SetEventsOutboxPending,
+		Delivered:   observability.AddEventsDelivered,
+		Failed:      observability.AddEventsFailed,
+		Dead:        observability.AddEventsDead,
+		Lag:         observability.ObserveEventsDeliveryLag,
+		Degraded:    observability.SetEventsSinkDegraded,
+		SinkRemoved: observability.ClearEventsSinkDegraded,
+		Status:      s.noteEventSinkStatus,
 	})
 	if err := s.syncKafkaSink(); err != nil {
 		return err
@@ -182,6 +186,33 @@ func (s *Server) outboxRecords(eventType, bucket, key, versionID, tenantID strin
 		Attempts:  attempts,
 	}, now)
 	return []events.OutboxRecord{rec}
+}
+
+// noteEventSinkStatus writes one Activity row for a destination's first real
+// failure and one when it recovers. The dispatcher suppresses retries.
+func (s *Server) noteEventSinkStatus(sink, status, lastError string) {
+	if s == nil || sink == "" {
+		return
+	}
+	switch status {
+	case "degraded":
+		msg := sink
+		if lastError != "" {
+			msg = sink + ": " + trimActivityDetail(lastError, 240)
+		}
+		s.logActivityAs("system", "", metadata.ActionEventsSinkDegraded, "events", msg)
+	case "connected":
+		s.logActivityAs("system", "", metadata.ActionEventsSinkRecovered, "events", sink)
+	}
+}
+
+func trimActivityDetail(s string, n int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
 }
 
 func (s *Server) noteOutboxDropped(n int) {

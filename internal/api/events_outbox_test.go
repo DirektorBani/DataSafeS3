@@ -286,3 +286,57 @@ func labelValue(m *dto.Metric, name string) string {
 	}
 	return ""
 }
+
+type activityHealthSink struct {
+	status string
+	last   string
+}
+
+func (s *activityHealthSink) Name() string                                { return "webhook" }
+func (s *activityHealthSink) Publish(context.Context, events.Event) error { return nil }
+func (s *activityHealthSink) Close() error                                { return nil }
+func (s *activityHealthSink) Health(context.Context) (string, string) {
+	return s.status, s.last
+}
+
+func TestEventSinkFailureAndRecoveryWriteActivity(t *testing.T) {
+	meta, err := metadata.OpenBolt(filepath.Join(t.TempDir(), "meta.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer meta.Close()
+	server := &Server{meta: meta}
+	sk := &activityHealthSink{status: "degraded", last: events.WaitingForConnection}
+	server.eventDisp = events.NewDispatcher(meta, []events.EventSink{sk}, events.Config{
+		MaxAttempts: 3, Retention: time.Hour, DeadRetention: time.Hour,
+	}, nil, events.Observer{Status: server.noteEventSinkStatus})
+	now := time.Now().UTC()
+	ctx := context.Background()
+	if err := server.eventDisp.ProcessOnce(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	sk.last = "HTTP 502"
+	if err := server.eventDisp.ProcessOnce(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.eventDisp.ProcessOnce(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	sk.status, sk.last = "connected", ""
+	if err := server.eventDisp.ProcessOnce(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	got, err := meta.ListActivity(metadata.ActivityFilter{Period: "all", Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]int{}
+	for _, ev := range got.Events {
+		if ev.Action == metadata.ActionEventsSinkDegraded || ev.Action == metadata.ActionEventsSinkRecovered {
+			seen[ev.Action+":"+ev.ResourceName]++
+		}
+	}
+	if seen[metadata.ActionEventsSinkDegraded+":webhook: HTTP 502"] != 1 || seen[metadata.ActionEventsSinkRecovered+":webhook"] != 1 || len(seen) != 2 {
+		t.Fatalf("activity %v", seen)
+	}
+}

@@ -1341,7 +1341,7 @@ Stop: `scripts\stop-ldap-keycloak-test.cmd` (full reset: `--remove`).
 
 ![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/monitoring.png)
 
-Metrics: **HTTP / S3** row (RPS, counts, storage, latency, errors, top buckets) and **Host** row (disk, CPU, memory, network, Postgres lag). Prometheus: http://localhost:9090 (usually no manual sign-in).
+Metrics: **HTTP / S3** row (RPS, counts, storage, latency, errors, top buckets), **Host** row (disk, CPU, memory, network, Postgres lag), and **Event delivery** (queue, rates, lag, bridge restarts). Prometheus: http://localhost:9090 (usually no manual sign-in).
 
 For regular users, **Usage** in the console is enough.
 

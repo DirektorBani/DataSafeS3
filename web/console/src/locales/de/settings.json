@@ -3,7 +3,7 @@
     "buckets": "Bucket settings",
     "system": "Administrator settings",
     "security": "Security posture",
-    "events": "Event delivery"
+    "events": "Ereigniszustellung"
   },
   "buckets": {
     "confirmDiscard": "Discard unsaved changes?",
@@ -90,22 +90,22 @@
     "maxObjects": "Max objects"
   },
   "events": {
-    "title": "Event delivery",
-    "description": "Per-sink status for the durable outbox. Kafka stays disabled until STORAGE_KAFKA_BROKERS is set.",
-    "loading": "Loading event delivery…",
-    "loadError": "Unable to load event delivery.",
-    "queueDepth": "Pending outbox rows: {{count}}",
-    "sinkQueue": "Queue depth: {{count}}",
-    "lastError": "Last error: {{error}}",
-    "noError": "No error recorded.",
-    "sendTest": "Send test event",
-    "sending": "Sending…",
-    "testSent": "Test event queued ({{id}})",
-    "testFailed": "Test event was not queued",
+    "title": "Ereigniszustellung",
+    "description": "Status jedes Empfängers für die Zustellwarteschlange. Kafka bleibt aus, bis STORAGE_KAFKA_BROKERS gesetzt ist.",
+    "loading": "Ereigniszustellung wird geladen…",
+    "loadError": "Ereigniszustellung konnte nicht geladen werden.",
+    "queueDepth": "Ereignisse in der Warteschlange: {{count}}",
+    "sinkQueue": "Warteschlange dieses Empfängers: {{count}}",
+    "lastError": "Letzter Fehler: {{error}}",
+    "noError": "Kein Fehler gespeichert.",
+    "sendTest": "Test-Ereignis senden",
+    "sending": "Wird gesendet…",
+    "testSent": "Test-Ereignis in die Warteschlange gestellt ({{id}})",
+    "testFailed": "Test-Ereignis wurde nicht eingereiht",
     "status": {
-      "connected": "Connected",
-      "degraded": "Degraded",
-      "disabled": "Disabled"
+      "connected": "Verbunden",
+      "degraded": "Gestört",
+      "disabled": "Aus"
     },
     "sinks": {
       "kafka": "Kafka",

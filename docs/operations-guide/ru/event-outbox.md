@@ -101,7 +101,7 @@ At-least-once, не exactly-once. Sink webhook консоли за одну по
 
 ## Метрики
 
-Их обновляет диспетчер. Панели Grafana в этом изменении нет.
+Их обновляет диспетчер. Ряд **Event delivery** на дашборде обзора и пример алертов описаны в [руководстве по мониторингу](monitoring.md#доставка-событий).
 
 | Метрика | Смысл |
 |---------|--------|
@@ -111,6 +111,8 @@ At-least-once, не exactly-once. Sink webhook консоли за одну по
 | `datasafe_events_dead_total{sink}` | Sink в `dead` (лимит попыток или неповторяемый HTTP-статус) |
 | `datasafe_events_delivery_lag_seconds{sink}` | От вставки до успешной доставки |
 | `datasafe_events_dropped_total{reason}` | Переполнение лимита (`reason="pending_cap"`) |
+| `datasafe_events_sink_degraded{sink}` | 1, пока этот получатель в ошибке |
+| `datasafe_events_bridge_restarts_total` | Перезапуски дочернего моста Kafka |
 
 ## Один узел по умолчанию
 

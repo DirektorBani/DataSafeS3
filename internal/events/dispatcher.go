@@ -13,14 +13,29 @@ import (
 // Nil, or HA disabled, means always deliver. In HA only the leader returns true.
 type LeaderFunc func(ctx context.Context) bool
 
+// WaitingForConnection is the degraded reason before the first successful
+// probe or publish. Package kafkasink uses the same sentence. A real probe
+// or publish error replaces it. Activity does not record this sentence.
+const WaitingForConnection = "waiting for first successful connection"
+
 // Observer receives delivery signals. Nil funcs are skipped.
-// Wired to Prometheus by the API process. The Grafana dashboard is a later step.
+// Wired to Prometheus and Activity by the API process.
 type Observer struct {
 	Pending   func(n int)
 	Delivered func(sink string)
 	Failed    func(sink, reason string)
 	Dead      func(sink string)
 	Lag       func(sink string, seconds float64)
+	// Degraded is 1 while status is degraded, including before the first
+	// successful connection, and 0 when the destination is connected.
+	Degraded func(sink string, degraded bool)
+	// SinkRemoved drops the degraded series after Unregister.
+	SinkRemoved func(sink string)
+	// Status fires on the first real failure of a destination and when that
+	// destination later becomes connected. WaitingForConnection is not a
+	// failure. A repeated failure, including a different error string, does
+	// not fire again until the destination has recovered.
+	Status func(sink, status, lastError string)
 }
 
 // Dispatcher is the single delivery loop for one process.
@@ -41,6 +56,7 @@ type Dispatcher struct {
 	mu        sync.Mutex
 	sinks     []EventSink
 	byName    map[string]EventSink
+	reported  map[string]bool // sink name -> a real failure is open
 	lastPurge time.Time
 	cancel    context.CancelFunc
 	closed    bool
@@ -108,12 +124,13 @@ func (d *Dispatcher) Unregister(name string) {
 		return
 	}
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	prev, ok := d.byName[name]
 	if !ok {
+		d.mu.Unlock()
 		return
 	}
 	delete(d.byName, name)
+	delete(d.reported, name)
 	next := make([]EventSink, 0, len(d.sinks))
 	for _, sk := range d.sinks {
 		if sk.Name() == name {
@@ -124,6 +141,11 @@ func (d *Dispatcher) Unregister(name string) {
 	d.sinks = next
 	if prev != nil {
 		_ = prev.Close()
+	}
+	gone := d.obs.SinkRemoved
+	d.mu.Unlock()
+	if gone != nil {
+		gone(name)
 	}
 }
 
@@ -225,6 +247,9 @@ func (d *Dispatcher) ProcessOnce(ctx context.Context, now time.Time) error {
 	if n, err := d.store.CountOutbox(ctx, StatusPending); err == nil && d.obs.Pending != nil {
 		d.obs.Pending(n)
 	}
+	if sinks := d.sinkSnapshot(); sinks != nil {
+		d.observeSinkHealth(ctx, sinks)
+	}
 	if d.leader != nil && !d.leader(ctx) {
 		return nil
 	}
@@ -251,6 +276,67 @@ func (d *Dispatcher) ProcessOnce(ctx context.Context, now time.Time) error {
 		}
 	}
 	return errs
+}
+
+// sinkSnapshot copies the registered sinks. Nil means the dispatcher is closed.
+func (d *Dispatcher) sinkSnapshot() map[string]EventSink {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed {
+		return nil
+	}
+	sinks := make(map[string]EventSink, len(d.byName))
+	for name, sk := range d.byName {
+		sinks[name] = sk
+	}
+	return sinks
+}
+
+// observeSinkHealth publishes the degraded gauge and the first-failure /
+// recovery signal. It does not treat WaitingForConnection as a failure.
+func (d *Dispatcher) observeSinkHealth(ctx context.Context, sinks map[string]EventSink) {
+	type change struct {
+		sink, status, last string
+	}
+	var changes []change
+	for name, sk := range sinks {
+		status, last := "connected", ""
+		if h, ok := sk.(HealthReporter); ok {
+			status, last = h.Health(ctx)
+			if status == "" {
+				status = "connected"
+			}
+		}
+		degraded := status == "degraded"
+		real := degraded && last != "" && last != WaitingForConnection
+		d.mu.Lock()
+		if _, still := d.byName[name]; !still {
+			d.mu.Unlock()
+			continue
+		}
+		if d.reported == nil {
+			d.reported = map[string]bool{}
+		}
+		prev := d.reported[name]
+		switch {
+		case real && !prev:
+			d.reported[name] = true
+			changes = append(changes, change{name, "degraded", last})
+		case !degraded && prev:
+			d.reported[name] = false
+			changes = append(changes, change{name, "connected", ""})
+		}
+		if d.obs.Degraded != nil {
+			d.obs.Degraded(name, degraded)
+		}
+		d.mu.Unlock()
+	}
+	if d.obs.Status == nil {
+		return
+	}
+	for _, c := range changes {
+		d.obs.Status(c.sink, c.status, c.last)
+	}
 }
 
 // snapshot copies the sink map and decides whether this tick should purge.

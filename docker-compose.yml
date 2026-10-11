@@ -157,7 +157,7 @@ services:
 
   prometheus:
 
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.15.0
 
     environment:
 
@@ -191,6 +191,8 @@ services:
 
       - ./deploy/docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
+      - ./deploy/docker/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+
       - ./deploy/docker/prometheus/targets:/etc/prometheus/targets:ro
 
     ports:
@@ -201,7 +203,7 @@ services:
 
   grafana:
 
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.2.3
 
     depends_on:
 

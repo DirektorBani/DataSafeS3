@@ -28,6 +28,10 @@ import enLayout from "@/locales/en/layout.json";
 import enSearch from "@/locales/en/search.json";
 import enPolicyBuilder from "@/locales/en/policyBuilder.json";
 import enNotifications from "@/locales/en/notifications.json";
+import deSettings from "@/locales/de/settings.json";
+import deActivity from "@/locales/de/activity.json";
+import frSettings from "@/locales/fr/settings.json";
+import frActivity from "@/locales/fr/activity.json";
 import ruCommon from "@/locales/ru/common.json";
 import ruNav from "@/locales/ru/nav.json";
 import ruLogin from "@/locales/ru/login.json";
@@ -147,8 +151,8 @@ const enResources = {
 void i18n.use(initReactI18next).init({
   resources: {
     en: enResources,
-    de: enResources,
-    fr: enResources,
+    de: { ...enResources, settings: deSettings, activity: deActivity },
+    fr: { ...enResources, settings: frSettings, activity: frActivity },
     ru: {
       common: ruCommon,
       nav: ruNav,
