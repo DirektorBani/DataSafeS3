@@ -29,13 +29,17 @@ func TestHealthDoesNotBlockOnUnreachableBroker(t *testing.T) {
 		if status != "degraded" {
 			t.Fatalf("status %s", status)
 		}
-		if last != "" {
-			break
+		if last == "" {
+			t.Fatal("degraded status has an empty reason")
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("probe did not record a broker error")
+		if last == WaitingForConnection {
+			if time.Now().After(deadline) {
+				t.Fatal("probe did not record a broker error")
+			}
+			time.Sleep(20 * time.Millisecond)
+			continue
 		}
-		time.Sleep(20 * time.Millisecond)
+		break
 	}
 	if !strings.Contains(last, "timeout") && !strings.Contains(last, "refused") && !strings.Contains(last, "dial") && !strings.Contains(last, "deadline") {
 		t.Fatalf("last_error %q", last)

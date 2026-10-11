@@ -1,0 +1,40 @@
+# Example alerts for event delivery. Compose mounts this file and
+# deploy/docker/prometheus.yml loads it. Edit the pending threshold here.
+groups:
+  - name: datasafe.events
+    rules:
+      # Pending is above 1000, or the gauge rose over the last 10 minutes
+      # while rows are still waiting. The condition must hold for 10 minutes.
+      - alert: DataSafeEventOutboxPending
+        expr: datasafe_events_outbox_pending > 1000 or (datasafe_events_outbox_pending > 0 and delta(datasafe_events_outbox_pending[10m]) > 0)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Event outbox pending is high or still growing
+          description: Pending rows are above 1000, or the pending gauge increased over 10 minutes, and that has held for 10 minutes. The threshold is in deploy/docker/prometheus/alerts.yml.
+
+      - alert: DataSafeEventSinkDegraded
+        expr: datasafe_events_sink_degraded > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Event destination {{ $labels.sink }} is degraded
+          description: datasafe_events_sink_degraded for {{ $labels.sink }} has been 1 for 5 minutes. The delivery page last_error has the reason.
+
+      - alert: DataSafeEventDeadIncreasing
+        expr: sum by (sink) (increase(datasafe_events_dead_total[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Dead event deliveries are increasing for {{ $labels.sink }}
+          description: datasafe_events_dead_total increased during the last 10 minutes.
+
+      - alert: DataSafeEventDroppedIncreasing
+        expr: sum by (reason) (increase(datasafe_events_dropped_total{reason="pending_cap"}[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Event deliveries are being dropped ({{ $labels.reason }})
+          description: The pending cap dropped outbox rows during the last 10 minutes. Object writes were not failed.

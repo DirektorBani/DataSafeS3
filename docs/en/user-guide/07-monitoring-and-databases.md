@@ -28,13 +28,15 @@ After sign-in, open:
 
 ![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/monitoring.png)
 
-On the overview dashboard you will see three rows:
+On the overview dashboard you will see these rows:
 
 **HTTP / S3** — request rate, bucket and object counts, total storage used, p95 latency, HTTP errors, and a chart of the largest buckets.
 
 **Cluster (summary)** — overall status, healthy/offline node counts, and whether this process is the HA leader. Full per-node UP/DOWN table: **Cluster Status** dashboard.
 
 **Host** — disk use percentage, CPU load (1 minute), memory use, network I/O, PostgreSQL replication lag (when Postgres is enabled), and disk capacity over time.
+
+**Event delivery** — how many notification events are waiting, how fast they are delivered or dropped, delay to a successful delivery, and restarts of the Kafka bridge. Example alerts for a stuck queue, a failed destination, and dropped events are in `deploy/docker/prometheus/alerts.yml`. See the [monitoring guide](../../operations-guide/en/monitoring.md#event-delivery).
 
 The **Buckets** dashboard adds a multi-select **Bucket** variable to drill into object count, storage size, and S3 ops per bucket.
 

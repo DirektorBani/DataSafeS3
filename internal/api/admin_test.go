@@ -442,6 +442,9 @@ func TestEventDeliveryUnreachableBrokerDoesNotBlock(t *testing.T) {
 		if status != "degraded" {
 			t.Fatalf("kafka status %s body %s", status, body)
 		}
+		if last == "" {
+			t.Fatalf("degraded with empty last_error: %s", body)
+		}
 		if brokerError(last) {
 			break
 		}

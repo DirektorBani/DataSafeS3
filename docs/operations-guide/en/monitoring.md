@@ -4,7 +4,7 @@ English | **[Русский](../ru/monitoring.md)**
 
 ![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/monitoring.png)
 
-Overview panels: **HTTP / S3** (RPS, counts, storage, latency, errors, top buckets), **Cluster (summary)** (overall status, healthy/offline counts, HA leader), and **Host** (disk, CPU, memory, network, Postgres replication lag).
+Overview panels: **HTTP / S3** (RPS, counts, storage, latency, errors, top buckets), **Cluster (summary)** (overall status, healthy/offline counts, HA leader), **Host** (disk, CPU, memory, network, Postgres replication lag), and **Event delivery** (queue, rates, lag, bridge restarts).
 
 Full per-node table and erasure health: Grafana dashboard **DataSafeS3 Cluster Status** (`deploy/docker/grafana/dashboards/datasafe-cluster.json`, uid `datasafe-cluster`).
 
@@ -24,6 +24,30 @@ Full per-node table and erasure health: Grafana dashboard **DataSafeS3 Cluster S
   - **DataSafeS3 Cluster Status** — `datasafe-cluster` (node UP/DOWN table, overall status, HA role, erasure degraded sets, heal rate, PG lag)
   - **DataSafeS3 Buckets** — `datasafe-buckets`
 - **Feature audit (v1.1.0+):** `scripts/feature-audit-test.ps1` runs the same panel query as the overview dashboard (`sum(rate(datasafe_http_requests_total[1m]))`) against Prometheus when Grafana/Prometheus are up in the compose stack.
+- Compose pins `grafana/grafana:13.2.3` and `prom/prometheus:v3.15.0`. CI job `event-observability` runs `promtool check rules` on the alert file and provisions that Grafana image, then reads dashboard uid `datasafe-overview` from the HTTP API.
+
+## Event delivery
+
+The overview dashboard row **Event delivery** (`deploy/docker/grafana/dashboards/datasafe-overview.json`, and the Helm copy of that dashboard) uses the dispatcher metrics:
+
+| Panel | Query |
+|-------|--------|
+| Outbox pending | `datasafe_events_outbox_pending` |
+| Delivery rates | `rate` of `datasafe_events_delivered_total`, `datasafe_events_failed_total`, and `datasafe_events_dead_total` by sink, and `datasafe_events_dropped_total` by reason (`pending_cap` is the pending cap, not a sink) |
+| Delivery lag | `histogram_quantile` 0.50 / 0.95 / 0.99 of `datasafe_events_delivery_lag_seconds` by sink |
+| Sink degraded | `datasafe_events_sink_degraded` is 1 while that destination is degraded, including before the first successful connection |
+| Event bridge restarts | `datasafe_events_bridge_restarts_total` counts supervised restarts of the Kafka bridge child |
+
+Example alerts are `deploy/docker/prometheus/alerts.yml`. Compose mounts the file and `deploy/docker/prometheus.yml` loads it with `rule_files`. Edit the pending threshold in that file.
+
+| Alert | Fires when |
+|-------|------------|
+| `DataSafeEventOutboxPending` | Pending is above 1000, or the pending gauge increased over 10 minutes while rows are still waiting, and that condition holds for 10 minutes |
+| `DataSafeEventSinkDegraded` | Any destination has `datasafe_events_sink_degraded` equal to 1 for 5 minutes |
+| `DataSafeEventDeadIncreasing` | `datasafe_events_dead_total` increased during the last 10 minutes |
+| `DataSafeEventDroppedIncreasing` | `datasafe_events_dropped_total{reason="pending_cap"}` increased during the last 10 minutes |
+
+Activity records `events_sink_degraded` on the first real failure of a destination and `events_sink_recovered` when it connects again. Retries of the same failure do not add rows. The sentence `waiting for first successful connection` is the status reason before the first probe and is not an Activity row. `events_outbox_dropped` is the pending cap. The console Activity filter lists these actions. `POST /api/v1/events/test` queues a diagnostic event.
 
 ## Cluster metrics (Wave 2+)
 
@@ -44,6 +68,8 @@ Published by the storage process that runs the cluster monitor (probes configure
 | `datasafe_events_dead_total{sink}` | Sinks that exhausted retries |
 | `datasafe_events_delivery_lag_seconds{sink}` | Insert to successful delivery |
 | `datasafe_events_dropped_total{reason}` | Rows dropped so object writes are not blocked |
+| `datasafe_events_sink_degraded{sink}` | 1 while that destination is degraded |
+| `datasafe_events_bridge_restarts_total` | Supervised restarts of the Kafka bridge child |
 
 Configure cluster members in Admin API / console **Cluster** settings so the monitor has addresses to probe. Scraping each node’s `/metrics` (file_sd) is optional but useful when comparing host disk/CPU across members.
 

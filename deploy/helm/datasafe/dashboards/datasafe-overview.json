@@ -210,6 +210,78 @@
       ],
       "title": "Disk capacity",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 },
+      "id": 103,
+      "title": "Event delivery",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 40 },
+      "id": 40,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "datasafe_events_outbox_pending", "legendFormat": "pending", "refId": "A" }
+      ],
+      "title": "Outbox pending",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 40 },
+      "id": 41,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum by (sink) (rate(datasafe_events_delivered_total[5m]))", "legendFormat": "delivered {{sink}}", "refId": "A" },
+        { "expr": "sum by (sink) (rate(datasafe_events_failed_total[5m]))", "legendFormat": "failed {{sink}}", "refId": "B" },
+        { "expr": "sum by (sink) (rate(datasafe_events_dead_total[5m]))", "legendFormat": "dead {{sink}}", "refId": "C" },
+        { "expr": "sum by (reason) (rate(datasafe_events_dropped_total[5m]))", "legendFormat": "dropped {{reason}}", "refId": "D" }
+      ],
+      "title": "Delivery rates",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "id": 42,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le, sink) (rate(datasafe_events_delivery_lag_seconds_bucket[5m])))", "legendFormat": "p50 {{sink}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (le, sink) (rate(datasafe_events_delivery_lag_seconds_bucket[5m])))", "legendFormat": "p95 {{sink}}", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum by (le, sink) (rate(datasafe_events_delivery_lag_seconds_bucket[5m])))", "legendFormat": "p99 {{sink}}", "refId": "C" }
+      ],
+      "title": "Delivery lag",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 48 },
+      "id": 43,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "datasafe_events_sink_degraded", "legendFormat": "{{sink}}", "refId": "A" }
+      ],
+      "title": "Sink degraded",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 48 },
+      "id": 44,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "datasafe_events_bridge_restarts_total", "legendFormat": "restarts", "refId": "A" }
+      ],
+      "title": "Event bridge restarts",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",
@@ -221,5 +293,5 @@
   "timezone": "browser",
   "title": "Датасейф S3 — обзор системы / DataSafeS3 System Overview",
   "uid": "datasafe-overview",
-  "version": 6
+  "version": 7
 }

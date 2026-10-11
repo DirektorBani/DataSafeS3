@@ -101,7 +101,7 @@ With no NATS URL, no enabled webhook, and no matching bucket notification, admin
 
 ## Metrics
 
-The dispatcher updates these. A Grafana panel is not part of this change.
+The dispatcher updates these. The overview dashboard row **Event delivery** and the example alerts are in the [monitoring guide](monitoring.md#event-delivery).
 
 | Metric | Meaning |
 |--------|---------|
@@ -111,6 +111,8 @@ The dispatcher updates these. A Grafana panel is not part of this change.
 | `datasafe_events_dead_total{sink}` | Sinks marked `dead` (attempt limit, or a non-retryable HTTP status) |
 | `datasafe_events_delivery_lag_seconds{sink}` | Insert to successful delivery |
 | `datasafe_events_dropped_total{reason}` | Cap overflow (`reason="pending_cap"`) |
+| `datasafe_events_sink_degraded{sink}` | 1 while that destination is degraded |
+| `datasafe_events_bridge_restarts_total` | Supervised restarts of the Kafka bridge child |
 
 ## Single-node default
 

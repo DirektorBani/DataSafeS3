@@ -1341,7 +1341,7 @@ SSO-пользователь: `ssouser` / `password`
 
 ![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/monitoring.png)
 
-Метрики: ряд **HTTP / S3** (RPS, счётчики, объём, latency, ошибки, топ бакетов) и ряд **Host** (диск, CPU, память, сеть, lag Postgres). Prometheus: http://localhost:9090 (обычно не требует ручного входа).
+Метрики: ряд **HTTP / S3** (RPS, счётчики, объём, latency, ошибки, топ бакетов), ряд **Host** (диск, CPU, память, сеть, lag Postgres) и ряд **Event delivery** (очередь, скорость, задержка, перезапуски моста). Prometheus: http://localhost:9090 (обычно не требует ручного входа).
 
 Обычному пользователю достаточно **Usage** в консоли.
 

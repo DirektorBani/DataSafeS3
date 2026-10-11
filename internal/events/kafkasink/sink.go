@@ -34,6 +34,10 @@ const (
 	probeInterval   = 5 * time.Second
 )
 
+// WaitingForConnection is the degraded reason before the first successful
+// probe or publish. events.WaitingForConnection is the same sentence.
+const WaitingForConnection = "waiting for first successful connection"
+
 // Config is the producer. Brokers must be non-empty. TLS and SASL rules match
 // events.KafkaConfig.Validate, which the caller runs first.
 type Config struct {
@@ -160,7 +164,8 @@ func (p *Producer) Close() error {
 // Health returns the cached status. It does not ping and it does not wait
 // on an in-flight produce. "connected" means a probe or a publish succeeded
 // and the last publish did not fail. It does not mean a consumer group is
-// caught up. Before the first probe finishes the status is degraded.
+// caught up. Before the first probe finishes the status is degraded and the
+// reason is WaitingForConnection.
 func (p *Producer) Health(context.Context) (string, string) {
 	return p.cached()
 }
@@ -205,7 +210,7 @@ func (p *Producer) cached() (string, string) {
 		return "degraded", p.lastErr
 	}
 	if !p.probed {
-		return "degraded", ""
+		return "degraded", WaitingForConnection
 	}
 	return "connected", ""
 }

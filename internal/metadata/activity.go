@@ -46,6 +46,10 @@ const (
 	// Kafka broker list changed between process starts. The resource name is
 	// the new broker list, never a SASL secret.
 	ActionKafkaBrokersChanged = "kafka_brokers_changed"
+	// First real delivery failure for one destination, and the later recovery.
+	// Retries of the same failure do not write another row.
+	ActionEventsSinkDegraded  = "events_sink_degraded"
+	ActionEventsSinkRecovered = "events_sink_recovered"
 )
 
 type ActivityRecord struct {

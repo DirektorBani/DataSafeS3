@@ -150,7 +150,11 @@ func (s *execSink) Health(context.Context) (string, string) {
 	if st == "" {
 		st = "degraded"
 	}
-	return st, s.lastErr
+	last := s.lastErr
+	if st == "degraded" && last == "" {
+		last = WaitingForConnection
+	}
+	return st, last
 }
 
 func (s *execSink) Close() error {
@@ -312,6 +316,7 @@ func (s *execSink) noteChildDownLocked(reason string) {
 	}
 	s.statusMu.Unlock()
 	delay := s.takeBackoff()
+	noteBridgeRestart()
 	bridgeWarn("event bridge exited", "restart_in", delay.String(), "err", reason)
 	if s.timer != nil {
 		s.timer.Stop()

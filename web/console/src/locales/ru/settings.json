@@ -103,11 +103,11 @@
   },
   "events": {
     "title": "Доставка событий",
-    "description": "Состояние каждого sink для долговечного outbox. Kafka остаётся выключенной, пока не задан STORAGE_KAFKA_BROKERS.",
+    "description": "Состояние каждого получателя для очереди доставки. Kafka остаётся выключенной, пока не задан STORAGE_KAFKA_BROKERS.",
     "loading": "Загрузка доставки событий…",
     "loadError": "Не удалось загрузить доставку событий.",
-    "queueDepth": "Ожидающие строки outbox: {{count}}",
-    "sinkQueue": "Глубина очереди: {{count}}",
+    "queueDepth": "Событий в очереди: {{count}}",
+    "sinkQueue": "В очереди у этого получателя: {{count}}",
     "lastError": "Последняя ошибка: {{error}}",
     "noError": "Ошибок нет.",
     "sendTest": "Отправить тестовое событие",
@@ -116,7 +116,7 @@
     "testFailed": "Тестовое событие не поставлено в очередь",
     "status": {
       "connected": "Подключено",
-      "degraded": "Деградация",
+      "degraded": "С ошибкой",
       "disabled": "Выключено"
     },
     "sinks": {
