@@ -3,19 +3,16 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/observability"
 )
-
-// EventSink delivers S3-style notifications to external systems.
-type EventSink interface {
-	Publish(event string, payload map[string]any) error
-	Name() string
-}
 
 type webhookEventSink struct {
 	server *Server
@@ -23,40 +20,145 @@ type webhookEventSink struct {
 
 func (w *webhookEventSink) Name() string { return "webhook" }
 
-func (w *webhookEventSink) Publish(event string, payload map[string]any) error {
-	w.server.fireWebhooks(event, payload)
-	return nil
+func (w *webhookEventSink) Publish(ctx context.Context, e events.Event) error {
+	return w.server.deliverWebhooks(ctx, e)
 }
 
-type rabbitMQEventSink struct{}
+func (w *webhookEventSink) Close() error { return nil }
 
-func (r *rabbitMQEventSink) Name() string { return "rabbitmq" }
-func (r *rabbitMQEventSink) Publish(event string, payload map[string]any) error {
-	return nil
+// syncEventSinks registers a sink only when it is configured.
+// NATS is registered when STORAGE_NATS_URL is non-empty.
+// The webhook sink is registered when at least one webhook is enabled, and is
+// refreshed after webhook create, update, and delete.
+// Kafka (E02) should Dispatcher.Register when STORAGE_KAFKA_BROKERS is non-empty.
+func (s *Server) syncEventSinks() {
+	if s == nil || s.eventDisp == nil {
+		return
+	}
+	if natsURLConfigured() {
+		if !s.eventDisp.HasSink("nats") {
+			s.eventDisp.Register(newNATSEventSink())
+		}
+	} else {
+		s.eventDisp.Unregister("nats")
+	}
+	if s.anyEnabledWebhook() {
+		if !s.eventDisp.HasSink("webhook") {
+			s.eventDisp.Register(&webhookEventSink{server: s})
+		}
+	} else {
+		s.eventDisp.Unregister("webhook")
+	}
 }
 
-type kafkaEventSink struct{}
+func (s *Server) anyEnabledWebhook() bool {
+	if s == nil || s.meta == nil {
+		return false
+	}
+	hooks, err := s.meta.ListWebhooks()
+	if err != nil {
+		return false
+	}
+	for _, h := range hooks {
+		if h.Enabled {
+			return true
+		}
+	}
+	return false
+}
 
-func (k *kafkaEventSink) Name() string { return "kafka" }
-func (k *kafkaEventSink) Publish(event string, payload map[string]any) error {
-	return nil
+func (s *Server) webhookMatchesConfigured(eventType string) bool {
+	if s == nil || s.meta == nil {
+		return false
+	}
+	hooks, err := s.meta.ListWebhooks()
+	if err != nil {
+		return false
+	}
+	for _, h := range hooks {
+		if h.Enabled && webhookMatchesEvent(h.Events, eventType) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) wireEventSinks() {
-	s.eventSinks = []EventSink{
-		&webhookEventSink{server: s},
-		newNATSEventSink(),
-		&rabbitMQEventSink{},
-		&kafkaEventSink{},
+	cfg := events.ConfigFromEnv()
+	s.eventCfg = cfg
+	if m, ok := s.meta.(metadata.OutboxMutator); ok {
+		m.SetOutboxMaxPending(cfg.MaxPending)
 	}
+	s.eventDisp = events.NewDispatcher(s.outboxStore(), nil, cfg, s.isEventLeader, events.Observer{
+		Pending:   observability.SetEventsOutboxPending,
+		Delivered: observability.AddEventsDelivered,
+		Failed:    observability.AddEventsFailed,
+		Dead:      observability.AddEventsDead,
+		Lag:       observability.ObserveEventsDeliveryLag,
+	})
+	s.syncEventSinks()
 }
 
-func (s *Server) emitEvent(event string, payload map[string]any) {
-	for _, sink := range s.eventSinks {
-		go func(sk EventSink) {
-			_ = sk.Publish(event, payload)
-		}(sink)
+func (s *Server) outboxStore() events.OutboxStore {
+	st, _ := s.meta.(events.OutboxStore)
+	return st
+}
+
+func (s *Server) isEventLeader(ctx context.Context) bool {
+	if s.haLeader == nil || !s.haLeader.Enabled() {
+		return true
 	}
+	return s.haLeader.IsLeader(ctx)
+}
+
+// outboxRecords builds the rows to commit with this metadata change.
+// Sink names configured for this event are copied onto the row.
+// A webhook name is included only when an enabled webhook matches eventType.
+// An empty result means no outbox write: the event is not stored and is not
+// replayed if a sink is configured later.
+func (s *Server) outboxRecords(eventType, bucket, key, versionID, tenantID string, payload map[string]any) []events.OutboxRecord {
+	if s == nil || s.eventDisp == nil {
+		return nil
+	}
+	now := time.Now().UTC()
+	attempts := map[string]events.SinkAttempt{}
+	for _, name := range s.eventDisp.SinkNames() {
+		if name == "webhook" && !s.webhookMatchesConfigured(eventType) {
+			continue
+		}
+		attempts[name] = events.SinkAttempt{Status: events.StatusPending, NextAttemptAt: now}
+	}
+	if len(attempts) == 0 {
+		return nil
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		raw = []byte(`{}`)
+	}
+	rec := events.NormalizeOutbox(events.OutboxRecord{
+		EventType: eventType,
+		Bucket:    bucket,
+		Key:       key,
+		VersionID: versionID,
+		TenantID:  tenantID,
+		Payload:   raw,
+		CreatedAt: now,
+		Attempts:  attempts,
+	}, now)
+	return []events.OutboxRecord{rec}
+}
+
+func (s *Server) noteOutboxDropped(n int) {
+	if n <= 0 {
+		return
+	}
+	observability.AddEventsDropped(n, "pending_cap")
+	msg := fmt.Sprintf("dropped %d pending event(s): %s", n, events.DropReasonCap)
+	s.logActivityAs("system", "", metadata.ActionEventsOutboxDropped, "events", msg)
+	slog.Warn("event outbox pending cap", "dropped", n, "reason", events.DropReasonCap)
 }
 
 type clusterMonitor struct {

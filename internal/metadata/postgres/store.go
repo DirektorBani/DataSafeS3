@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -38,9 +39,11 @@ var migrationFS embed.FS
 
 // Store implements metadata.MetadataStore using PostgreSQL.
 type Store struct {
-	pool     *pgxpool.Pool
-	readPool *pgxpool.Pool
-	fieldenc *fieldenc.Service
+	pool             *pgxpool.Pool
+	readPool         *pgxpool.Pool
+	fieldenc         *fieldenc.Service
+	outboxMaxPending int
+	outboxMaxSet     bool
 }
 
 // Open connects to PostgreSQL, runs migrations, and returns a Store.
@@ -195,3 +198,5 @@ func migrationVersion(path string) int64 {
 }
 
 var _ metadata.MetadataStore = (*Store)(nil)
+var _ metadata.OutboxMutator = (*Store)(nil)
+var _ events.OutboxStore = (*Store)(nil)

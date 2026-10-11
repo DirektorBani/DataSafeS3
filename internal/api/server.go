@@ -16,6 +16,7 @@ import (
 	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/cluster/pki"
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/ha"
 	"github.com/DirektorBani/datasafe/internal/inventory"
 	"github.com/DirektorBani/datasafe/internal/metadata"
@@ -57,7 +58,8 @@ type Server struct {
 	cluster               *clusterMonitor
 	clusterPKI_           *pki.Manager
 	trustedClusterW       *trustedClusterWorker
-	eventSinks            []EventSink
+	eventDisp             *events.Dispatcher
+	eventCfg              events.Config
 	haLeader              *ha.Leader
 	invJobs               *inventory.JobStore
 	activityRetentionDays int
@@ -202,6 +204,9 @@ func NewServer(cfg Config) (*Server, error) {
 }
 
 func (s *Server) Close() error {
+	if s.eventDisp != nil {
+		_ = s.eventDisp.Close()
+	}
 	return s.meta.Close()
 }
 
@@ -238,6 +243,9 @@ func (s *Server) StartBackground(ctx context.Context) {
 	}
 	if s.cluster != nil {
 		go s.cluster.Run(ctx)
+	}
+	if s.eventDisp != nil {
+		go s.eventDisp.Run(ctx)
 	}
 }
 
@@ -767,7 +775,12 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 		TeamID     string `json:"team_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	if err := s.svc.CreateBucket(r.Context(), bucket, owner); err != nil {
+	var evPtr *events.OutboxRecord
+	if evs := s.outboxRecords(metadata.EventBucketCreated, bucket, "", "", "", map[string]any{"bucket": bucket, "owner": owner}); len(evs) == 1 {
+		evPtr = &evs[0]
+	}
+	dropped, err := s.svc.CreateBucketNotifying(r.Context(), bucket, owner, evPtr)
+	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, metadata.ErrBucketExists) {
 			status = http.StatusConflict
@@ -775,6 +788,7 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, status, map[string]any{"error": err.Error()})
 		return
 	}
+	s.noteOutboxDropped(dropped)
 	vis := req.Visibility
 	if vis == "" {
 		vis = "private"
@@ -792,7 +806,6 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	s.logActivity(r, metadata.ActionBucketCreated, "bucket", bucket)
-	s.emitEvent(metadata.EventBucketCreated, map[string]any{"bucket": bucket, "owner": owner})
 	writeJSON(w, http.StatusCreated, map[string]any{"bucket": bucket, "visibility": vis})
 }
 
@@ -808,12 +821,14 @@ func (s *Server) handleDeleteBucketJSON(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 		return
 	}
-	if err := s.svc.DeleteBucket(r.Context(), sk); err != nil {
+	evs := s.outboxRecords(metadata.EventBucketDeleted, bucket, "", "", "", map[string]any{"bucket": bucket})
+	dropped, err := s.svc.DeleteBucketNotifying(r.Context(), sk, evs)
+	if err != nil {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
 		return
 	}
+	s.noteOutboxDropped(dropped)
 	s.logActivity(r, metadata.ActionBucketDeleted, "bucket", bucket)
-	s.emitEvent(metadata.EventBucketDeleted, map[string]any{"bucket": bucket})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -842,7 +857,11 @@ func (s *Server) handleUploadObjectJSON(w http.ResponseWriter, r *http.Request) 
 	if prev, err := s.meta.GetObject(sk, key); err == nil && !prev.IsDeleteMarker {
 		prevSize = prev.Size
 	}
-	rec, err := s.svc.PutObject(r.Context(), sk, key, r.Body, r.ContentLength, contentType, nil)
+	rec, dropped, err := s.svc.PutObjectNotifying(r.Context(), sk, key, r.Body, r.ContentLength, contentType, nil, func(obj metadata.ObjectRecord) []events.OutboxRecord {
+		return s.outboxRecords(metadata.EventObjectCreated, bucket, key, obj.VersionID, "", map[string]any{
+			"bucket": bucket, "key": key, "size": obj.Size,
+		})
+	})
 	if err != nil {
 		if err == metadata.ErrQuotaExceeded {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "quota exceeded"})
@@ -857,8 +876,8 @@ func (s *Server) handleUploadObjectJSON(w http.ResponseWriter, r *http.Request) 
 	} else if uploadDelta < 0 {
 		_ = s.meta.AddUsageBytes(0, -uploadDelta)
 	}
+	s.noteOutboxDropped(dropped)
 	s.logActivity(r, metadata.ActionObjectUploaded, "object", bucket+"/"+key)
-	s.emitEvent(metadata.EventObjectCreated, map[string]any{"bucket": bucket, "key": key, "size": rec.Size})
 	writeJSON(w, http.StatusOK, map[string]any{"object": rec})
 }
 
@@ -916,24 +935,26 @@ func (s *Server) deleteObjectNow(w http.ResponseWriter, r *http.Request, logical
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	if moved, tr, err := s.maybeSoftDelete(r, storageKey, key, versionID); err != nil {
+	delEv := s.outboxRecords(metadata.EventObjectDeleted, logicalBucket, key, versionID, "", map[string]any{"bucket": logicalBucket, "key": key})
+	if moved, tr, dropped, err := s.maybeSoftDelete(r, storageKey, key, versionID, delEv); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	} else if moved {
+		s.noteOutboxDropped(dropped)
 		s.logActivity(r, metadata.ActionObjectDeleted, "object", logicalBucket+"/"+key)
-		s.emitEvent(metadata.EventObjectDeleted, map[string]any{"bucket": logicalBucket, "key": key, "trash_id": tr.ID})
 		writeJSON(w, http.StatusOK, map[string]any{"trashed": true, "trash_id": tr.ID})
 		return
 	}
-	if err := s.svc.DeleteObject(r.Context(), storageKey, key, versionID); err != nil {
+	dropped, err := s.svc.DeleteObjectNotifying(r.Context(), storageKey, key, versionID, delEv)
+	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 		return
 	}
+	s.noteOutboxDropped(dropped)
 	if obj.Size > 0 {
 		_ = s.meta.AddUsageBytes(0, obj.Size)
 	}
 	s.logActivity(r, metadata.ActionObjectDeleted, "object", logicalBucket+"/"+key)
-	s.emitEvent(metadata.EventObjectDeleted, map[string]any{"bucket": logicalBucket, "key": key})
 	w.WriteHeader(http.StatusNoContent)
 }
 

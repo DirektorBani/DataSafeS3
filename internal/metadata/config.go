@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -124,13 +125,30 @@ func (s *Store) PutSystemConfig(cfg SystemConfig) error {
 }
 
 func (s *Store) PutTrash(rec TrashRecord) error {
-	return s.db.Update(func(tx *bolt.Tx) error {
+	_, err := s.putTrash(rec, nil)
+	return err
+}
+
+// PutTrashWithOutbox writes the trash row and notification rows in one bolt transaction.
+func (s *Store) PutTrashWithOutbox(rec TrashRecord, evs []events.OutboxRecord) (int, error) {
+	return s.putTrash(rec, evs)
+}
+
+func (s *Store) putTrash(rec TrashRecord, evs []events.OutboxRecord) (int, error) {
+	var dropped int
+	err := s.db.Update(func(tx *bolt.Tx) error {
 		data, err := json.Marshal(rec)
 		if err != nil {
 			return err
 		}
-		return tx.Bucket([]byte("trash")).Put([]byte(rec.ID), data)
+		if err := tx.Bucket([]byte("trash")).Put([]byte(rec.ID), data); err != nil {
+			return err
+		}
+		n, err := insertOutboxBolt(tx, evs, s.maxPending())
+		dropped = n
+		return err
 	})
+	return dropped, err
 }
 
 func (s *Store) GetTrash(id string) (TrashRecord, error) {

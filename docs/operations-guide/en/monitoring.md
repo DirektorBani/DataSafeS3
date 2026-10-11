@@ -38,6 +38,12 @@ Published by the storage process that runs the cluster monitor (probes configure
 | `datasafe_cluster_node_up{node_id,address,role}` | 1 if that node is up |
 | `datasafe_cluster_node_status{…,status}` | Per-node status code |
 | `datasafe_ha_enabled` / `datasafe_ha_is_leader` | Storage HA election on this process |
+| `datasafe_events_outbox_pending` | Notification rows waiting for delivery |
+| `datasafe_events_delivered_total{sink}` | Successful sink deliveries |
+| `datasafe_events_failed_total{sink,reason}` | Failed delivery attempts |
+| `datasafe_events_dead_total{sink}` | Sinks that exhausted retries |
+| `datasafe_events_delivery_lag_seconds{sink}` | Insert to successful delivery |
+| `datasafe_events_dropped_total{reason}` | Rows dropped so object writes are not blocked |
 
 Configure cluster members in Admin API / console **Cluster** settings so the monitor has addresses to probe. Scraping each node’s `/metrics` (file_sd) is optional but useful when comparing host disk/CPU across members.
 

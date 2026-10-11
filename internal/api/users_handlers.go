@@ -283,7 +283,14 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	if rec.TenantID == "" {
 		rec.TenantID = metadata.DefaultTenantID
 	}
-	if err := s.meta.PutUser(rec); err != nil {
+	evs := s.outboxRecords(metadata.EventUserCreated, "", "", "", rec.TenantID, map[string]any{"username": req.Username, "user_id": id, "role": req.Role})
+	var dropped int
+	if wmut, ok := s.meta.(metadata.OutboxMutator); ok && len(evs) > 0 {
+		dropped, err = wmut.PutUserWithOutbox(rec, evs)
+	} else {
+		err = s.meta.PutUser(rec)
+	}
+	if err != nil {
 		if err == metadata.ErrUserExists {
 			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
 			return
@@ -291,8 +298,8 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	s.noteOutboxDropped(dropped)
 	s.logActivity(r, metadata.ActionUserCreated, "user", req.Username)
-	s.emitEvent(metadata.EventUserCreated, map[string]any{"username": req.Username, "user_id": id, "role": req.Role})
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"id": id, "user_id": id, "username": req.Username,
 		"email": req.Email, "role": req.Role, "status": req.Status,

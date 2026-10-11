@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/jackc/pgx/v5"
 )
@@ -13,16 +14,31 @@ import (
 const sharedLinkSelectCols = `id, bucket, key, token, token_hash, expires_at, max_downloads, download_count, created_by, created_at`
 
 func (s *Store) PutSharedLink(rec metadata.SharedLinkRecord) error {
+	_, err := s.putSharedLink(rec, nil)
+	return err
+}
+
+func (s *Store) PutSharedLinkWithOutbox(rec metadata.SharedLinkRecord, evs []events.OutboxRecord) (int, error) {
+	return s.putSharedLink(rec, evs)
+}
+
+func (s *Store) putSharedLink(rec metadata.SharedLinkRecord, evs []events.OutboxRecord) (int, error) {
 	hash := metadata.HashShareToken(rec.Token)
 	if hash == "" {
-		return errors.New("share token required")
+		return 0, errors.New("share token required")
 	}
 	ctx := context.Background()
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO shared_links (id, bucket, key, token, token_hash, expires_at, max_downloads, download_count, created_by, created_at)
-		VALUES ($1,$2,$3,NULL,$4,$5,$6,$7,$8,$9)`,
-		rec.ID, rec.Bucket, rec.Key, hash, rec.ExpiresAt, rec.MaxDownloads, rec.DownloadCount, rec.CreatedBy, rec.CreatedAt)
-	return err
+	run := func(q pgExec) error {
+		_, err := q.Exec(ctx, `
+			INSERT INTO shared_links (id, bucket, key, token, token_hash, expires_at, max_downloads, download_count, created_by, created_at)
+			VALUES ($1,$2,$3,NULL,$4,$5,$6,$7,$8,$9)`,
+			rec.ID, rec.Bucket, rec.Key, hash, rec.ExpiresAt, rec.MaxDownloads, rec.DownloadCount, rec.CreatedBy, rec.CreatedAt)
+		return err
+	}
+	if len(evs) == 0 {
+		return 0, run(s.pool)
+	}
+	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error { return run(tx) })
 }
 
 func (s *Store) GetSharedLink(id string) (metadata.SharedLinkRecord, error) {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -48,14 +49,25 @@ func (rec SharedLinkRecord) Active(now time.Time) error {
 }
 
 func (s *Store) PutSharedLink(rec SharedLinkRecord) error {
+	_, err := s.putSharedLink(rec, nil)
+	return err
+}
+
+// PutSharedLinkWithOutbox writes the share and notification rows in one bolt transaction.
+func (s *Store) PutSharedLinkWithOutbox(rec SharedLinkRecord, evs []events.OutboxRecord) (int, error) {
+	return s.putSharedLink(rec, evs)
+}
+
+func (s *Store) putSharedLink(rec SharedLinkRecord, evs []events.OutboxRecord) (int, error) {
 	hash := HashShareToken(rec.Token)
 	if hash == "" {
-		return errors.New("share token required")
+		return 0, errors.New("share token required")
 	}
 	storeRec := rec
 	storeRec.Token = ""
 	storeRec.TokenHash = hash
-	return s.db.Update(func(tx *bolt.Tx) error {
+	var dropped int
+	err := s.db.Update(func(tx *bolt.Tx) error {
 		data, err := json.Marshal(storeRec)
 		if err != nil {
 			return err
@@ -64,8 +76,14 @@ func (s *Store) PutSharedLink(rec SharedLinkRecord) error {
 		if err := b.Put([]byte(rec.ID), data); err != nil {
 			return err
 		}
-		return b.Put([]byte("shared_link_token_hash:"+hash), []byte(rec.ID))
+		if err := b.Put([]byte("shared_link_token_hash:"+hash), []byte(rec.ID)); err != nil {
+			return err
+		}
+		n, err := insertOutboxBolt(tx, evs, s.maxPending())
+		dropped = n
+		return err
 	})
+	return dropped, err
 }
 
 func (s *Store) GetSharedLink(id string) (SharedLinkRecord, error) {

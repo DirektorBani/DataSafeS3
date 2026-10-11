@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"path"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 )
 
@@ -89,12 +91,19 @@ func (s *Server) handleCreateSharedLink(w http.ResponseWriter, r *http.Request) 
 		exp := now.Add(time.Duration(req.ExpiresInSec) * time.Second)
 		rec.ExpiresAt = &exp
 	}
-	if err := s.meta.PutSharedLink(rec); err != nil {
+	evs := s.outboxRecords("ShareCreated", bucket, req.Key, "", "", map[string]any{"bucket": bucket, "key": req.Key})
+	var dropped int
+	if wmut, ok := s.meta.(metadata.OutboxMutator); ok && len(evs) > 0 {
+		dropped, err = wmut.PutSharedLinkWithOutbox(rec, evs)
+	} else {
+		err = s.meta.PutSharedLink(rec)
+	}
+	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	s.noteOutboxDropped(dropped)
 	s.logActivity(r, metadata.ActionShareCreated, "share", bucket+"/"+req.Key)
-	s.emitEvent("ShareCreated", map[string]any{"bucket": bucket, "key": req.Key})
 	respShare := rec
 	respShare.Token = token
 	respShare.TokenHash = ""
@@ -418,7 +427,15 @@ func (s *Server) handleCreateTenantUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	s.logActivity(r, metadata.ActionUserCreated, "user", req.Username)
-	s.emitEvent(metadata.EventUserCreated, map[string]any{"username": req.Username, "user_id": id, "role": metadata.RoleUser, "tenant_id": tenantID})
+	if evs := s.outboxRecords(metadata.EventUserCreated, "", "", "", tenantID, map[string]any{"username": req.Username, "user_id": id, "role": metadata.RoleUser, "tenant_id": tenantID}); len(evs) > 0 {
+		if st, ok := s.meta.(events.OutboxStore); ok {
+			if dropped, insErr := st.InsertOutbox(r.Context(), evs[0]); insErr != nil {
+				slog.Error("event outbox insert failed after tenant user create", "err", insErr)
+			} else {
+				s.noteOutboxDropped(dropped)
+			}
+		}
+	}
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"user": map[string]any{
 			"id": id, "user_id": id, "username": req.Username,

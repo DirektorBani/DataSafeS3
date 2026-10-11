@@ -4,6 +4,24 @@ All notable changes to DataSafeS3 are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Durable event outbox.** Admin notification events (object, bucket, user, share, multipart, trash) are stored in the metadata backend before delivery: bolt buckets `event_outbox` and `event_outbox_due`, or Postgres table `event_outbox` (migration `020`). One dispatcher per process delivers to webhook and NATS with exponential backoff and jitter, per-sink attempts, and `dead` after `STORAGE_EVENTS_MAX_ATTEMPTS`. Delivered rows expire after `STORAGE_EVENTS_RETENTION` (default `24h`); dead and cap-dropped rows after `STORAGE_EVENTS_DEAD_RETENTION` (default `168h`). `STORAGE_EVENTS_MAX_PENDING` (default `100000`) drops the oldest pending rows, increments `datasafe_events_dropped_total`, and writes Activity `events_outbox_dropped`. Object writes are not failed by that cap. In HA only the Postgres leader dispatches. None of the `STORAGE_EVENTS_*` variables are required. See [EN](docs/operations-guide/en/event-outbox.md) · [RU](docs/operations-guide/ru/event-outbox.md). ADR-0002 is Accepted.
+
+### Changed
+
+- Webhook and NATS delivery goes through the outbox. `STORAGE_NATS_URL` and console webhook settings are unchanged. An empty NATS URL does not register a sink and does not dial. A webhook sink is registered only while at least one webhook is enabled. With no configured sink, admin mutations do not write outbox rows, and events from that period are not replayed later. A webhook HTTP failure, including non-2xx, is retried until the attempt limit (4xx classification is a later step). Each webhook keeps one delivery-history row per outbox event; retries update that row.
+- Removed the no-op RabbitMQ and Kafka sinks from process wiring. There is one `events.EventSink` interface. Kafka is not a dependency.
+
+### Honesty
+
+- This entry is unreleased. `VERSION` is still 1.4.1. No tag.
+- S3 SigV4 puts and deletes do not write outbox rows. Bucket-notification webhooks and gateway notifications are not on the outbox.
+- Object bytes are written before the metadata transaction. Soft-delete commits the event with the original-object delete, after the trash copy and trash row. Multipart completion deletes the upload record in a following transaction. Creating a tenant member writes the user, membership, and groups first, then inserts the event. Bucket create is one transaction with the bucket row; visibility and team updates after that are separate.
+- Delivery is at-least-once. A second leader that appears while a publish is in flight can deliver the same row again. Followers do not dispatch. Bolt has no leader lock, so the single process always dispatches.
+- Default single-node still opens no broker connection. With no NATS URL and no enabled webhook it also writes no outbox rows.
+- S3 SigV4 object events and bucket-notification webhooks move onto this outbox in E03 (needed for Kafka). They are not emitted in this change.
+
 ## [1.4.1] - 2026-10-11
 
 Patch on **v1.4.0**. No new product features.

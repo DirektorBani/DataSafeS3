@@ -4,7 +4,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -27,29 +30,53 @@ func scanObject(row interface {
 }
 
 func (s *Store) PutObject(rec metadata.ObjectRecord) error {
-	return s.putObject(rec, false)
+	_, err := s.putObject(rec, false, nil)
+	return err
 }
 
 func (s *Store) PutObjectVersioned(rec metadata.ObjectRecord) error {
-	return s.putObject(rec, true)
+	_, err := s.putObject(rec, true, nil)
+	return err
 }
 
-func (s *Store) putObject(rec metadata.ObjectRecord, versioned bool) error {
+func (s *Store) PutObjectWithOutbox(rec metadata.ObjectRecord, evs []events.OutboxRecord) (int, error) {
+	return s.putObject(rec, false, evs)
+}
+
+func (s *Store) PutObjectVersionedWithOutbox(rec metadata.ObjectRecord, evs []events.OutboxRecord) (int, error) {
+	return s.putObject(rec, true, evs)
+}
+
+func (s *Store) putObject(rec metadata.ObjectRecord, versioned bool, evs []events.OutboxRecord) (int, error) {
 	rec.Bucket = s.normalizeObjectBucket(rec.Bucket)
 	ctx := context.Background()
+	if len(evs) == 0 {
+		return 0, s.putObjectQ(ctx, s.pool, rec, versioned)
+	}
+	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error {
+		return s.putObjectQ(ctx, tx, rec, versioned)
+	})
+}
+
+type pgExec interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+func (s *Store) putObjectQ(ctx context.Context, q pgExec, rec metadata.ObjectRecord, versioned bool) error {
 	meta, _ := marshalJSON(rec.Metadata)
 	tags, _ := marshalJSON(rec.Tags)
 	if versioned {
 		if rec.VersionID == "" {
 			return metadata.ErrNotFound
 		}
-		_, err := s.pool.Exec(ctx, `
+		_, err := q.Exec(ctx, `
 			UPDATE objects SET is_latest=FALSE WHERE bucket=$1 AND key=$2`,
 			rec.Bucket, rec.Key)
 		if err != nil {
 			return err
 		}
-		_, err = s.pool.Exec(ctx, `
+		_, err = q.Exec(ctx, `
 			INSERT INTO objects (bucket, key, version_id, size, etag, content_type, last_modified,
 				scheduled_delete_at, is_delete_marker, legal_hold, retention_until, storage_class,
 				metadata, tags, created_at, is_latest)
@@ -63,11 +90,11 @@ func (s *Store) putObject(rec metadata.ObjectRecord, versioned bool) error {
 			timestamptzPtr(rec.RetentionUntil), rec.StorageClass, meta, tags, rec.CreatedAt)
 		return err
 	}
-	_, err := s.pool.Exec(ctx, `DELETE FROM objects WHERE bucket=$1 AND key=$2`, rec.Bucket, rec.Key)
+	_, err := q.Exec(ctx, `DELETE FROM objects WHERE bucket=$1 AND key=$2`, rec.Bucket, rec.Key)
 	if err != nil {
 		return err
 	}
-	_, err = s.pool.Exec(ctx, `
+	_, err = q.Exec(ctx, `
 		INSERT INTO objects (bucket, key, version_id, size, etag, content_type, last_modified,
 			scheduled_delete_at, is_delete_marker, legal_hold, retention_until, storage_class,
 			metadata, tags, created_at, is_latest)
@@ -124,8 +151,27 @@ func (s *Store) DeleteObject(bucket, key string) error {
 }
 
 func (s *Store) DeleteObjectVersion(bucket, key, versionID string, versioningEnabled bool) error {
+	_, err := s.deleteObjectVersion(bucket, key, versionID, versioningEnabled, nil)
+	return err
+}
+
+func (s *Store) DeleteObjectVersionWithOutbox(bucket, key, versionID string, versioningEnabled bool, evs []events.OutboxRecord) (int, error) {
+	return s.deleteObjectVersion(bucket, key, versionID, versioningEnabled, evs)
+}
+
+func (s *Store) deleteObjectVersion(bucket, key, versionID string, versioningEnabled bool, evs []events.OutboxRecord) (int, error) {
 	bucket = s.normalizeObjectBucket(bucket)
 	ctx := context.Background()
+	run := func(q pgExec) error {
+		return s.deleteObjectVersionQ(ctx, q, bucket, key, versionID, versioningEnabled)
+	}
+	if len(evs) == 0 {
+		return 0, run(s.pool)
+	}
+	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error { return run(tx) })
+}
+
+func (s *Store) deleteObjectVersionQ(ctx context.Context, q pgExec, bucket, key, versionID string, versioningEnabled bool) error {
 	if versioningEnabled {
 		rec := metadata.ObjectRecord{
 			Bucket: bucket, Key: key, VersionID: versionID,
@@ -134,9 +180,9 @@ func (s *Store) DeleteObjectVersion(bucket, key, versionID string, versioningEna
 		if versionID == "" {
 			rec.VersionID = newVersionID()
 		}
-		return s.PutObjectVersioned(rec)
+		return s.putObjectQ(ctx, q, rec, true)
 	}
-	tag, err := s.pool.Exec(ctx, `DELETE FROM objects WHERE bucket=$1 AND key=$2`, bucket, key)
+	tag, err := q.Exec(ctx, `DELETE FROM objects WHERE bucket=$1 AND key=$2`, bucket, key)
 	if err != nil {
 		return err
 	}

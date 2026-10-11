@@ -41,6 +41,8 @@ const (
 	ActionObjectDeleteBlocked = "object_delete_blocked"
 	ActionActivityExported    = "activity_exported"
 	ActionInventoryExported   = "inventory_exported"
+	// Outbox pending cap evicted older rows so object writes could continue.
+	ActionEventsOutboxDropped = "events_outbox_dropped"
 )
 
 type ActivityRecord struct {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/federation"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/policy"
@@ -31,6 +32,7 @@ type Service struct {
 	// OnObjectEvent is called after successful put/delete/copy (event: put|delete|copy).
 	OnObjectEvent func(event, bucket, key string)
 	// OnBucketNotification delivers bucket-level S3 notification webhooks.
+	// E03 moves this path, and S3 SigV4 object events, onto the durable outbox.
 	OnBucketNotification func(webhookURL, event, bucket, key string, size int64)
 }
 
@@ -287,6 +289,20 @@ func (s *Service) resolveBucketOwner(principal string) (owner, ownerID, teamID, 
 }
 
 func (s *Service) CreateBucket(ctx context.Context, name, owner string) error {
+	_, err := s.createBucket(ctx, name, owner, nil)
+	return err
+}
+
+// CreateBucketNotifying creates the bucket and writes ev in the same metadata transaction.
+func (s *Service) CreateBucketNotifying(ctx context.Context, name, owner string, ev *events.OutboxRecord) (int, error) {
+	var evs []events.OutboxRecord
+	if ev != nil {
+		evs = []events.OutboxRecord{*ev}
+	}
+	return s.createBucket(ctx, name, owner, evs)
+}
+
+func (s *Service) createBucket(ctx context.Context, name, owner string, evs []events.OutboxRecord) (int, error) {
 	ownerName, ownerID, teamID, tenantID := s.resolveBucketOwner(owner)
 	scope := s.bucketScopeForPrincipal(owner)
 	if scope.Kind == metadata.ScopeOwner && ownerID == "" {
@@ -295,7 +311,7 @@ func (s *Service) CreateBucket(ctx context.Context, name, owner string) error {
 	storageKey := metadata.MakeStorageKey(scope, name)
 	backendErr := s.Backend.CreateBucket(storageKey)
 	if backendErr != nil && backendErr != storage.ErrBucketExists {
-		return backendErr
+		return 0, backendErr
 	}
 	rec := metadata.BucketRecord{
 		StorageKey: storageKey,
@@ -313,21 +329,45 @@ func (s *Service) CreateBucket(ctx context.Context, name, owner string) error {
 	if rec.TenantID == "" {
 		rec.TenantID = metadata.DefaultTenantID
 	}
-	if err := s.Meta.PutBucket(rec); err != nil {
+	for i := range evs {
+		if evs[i].TenantID == "" {
+			evs[i].TenantID = rec.TenantID
+		}
+		if evs[i].Bucket == "" {
+			evs[i].Bucket = rec.Name
+		}
+	}
+	dropped, err := s.commitBucket(rec, evs)
+	if err != nil {
 		if backendErr == nil {
 			_ = s.Backend.DeleteBucket(storageKey)
 		}
-		return err
+		return 0, err
 	}
-	return nil
+	return dropped, nil
 }
 
 func (s *Service) DeleteBucket(ctx context.Context, storageKey string) error {
+	_, err := s.deleteBucket(ctx, storageKey, nil)
+	return err
+}
+
+// DeleteBucketNotifying removes bucket metadata and writes evs in the same transaction,
+// then deletes the backend directory.
+func (s *Service) DeleteBucketNotifying(ctx context.Context, storageKey string, evs []events.OutboxRecord) (int, error) {
+	return s.deleteBucket(ctx, storageKey, evs)
+}
+
+func (s *Service) deleteBucket(ctx context.Context, storageKey string, evs []events.OutboxRecord) (int, error) {
 	storageKey = s.normalizeBucketKey(storageKey)
-	if err := s.Meta.DeleteBucket(storageKey); err != nil {
-		return err
+	dropped, err := s.commitDeleteBucket(storageKey, evs)
+	if err != nil {
+		return 0, err
 	}
-	return s.Backend.DeleteBucket(storageKey)
+	if err := s.Backend.DeleteBucket(storageKey); err != nil {
+		return dropped, err
+	}
+	return dropped, nil
 }
 
 func (s *Service) ListBuckets(ctx context.Context) ([]metadata.BucketRecord, error) {
@@ -356,18 +396,29 @@ func (s *Service) versioningActive(bucket string) bool {
 }
 
 func (s *Service) PutObject(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string, userMeta map[string]string) (metadata.ObjectRecord, error) {
+	rec, _, err := s.putObject(ctx, bucket, key, r, size, contentType, userMeta, nil)
+	return rec, err
+}
+
+// PutObjectNotifying stores the object and, when build returns rows, writes them
+// in the same metadata transaction as the object record.
+func (s *Service) PutObjectNotifying(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string, userMeta map[string]string, build func(metadata.ObjectRecord) []events.OutboxRecord) (metadata.ObjectRecord, int, error) {
+	return s.putObject(ctx, bucket, key, r, size, contentType, userMeta, build)
+}
+
+func (s *Service) putObject(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string, userMeta map[string]string, build func(metadata.ObjectRecord) []events.OutboxRecord) (metadata.ObjectRecord, int, error) {
 	bucket = s.normalizeBucketKey(bucket)
 	bucketRec, err := s.Meta.GetBucketByKey(bucket)
 	if err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	if err := s.checkQuota(bucketRec, bucket, key, size); err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	if s.SSE != nil {
 		encReader, err := s.SSE.EncryptReader(r)
 		if err != nil {
-			return metadata.ObjectRecord{}, err
+			return metadata.ObjectRecord{}, 0, err
 		}
 		r = encReader
 	}
@@ -393,7 +444,7 @@ func (s *Service) PutObject(ctx context.Context, bucket, key string, r io.Reader
 		versionID = ""
 	}
 	if err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	var info storage.ObjectInfo
 	if versionedPut || (suspended && versionID != "") {
@@ -402,7 +453,7 @@ func (s *Service) PutObject(ctx context.Context, bucket, key string, r io.Reader
 		info, err = s.Backend.StatObject(ctx, bucket, key)
 	}
 	if err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	rec := metadata.ObjectRecord{
 		Bucket:       bucket,
@@ -427,20 +478,18 @@ func (s *Service) PutObject(ctx context.Context, bucket, key string, r io.Reader
 			rec.CreatedAt = existing.CreatedAt
 		}
 	}
-	if versionedPut {
-		err = s.Meta.PutObjectVersioned(rec)
-	} else if suspended && versionID != "" {
-		err = s.Meta.PutObjectVersioned(rec)
-	} else {
-		err = s.Meta.PutObject(rec)
+	var evs []events.OutboxRecord
+	if build != nil {
+		evs = build(rec)
 	}
+	dropped, err := s.commitObjectRecord(rec, versionedPut || (suspended && versionID != ""), evs)
 	if err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	if s.OnObjectEvent != nil {
 		s.OnObjectEvent(metadata.ReplEventPut, bucket, key)
 	}
-	return rec, nil
+	return rec, dropped, nil
 }
 
 func (s *Service) purgeObjectData(ctx context.Context, bucket, key string) {
@@ -579,9 +628,19 @@ func (s *Service) checkDeleteAllowed(bucket, key, versionID string) error {
 }
 
 func (s *Service) DeleteObject(ctx context.Context, bucket, key, versionID string) error {
+	_, err := s.deleteObject(ctx, bucket, key, versionID, nil)
+	return err
+}
+
+// DeleteObjectNotifying deletes object metadata and writes evs in that same transaction.
+func (s *Service) DeleteObjectNotifying(ctx context.Context, bucket, key, versionID string, evs []events.OutboxRecord) (int, error) {
+	return s.deleteObject(ctx, bucket, key, versionID, evs)
+}
+
+func (s *Service) deleteObject(ctx context.Context, bucket, key, versionID string, evs []events.OutboxRecord) (int, error) {
 	bucket = s.normalizeBucketKey(bucket)
 	if err := s.checkDeleteAllowed(bucket, key, versionID); err != nil {
-		return err
+		return 0, err
 	}
 	versioning := s.bucketVersioning(bucket)
 	suspended := s.bucketVersioningSuspended(bucket)
@@ -595,27 +654,29 @@ func (s *Service) DeleteObject(ctx context.Context, bucket, key, versionID strin
 			IsDeleteMarker: true,
 			LastModified:   time.Now().UTC(),
 		}
-		if err := s.Meta.PutObjectVersioned(rec); err != nil {
-			return err
+		dropped, err := s.commitObjectRecord(rec, true, evs)
+		if err != nil {
+			return 0, err
 		}
 		if s.OnObjectEvent != nil {
 			s.OnObjectEvent(metadata.ReplEventDelete, bucket, key)
 		}
-		return nil
+		return dropped, nil
 	}
 	rec, err := s.Meta.GetObjectVersion(bucket, key, versionID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if rec.IsDeleteMarker {
-		return metadata.ErrNotFound
+		return 0, metadata.ErrNotFound
 	}
 	vid := rec.VersionID
-	if err := s.Meta.DeleteObjectVersion(bucket, key, versionID, versioning); err != nil {
-		return err
+	dropped, err := s.commitDeleteVersion(bucket, key, versionID, versioning, evs)
+	if err != nil {
+		return 0, err
 	}
 	if err := s.Backend.DeleteObjectVersion(ctx, bucket, key, vid); err != nil && err != storage.ErrNotFound {
-		return err
+		return dropped, err
 	}
 	if !versioning {
 		_ = s.Backend.DeleteAllObjectVersions(ctx, bucket, key)
@@ -623,7 +684,7 @@ func (s *Service) DeleteObject(ctx context.Context, bucket, key, versionID strin
 	if s.OnObjectEvent != nil {
 		s.OnObjectEvent(metadata.ReplEventDelete, bucket, key)
 	}
-	return nil
+	return dropped, nil
 }
 
 func (s *Service) ListObjectVersions(ctx context.Context, bucket, prefix string, maxKeys int) ([]metadata.ObjectRecord, error) {
@@ -736,28 +797,39 @@ func (s *Service) UploadPart(ctx context.Context, bucket, key, uploadID string, 
 }
 
 func (s *Service) CompleteMultipartUpload(ctx context.Context, bucket, key, uploadID string, parts []storage.PartInfo) (metadata.ObjectRecord, error) {
+	rec, _, err := s.completeMultipart(ctx, bucket, key, uploadID, parts, nil)
+	return rec, err
+}
+
+// CompleteMultipartNotifying completes the upload and writes the events build returns
+// in the same transaction as the object metadata row. DeleteMultipart stays a following write.
+func (s *Service) CompleteMultipartNotifying(ctx context.Context, bucket, key, uploadID string, parts []storage.PartInfo, build func(metadata.ObjectRecord) []events.OutboxRecord) (metadata.ObjectRecord, int, error) {
+	return s.completeMultipart(ctx, bucket, key, uploadID, parts, build)
+}
+
+func (s *Service) completeMultipart(ctx context.Context, bucket, key, uploadID string, parts []storage.PartInfo, build func(metadata.ObjectRecord) []events.OutboxRecord) (metadata.ObjectRecord, int, error) {
 	bucket = s.normalizeBucketKey(bucket)
 	mp, err := s.Meta.GetMultipart(uploadID)
 	if err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	if mp.Bucket != bucket || mp.Key != key {
-		return metadata.ObjectRecord{}, metadata.ErrNotFound
+		return metadata.ObjectRecord{}, 0, metadata.ErrNotFound
 	}
 	etag, err := s.Backend.CompleteMultipartUpload(ctx, bucket, key, uploadID, parts)
 	if err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	info, err := s.Backend.StatObject(ctx, bucket, key)
 	if err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	bucketRec, err := s.Meta.GetBucketByKey(bucket)
 	if err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	if err := s.checkQuota(bucketRec, bucket, key, info.Size); err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	versionID := newVersionID()
 	rec := metadata.ObjectRecord{
@@ -768,30 +840,34 @@ func (s *Service) CompleteMultipartUpload(ctx context.Context, bucket, key, uplo
 		VersionID:    versionID,
 		LastModified: info.LastModified,
 	}
-	if bucketRec.Versioning {
+	versioned := bucketRec.Versioning
+	if versioned {
 		// Move completed object into versioned path.
 		rc, _, err := s.Backend.GetObject(ctx, bucket, key)
 		if err != nil {
-			return metadata.ObjectRecord{}, err
+			return metadata.ObjectRecord{}, 0, err
 		}
 		_, err = s.Backend.PutObjectVersion(ctx, bucket, key, versionID, rc, info.Size, "")
 		rc.Close()
 		if err != nil {
-			return metadata.ObjectRecord{}, err
+			return metadata.ObjectRecord{}, 0, err
 		}
 		_ = s.Backend.DeleteObject(ctx, bucket, key)
 		info, _ = s.Backend.StatObjectVersion(ctx, bucket, key, versionID)
 		rec.LastModified = info.LastModified
-		err = s.Meta.PutObjectVersioned(rec)
 	} else {
 		rec.VersionID = ""
-		err = s.Meta.PutObject(rec)
 	}
+	var evs []events.OutboxRecord
+	if build != nil {
+		evs = build(rec)
+	}
+	dropped, err := s.commitObjectRecord(rec, versioned, evs)
 	if err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	_ = s.Meta.DeleteMultipart(uploadID)
-	return rec, nil
+	return rec, dropped, nil
 }
 
 func (s *Service) AbortMultipartUpload(ctx context.Context, bucket, key, uploadID string) error {
@@ -985,26 +1061,38 @@ func (s *Service) EnsureTrashBucket(ctx context.Context) error {
 }
 
 func (s *Service) MoveToTrash(ctx context.Context, bucket, key, versionID, deletedBy string) (metadata.TrashRecord, error) {
+	tr, _, err := s.moveToTrash(ctx, bucket, key, versionID, deletedBy, nil)
+	return tr, err
+}
+
+// MoveToTrashNotifying moves the object to trash. build, when set, runs after the
+// trash row exists and its events are committed with the original object delete.
+// The trash copy and trash row are earlier transactions.
+func (s *Service) MoveToTrashNotifying(ctx context.Context, bucket, key, versionID, deletedBy string, build func(metadata.TrashRecord) []events.OutboxRecord) (metadata.TrashRecord, int, error) {
+	return s.moveToTrash(ctx, bucket, key, versionID, deletedBy, build)
+}
+
+func (s *Service) moveToTrash(ctx context.Context, bucket, key, versionID, deletedBy string, build func(metadata.TrashRecord) []events.OutboxRecord) (metadata.TrashRecord, int, error) {
 	bucket = s.normalizeBucketKey(bucket)
 	if err := s.EnsureTrashBucket(ctx); err != nil {
-		return metadata.TrashRecord{}, err
+		return metadata.TrashRecord{}, 0, err
 	}
 	src, err := s.Meta.GetObjectVersion(bucket, key, versionID)
 	if err != nil {
-		return metadata.TrashRecord{}, err
+		return metadata.TrashRecord{}, 0, err
 	}
 	if src.IsDeleteMarker {
-		return metadata.TrashRecord{}, metadata.ErrNotFound
+		return metadata.TrashRecord{}, 0, metadata.ErrNotFound
 	}
 	srcVID := src.VersionID
 	rc, _, err := s.Backend.GetObjectVersion(ctx, bucket, key, srcVID)
 	if err != nil {
-		return metadata.TrashRecord{}, err
+		return metadata.TrashRecord{}, 0, err
 	}
 	body, err := io.ReadAll(rc)
 	rc.Close()
 	if err != nil {
-		return metadata.TrashRecord{}, err
+		return metadata.TrashRecord{}, 0, err
 	}
 	trashKey := bucket + "/" + key + "/" + fmt.Sprintf("%d", time.Now().UTC().UnixNano())
 	if srcVID != "" {
@@ -1012,7 +1100,7 @@ func (s *Service) MoveToTrash(ctx context.Context, bucket, key, versionID, delet
 	}
 	_, err = s.PutObject(ctx, metadata.TrashBucketName, trashKey, bytes.NewReader(body), src.Size, src.ContentType, src.Metadata)
 	if err != nil {
-		return metadata.TrashRecord{}, err
+		return metadata.TrashRecord{}, 0, err
 	}
 	tr := metadata.TrashRecord{
 		ID:             newVersionID(),
@@ -1025,32 +1113,48 @@ func (s *Service) MoveToTrash(ctx context.Context, bucket, key, versionID, delet
 		DeletedAt:      time.Now().UTC(),
 	}
 	if err := s.Meta.PutTrash(tr); err != nil {
-		return metadata.TrashRecord{}, err
+		return metadata.TrashRecord{}, 0, err
 	}
-	if err := s.DeleteObject(ctx, bucket, key, versionID); err != nil {
-		return metadata.TrashRecord{}, err
+	var evs []events.OutboxRecord
+	if build != nil {
+		evs = build(tr)
 	}
-	return tr, nil
+	dropped, err := s.deleteObject(ctx, bucket, key, versionID, evs)
+	if err != nil {
+		return metadata.TrashRecord{}, 0, err
+	}
+	return tr, dropped, nil
 }
 
 func (s *Service) RestoreFromTrash(ctx context.Context, trashID string) (metadata.ObjectRecord, error) {
+	rec, _, err := s.restoreFromTrash(ctx, trashID, nil)
+	return rec, err
+}
+
+// RestoreFromTrashNotifying restores the object and writes the events build returns
+// in the same transaction as the restored object metadata.
+func (s *Service) RestoreFromTrashNotifying(ctx context.Context, trashID string, build func(metadata.ObjectRecord) []events.OutboxRecord) (metadata.ObjectRecord, int, error) {
+	return s.restoreFromTrash(ctx, trashID, build)
+}
+
+func (s *Service) restoreFromTrash(ctx context.Context, trashID string, build func(metadata.ObjectRecord) []events.OutboxRecord) (metadata.ObjectRecord, int, error) {
 	tr, err := s.Meta.GetTrash(trashID)
 	if err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	trashBucket := s.normalizeBucketKey(metadata.TrashBucketName)
 	rc, _, err := s.Backend.GetObject(ctx, trashBucket, tr.TrashKey)
 	if err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	defer rc.Close()
-	rec, err := s.PutObject(ctx, tr.OriginalBucket, tr.OriginalKey, rc, tr.Size, "", nil)
+	rec, dropped, err := s.putObject(ctx, tr.OriginalBucket, tr.OriginalKey, rc, tr.Size, "", nil, build)
 	if err != nil {
-		return metadata.ObjectRecord{}, err
+		return metadata.ObjectRecord{}, 0, err
 	}
 	_ = s.Backend.DeleteObject(ctx, trashBucket, tr.TrashKey)
 	_ = s.Meta.DeleteTrash(trashID)
-	return rec, nil
+	return rec, dropped, nil
 }
 
 func (s *Service) PurgeTrashItem(ctx context.Context, trashID string) error {

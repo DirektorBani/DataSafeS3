@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/extensions"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/observability"
@@ -97,15 +98,17 @@ func (s *Server) handleRestoreTrash(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}
-	rec, err := s.svc.RestoreFromTrash(r.Context(), id)
+	rec, dropped, err := s.svc.RestoreFromTrashNotifying(r.Context(), id, func(obj metadata.ObjectRecord) []events.OutboxRecord {
+		return s.outboxRecords(metadata.EventObjectCreated, tr.OriginalBucket, tr.OriginalKey, obj.VersionID, "", map[string]any{
+			"bucket": tr.OriginalBucket, "key": tr.OriginalKey,
+		})
+	})
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
+	s.noteOutboxDropped(dropped)
 	s.logActivity(r, metadata.ActionTrashRestored, "object", tr.OriginalBucket+"/"+tr.OriginalKey)
-	s.emitEvent(metadata.EventObjectCreated, map[string]any{
-		"bucket": tr.OriginalBucket, "key": tr.OriginalKey,
-	})
 	writeJSON(w, http.StatusOK, map[string]any{"object": rec})
 }
 
@@ -273,6 +276,7 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	s.syncEventSinks()
 	s.logActivity(r, metadata.ActionSettingsChanged, "webhook", rec.Name)
 	writeJSON(w, http.StatusCreated, map[string]any{"webhook": rec})
 }
@@ -318,6 +322,7 @@ func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	s.syncEventSinks()
 	writeJSON(w, http.StatusOK, map[string]any{"webhook": rec})
 }
 
@@ -327,6 +332,7 @@ func (s *Server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 		return
 	}
+	s.syncEventSinks()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -352,20 +358,36 @@ func (s *Server) validateConsoleToken(token string) (auth.TokenInfo, error) {
 	}, nil
 }
 
-func (s *Server) maybeSoftDelete(r *http.Request, bucket, key, versionID string) (bool, metadata.TrashRecord, error) {
+func (s *Server) maybeSoftDelete(r *http.Request, bucket, key, versionID string, base []events.OutboxRecord) (bool, metadata.TrashRecord, int, error) {
 	cfg, _ := s.meta.GetSystemConfig()
 	if !cfg.SoftDeleteEnabled {
-		return false, metadata.TrashRecord{}, nil
+		return false, metadata.TrashRecord{}, 0, nil
 	}
 	if r.URL.Query().Get("permanent") == "true" {
-		return false, metadata.TrashRecord{}, nil
+		return false, metadata.TrashRecord{}, 0, nil
 	}
 	info, _ := authFrom(r)
-	tr, err := s.svc.MoveToTrash(r.Context(), bucket, key, versionID, info.Username)
-	if err != nil {
-		return false, metadata.TrashRecord{}, err
+	var build func(metadata.TrashRecord) []events.OutboxRecord
+	if len(base) > 0 {
+		build = func(tr metadata.TrashRecord) []events.OutboxRecord {
+			ev := base[0]
+			var payload map[string]any
+			_ = json.Unmarshal(ev.Payload, &payload)
+			if payload == nil {
+				payload = map[string]any{}
+			}
+			payload["trash_id"] = tr.ID
+			raw, _ := json.Marshal(payload)
+			ev.Payload = raw
+			ev.ID = ""
+			return []events.OutboxRecord{events.NormalizeOutbox(ev, time.Now().UTC())}
+		}
 	}
-	return true, tr, nil
+	tr, dropped, err := s.svc.MoveToTrashNotifying(r.Context(), bucket, key, versionID, info.Username, build)
+	if err != nil {
+		return false, metadata.TrashRecord{}, 0, err
+	}
+	return true, tr, dropped, nil
 }
 
 func webhookTemplates() []map[string]string {
