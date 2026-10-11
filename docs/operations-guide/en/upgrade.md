@@ -279,6 +279,16 @@ Manual `docker compose` without the installer: set `STORAGE_METRICS_TOKEN` yours
 
 Grafana on an installer-managed stack keeps working because Prometheus sends the bearer. The console does not; use Grafana for gauges.
 
+### Windows source builds
+
+`.gitattributes` forces LF for `*.sh` and for the other files copied or bind-mounted into Linux containers. Rebuild the storage-server image after pulling. The image strips CR from `docker-entrypoint.sh` and starts through `/usr/local/bin/datasafe-entrypoint`, so a CRLF working copy still boots.
+
+An existing Windows checkout does not rewrite files that this pull does not touch. Refresh shell scripts once so bind-mounted Postgres init (`deploy/docker/postgres/init/02-replication-hba.sh`) is LF before the first database init:
+
+```bash
+git checkout -- "*.sh"
+```
+
 ### Upgrade steps (v1.4.1)
 
 ```bash

@@ -13,6 +13,7 @@ Patch on **v1.4.0**. No new product features.
 - **Release pins** — installer defaults, Compose/Helm/lab image tags, the console package version, and the current-release lines in the docs still pointed at v1.3.0 or older, so a README install pulled the previous release. They now track **v1.4.1**. `scripts/bump-release-version.sh` is the release-time bump; `scripts/check-release-pins.sh` fails CI, and `release.yml` fails the tag push, when those pins do not match `VERSION` (or the pushed tag).
 - **Inventory create** — `POST /api/v1/inventory/jobs` for a bucket name that does not resolve returned **201** with status `failed` and error `not found`. It now returns **404** and does not store a job. The scan uses the same tenant- and owner-scoped resolution as the console and other admin routes, including when another tenant has the same logical name. An unknown `dest_bucket` is **404** as well.
 - **Inventory list** — `GET /api/v1/inventory/jobs` was **405**. It is now an admin-only list, newest first, `limit` default 50 and maximum 100. OpenAPI full spec includes the operation.
+- **Windows source builds** — there was no `.gitattributes`, so Git on Windows (`core.autocrlf=true`) checked `*.sh` out as CRLF. Building the server image then crash-looped with `exec /docker-entrypoint.sh: no such file or directory`. `*.sh` and the other files copied or bind-mounted into Linux containers are forced to LF. The server and lab Dockerfiles strip CR from entrypoints before `chmod`. The server image starts through `/usr/local/bin/datasafe-entrypoint`, which strips again so a bind-mounted `docker-entrypoint.sh` (HA local, local-binary) still runs. The HA object-replicator entrypoint and the Vault overlay do the same for their bind-mounted scripts.
 
 ### Changed
 
@@ -26,6 +27,7 @@ Patch on **v1.4.0**. No new product features.
 - `GET /inventory/jobs` reads the in-process registry (lost on restart) and is capped at 100 rows. It is not a durable export history.
 - Offline lab scripts still fall back to older local image tags when `v1.4.1` is not cached. The preferred default is `v1.4.1`.
 - This patch does not publish container images. `ghcr.io/direktorbani/datasafe-storage-server:v1.4.1` and `datasafe-console:v1.4.1` appear when `release.yml` runs on the git tag.
+- An existing Windows checkout keeps CRLF copies of `*.sh` until Git checks those files out again (`git checkout -- "*.sh"` after pulling). The image build and the entrypoint launcher still strip CR. Postgres init scripts such as `02-replication-hba.sh` are bind-mounted, so they need that refresh (or a fresh clone) before the first database init.
 
 ## [1.4.0] - 2026-08-24
 

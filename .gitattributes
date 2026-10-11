@@ -1,0 +1,21 @@
+# Windows Git defaults to core.autocrlf=true, which checks text out as CRLF.
+# A CR on a shebang makes Linux exec fail with "no such file or directory"
+# (docker-entrypoint.sh, lab entrypoints, Postgres init, object-replicator, Vault).
+*.sh text eol=lf
+
+# Other files copied or bind-mounted into Linux containers.
+deploy/docker/**/*.sql text eol=lf
+deploy/docker/**/*.yml text eol=lf
+deploy/docker/**/*.yaml text eol=lf
+deploy/docker/**/*.json text eol=lf
+deploy/docker/Caddyfile text eol=lf
+deploy/docker/Caddyfile.* text eol=lf
+deploy/docker/Dockerfile text eol=lf
+deploy/docker/Dockerfile.* text eol=lf
+deploy/vault/*.hcl text eol=lf
+deploy/vault/*.env text eol=lf
+deploy/vault/**/*.tpl text eol=lf
+deploy/vault/dev-token text eol=lf
+deploy/cluster/lab/Dockerfile text eol=lf
+deploy/cluster/lab/Dockerfile.* text eol=lf
+deploy/cluster/lab/Caddyfile.lab text eol=lf

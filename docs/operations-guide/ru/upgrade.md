@@ -227,6 +227,16 @@ Opt-in для локальных HTTP sink: `-Dev` / `--dev` / профиль `d
 
 Grafana на стеке установщика продолжает работать, потому что Prometheus передаёт bearer. Консоль bearer не шлёт — смотрите gauges в Grafana.
 
+### Сборка из исходников на Windows
+
+`.gitattributes` фиксирует LF для `*.sh` и остальных файлов, которые копируются или монтируются в Linux-контейнеры. После `git pull` пересоберите образ storage-server. Образ вырезает CR из `docker-entrypoint.sh` и стартует через `/usr/local/bin/datasafe-entrypoint`, поэтому рабочая копия с CRLF всё равно поднимается.
+
+Уже существующий checkout на Windows не переписывает файлы, которых нет в этом pull. Один раз обновите shell-скрипты, чтобы bind-mount init Postgres (`deploy/docker/postgres/init/02-replication-hba.sh`) был с LF до первой инициализации БД:
+
+```bash
+git checkout -- "*.sh"
+```
+
 ### Шаги (v1.4.1)
 
 ```bash

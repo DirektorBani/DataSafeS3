@@ -49,7 +49,7 @@ services:
     volumes:
       - ./deploy/vault/init-kv.sh:/init-kv.sh:ro
       - ./deploy/vault/test-fixtures.env:/vault/config/test-fixtures.env:ro
-    entrypoint: ["/bin/sh", "/init-kv.sh"]
+    entrypoint: ["/bin/sh", "-c", "tr -d '\\015' < /init-kv.sh > /tmp/init-kv.sh && chmod +x /tmp/init-kv.sh && exec /bin/sh /tmp/init-kv.sh"]
     restart: "no"
 
   vault-agent:
@@ -79,7 +79,7 @@ services:
       vault-agent:
         condition: service_healthy
         required: false
-    entrypoint: ["/vault/entrypoint-with-vault-env.sh"]
+    entrypoint: ["/bin/sh", "-c", "tr -d '\\015' < /vault/entrypoint-with-vault-env.sh > /tmp/vault-entry.sh && chmod +x /tmp/vault-entry.sh && exec /tmp/vault-entry.sh"]
     volumes:
       - vault-rendered:/rendered:ro
       - ./deploy/vault/entrypoint-with-vault-env.sh:/vault/entrypoint-with-vault-env.sh:ro

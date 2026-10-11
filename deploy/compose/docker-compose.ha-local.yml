@@ -30,7 +30,8 @@ services:
     profiles: ["ha-standby"]
     image: alpine:3.20
     restart: unless-stopped
-    entrypoint: ["/bin/sh", "/replicate.sh"]
+    # Strip CR: a Windows checkout of object-replicator.sh must still run.
+    entrypoint: ["/bin/sh", "-c", "tr -d '\\015' < /replicate.sh > /tmp/replicate.sh && chmod +x /tmp/replicate.sh && exec /bin/sh /tmp/replicate.sh"]
     volumes:
       - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-primary:/source:ro
       - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-standby-1:/dest1
