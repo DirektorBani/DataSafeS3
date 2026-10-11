@@ -103,6 +103,9 @@ jobs:
             sleep 2
           done
 
+      - name: Finish first-run setup
+        run: bash scripts/ci-complete-setup.sh http://127.0.0.1:8080
+
       - name: Run feature-audit (API smoke subset)
         env:
           DATASAFE_AUDIT_LDAP_URL: ldap://datasafe-ldap-test:389

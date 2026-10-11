@@ -113,6 +113,8 @@ jobs:
           echo "Stack did not become healthy in time"
           docker compose -p datasafe-ci -f docker-compose.yml -f docker-compose.local-data.yml ps
           exit 1
+      - name: Finish first-run setup
+        run: bash scripts/ci-complete-setup.sh http://127.0.0.1:8080
       - name: Install Playwright
         working-directory: web/console
         run: npx playwright install chromium --with-deps
