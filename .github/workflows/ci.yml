@@ -253,7 +253,7 @@ jobs:
           KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
           KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
           KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
-          KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+          KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -269,6 +269,18 @@ jobs:
           done
           docker ps
           exit 1
+      - name: Create datasafe.events
+        run: |
+          cid="$(docker ps -q --filter ancestor=apache/kafka:3.9.2 | head -n 1)"
+          test -n "$cid"
+          for i in $(seq 1 30); do
+            if docker exec "$cid" /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list; then
+              break
+            fi
+            sleep 2
+          done
+          docker exec "$cid" /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 \
+            --create --if-not-exists --topic datasafe.events --partitions 1 --replication-factor 1
       - name: S3 put, outage, restart
         env:
           KAFKA_INTEGRATION: "1"

@@ -24,15 +24,36 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
-      # Lab convenience. An idempotent producer still wants the topic to exist
-      # before the first produce; create datasafe.events if the first event
-      # returns UNKNOWN_TOPIC_OR_PARTITION.
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # The broker must not create topics for clients. kafka-init does it.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+  # Creates datasafe.events before storage-server produces. The sink does not
+  # create topics, and this broker has auto-create off.
+  kafka-init:
+    image: apache/kafka:3.9.2
+    restart: "no"
+    depends_on:
+      kafka:
+        condition: service_started
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -eu
+        ok=0
+        for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+          if /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --list >/dev/null 2>&1; then
+            ok=1
+            break
+          fi
+          sleep 2
+        done
+        test "$$ok" = 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic datasafe.events --partitions 1 --replication-factor 1
 
   storage-server:
     environment:
       STORAGE_KAFKA_BROKERS: kafka:19092
       STORAGE_KAFKA_TOPIC: datasafe.events
     depends_on:
-      kafka:
-        condition: service_started
+      kafka-init:
+        condition: service_completed_successfully

@@ -400,12 +400,40 @@ func TestDispatcherDeliversSameKeyInOrderAfterFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	for i := 0; i < 4; i++ {
-		if err := d.ProcessOnce(ctx, t0.Add(time.Duration(i)*time.Hour)); err != nil {
+	// Advance the injected clock to the stored NextAttemptAt. Backoff jitter
+	// must not require a wall-clock sleep or an hour-sized step (those steps
+	// used to cross the purge window).
+	now := t0
+	var got []Event
+	for step := 0; step < 8; step++ {
+		if err := d.ProcessOnce(ctx, now); err != nil {
 			t.Fatal(err)
 		}
+		got = sink.snapshot()
+		if len(got) >= 3 {
+			break
+		}
+		next := now
+		moved := false
+		for _, id := range []string{created.ID, deleted.ID, other.ID} {
+			rec, err := store.GetOutbox(ctx, id)
+			if err != nil {
+				t.Fatalf("step %d id %s: %v", step, id, err)
+			}
+			att, ok := rec.Attempts["kafka"]
+			if !ok || att.Status != StatusPending || !att.NextAttemptAt.After(now) {
+				continue
+			}
+			if !moved || att.NextAttemptAt.Before(next) {
+				next = att.NextAttemptAt
+				moved = true
+			}
+		}
+		if moved {
+			now = next
+		}
 	}
-	got := sink.snapshot()
+	got = sink.snapshot()
 	if len(got) != 3 {
 		t.Fatalf("delivered %d %+v", len(got), got)
 	}

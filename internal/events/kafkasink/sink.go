@@ -8,10 +8,13 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
+	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sasl"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
@@ -91,8 +94,21 @@ func (p *Producer) Publish(ctx context.Context, key string, body []byte) error {
 		Key:   []byte(key),
 		Value: body,
 	}
-	err := p.client.ProduceSync(ctx, rec).FirstErr()
+	err := explainPublishError(p.client.ProduceSync(ctx, rec).FirstErr())
 	p.note(err)
+	return err
+}
+
+// explainPublishError turns a missing topic into a stable sentence. The
+// producer does not create topics. The broker error is kept after the sentence
+// so logs still show UNKNOWN_TOPIC_OR_PARTITION. Delivery retries either way.
+func explainPublishError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, kerr.UnknownTopicOrPartition) || strings.Contains(err.Error(), "UNKNOWN_TOPIC_OR_PARTITION") {
+		return fmt.Errorf("topic does not exist: %w", err)
+	}
 	return err
 }
 

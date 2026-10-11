@@ -40,9 +40,9 @@ Kafka — sink событий только по включению. Устано
 ./install.sh --yes --profiles core,kafka
 ```
 
-Подключается `deploy/compose/docker-compose.kafka.yml`: один брокер KRaft, образ `apache/kafka:3.9.2`, bootstrap внутри стека `kafka:19092`, порт хоста `localhost:9092`. Оверлей задаёт `storage-server` переменную `STORAGE_KAFKA_BROKERS=kafka:19092` и включает автосоздание топиков в лаборатории. Windows: `.\install.ps1 -Yes -Profiles core,kafka`.
+Подключается `deploy/compose/docker-compose.kafka.yml`: один брокер KRaft, образ `apache/kafka:3.9.2`, bootstrap внутри стека `kafka:19092`, порт хоста `localhost:9092`. Оверлей задаёт `storage-server` переменную `STORAGE_KAFKA_BROKERS=kafka:19092`. Контейнер `kafka-init` после готовности брокера выполняет `kafka-topics.sh --create --if-not-exists --topic datasafe.events`. У брокера `auto.create.topics.enable=false`. Windows: `.\install.ps1 -Yes -Profiles core,kafka`.
 
-Создайте `STORAGE_KAFKA_TOPIC` до первого события в промышленной среде. Идемпотентный продюсер не считает отсутствующий топик успехом: Apache Kafka 3.9 отвечал `UNKNOWN_TOPIC_OR_PARTITION`, пока топика не было. Лабораторный брокер ставит `auto.create.topics.enable=true` для удобства. Это не замена созданию топика на своём кластере.
+Sink топики не создаёт. Переменной `STORAGE_KAFKA_AUTO_CREATE_TOPIC` нет. Создайте `STORAGE_KAFKA_TOPIC` до первого события. Пока топика нет, produce падает, а outbox повторяет попытку. Ошибка на странице **Настройки → Доставка событий** и в `GET /api/v1/events/delivery` (`sinks[].last_error`) — `topic does not exist`, затем текст брокера `UNKNOWN_TOPIC_OR_PARTITION`.
 
 Смена `STORAGE_KAFKA_BROKERS` между стартами процесса — действие Activity `kafka_brokers_changed`. Имя ресурса — новый список брокеров. Секреты SASL не пишутся.
 

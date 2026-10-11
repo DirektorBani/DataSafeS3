@@ -40,9 +40,9 @@ Lab broker, not part of the default installer profiles:
 ./install.sh --yes --profiles core,kafka
 ```
 
-That applies `deploy/compose/docker-compose.kafka.yml`: one KRaft broker, image `apache/kafka:3.9.2`, in-stack bootstrap `kafka:19092`, host port `localhost:9092`. The overlay sets `STORAGE_KAFKA_BROKERS=kafka:19092` on `storage-server` and turns broker auto-create on for the lab. Windows: `.\install.ps1 -Yes -Profiles core,kafka`.
+That applies `deploy/compose/docker-compose.kafka.yml`: one KRaft broker, image `apache/kafka:3.9.2`, in-stack bootstrap `kafka:19092`, host port `localhost:9092`. The overlay sets `STORAGE_KAFKA_BROKERS=kafka:19092` on `storage-server`. A `kafka-init` container runs `kafka-topics.sh --create --if-not-exists --topic datasafe.events` after the broker accepts connections. The broker has `auto.create.topics.enable=false`. Windows: `.\install.ps1 -Yes -Profiles core,kafka`.
 
-Create `STORAGE_KAFKA_TOPIC` before the first event in production. The idempotent producer does not treat a missing topic as success: Apache Kafka 3.9 returned `UNKNOWN_TOPIC_OR_PARTITION` until the topic existed. The lab broker sets `auto.create.topics.enable=true` as a convenience. That is not a substitute for creating the topic when you run your own cluster.
+The sink never creates a topic. There is no `STORAGE_KAFKA_AUTO_CREATE_TOPIC`. Create `STORAGE_KAFKA_TOPIC` before the first event. While the topic is missing, produce keeps failing and the outbox retries. The error on **Settings → Event delivery** and in `GET /api/v1/events/delivery` (`sinks[].last_error`) is `topic does not exist`, followed by the broker text `UNKNOWN_TOPIC_OR_PARTITION`.
 
 A change of `STORAGE_KAFKA_BROKERS` between process starts is Activity action `kafka_brokers_changed`. The resource name is the new broker list. SASL secrets are not logged.
 
