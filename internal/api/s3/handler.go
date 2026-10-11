@@ -546,7 +546,7 @@ func (h *Handler) putObject(w http.ResponseWriter, r *http.Request, bucket, key 
 		contentType = "application/octet-stream"
 	}
 	size := r.ContentLength
-	rec, err := h.Svc.PutObject(r.Context(), sk, key, r.Body, size, contentType, userMetadata(r.Header))
+	rec, err := h.Svc.PutObject(WithObjectEvents(r.Context()), sk, key, r.Body, size, contentType, userMetadata(r.Header))
 	if err != nil {
 		mapErr(w, r, err)
 		return
@@ -706,7 +706,7 @@ func (h *Handler) deleteObject(w http.ResponseWriter, r *http.Request, bucket, k
 	if !ok {
 		return
 	}
-	if err := h.Svc.DeleteObject(r.Context(), sk, key, r.URL.Query().Get("versionId")); err != nil {
+	if err := h.Svc.DeleteObject(WithObjectEvents(r.Context()), sk, key, r.URL.Query().Get("versionId")); err != nil {
 		if err == metadata.ErrRetentionLocked || err == metadata.ErrLegalHold {
 			h.emitActivity(r, creds.AccessKey, metadata.ActionObjectDeleteBlocked, "object", bucket+"/"+key)
 		}
@@ -764,7 +764,7 @@ func (h *Handler) copyObject(w http.ResponseWriter, r *http.Request, dstBucket, 
 	if !ok {
 		return
 	}
-	rec, err := h.Svc.CopyObject(r.Context(), srcSK, srcKey, dstSK, dstKey)
+	rec, err := h.Svc.CopyObject(WithObjectEvents(r.Context()), srcSK, srcKey, dstSK, dstKey)
 	if err != nil {
 		mapErr(w, r, err)
 		return
@@ -846,7 +846,7 @@ func (h *Handler) completeMultipart(w http.ResponseWriter, r *http.Request, buck
 	if !ok {
 		return
 	}
-	rec, err := h.Svc.CompleteMultipartUpload(r.Context(), sk, key, uploadID, parts)
+	rec, err := h.Svc.CompleteMultipartUpload(WithObjectEvents(r.Context()), sk, key, uploadID, parts)
 	if err != nil {
 		mapErr(w, r, err)
 		return

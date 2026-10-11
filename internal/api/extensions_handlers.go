@@ -98,7 +98,7 @@ func (s *Server) handleRestoreTrash(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}
-	rec, dropped, err := s.svc.RestoreFromTrashNotifying(r.Context(), id, func(obj metadata.ObjectRecord) []events.OutboxRecord {
+	rec, _, err := s.svc.RestoreFromTrashNotifying(r.Context(), id, func(obj metadata.ObjectRecord) []events.OutboxRecord {
 		return s.outboxRecords(metadata.EventObjectCreated, tr.OriginalBucket, tr.OriginalKey, obj.VersionID, "", map[string]any{
 			"bucket": tr.OriginalBucket, "key": tr.OriginalKey,
 		})
@@ -107,7 +107,6 @@ func (s *Server) handleRestoreTrash(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	s.noteOutboxDropped(dropped)
 	s.logActivity(r, metadata.ActionTrashRestored, "object", tr.OriginalBucket+"/"+tr.OriginalKey)
 	writeJSON(w, http.StatusOK, map[string]any{"object": rec})
 }

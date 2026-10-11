@@ -49,6 +49,9 @@ func (s *Server) syncEventSinks() {
 	} else {
 		s.eventDisp.Unregister("webhook")
 	}
+	if s.anyBucketNotification() {
+		s.ensureBucketWebhookSink()
+	}
 }
 
 func (s *Server) anyEnabledWebhook() bool {
@@ -123,6 +126,11 @@ func (s *Server) outboxRecords(eventType, bucket, key, versionID, tenantID strin
 	now := time.Now().UTC()
 	attempts := map[string]events.SinkAttempt{}
 	for _, name := range s.eventDisp.SinkNames() {
+		// Per-bucket notification rows name this sink themselves. Copying it
+		// onto every event would deliver UserCreated to a bucket URL.
+		if name == bucketWebhookSinkName {
+			continue
+		}
 		if name == "webhook" && !s.webhookMatchesConfigured(eventType) {
 			continue
 		}

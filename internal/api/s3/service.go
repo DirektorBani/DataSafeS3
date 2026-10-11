@@ -30,10 +30,16 @@ type Service struct {
 	// FederationPeers lists registered peer clusters for cross-node GetObject.
 	FederationPeers func() ([]metadata.FederationCluster, error)
 	// OnObjectEvent is called after successful put/delete/copy (event: put|delete|copy).
+	// Replication enqueue uses this. Bucket-notification HTTP does not.
 	OnObjectEvent func(event, bucket, key string)
-	// OnBucketNotification delivers bucket-level S3 notification webhooks.
-	// E03 moves this path, and S3 SigV4 object events, onto the durable outbox.
+	// OnBucketNotification is the legacy direct HTTP path used only by
+	// EmitBucketNotification. The server delivers bucket notifications from the outbox.
 	OnBucketNotification func(webhookURL, event, bucket, key string, size int64)
+	// ObjectOutbox builds durable rows for this object mutation.
+	// kind is "put", "delete", or "multipart". Nil writes no rows from this path.
+	ObjectOutbox func(ctx context.Context, bucket metadata.BucketRecord, obj metadata.ObjectRecord, kind string) []events.OutboxRecord
+	// OnOutboxDropped reports rows the pending cap marked dropped inside the commit.
+	OnOutboxDropped func(n int)
 }
 
 func NewService(backend storage.ObjectBackend, meta metadata.MetadataStore, signer *auth.Signer, region, ownerKey string) *Service {
@@ -482,14 +488,33 @@ func (s *Service) putObject(ctx context.Context, bucket, key string, r io.Reader
 	if build != nil {
 		evs = build(rec)
 	}
+	evs = s.appendObjectOutbox(ctx, bucketRec, rec, "put", evs)
 	dropped, err := s.commitObjectRecord(rec, versionedPut || (suspended && versionID != ""), evs)
 	if err != nil {
 		return metadata.ObjectRecord{}, 0, err
 	}
+	s.noteDropped(dropped)
 	if s.OnObjectEvent != nil {
 		s.OnObjectEvent(metadata.ReplEventPut, bucket, key)
 	}
 	return rec, dropped, nil
+}
+
+func (s *Service) appendObjectOutbox(ctx context.Context, bucketRec metadata.BucketRecord, obj metadata.ObjectRecord, kind string, evs []events.OutboxRecord) []events.OutboxRecord {
+	if s.ObjectOutbox == nil {
+		return evs
+	}
+	extra := s.ObjectOutbox(ctx, bucketRec, obj, kind)
+	if len(extra) == 0 {
+		return evs
+	}
+	return append(evs, extra...)
+}
+
+func (s *Service) noteDropped(n int) {
+	if n > 0 && s.OnOutboxDropped != nil {
+		s.OnOutboxDropped(n)
+	}
 }
 
 func (s *Service) purgeObjectData(ctx context.Context, bucket, key string) {
@@ -642,6 +667,10 @@ func (s *Service) deleteObject(ctx context.Context, bucket, key, versionID strin
 	if err := s.checkDeleteAllowed(bucket, key, versionID); err != nil {
 		return 0, err
 	}
+	var bucketRec metadata.BucketRecord
+	if rec, err := s.Meta.GetBucketByKey(bucket); err == nil {
+		bucketRec = rec
+	}
 	versioning := s.bucketVersioning(bucket)
 	suspended := s.bucketVersioningSuspended(bucket)
 	if versioning && !suspended && versionID == "" {
@@ -654,10 +683,12 @@ func (s *Service) deleteObject(ctx context.Context, bucket, key, versionID strin
 			IsDeleteMarker: true,
 			LastModified:   time.Now().UTC(),
 		}
+		evs = s.appendObjectOutbox(ctx, bucketRec, rec, "delete", evs)
 		dropped, err := s.commitObjectRecord(rec, true, evs)
 		if err != nil {
 			return 0, err
 		}
+		s.noteDropped(dropped)
 		if s.OnObjectEvent != nil {
 			s.OnObjectEvent(metadata.ReplEventDelete, bucket, key)
 		}
@@ -671,10 +702,12 @@ func (s *Service) deleteObject(ctx context.Context, bucket, key, versionID strin
 		return 0, metadata.ErrNotFound
 	}
 	vid := rec.VersionID
+	evs = s.appendObjectOutbox(ctx, bucketRec, rec, "delete", evs)
 	dropped, err := s.commitDeleteVersion(bucket, key, versionID, versioning, evs)
 	if err != nil {
 		return 0, err
 	}
+	s.noteDropped(dropped)
 	if err := s.Backend.DeleteObjectVersion(ctx, bucket, key, vid); err != nil && err != storage.ErrNotFound {
 		return dropped, err
 	}
@@ -862,10 +895,12 @@ func (s *Service) completeMultipart(ctx context.Context, bucket, key, uploadID s
 	if build != nil {
 		evs = build(rec)
 	}
+	evs = s.appendObjectOutbox(ctx, bucketRec, rec, "multipart", evs)
 	dropped, err := s.commitObjectRecord(rec, versioned, evs)
 	if err != nil {
 		return metadata.ObjectRecord{}, 0, err
 	}
+	s.noteDropped(dropped)
 	_ = s.Meta.DeleteMultipart(uploadID)
 	return rec, dropped, nil
 }

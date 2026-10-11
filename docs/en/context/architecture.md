@@ -21,7 +21,7 @@ Community Edition ships as **one `storage-server` process** on one host by defau
 | Read-only `storage-server` standby | **Implemented** — `STORAGE_READ_ONLY`, `deploy/compose/docker-compose.ha.yml` |
 | Erasure coding / multi-AZ storage | **Lab foundation** — `STORAGE_OBJECT_BACKEND=erasure`; not production multi-AZ |
 | STS session tokens (scoped S3) | **Implemented** — `POST /api/v1/sts/assume-role`; credentials bound to calling user; `X-Amz-Security-Token` in SigV4 |
-| Event notifications | **Implemented** — durable outbox for Admin API webhook + optional NATS (`STORAGE_NATS_URL`); see [event outbox](../../operations-guide/en/event-outbox.md) |
+| Event notifications | **Implemented** — durable outbox for Admin API and S3 SigV4 object events, console webhooks, per-bucket notifications, and optional NATS (`STORAGE_NATS_URL`, JetStream ack when a stream covers the subject); see [event outbox](../../operations-guide/en/event-outbox.md) |
 
 ## Components
 

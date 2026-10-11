@@ -10,17 +10,23 @@ All notable changes to DataSafeS3 are documented in this file.
 
 ### Changed
 
-- Webhook and NATS delivery goes through the outbox. `STORAGE_NATS_URL` and console webhook settings are unchanged. An empty NATS URL does not register a sink and does not dial. A webhook sink is registered only while at least one webhook is enabled. With no configured sink, admin mutations do not write outbox rows, and events from that period are not replayed later. A webhook HTTP failure, including non-2xx, is retried until the attempt limit (4xx classification is a later step). Each webhook keeps one delivery-history row per outbox event; retries update that row.
+- Webhook and NATS delivery goes through the outbox. `STORAGE_NATS_URL` and console webhook settings are unchanged. An empty NATS URL does not register a sink and does not dial. A webhook sink is registered only while at least one webhook is enabled. With no configured sink, admin mutations do not write outbox rows, and events from that period are not replayed later. Each console webhook keeps one delivery-history row per outbox event; retries update that row.
 - Removed the no-op RabbitMQ and Kafka sinks from process wiring. There is one `events.EventSink` interface. Kafka is not a dependency.
+- **S3 SigV4 object events** (put, copy, delete including delete markers, multipart complete) write outbox rows in the same metadata transaction when a sink is registered. With no sink and no matching bucket notification, those PUTs do not grow the outbox.
+- **Bucket-notification webhooks** are delivered by the outbox dispatcher. Optional prefix/suffix filters apply when the row is inserted. The POST body stays `{"event","bucket","key","size","time"}`.
+- **Webhook retry classification.** Transport errors, timeouts, HTTP 5xx, 408, and 429 are retried. `Retry-After` is honoured and capped at 5 minutes. Any other 4xx marks that sink dead immediately; `last_error` contains the status.
+- **NATS JetStream.** If the connected server has JetStream and a stream covers `STORAGE_NATS_SUBJECT.<event>`, publish waits for an ack (failure is retried). Otherwise core publish is used. There is no extra environment variable.
 
 ### Honesty
 
 - This entry is unreleased. `VERSION` is still 1.4.1. No tag.
-- S3 SigV4 puts and deletes do not write outbox rows. Bucket-notification webhooks and gateway notifications are not on the outbox.
-- Object bytes are written before the metadata transaction. Soft-delete commits the event with the original-object delete, after the trash copy and trash row. Multipart completion deletes the upload record in a following transaction. Creating a tenant member writes the user, membership, and groups first, then inserts the event. Bucket create is one transaction with the bucket row; visibility and team updates after that are separate.
+- Object bytes are written before the metadata transaction. The S3 outbox row commits with the object or delete-marker row. Soft-delete commits the event with the original-object delete, after the trash copy and trash row. Multipart completion deletes the upload record in a following transaction and does not enqueue replication. Creating a tenant member writes the user, membership, and groups first, then inserts the event. Bucket create is one transaction with the bucket row; visibility and team updates after that are separate.
+- Bucket notification `time` is the object record time at commit, not the HTTP send time. `event` stays `put` or `delete` (multipart posts `put`). `bucket` stays the storage key. The stored payload includes `_webhook_url`, which is stripped before the POST. There is no console delivery-history row for a per-bucket URL. Copy and put share the event value `put`, so a Copy-only filter also matches a normal PUT. Delete and delete-marker share `delete`. `PutBucketNotificationConfiguration` still keeps one URL (last topic, then last queue). `s3:ObjectCreated:*` now matches the posted event `put`; previously the generic `:*` check prevented that.
+- A bucket notification that fails is retried. The previous HTTP path discarded the error. 3xx is terminal, same as 4xx other than 408 and 429. The console webhook sink retries every matching hook together: one hook's 429 retries hooks that already returned 2xx. The sink is dead immediately only when every failure on that attempt is terminal.
+- NATS core publish does not confirm subscriber delivery. A JetStream ack confirms the stream stored the message, not that a consumer processed it. The mode is cached until reconnect.
 - Delivery is at-least-once. A second leader that appears while a publish is in flight can deliver the same row again. Followers do not dispatch. Bolt has no leader lock, so the single process always dispatches.
-- Default single-node still opens no broker connection. With no NATS URL and no enabled webhook it also writes no outbox rows.
-- S3 SigV4 object events and bucket-notification webhooks move onto this outbox in E03 (needed for Kafka). They are not emitted in this change.
+- Default single-node still opens no broker connection. With no NATS URL, no enabled webhook, and no bucket notification it writes no outbox rows, including for S3 PUTs. Events from that period are not replayed. Deleting every bucket notification and restarting leaves queued bucket posts without a sink.
+- Internal object writes (trash copy, inventory, lifecycle) do not emit global `ObjectCreated` / `ObjectDeleted` rows. They still enqueue a bucket notification when the bucket rule matches.
 
 ## [1.4.1] - 2026-10-11
 

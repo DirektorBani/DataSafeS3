@@ -337,6 +337,7 @@ func (s *Service) GetBucketNotificationConfiguration(bucket string) (Notificatio
 		out.TopicConfiguration = []TopicConfiguration{{
 			Id:     "webhook",
 			Topic:  cfg.WebhookURL,
+			Filter: notificationFilterXML(cfg.Prefix, cfg.Suffix),
 			Events: cfg.Events,
 		}}
 	}
@@ -349,7 +350,7 @@ func (s *Service) PutBucketNotificationConfiguration(bucket string, xmlCfg Notif
 	if err != nil {
 		return err
 	}
-	var webhookURL string
+	var webhookURL, prefix, suffix string
 	var events []string
 	for _, t := range xmlCfg.TopicConfiguration {
 		if t.Topic != "" {
@@ -357,6 +358,7 @@ func (s *Service) PutBucketNotificationConfiguration(bucket string, xmlCfg Notif
 				return fmt.Errorf("%s", urlpolicy.OutboundURLError(err))
 			}
 			webhookURL = t.Topic
+			prefix, suffix = notificationFilterParts(t.Filter)
 			events = append(events, t.Events...)
 		}
 	}
@@ -366,12 +368,15 @@ func (s *Service) PutBucketNotificationConfiguration(bucket string, xmlCfg Notif
 				return fmt.Errorf("%s", urlpolicy.OutboundURLError(err))
 			}
 			webhookURL = q.Queue
+			prefix, suffix = notificationFilterParts(q.Filter)
 			events = append(events, q.Events...)
 		}
 	}
 	rec.Tags = metadata.SetBucketNotificationTag(rec.Tags, metadata.BucketNotificationConfig{
 		WebhookURL: webhookURL,
 		Events:     events,
+		Prefix:     prefix,
+		Suffix:     suffix,
 	})
 	return s.Meta.UpdateBucket(rec)
 }
@@ -396,32 +401,49 @@ func (s *Service) EmitBucketNotification(bucket, event, key string, size int64) 
 	if !ok || cfg.WebhookURL == "" {
 		return
 	}
-	for _, ev := range cfg.Events {
-		if notificationEventMatches(ev, event) {
-			if s.OnBucketNotification != nil {
-				s.OnBucketNotification(cfg.WebhookURL, event, bucket, key, size)
-			}
-			return
-		}
+	kind := "put"
+	if event == metadata.ReplEventDelete || event == "delete" || event == "ObjectRemoved" {
+		kind = "delete"
+	}
+	if !metadata.BucketNotificationMatches(cfg, kind, key) {
+		return
+	}
+	if s.OnBucketNotification != nil {
+		s.OnBucketNotification(cfg.WebhookURL, event, bucket, key, size)
 	}
 }
 
-func notificationEventMatches(rule, event string) bool {
-	if rule == event {
-		return true
+func notificationFilterParts(f *NotificationFilter) (prefix, suffix string) {
+	if f == nil {
+		return "", ""
 	}
-	if strings.HasSuffix(rule, ":*") {
-		prefix := strings.TrimSuffix(rule, ":*")
-		return strings.HasPrefix(event, prefix)
+	keys := []*NotificationKeyFilter{f.S3Key, f.Key}
+	for _, k := range keys {
+		if k == nil {
+			continue
+		}
+		for _, rule := range k.Rules {
+			switch strings.ToLower(strings.TrimSpace(rule.Name)) {
+			case "prefix":
+				prefix = rule.Value
+			case "suffix":
+				suffix = rule.Value
+			}
+		}
 	}
-	if strings.HasSuffix(rule, ":*") == false && strings.Contains(rule, "*") {
-		return strings.Contains(event, strings.Trim(rule, "*"))
+	return prefix, suffix
+}
+
+func notificationFilterXML(prefix, suffix string) *NotificationFilter {
+	if prefix == "" && suffix == "" {
+		return nil
 	}
-	switch rule {
-	case "s3:ObjectCreated:*":
-		return event == metadata.ReplEventPut || event == "ObjectCreated"
-	case "s3:ObjectRemoved:*":
-		return event == metadata.ReplEventDelete || event == "ObjectRemoved"
+	var rules []NotificationFilterRule
+	if prefix != "" {
+		rules = append(rules, NotificationFilterRule{Name: "prefix", Value: prefix})
 	}
-	return false
+	if suffix != "" {
+		rules = append(rules, NotificationFilterRule{Name: "suffix", Value: suffix})
+	}
+	return &NotificationFilter{S3Key: &NotificationKeyFilter{Rules: rules}}
 }

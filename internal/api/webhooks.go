@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,17 +41,39 @@ func (s *Server) deliverWebhooks(ctx context.Context, e events.Event) error {
 		return err
 	}
 	var errs []error
+	terminalOnly := true
+	var retryAfter time.Duration
 	for _, h := range hooks {
 		if !h.Enabled || !webhookMatchesEvent(h.Events, e.Type) {
 			continue
 		}
 		payloadStr := string(data)
 		delivery := s.webhookDeliveryFor(h, e, payloadStr)
-		if err := s.deliverWebhook(ctx, h, payloadStr, &delivery); err != nil {
-			errs = append(errs, err)
+		err := s.deliverWebhook(ctx, h, payloadStr, &delivery)
+		if err == nil {
+			continue
+		}
+		errs = append(errs, err)
+		var terminal *events.TerminalError
+		if !errors.As(err, &terminal) {
+			terminalOnly = false
+		}
+		var ra *events.RetryAfterError
+		if errors.As(err, &ra) && ra.After > retryAfter {
+			retryAfter = ra.After
 		}
 	}
-	return errors.Join(errs...)
+	if len(errs) == 0 {
+		return nil
+	}
+	joined := errors.Join(errs...)
+	if terminalOnly {
+		return &events.TerminalError{Err: joined}
+	}
+	if retryAfter > 0 {
+		return &events.RetryAfterError{Err: joined, After: retryAfter}
+	}
+	return joined
 }
 
 // webhookDeliveryID is stable for one outbox event and one webhook, so retries
@@ -108,7 +131,7 @@ func (s *Server) deliverWebhook(ctx context.Context, hook metadata.WebhookRecord
 		delivery.Success = false
 		delivery.Error = err.Error()
 		_ = s.meta.PutWebhookDelivery(*delivery)
-		return err
+		return &events.TerminalError{Err: err}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Datasafe-Webhook/1.0")
@@ -133,8 +156,51 @@ func (s *Server) deliverWebhook(ctx context.Context, hook metadata.WebhookRecord
 		delivery.Error = resp.Status
 	}
 	_ = s.meta.PutWebhookDelivery(*delivery)
-	if !delivery.Success {
-		return fmt.Errorf("webhook %s: %s", hook.ID, resp.Status)
+	if delivery.Success {
+		return nil
 	}
-	return nil
+	return classifyHTTPStatus(resp.StatusCode, fmt.Sprintf("webhook %s: %s", hook.ID, resp.Status), resp.Header.Get("Retry-After"), "")
+}
+
+// classifyHTTPStatus maps a response to a retry, a capped Retry-After, or a terminal 4xx.
+// Transport errors stay with the caller. 408, 429, and 5xx retry. Any other
+// non-2xx, including the rest of 4xx and 3xx, is terminal. label prefixes the
+// error when the status string is only the reason (bucket notifications).
+func classifyHTTPStatus(code int, status, retryAfter, label string) error {
+	if code >= 200 && code < 300 {
+		return nil
+	}
+	msg := status
+	if label != "" {
+		msg = label + ": " + status
+	}
+	err := fmt.Errorf("%s", msg)
+	if code == http.StatusRequestTimeout || code == http.StatusTooManyRequests || code >= 500 {
+		if d := parseRetryAfter(retryAfter); d > 0 {
+			return &events.RetryAfterError{Err: err, After: d}
+		}
+		return err
+	}
+	return &events.TerminalError{Err: err}
+}
+
+func parseRetryAfter(h string) time.Duration {
+	h = strings.TrimSpace(h)
+	if h == "" {
+		return 0
+	}
+	if sec, err := strconv.Atoi(h); err == nil {
+		if sec <= 0 {
+			return 0
+		}
+		return time.Duration(sec) * time.Second
+	}
+	if t, err := http.ParseTime(h); err == nil {
+		d := time.Until(t)
+		if d <= 0 {
+			return 0
+		}
+		return d
+	}
+	return 0
 }

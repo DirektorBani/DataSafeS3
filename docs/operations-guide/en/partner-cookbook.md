@@ -42,7 +42,7 @@ Use path-style endpoint and `--option s3.region=us-east-1` if required by your r
 | Sink | Configuration |
 |------|----------------|
 | Webhook | Admin → Webhooks, subscribe to `object.created` / `share.downloaded` |
-| NATS | `STORAGE_NATS_URL=nats://nats:4222`, compose profile `nats` |
+| NATS | `STORAGE_NATS_URL=nats://nats:4222`, compose profile `nats`. If JetStream is enabled and a stream covers `STORAGE_NATS_SUBJECT.<event>` (default `datasafe.events.>`), publish waits for an ack. Otherwise core publish does not confirm subscriber delivery. No extra variable; detected on connect. |
 
 Example NATS compose:
 

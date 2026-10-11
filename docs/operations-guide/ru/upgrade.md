@@ -256,7 +256,10 @@ docker compose --profile postgres up -d
 - Bolt создаёт бакеты `event_outbox` и `event_outbox_due` при следующем открытии базы. v1.4.x неизвестные бакеты не читает.
 - `STORAGE_EVENTS_RETENTION` (`24h`), `STORAGE_EVENTS_DEAD_RETENTION` (`168h`), `STORAGE_EVENTS_MAX_PENDING` (`100000`) и `STORAGE_EVENTS_MAX_ATTEMPTS` (`20`) необязательны. Пустое значение оставляет дефолт. `MAX_PENDING=0` отключает лимит.
 - Настройки webhook и `STORAGE_NATS_URL` / `STORAGE_NATS_SUBJECT` не меняются. Пустой URL NATS по-прежнему не соединяется. Один узел на bolt с дефолтным конфигом соединение с брокером не открывает.
-- События Admin API доставляются из outbox (at-least-once), когда настроен sink. Без `STORAGE_NATS_URL` и без включённого webhook эти мутации не пишут строку outbox и позже не воспроизводятся. Неуспешный webhook, включая HTTP 4xx, повторяется до лимита попыток; у каждого webhook одна строка истории на событие. События объектов S3 SigV4 и webhook уведомлений бакета переходят в этот outbox на следующем шаге (E03).
+- События Admin API и объектов S3 SigV4 (put, copy, delete включая delete marker, завершение multipart) доставляются из outbox (at-least-once), когда настроен sink. Без `STORAGE_NATS_URL`, без включённого webhook и без совпавшего уведомления бакета эти записи не вставляют строку outbox и позже не воспроизводятся.
+- Webhook уведомлений бакета идут через тот же диспетчер. Тело POST по-прежнему `{"event","bucket","key","size","time"}`. Необязательные фильтры prefix/suffix применяются при вставке. `time` — время коммита записи объекта. По-прежнему хранится один URL (последний topic, затем последняя queue).
+- Повтор webhook: ошибки транспорта, таймауты, 5xx, 408 и 429 повторяются (`Retry-After` учитывается, потолок 5 минут). Любой другой 4xx сразу помечает этот sink dead; `last_error` содержит статус. У каждого webhook консоли по-прежнему одна строка истории на событие.
+- NATS публикует с ack JetStream, если на сервере включён JetStream и stream покрывает `STORAGE_NATS_SUBJECT.<событие>`. Иначе это core publish: подтвердить получение подписчиком нельзя. Отдельной переменной нет; выбор определяется при соединении и кэшируется до переподключения.
 
 Подробно: [event-outbox.md](event-outbox.md).
 
