@@ -32,6 +32,7 @@ type Service struct {
 	// OnObjectEvent is called after successful put/delete/copy (event: put|delete|copy).
 	OnObjectEvent func(event, bucket, key string)
 	// OnBucketNotification delivers bucket-level S3 notification webhooks.
+	// E03 moves this path, and S3 SigV4 object events, onto the durable outbox.
 	OnBucketNotification func(webhookURL, event, bucket, key string, size int64)
 }
 

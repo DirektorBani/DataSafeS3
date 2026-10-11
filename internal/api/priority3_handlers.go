@@ -320,10 +320,10 @@ func (s *Server) handleCompleteMultipart(w http.ResponseWriter, r *http.Request)
 		parts = append(parts, storage.PartInfo{PartNumber: p.PartNumber, ETag: strings.Trim(p.ETag, `"`)})
 	}
 	rec, dropped, err := s.svc.CompleteMultipartNotifying(r.Context(), mp.Bucket, mp.Key, uploadID, parts, func(obj metadata.ObjectRecord) []events.OutboxRecord {
-		return []events.OutboxRecord{
-			s.outboxRecord(metadata.EventObjectCreated, bucket, mp.Key, obj.VersionID, "", map[string]any{"bucket": bucket, "key": mp.Key, "size": obj.Size}),
-			s.outboxRecord(metadata.EventMultipartCompleted, bucket, mp.Key, obj.VersionID, "", map[string]any{"bucket": bucket, "key": mp.Key, "upload_id": uploadID}),
-		}
+		var evs []events.OutboxRecord
+		evs = append(evs, s.outboxRecords(metadata.EventObjectCreated, bucket, mp.Key, obj.VersionID, "", map[string]any{"bucket": bucket, "key": mp.Key, "size": obj.Size})...)
+		evs = append(evs, s.outboxRecords(metadata.EventMultipartCompleted, bucket, mp.Key, obj.VersionID, "", map[string]any{"bucket": bucket, "key": mp.Key, "upload_id": uploadID})...)
+		return evs
 	})
 	if err != nil {
 		if err == metadata.ErrQuotaExceeded {
@@ -389,8 +389,39 @@ func (s *Server) handleRetryWebhookDelivery(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "delivery not found"})
 		return
 	}
-	go s.deliverWebhook(context.Background(), hook, delivery.Payload, &delivery)
+	go func() {
+		err := s.deliverWebhook(context.Background(), hook, delivery.Payload, &delivery)
+		if err == nil {
+			s.markOutboxWebhookDelivered(context.Background(), webhookID, delivery.ID)
+		}
+	}()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "delivery_id": deliveryID})
+}
+
+// markOutboxWebhookDelivered records a successful manual retry on the outbox row
+// that owns this delivery, so the dispatcher does not send it again.
+func (s *Server) markOutboxWebhookDelivered(ctx context.Context, webhookID, deliveryID string) {
+	eventID, ok := outboxIDFromDelivery(deliveryID, webhookID)
+	if !ok {
+		return
+	}
+	st := s.outboxStore()
+	if st == nil {
+		return
+	}
+	rec, err := st.GetOutbox(ctx, eventID)
+	if err != nil {
+		return
+	}
+	if rec.Attempts == nil {
+		rec.Attempts = map[string]events.SinkAttempt{}
+	}
+	att := rec.Attempts["webhook"]
+	att.Status = events.StatusDelivered
+	att.LastError = ""
+	rec.Attempts["webhook"] = att
+	events.AggregateStatus(&rec, time.Now().UTC())
+	_ = st.SaveOutbox(ctx, rec)
 }
 
 func parseMaxKeys(r *http.Request, defaultVal, maxVal int) int {

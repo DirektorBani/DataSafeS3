@@ -91,10 +91,10 @@ func (s *Server) handleCreateSharedLink(w http.ResponseWriter, r *http.Request) 
 		exp := now.Add(time.Duration(req.ExpiresInSec) * time.Second)
 		rec.ExpiresAt = &exp
 	}
-	ev := s.outboxRecord("ShareCreated", bucket, req.Key, "", "", map[string]any{"bucket": bucket, "key": req.Key})
+	evs := s.outboxRecords("ShareCreated", bucket, req.Key, "", "", map[string]any{"bucket": bucket, "key": req.Key})
 	var dropped int
-	if wmut, ok := s.meta.(metadata.OutboxMutator); ok {
-		dropped, err = wmut.PutSharedLinkWithOutbox(rec, []events.OutboxRecord{ev})
+	if wmut, ok := s.meta.(metadata.OutboxMutator); ok && len(evs) > 0 {
+		dropped, err = wmut.PutSharedLinkWithOutbox(rec, evs)
 	} else {
 		err = s.meta.PutSharedLink(rec)
 	}
@@ -427,12 +427,13 @@ func (s *Server) handleCreateTenantUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	s.logActivity(r, metadata.ActionUserCreated, "user", req.Username)
-	ev := s.outboxRecord(metadata.EventUserCreated, "", "", "", tenantID, map[string]any{"username": req.Username, "user_id": id, "role": metadata.RoleUser, "tenant_id": tenantID})
-	if st, ok := s.meta.(events.OutboxStore); ok {
-		if dropped, insErr := st.InsertOutbox(r.Context(), ev); insErr != nil {
-			slog.Error("event outbox insert failed after tenant user create", "err", insErr)
-		} else {
-			s.noteOutboxDropped(dropped)
+	if evs := s.outboxRecords(metadata.EventUserCreated, "", "", "", tenantID, map[string]any{"username": req.Username, "user_id": id, "role": metadata.RoleUser, "tenant_id": tenantID}); len(evs) > 0 {
+		if st, ok := s.meta.(events.OutboxStore); ok {
+			if dropped, insErr := st.InsertOutbox(r.Context(), evs[0]); insErr != nil {
+				slog.Error("event outbox insert failed after tenant user create", "err", insErr)
+			} else {
+				s.noteOutboxDropped(dropped)
+			}
 		}
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{

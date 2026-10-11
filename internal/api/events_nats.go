@@ -18,6 +18,10 @@ type natsEventSink struct {
 	nc   *nats.Conn
 }
 
+func natsURLConfigured() bool {
+	return strings.TrimSpace(os.Getenv("STORAGE_NATS_URL")) != ""
+}
+
 func newNATSEventSink() *natsEventSink {
 	url := strings.TrimSpace(os.Getenv("STORAGE_NATS_URL"))
 	subj := strings.TrimSpace(os.Getenv("STORAGE_NATS_SUBJECT"))

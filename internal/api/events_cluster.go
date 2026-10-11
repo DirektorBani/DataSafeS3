@@ -26,13 +26,61 @@ func (w *webhookEventSink) Publish(ctx context.Context, e events.Event) error {
 
 func (w *webhookEventSink) Close() error { return nil }
 
-// defaultEventSinks is webhook + NATS only. RabbitMQ and Kafka no-op sinks are not wired.
+// syncEventSinks registers a sink only when it is configured.
+// NATS is registered when STORAGE_NATS_URL is non-empty.
+// The webhook sink is registered when at least one webhook is enabled, and is
+// refreshed after webhook create, update, and delete.
 // Kafka (E02) should Dispatcher.Register when STORAGE_KAFKA_BROKERS is non-empty.
-func defaultEventSinks(s *Server) []events.EventSink {
-	return []events.EventSink{
-		&webhookEventSink{server: s},
-		newNATSEventSink(),
+func (s *Server) syncEventSinks() {
+	if s == nil || s.eventDisp == nil {
+		return
 	}
+	if natsURLConfigured() {
+		if !s.eventDisp.HasSink("nats") {
+			s.eventDisp.Register(newNATSEventSink())
+		}
+	} else {
+		s.eventDisp.Unregister("nats")
+	}
+	if s.anyEnabledWebhook() {
+		if !s.eventDisp.HasSink("webhook") {
+			s.eventDisp.Register(&webhookEventSink{server: s})
+		}
+	} else {
+		s.eventDisp.Unregister("webhook")
+	}
+}
+
+func (s *Server) anyEnabledWebhook() bool {
+	if s == nil || s.meta == nil {
+		return false
+	}
+	hooks, err := s.meta.ListWebhooks()
+	if err != nil {
+		return false
+	}
+	for _, h := range hooks {
+		if h.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) webhookMatchesConfigured(eventType string) bool {
+	if s == nil || s.meta == nil {
+		return false
+	}
+	hooks, err := s.meta.ListWebhooks()
+	if err != nil {
+		return false
+	}
+	for _, h := range hooks {
+		if h.Enabled && webhookMatchesEvent(h.Events, eventType) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) wireEventSinks() {
@@ -41,13 +89,14 @@ func (s *Server) wireEventSinks() {
 	if m, ok := s.meta.(metadata.OutboxMutator); ok {
 		m.SetOutboxMaxPending(cfg.MaxPending)
 	}
-	s.eventDisp = events.NewDispatcher(s.outboxStore(), defaultEventSinks(s), cfg, s.isEventLeader, events.Observer{
+	s.eventDisp = events.NewDispatcher(s.outboxStore(), nil, cfg, s.isEventLeader, events.Observer{
 		Pending:   observability.SetEventsOutboxPending,
 		Delivered: observability.AddEventsDelivered,
 		Failed:    observability.AddEventsFailed,
 		Dead:      observability.AddEventsDead,
 		Lag:       observability.ObserveEventsDeliveryLag,
 	})
+	s.syncEventSinks()
 }
 
 func (s *Server) outboxStore() events.OutboxStore {
@@ -62,7 +111,26 @@ func (s *Server) isEventLeader(ctx context.Context) bool {
 	return s.haLeader.IsLeader(ctx)
 }
 
-func (s *Server) outboxRecord(eventType, bucket, key, versionID, tenantID string, payload map[string]any) events.OutboxRecord {
+// outboxRecords builds the rows to commit with this metadata change.
+// Sink names configured for this event are copied onto the row.
+// A webhook name is included only when an enabled webhook matches eventType.
+// An empty result means no outbox write: the event is not stored and is not
+// replayed if a sink is configured later.
+func (s *Server) outboxRecords(eventType, bucket, key, versionID, tenantID string, payload map[string]any) []events.OutboxRecord {
+	if s == nil || s.eventDisp == nil {
+		return nil
+	}
+	now := time.Now().UTC()
+	attempts := map[string]events.SinkAttempt{}
+	for _, name := range s.eventDisp.SinkNames() {
+		if name == "webhook" && !s.webhookMatchesConfigured(eventType) {
+			continue
+		}
+		attempts[name] = events.SinkAttempt{Status: events.StatusPending, NextAttemptAt: now}
+	}
+	if len(attempts) == 0 {
+		return nil
+	}
 	if payload == nil {
 		payload = map[string]any{}
 	}
@@ -70,8 +138,7 @@ func (s *Server) outboxRecord(eventType, bucket, key, versionID, tenantID string
 	if err != nil {
 		raw = []byte(`{}`)
 	}
-	now := time.Now().UTC()
-	rec := events.OutboxRecord{
+	rec := events.NormalizeOutbox(events.OutboxRecord{
 		EventType: eventType,
 		Bucket:    bucket,
 		Key:       key,
@@ -79,16 +146,9 @@ func (s *Server) outboxRecord(eventType, bucket, key, versionID, tenantID string
 		TenantID:  tenantID,
 		Payload:   raw,
 		CreatedAt: now,
-		Attempts:  map[string]events.SinkAttempt{},
-	}
-	var names []string
-	if s.eventDisp != nil {
-		names = s.eventDisp.SinkNames()
-	}
-	for _, name := range names {
-		rec.Attempts[name] = events.SinkAttempt{Status: events.StatusPending, NextAttemptAt: now}
-	}
-	return events.NormalizeOutbox(rec, now)
+		Attempts:  attempts,
+	}, now)
+	return []events.OutboxRecord{rec}
 }
 
 func (s *Server) noteOutboxDropped(n int) {

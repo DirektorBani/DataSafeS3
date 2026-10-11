@@ -31,7 +31,9 @@ One loop per process, poll interval 1 second. It is not an environment variable.
 - **Retention:** `delivered` rows are deleted `STORAGE_EVENTS_RETENTION` after `delivered_at` (default 24h). `dead` rows are deleted `STORAGE_EVENTS_DEAD_RETENTION` after `dead_at` (default 168h). `dropped` rows use the dead retention, measured from `updated_at`.
 - **Cap:** `STORAGE_EVENTS_MAX_PENDING` (default 100000). `0` means unlimited. When a new row would exceed the cap, the oldest pending rows are marked `dropped` with reason `pending cap exceeded`. The object or bucket write still commits. The process increments `datasafe_events_dropped_total{reason="pending_cap"}` and writes Activity action `events_outbox_dropped`.
 
-Sink names are copied onto the row at insert. A sink added later (Kafka, when that step lands) does not receive rows already queued.
+A sink is registered only when it is configured. NATS is registered when `STORAGE_NATS_URL` is set. The webhook sink is registered when at least one webhook is enabled, and that set is refreshed when webhooks are created, updated, or deleted. Kafka is not registered in this change.
+
+Sink names that apply to the event are copied onto the row at insert. `nats` is copied when that sink is registered. `webhook` is copied when an enabled webhook lists the event type or `*`. A sink configured later does not receive rows already queued, and it does not receive events that were never written. If the snapshot is empty, the metadata change does not insert an outbox row. Those events are not replayed.
 
 ## Environment variables
 
@@ -44,7 +46,9 @@ None are required. Invalid values keep the default.
 | `STORAGE_EVENTS_MAX_PENDING` | `100000` | Pending rows before the oldest are dropped. `0` disables the cap |
 | `STORAGE_EVENTS_MAX_ATTEMPTS` | `20` | Failures per sink before `dead` |
 
-Webhook URLs stay in the console. NATS stays `STORAGE_NATS_URL` and `STORAGE_NATS_SUBJECT` (default subject `datasafe.events`). An empty URL does not open a connection. The NATS body is still `{"event","payload"}`. The webhook body is still `{"event","timestamp","data"}`, with `timestamp` taken from the outbox row.
+Webhook URLs stay in the console. NATS stays `STORAGE_NATS_URL` and `STORAGE_NATS_SUBJECT` (default subject `datasafe.events`). An empty URL does not register the sink and does not open a connection. The NATS body is still `{"event","payload"}`. The webhook body is still `{"event","timestamp","data"}`, with `timestamp` taken from the outbox row.
+
+Each webhook keeps one delivery-history row per outbox event. Retries update `attempts`, `last_attempt`, `status_code`, and `error` on that row. The console retry action posts again and updates the same row. A successful manual retry marks the webhook sink delivered on the outbox row.
 
 ## Where the row is atomic
 
@@ -65,8 +69,7 @@ These paths are not one transaction with the event:
 - **Multipart** deletes the upload record after the object-row transaction.
 - **Bucket create** commits the event with the bucket row. Visibility and team updates that follow are separate writes.
 - **Tenant member create** writes the user, membership, and groups, then inserts the event. If that insert fails, the user still exists and the failure is logged.
-- **S3 SigV4** puts, copies, and deletes do not emit these events.
-- **Bucket notification webhooks** (`EmitBucketNotification` / gateway `OnBucketNotification`) are not on the outbox.
+- **S3 SigV4** puts, copies, and deletes do not emit these events yet. They move onto this outbox in E03, together with bucket-notification webhooks (`EmitBucketNotification` / gateway `OnBucketNotification`). The outbox row and `EventSink` are the path those calls will use. E01 does not write them.
 
 A metadata store that cannot share a transaction falls back to an insert after the metadata commit. Both shipping backends share the transaction for the methods above. A failed insert on that fallback is logged and does not fail the API call.
 
@@ -76,7 +79,7 @@ At-least-once, not exactly-once. Webhook delivery tries every matching hook; any
 
 If the leader lease is lost while `Publish` is in flight, the next leader can deliver the same row. The publish is not held inside `FOR UPDATE`.
 
-No registered sinks (not the default: webhook and NATS are always registered) marks the row `delivered` immediately. With the defaults, NATS with an empty URL and webhooks with no matching hooks both succeed without dialing, and the row is retained for `STORAGE_EVENTS_RETENTION`.
+With no NATS URL and no enabled webhook, admin mutations do not write outbox rows and do not increment `datasafe_events_delivered_total`. Turning a sink on later does not backfill those events.
 
 ## Metrics
 
@@ -93,4 +96,8 @@ The dispatcher updates these. A Grafana panel is not part of this change.
 
 ## Single-node default
 
-Bolt, no Postgres, no `STORAGE_NATS_URL`, no webhooks: the process does not open a broker connection. Behaviour of the S3 API is unchanged. Admin mutations that already emitted webhooks or NATS now also persist a row first.
+Bolt, no Postgres, no `STORAGE_NATS_URL`, no enabled webhooks: the process does not open a broker connection and does not write outbox rows for admin mutations. S3 API behaviour is unchanged. An admin mutation writes a row only after a sink is configured for that event type.
+
+## Decision for E03
+
+S3 SigV4 object events and bucket-notification webhooks will move onto this outbox in E03. That is required for the Kafka use case. E01 leaves the dispatcher, the row schema, and `EventSink.Register` ready for those call sites and does not invent a second delivery path.

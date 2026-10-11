@@ -256,7 +256,7 @@ docker compose --profile postgres up -d
 - Bolt создаёт бакеты `event_outbox` и `event_outbox_due` при следующем открытии базы. v1.4.x неизвестные бакеты не читает.
 - `STORAGE_EVENTS_RETENTION` (`24h`), `STORAGE_EVENTS_DEAD_RETENTION` (`168h`), `STORAGE_EVENTS_MAX_PENDING` (`100000`) и `STORAGE_EVENTS_MAX_ATTEMPTS` (`20`) необязательны. Пустое значение оставляет дефолт. `MAX_PENDING=0` отключает лимит.
 - Настройки webhook и `STORAGE_NATS_URL` / `STORAGE_NATS_SUBJECT` не меняются. Пустой URL NATS по-прежнему не соединяется. Один узел на bolt с дефолтным конфигом соединение с брокером не открывает.
-- События Admin API доставляются из outbox (at-least-once). Неуспешный webhook, включая HTTP 4xx, повторяется до лимита попыток. Трафик S3 SigV4 новых событий не получает.
+- События Admin API доставляются из outbox (at-least-once), когда настроен sink. Без `STORAGE_NATS_URL` и без включённого webhook эти мутации не пишут строку outbox и позже не воспроизводятся. Неуспешный webhook, включая HTTP 4xx, повторяется до лимита попыток; у каждого webhook одна строка истории на событие. События объектов S3 SigV4 и webhook уведомлений бакета переходят в этот outbox на следующем шаге (E03).
 
 Подробно: [event-outbox.md](event-outbox.md).
 

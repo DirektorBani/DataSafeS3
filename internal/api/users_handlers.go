@@ -12,7 +12,6 @@ import (
 
 	"github.com/DirektorBani/datasafe/internal/auth"
 	wa "github.com/DirektorBani/datasafe/internal/auth/webauthn"
-	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 )
 
@@ -284,10 +283,10 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	if rec.TenantID == "" {
 		rec.TenantID = metadata.DefaultTenantID
 	}
-	ev := s.outboxRecord(metadata.EventUserCreated, "", "", "", rec.TenantID, map[string]any{"username": req.Username, "user_id": id, "role": req.Role})
+	evs := s.outboxRecords(metadata.EventUserCreated, "", "", "", rec.TenantID, map[string]any{"username": req.Username, "user_id": id, "role": req.Role})
 	var dropped int
-	if wmut, ok := s.meta.(metadata.OutboxMutator); ok {
-		dropped, err = wmut.PutUserWithOutbox(rec, []events.OutboxRecord{ev})
+	if wmut, ok := s.meta.(metadata.OutboxMutator); ok && len(evs) > 0 {
+		dropped, err = wmut.PutUserWithOutbox(rec, evs)
 	} else {
 		err = s.meta.PutUser(rec)
 	}

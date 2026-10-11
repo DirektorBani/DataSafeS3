@@ -99,9 +99,9 @@ func (s *Server) handleRestoreTrash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rec, dropped, err := s.svc.RestoreFromTrashNotifying(r.Context(), id, func(obj metadata.ObjectRecord) []events.OutboxRecord {
-		return []events.OutboxRecord{s.outboxRecord(metadata.EventObjectCreated, tr.OriginalBucket, tr.OriginalKey, obj.VersionID, "", map[string]any{
+		return s.outboxRecords(metadata.EventObjectCreated, tr.OriginalBucket, tr.OriginalKey, obj.VersionID, "", map[string]any{
 			"bucket": tr.OriginalBucket, "key": tr.OriginalKey,
-		})}
+		})
 	})
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
@@ -276,6 +276,7 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	s.syncEventSinks()
 	s.logActivity(r, metadata.ActionSettingsChanged, "webhook", rec.Name)
 	writeJSON(w, http.StatusCreated, map[string]any{"webhook": rec})
 }
@@ -321,6 +322,7 @@ func (s *Server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	s.syncEventSinks()
 	writeJSON(w, http.StatusOK, map[string]any{"webhook": rec})
 }
 
@@ -330,6 +332,7 @@ func (s *Server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 		return
 	}
+	s.syncEventSinks()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -355,7 +358,7 @@ func (s *Server) validateConsoleToken(token string) (auth.TokenInfo, error) {
 	}, nil
 }
 
-func (s *Server) maybeSoftDelete(r *http.Request, bucket, key, versionID string, base events.OutboxRecord) (bool, metadata.TrashRecord, int, error) {
+func (s *Server) maybeSoftDelete(r *http.Request, bucket, key, versionID string, base []events.OutboxRecord) (bool, metadata.TrashRecord, int, error) {
 	cfg, _ := s.meta.GetSystemConfig()
 	if !cfg.SoftDeleteEnabled {
 		return false, metadata.TrashRecord{}, 0, nil
@@ -364,19 +367,23 @@ func (s *Server) maybeSoftDelete(r *http.Request, bucket, key, versionID string,
 		return false, metadata.TrashRecord{}, 0, nil
 	}
 	info, _ := authFrom(r)
-	tr, dropped, err := s.svc.MoveToTrashNotifying(r.Context(), bucket, key, versionID, info.Username, func(tr metadata.TrashRecord) []events.OutboxRecord {
-		ev := base
-		var payload map[string]any
-		_ = json.Unmarshal(ev.Payload, &payload)
-		if payload == nil {
-			payload = map[string]any{}
+	var build func(metadata.TrashRecord) []events.OutboxRecord
+	if len(base) > 0 {
+		build = func(tr metadata.TrashRecord) []events.OutboxRecord {
+			ev := base[0]
+			var payload map[string]any
+			_ = json.Unmarshal(ev.Payload, &payload)
+			if payload == nil {
+				payload = map[string]any{}
+			}
+			payload["trash_id"] = tr.ID
+			raw, _ := json.Marshal(payload)
+			ev.Payload = raw
+			ev.ID = ""
+			return []events.OutboxRecord{events.NormalizeOutbox(ev, time.Now().UTC())}
 		}
-		payload["trash_id"] = tr.ID
-		raw, _ := json.Marshal(payload)
-		ev.Payload = raw
-		ev.ID = ""
-		return []events.OutboxRecord{events.NormalizeOutbox(ev, time.Now().UTC())}
-	})
+	}
+	tr, dropped, err := s.svc.MoveToTrashNotifying(r.Context(), bucket, key, versionID, info.Username, build)
 	if err != nil {
 		return false, metadata.TrashRecord{}, 0, err
 	}

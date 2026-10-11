@@ -775,8 +775,11 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 		TeamID     string `json:"team_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	ev := s.outboxRecord(metadata.EventBucketCreated, bucket, "", "", "", map[string]any{"bucket": bucket, "owner": owner})
-	dropped, err := s.svc.CreateBucketNotifying(r.Context(), bucket, owner, &ev)
+	var evPtr *events.OutboxRecord
+	if evs := s.outboxRecords(metadata.EventBucketCreated, bucket, "", "", "", map[string]any{"bucket": bucket, "owner": owner}); len(evs) == 1 {
+		evPtr = &evs[0]
+	}
+	dropped, err := s.svc.CreateBucketNotifying(r.Context(), bucket, owner, evPtr)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, metadata.ErrBucketExists) {
@@ -818,8 +821,8 @@ func (s *Server) handleDeleteBucketJSON(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 		return
 	}
-	ev := s.outboxRecord(metadata.EventBucketDeleted, bucket, "", "", "", map[string]any{"bucket": bucket})
-	dropped, err := s.svc.DeleteBucketNotifying(r.Context(), sk, []events.OutboxRecord{ev})
+	evs := s.outboxRecords(metadata.EventBucketDeleted, bucket, "", "", "", map[string]any{"bucket": bucket})
+	dropped, err := s.svc.DeleteBucketNotifying(r.Context(), sk, evs)
 	if err != nil {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
 		return
@@ -855,9 +858,9 @@ func (s *Server) handleUploadObjectJSON(w http.ResponseWriter, r *http.Request) 
 		prevSize = prev.Size
 	}
 	rec, dropped, err := s.svc.PutObjectNotifying(r.Context(), sk, key, r.Body, r.ContentLength, contentType, nil, func(obj metadata.ObjectRecord) []events.OutboxRecord {
-		return []events.OutboxRecord{s.outboxRecord(metadata.EventObjectCreated, bucket, key, obj.VersionID, "", map[string]any{
+		return s.outboxRecords(metadata.EventObjectCreated, bucket, key, obj.VersionID, "", map[string]any{
 			"bucket": bucket, "key": key, "size": obj.Size,
-		})}
+		})
 	})
 	if err != nil {
 		if err == metadata.ErrQuotaExceeded {
@@ -932,7 +935,7 @@ func (s *Server) deleteObjectNow(w http.ResponseWriter, r *http.Request, logical
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	delEv := s.outboxRecord(metadata.EventObjectDeleted, logicalBucket, key, versionID, "", map[string]any{"bucket": logicalBucket, "key": key})
+	delEv := s.outboxRecords(metadata.EventObjectDeleted, logicalBucket, key, versionID, "", map[string]any{"bucket": logicalBucket, "key": key})
 	if moved, tr, dropped, err := s.maybeSoftDelete(r, storageKey, key, versionID, delEv); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
@@ -942,7 +945,7 @@ func (s *Server) deleteObjectNow(w http.ResponseWriter, r *http.Request, logical
 		writeJSON(w, http.StatusOK, map[string]any{"trashed": true, "trash_id": tr.ID})
 		return
 	}
-	dropped, err := s.svc.DeleteObjectNotifying(r.Context(), storageKey, key, versionID, []events.OutboxRecord{delEv})
+	dropped, err := s.svc.DeleteObjectNotifying(r.Context(), storageKey, key, versionID, delEv)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 		return

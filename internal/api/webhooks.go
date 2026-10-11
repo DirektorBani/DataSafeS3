@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/events"
@@ -44,15 +45,47 @@ func (s *Server) deliverWebhooks(ctx context.Context, e events.Event) error {
 			continue
 		}
 		payloadStr := string(data)
-		delivery := metadata.WebhookDeliveryRecord{
-			ID: randomID(), WebhookID: h.ID, Event: e.Type, URL: h.URL,
-			Payload: payloadStr, CreatedAt: time.Now().UTC(), Attempts: 0,
-		}
+		delivery := s.webhookDeliveryFor(h, e, payloadStr)
 		if err := s.deliverWebhook(ctx, h, payloadStr, &delivery); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// webhookDeliveryID is stable for one outbox event and one webhook, so retries
+// update the same console history row.
+func webhookDeliveryID(eventID, webhookID string) string {
+	if eventID == "" || webhookID == "" {
+		return randomID()
+	}
+	return eventID + ":" + webhookID
+}
+
+func outboxIDFromDelivery(deliveryID, webhookID string) (string, bool) {
+	suffix := ":" + webhookID
+	if webhookID == "" || !strings.HasSuffix(deliveryID, suffix) {
+		return "", false
+	}
+	id := strings.TrimSuffix(deliveryID, suffix)
+	if id == "" {
+		return "", false
+	}
+	return id, true
+}
+
+func (s *Server) webhookDeliveryFor(h metadata.WebhookRecord, e events.Event, payload string) metadata.WebhookDeliveryRecord {
+	id := webhookDeliveryID(e.ID, h.ID)
+	if existing, err := s.meta.GetWebhookDelivery(id); err == nil && existing.WebhookID == h.ID {
+		existing.Event = e.Type
+		existing.URL = h.URL
+		existing.Payload = payload
+		return existing
+	}
+	return metadata.WebhookDeliveryRecord{
+		ID: id, WebhookID: h.ID, Event: e.Type, URL: h.URL,
+		Payload: payload, CreatedAt: time.Now().UTC(), Attempts: 0,
+	}
 }
 
 func webhookMatchesEvent(events []string, event string) bool {
@@ -67,6 +100,9 @@ func webhookMatchesEvent(events []string, event string) bool {
 func (s *Server) deliverWebhook(ctx context.Context, hook metadata.WebhookRecord, payload string, delivery *metadata.WebhookDeliveryRecord) error {
 	delivery.Attempts++
 	delivery.LastAttempt = time.Now().UTC()
+	delivery.Error = ""
+	delivery.StatusCode = 0
+	delivery.Success = false
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, hook.URL, bytes.NewReader([]byte(payload)))
 	if err != nil {
 		delivery.Success = false

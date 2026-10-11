@@ -184,7 +184,7 @@ func (s *Store) PutWebhookDelivery(rec metadata.WebhookDeliveryRecord) error {
 	_, err := s.pool.Exec(context.Background(), `
 		INSERT INTO webhook_deliveries (id, webhook_id, event, url, status_code, success, error, attempts, payload, created_at, last_attempt)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-		ON CONFLICT (id) DO UPDATE SET status_code=$5, success=$6, error=$7, attempts=$8, last_attempt=$11`,
+		ON CONFLICT (id) DO UPDATE SET url=$4, status_code=$5, success=$6, error=$7, attempts=$8, payload=$9, last_attempt=$11`,
 		rec.ID, rec.WebhookID, rec.Event, rec.URL, rec.StatusCode, rec.Success, rec.Error, rec.Attempts, rec.Payload, rec.CreatedAt, rec.LastAttempt)
 	return err
 }

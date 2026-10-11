@@ -308,7 +308,7 @@ Not a tagged release. `VERSION` stays **1.4.1** until a later release commit. Pu
 - Bolt creates buckets `event_outbox` and `event_outbox_due` the next time the database opens. v1.4.x ignores unknown buckets.
 - `STORAGE_EVENTS_RETENTION` (`24h`), `STORAGE_EVENTS_DEAD_RETENTION` (`168h`), `STORAGE_EVENTS_MAX_PENDING` (`100000`), and `STORAGE_EVENTS_MAX_ATTEMPTS` (`20`) are optional. Unset keeps those defaults. `MAX_PENDING=0` disables the cap.
 - Webhook settings and `STORAGE_NATS_URL` / `STORAGE_NATS_SUBJECT` are unchanged. An empty NATS URL still does not connect. Single-node bolt with default config does not open a broker connection.
-- Admin events are delivered from the outbox (at-least-once). A failing webhook, including HTTP 4xx, is retried until the attempt limit. S3 SigV4 traffic does not gain new events.
+- Admin events are delivered from the outbox (at-least-once) when a sink is configured. With no `STORAGE_NATS_URL` and no enabled webhook, those mutations do not write an outbox row and are not replayed later. A failing webhook, including HTTP 4xx, is retried until the attempt limit; each webhook keeps one history row per event. S3 SigV4 object events and bucket-notification webhooks move onto this outbox in a later step (E03).
 
 Details: [event-outbox.md](event-outbox.md).
 

@@ -95,6 +95,43 @@ func (d *Dispatcher) registerLocked(sink EventSink) {
 	d.byName[sink.Name()] = sink
 }
 
+// Unregister removes a sink and closes it. Pending rows that named it
+// keep that name (copied at insert) and fail until dead or a later retry.
+func (d *Dispatcher) Unregister(name string) {
+	if d == nil || name == "" {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	prev, ok := d.byName[name]
+	if !ok {
+		return
+	}
+	delete(d.byName, name)
+	next := make([]EventSink, 0, len(d.sinks))
+	for _, sk := range d.sinks {
+		if sk.Name() == name {
+			continue
+		}
+		next = append(next, sk)
+	}
+	d.sinks = next
+	if prev != nil {
+		_ = prev.Close()
+	}
+}
+
+// HasSink reports whether name is currently registered.
+func (d *Dispatcher) HasSink(name string) bool {
+	if d == nil || name == "" {
+		return false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	_, ok := d.byName[name]
+	return ok
+}
+
 // SinkNames returns the snapshot of registered sink names.
 func (d *Dispatcher) SinkNames() []string {
 	d.mu.Lock()
