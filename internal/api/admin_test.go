@@ -2,11 +2,15 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/DirektorBani/datasafe/internal/api"
 	"github.com/DirektorBani/datasafe/internal/auth"
@@ -32,6 +36,8 @@ func freshTestServer(t *testing.T) *api.Server {
 	if _, ok := os.LookupEnv("STORAGE_AUTO_HOME_BUCKET"); !ok {
 		t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
 	}
+	t.Setenv("STORAGE_KAFKA_BROKERS", "")
+	t.Setenv("STORAGE_NATS_URL", "")
 	dir := t.TempDir()
 	s, err := api.NewServer(api.Config{
 		DataDir:       dir,
@@ -323,4 +329,193 @@ func TestUserBucketIsolation(t *testing.T) {
 	if len(resp.Buckets) != 1 {
 		t.Fatalf("user should see 1 bucket, got %d", len(resp.Buckets))
 	}
+}
+
+func TestEventDeliveryAdminOnly(t *testing.T) {
+	s := testServer(t)
+	adminTok := loginToken(t, s, "admin", "admin")
+	createBody, _ := json.Marshal(map[string]string{
+		"username": "evuser", "password": "usr123", "role": auth.RoleUser, "email": "e@test.com",
+	})
+	req := authReq(http.MethodPost, "/api/v1/users", adminTok, createBody)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	userTok := loginToken(t, s, "evuser", "usr123")
+	req = authReq(http.MethodGet, "/api/v1/events/delivery", userTok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("user delivery want 403 got %d", rec.Code)
+	}
+	req = authReq(http.MethodPost, "/api/v1/events/test", userTok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("user test want 403 got %d", rec.Code)
+	}
+
+	req = authReq(http.MethodGet, "/api/v1/events/delivery", adminTok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin delivery %d %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		QueueDepth int `json:"queue_depth"`
+		Sinks      []struct {
+			Name   string `json:"name"`
+			Status string `json:"status"`
+		} `json:"sinks"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.QueueDepth != 0 {
+		t.Fatalf("queue %d", body.QueueDepth)
+	}
+	sawKafka := false
+	for _, sk := range body.Sinks {
+		if sk.Name == "kafka" {
+			sawKafka = true
+			if sk.Status != "disabled" {
+				t.Fatalf("kafka status %s", sk.Status)
+			}
+		}
+	}
+	if !sawKafka {
+		t.Fatalf("sinks %+v", body.Sinks)
+	}
+
+	req = authReq(http.MethodPost, "/api/v1/events/test", adminTok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("test with no sinks want 409 got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestEventDeliveryUnreachableBrokerDoesNotBlock(t *testing.T) {
+	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
+	t.Setenv("STORAGE_KAFKA_BROKERS", "192.0.2.1:9092")
+	t.Setenv("STORAGE_KAFKA_SASL_MECHANISM", "")
+	t.Setenv("STORAGE_NATS_URL", "")
+	dir := t.TempDir()
+	s, err := api.NewServer(api.Config{
+		DataDir:       dir,
+		AdminUser:     "admin",
+		AdminPassword: "admin",
+		JWTSecret:     "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	cfg, err := s.Meta().GetSystemConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.InitialSetupCompleted = true
+	cfg.AdminFirstLoginCompleted = true
+	if err := s.Meta().PutSystemConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.StartBackground(ctx)
+	ts := httptest.NewServer(s.Handler())
+	t.Cleanup(func() {
+		cancel()
+		ts.Close()
+	})
+	adminTok := loginToken(t, s, "admin", "admin")
+	client := &http.Client{Timeout: 2 * time.Second}
+
+	deadline := time.Now().Add(8 * time.Second)
+	var status, last string
+	for {
+		start := time.Now()
+		body := eventDeliveryBody(t, client, ts.URL, adminTok)
+		if elapsed := time.Since(start); elapsed > time.Second {
+			t.Fatalf("GET /api/v1/events/delivery took %s", elapsed)
+		}
+		status, last = kafkaDelivery(t, body)
+		if status != "degraded" {
+			t.Fatalf("kafka status %s body %s", status, body)
+		}
+		if brokerError(last) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("last_error %q after probe window", last)
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+
+	start := time.Now()
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/events/test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+adminTok)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("POST /api/v1/events/test took %s", elapsed)
+	}
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("test event %d", resp.StatusCode)
+	}
+	start = time.Now()
+	_ = eventDeliveryBody(t, client, ts.URL, adminTok)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("GET during produce took %s", elapsed)
+	}
+}
+
+func eventDeliveryBody(t *testing.T, client *http.Client, base, token string) []byte {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, base+"/api/v1/events/delivery", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delivery %d %s", resp.StatusCode, body)
+	}
+	return body
+}
+
+func kafkaDelivery(t *testing.T, body []byte) (string, string) {
+	t.Helper()
+	var parsed struct {
+		Sinks []struct {
+			Name      string `json:"name"`
+			Status    string `json:"status"`
+			LastError string `json:"last_error"`
+		} `json:"sinks"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	for _, sk := range parsed.Sinks {
+		if sk.Name == "kafka" {
+			return sk.Status, sk.LastError
+		}
+	}
+	t.Fatalf("no kafka sink in %s", body)
+	return "", ""
+}
+
+func brokerError(last string) bool {
+	return strings.Contains(last, "timeout") || strings.Contains(last, "refused") || strings.Contains(last, "dial") || strings.Contains(last, "deadline")
 }

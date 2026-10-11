@@ -141,6 +141,65 @@ func (s *Store) CountOutbox(_ context.Context, status string) (int, error) {
 	return n, err
 }
 
+func (s *Store) EarlierPending(_ context.Context, tenantID, bucket, key, sink, id string, createdAt time.Time) (bool, error) {
+	if key == "" {
+		return false, nil
+	}
+	var blocked bool
+	err := s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucketOutbox))
+		if b == nil {
+			return nil
+		}
+		return b.ForEach(func(_, v []byte) error {
+			if blocked {
+				return nil
+			}
+			var rec events.OutboxRecord
+			if err := json.Unmarshal(v, &rec); err != nil {
+				return err
+			}
+			if rec.ID == id || rec.Status != events.StatusPending || rec.Key != key || rec.Bucket != bucket || rec.TenantID != tenantID {
+				return nil
+			}
+			if !events.CreatedBefore(rec.CreatedAt, rec.ID, createdAt, id) {
+				return nil
+			}
+			if events.SinkStillPending(rec.Attempts[sink]) {
+				blocked = true
+			}
+			return nil
+		})
+	})
+	return blocked, err
+}
+
+func (s *Store) PendingBySink(_ context.Context) (map[string]int, error) {
+	out := map[string]int{}
+	err := s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucketOutbox))
+		if b == nil {
+			return nil
+		}
+		return b.ForEach(func(_, v []byte) error {
+			var rec events.OutboxRecord
+			if err := json.Unmarshal(v, &rec); err != nil {
+				return err
+			}
+			if rec.Status != events.StatusPending {
+				return nil
+			}
+			for name, att := range rec.Attempts {
+				if events.SinkStillPending(att) {
+					out[name]++
+				}
+			}
+			return nil
+		})
+	})
+	return out, err
+}
+
 func (s *Store) GetOutbox(_ context.Context, id string) (events.OutboxRecord, error) {
 	var rec events.OutboxRecord
 	err := s.db.View(func(tx *bolt.Tx) error {

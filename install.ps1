@@ -49,8 +49,9 @@ DataSafeS3 interactive installer
   .\install.ps1 -Dev -Yes -Profiles core,postgres,data
   .\install.ps1 -Cluster -DryRun
 
-Profiles: core, postgres, monitoring, data, binary, identity, dev
+Profiles: core, postgres, monitoring, data, binary, identity, dev, kafka
   -Dev or profile dev opts into STORAGE_DEV=true. Default install is production-safe.
+  kafka is opt-in only. A default install does not start a broker and does not set STORAGE_KAFKA_BROKERS.
 Cluster Wave 1: inventory + SSH mode [P]/[K] (Apply/Patroni = Wave 2)
 Docs: docs/getting-started/en/installer.md
 "@
@@ -66,8 +67,9 @@ $script:Opts = [ordered]@{
   binary     = @{ On = $false; Locked = $false; Label = "Build from source (local Linux binary)" }
   identity   = @{ On = $false; Locked = $false; Label = "Identity lab (LDAP + Keycloak)" }
   dev        = @{ On = $false; Locked = $false; Label = "Dev mode (STORAGE_DEV=true; HTTP/private outbound)" }
+  kafka      = @{ On = $false; Locked = $false; Label = "Kafka lab (one KRaft broker; opt-in, not a default profile)" }
 }
-$script:OptOrder = @("core", "postgres", "monitoring", "data", "binary", "identity", "dev")
+$script:OptOrder = @("core", "postgres", "monitoring", "data", "binary", "identity", "dev", "kafka")
 
 function Set-ProfilesFromString([string]$raw) {
   if ([string]::IsNullOrWhiteSpace($raw)) { return }
@@ -362,6 +364,7 @@ function Show-Plan([string]$dataRootPath) {
   $files = @("docker-compose.yml")
   if ($script:Opts["data"].On) { $files += "docker-compose.local-data.yml" }
   if ($script:Opts["binary"].On) { $files += "deploy/compose/docker-compose.local-binary.yml" }
+  if ($script:Opts["kafka"].On) { $files += "deploy/compose/docker-compose.kafka.yml" }
   Write-Info ("Compose:  " + ($files -join " + "))
   Write-Host ""
   if (-not $Yes) {
@@ -470,6 +473,11 @@ Then re-run installer with binary selected.
     Set-EnvKey $envPath "STORAGE_OIDC_REDIRECT_URL" "http://localhost:8080/api/v1/auth/oidc/callback"
     Set-EnvKey $envPath "STORAGE_OIDC_ROPC_ENABLED" "true"
     Write-Ok "Identity lab env keys patched (LDAP + OIDC test defaults)"
+  }
+  if ($script:Opts["kafka"].On) {
+    Set-EnvKey $envPath "STORAGE_KAFKA_BROKERS" "kafka:19092"
+    Set-EnvKey $envPath "STORAGE_KAFKA_TOPIC" "datasafe.events"
+    Write-Ok "Kafka lab: STORAGE_KAFKA_BROKERS=kafka:19092 (not part of the default profiles)"
   }
 }
 
@@ -607,6 +615,7 @@ function Get-ComposeArgs {
   $args = @("compose", "-p", $ProjectName, "-f", "docker-compose.yml")
   if ($script:Opts["data"].On) { $args += @("-f", "docker-compose.local-data.yml") }
   if ($script:Opts["binary"].On) { $args += @("-f", "deploy/compose/docker-compose.local-binary.yml") }
+  if ($script:Opts["kafka"].On) { $args += @("-f", "deploy/compose/docker-compose.kafka.yml") }
   if ($script:Opts["postgres"].On) { $args += @("--profile", "postgres") }
   return ,$args
 }
@@ -615,6 +624,7 @@ function Get-ComposeServices {
   $services = @("storage-server", "caddy")
   if ($script:Opts["postgres"].On) { $services = @("postgres") + $services }
   if ($script:Opts["monitoring"].On) { $services += @("prometheus", "grafana") }
+  if ($script:Opts["kafka"].On) { $services += @("kafka") }
   return ,$services
 }
 
@@ -691,6 +701,9 @@ function Show-Done {
   if ($script:Opts["identity"].On) {
     Write-Host "  Keycloak: http://localhost:8180/admin"
     Write-Host "  LDAP:     ldap://localhost:389"
+  }
+  if ($script:Opts["kafka"].On) {
+    Write-Host "  Kafka:    localhost:9092 (bootstrap), in-stack kafka:19092"
   }
   Write-Host ""
   Write-Host "  Pre-created users / passwords" -ForegroundColor Cyan

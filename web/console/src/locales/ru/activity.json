@@ -14,6 +14,7 @@
     "userUpdated": "Пользователь обновлён",
     "policyChanged": "Политика изменена",
     "settingsChanged": "Настройки изменены",
+    "kafkaBrokersChanged": "Адреса брокеров Kafka изменены",
     "objectDeleteBlocked": "Удаление заблокировано",
     "objectLockChanged": "Object Lock изменён",
     "objectRetentionSet": "Retention объекта задан",

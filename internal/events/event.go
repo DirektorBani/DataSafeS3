@@ -1,9 +1,9 @@
 // Package events is the notification fan-out for DataSafeS3.
 //
 // One EventSink (Name, Publish, Close) delivers records from the metadata
-// outbox. Webhook and NATS adapt to it today. A Kafka sink (E02) registers
-// on the Dispatcher when STORAGE_KAFKA_BROKERS is set; this package does not
-// open a broker connection by itself.
+// outbox. Webhook, NATS, and Kafka adapt to it. Kafka is constructed only
+// when STORAGE_KAFKA_BROKERS is non-empty. An empty broker list does not
+// create a client, a goroutine, or a connection.
 package events
 
 import (

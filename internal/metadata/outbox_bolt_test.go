@@ -180,6 +180,49 @@ func (f *failSink) Publish(context.Context, events.Event) error {
 }
 func (f *failSink) Close() error { return nil }
 
+func TestBoltEarlierPendingSameKey(t *testing.T) {
+	s, err := OpenBolt(filepath.Join(t.TempDir(), "meta.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.SetOutboxMaxPending(0)
+	t0 := time.Now().UTC().Add(-time.Minute)
+	created := events.NormalizeOutbox(events.OutboxRecord{
+		ID: "01CREATE000000000000000000", EventType: "ObjectCreated",
+		TenantID: "ten", Bucket: "b", Key: "obj", CreatedAt: t0,
+		Attempts: map[string]events.SinkAttempt{"kafka": {Status: events.StatusPending, NextAttemptAt: t0}},
+	}, t0)
+	deleted := events.NormalizeOutbox(events.OutboxRecord{
+		ID: "01DELETE000000000000000000", EventType: "ObjectDeleted",
+		TenantID: "ten", Bucket: "b", Key: "obj", CreatedAt: t0.Add(time.Second),
+		Attempts: map[string]events.SinkAttempt{"kafka": {Status: events.StatusPending, NextAttemptAt: t0}},
+	}, t0.Add(time.Second))
+	if _, err := s.InsertOutbox(context.Background(), created); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.InsertOutbox(context.Background(), deleted); err != nil {
+		t.Fatal(err)
+	}
+	blocked, err := s.EarlierPending(context.Background(), "ten", "b", "obj", "kafka", deleted.ID, deleted.CreatedAt)
+	if err != nil || !blocked {
+		t.Fatalf("blocked %v err %v", blocked, err)
+	}
+	other, err := s.EarlierPending(context.Background(), "ten", "b", "other", "kafka", deleted.ID, deleted.CreatedAt)
+	if err != nil || other {
+		t.Fatalf("other key blocked %v err %v", other, err)
+	}
+	created.Attempts["kafka"] = events.SinkAttempt{Status: events.StatusDead, Attempts: 1}
+	events.AggregateStatus(&created, time.Now().UTC())
+	if err := s.SaveOutbox(context.Background(), created); err != nil {
+		t.Fatal(err)
+	}
+	blocked, err = s.EarlierPending(context.Background(), "ten", "b", "obj", "kafka", deleted.ID, deleted.CreatedAt)
+	if err != nil || blocked {
+		t.Fatalf("after dead earlier, blocked %v err %v", blocked, err)
+	}
+}
+
 var errFail = errString("sink down")
 
 type errString string

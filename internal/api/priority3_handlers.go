@@ -321,8 +321,8 @@ func (s *Server) handleCompleteMultipart(w http.ResponseWriter, r *http.Request)
 	}
 	rec, _, err := s.svc.CompleteMultipartNotifying(r.Context(), mp.Bucket, mp.Key, uploadID, parts, func(obj metadata.ObjectRecord) []events.OutboxRecord {
 		var evs []events.OutboxRecord
-		evs = append(evs, s.outboxRecords(metadata.EventObjectCreated, bucket, mp.Key, obj.VersionID, "", map[string]any{"bucket": bucket, "key": mp.Key, "size": obj.Size})...)
-		evs = append(evs, s.outboxRecords(metadata.EventMultipartCompleted, bucket, mp.Key, obj.VersionID, "", map[string]any{"bucket": bucket, "key": mp.Key, "upload_id": uploadID})...)
+		evs = append(evs, s.outboxRecords(metadata.EventObjectCreated, bucket, mp.Key, obj.VersionID, "", objectEventFields(bucket, mp.Key, obj, nil))...)
+		evs = append(evs, s.outboxRecords(metadata.EventMultipartCompleted, bucket, mp.Key, obj.VersionID, "", objectEventFields(bucket, mp.Key, obj, map[string]any{"upload_id": uploadID}))...)
 		return evs
 	})
 	if err != nil {

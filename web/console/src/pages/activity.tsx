@@ -44,6 +44,7 @@ const ACTION_VALUES = [
   "user_created",
   "user_deleted",
   "settings_changed",
+  "kafka_brokers_changed",
 ] as const;
 
 const ACTION_LOCALE_KEYS: Record<string, string> = {
@@ -66,6 +67,7 @@ const ACTION_LOCALE_KEYS: Record<string, string> = {
   user_created: "userCreated",
   user_deleted: "userDeleted",
   settings_changed: "settingsChanged",
+  kafka_brokers_changed: "kafkaBrokersChanged",
 };
 
 function actionLabel(value: string, t: (key: string) => string): string {

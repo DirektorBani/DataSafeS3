@@ -1858,6 +1858,72 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /events/delivery:
+    get:
+      operationId: getEventDelivery
+      summary: Per-sink event delivery status
+      description: |
+        Administrator only. Reports each known sink as connected, degraded, or disabled,
+        the last publish error, and how many pending outbox rows still name that sink.
+        queue_depth is the total pending outbox count. Kafka is disabled when
+        STORAGE_KAFKA_BROKERS is empty. connected means the sink is registered and the
+        last publish did not fail. Kafka status is a cache updated by publish
+        and by a background probe (2s timeout). This call does not ping the broker.
+      tags: [Events]
+      security:
+        - BearerJWT: []
+      x-required-role: administrator
+      responses:
+        '200':
+          description: Delivery status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [queue_depth, sinks]
+                properties:
+                  queue_depth: { type: integer }
+                  sinks:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, status, last_error, queue_depth]
+                      properties:
+                        name: { type: string }
+                        status: { type: string, enum: [connected, degraded, disabled] }
+                        last_error: { type: string }
+                        queue_depth: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /events/test:
+    post:
+      operationId: sendTestEvent
+      summary: Queue a test event for every registered sink
+      description: |
+        Administrator only. Inserts one outbox row (event type TestEvent, bucket
+        _datasafe, key test) for each registered sink except per-bucket notification
+        URLs. Returns 409 when no sink is configured. Delivery is asynchronous and
+        at-least-once, same as any other outbox row.
+      tags: [Events]
+      security:
+        - BearerJWT: []
+      x-required-role: administrator
+      responses:
+        '201':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [event_id]
+                properties:
+                  event_id: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: No sinks configured
+
   /webhooks:
     get:
       operationId: listWebhooks

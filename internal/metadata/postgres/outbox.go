@@ -205,6 +205,53 @@ func (s *Store) CountOutbox(ctx context.Context, status string) (int, error) {
 	return n, err
 }
 
+func (s *Store) EarlierPending(ctx context.Context, tenantID, bucket, key, sink, id string, createdAt time.Time) (bool, error) {
+	if key == "" {
+		return false, nil
+	}
+	var blocked bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM event_outbox
+			WHERE status = $1
+				AND key <> ''
+				AND key = $2
+				AND bucket = $3
+				AND tenant_id = $4
+				AND id <> $5
+				AND (created_at < $6 OR (created_at = $6 AND id < $7))
+				AND COALESCE(attempts -> $8 ->> 'status', '') IN ('pending', '')
+		)`, events.StatusPending, key, bucket, tenantID, id, createdAt.UTC(), id, sink).Scan(&blocked)
+	return blocked, err
+}
+
+func (s *Store) PendingBySink(ctx context.Context) (map[string]int, error) {
+	rows, err := s.pool.Query(ctx, `SELECT attempts FROM event_outbox WHERE status=$1`, events.StatusPending)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var attempts map[string]events.SinkAttempt
+		if len(raw) > 0 {
+			if err := json.Unmarshal(raw, &attempts); err != nil {
+				return nil, err
+			}
+		}
+		for name, att := range attempts {
+			if events.SinkStillPending(att) {
+				out[name]++
+			}
+		}
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) GetOutbox(ctx context.Context, id string) (events.OutboxRecord, error) {
 	row := s.pool.QueryRow(ctx, `
 		SELECT id, created_at, event_type, bucket, key, version_id, tenant_id, payload,

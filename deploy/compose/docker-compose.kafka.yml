@@ -1,0 +1,59 @@
+# Opt-in Kafka lab. Not included by the default installer profiles.
+# One KRaft broker from the official Apache image (pinned tag).
+# In-stack clients use kafka:19092. Host tools use localhost:9092.
+# storage-server receives STORAGE_KAFKA_BROKERS only when this file is applied.
+
+services:
+  kafka:
+    image: apache/kafka:3.9.2
+    hostname: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:19092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: CONTROLLER://:29093,PLAINTEXT://:19092,PLAINTEXT_HOST://:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      # The broker must not create topics for clients. kafka-init does it.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+  # Creates datasafe.events before storage-server produces. The sink does not
+  # create topics, and this broker has auto-create off.
+  kafka-init:
+    image: apache/kafka:3.9.2
+    restart: "no"
+    depends_on:
+      kafka:
+        condition: service_started
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -eu
+        ok=0
+        for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+          if /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --list >/dev/null 2>&1; then
+            ok=1
+            break
+          fi
+          sleep 2
+        done
+        test "$$ok" = 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic datasafe.events --partitions 1 --replication-factor 1
+
+  storage-server:
+    environment:
+      STORAGE_KAFKA_BROKERS: kafka:19092
+      STORAGE_KAFKA_TOPIC: datasafe.events
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully

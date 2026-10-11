@@ -504,6 +504,7 @@ docker compose up -d caddy --no-deps
 | **Elasticsearch** | `scripts\start-elasticsearch-test.cmd` | 19200 | Sink структурированных логов |
 | **Kibana** | `scripts\start-kibana-test.cmd` | 5601 | Discover по индексу `datasafe-logs*` |
 | **Loki** | *отдельного скрипта нет* | 3100 (типично) | HTTP push логов; свой контейнер в сети `datasafe_default` |
+| **Kafka** | профиль установщика `kafka` (`deploy/compose/docker-compose.kafka.yml`) | 9092 | Sink событий только по явному включению. Не входит в профили по умолчанию. Брокер и `STORAGE_KAFKA_BROKERS` не задаются, пока не выбран `kafka`. |
 
 Остановка LDAP/Keycloak: `scripts\stop-ldap-keycloak-test.cmd` (полный сброс: `--remove`).
 

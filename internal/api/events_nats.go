@@ -21,6 +21,7 @@ type natsEventSink struct {
 	jsKnown  bool
 	jsOn     bool
 	subjects map[string]bool
+	lastErr  string
 }
 
 func natsURLConfigured() bool {
@@ -75,6 +76,7 @@ func (n *natsEventSink) Publish(ctx context.Context, e events.Event) error {
 		}
 		nc, err := nats.Connect(n.url)
 		if err != nil {
+			n.lastErr = err.Error()
 			return err
 		}
 		n.nc = nc
@@ -93,9 +95,27 @@ func (n *natsEventSink) Publish(ctx context.Context, e events.Event) error {
 	subject := n.subj + "." + e.Type
 	if n.useJetStream(subject) {
 		_, err = n.js.Publish(subject, body, nats.Context(ctx))
-		return err
+	} else {
+		err = n.nc.Publish(subject, body)
 	}
-	return n.nc.Publish(subject, body)
+	if err == nil {
+		n.lastErr = ""
+	} else {
+		n.lastErr = err.Error()
+	}
+	return err
+}
+
+func (n *natsEventSink) Health(context.Context) (string, string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.lastErr != "" {
+		return "degraded", n.lastErr
+	}
+	if n.nc != nil && n.nc.Status() != nats.CONNECTED {
+		return "degraded", "not connected"
+	}
+	return "connected", ""
 }
 
 func (n *natsEventSink) useJetStream(subject string) bool {

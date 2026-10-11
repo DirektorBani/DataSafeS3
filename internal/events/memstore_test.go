@@ -101,3 +101,40 @@ func (m *memOutbox) GetOutbox(_ context.Context, id string) (OutboxRecord, error
 	}
 	return rec, nil
 }
+
+func (m *memOutbox) EarlierPending(_ context.Context, tenantID, bucket, key, sink, id string, createdAt time.Time) (bool, error) {
+	if key == "" {
+		return false, nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, rec := range m.rows {
+		if rec.ID == id || rec.Status != StatusPending || rec.Key != key || rec.Bucket != bucket || rec.TenantID != tenantID {
+			continue
+		}
+		if !CreatedBefore(rec.CreatedAt, rec.ID, createdAt, id) {
+			continue
+		}
+		if SinkStillPending(rec.Attempts[sink]) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m *memOutbox) PendingBySink(_ context.Context) (map[string]int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := map[string]int{}
+	for _, rec := range m.rows {
+		if rec.Status != StatusPending {
+			continue
+		}
+		for name, att := range rec.Attempts {
+			if SinkStillPending(att) {
+				out[name]++
+			}
+		}
+	}
+	return out, nil
+}
