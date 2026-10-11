@@ -21,4 +21,11 @@ type OutboxStore interface {
 	PurgeOutbox(ctx context.Context, status string, before time.Time) (int, error)
 	CountOutbox(ctx context.Context, status string) (int, error)
 	GetOutbox(ctx context.Context, id string) (OutboxRecord, error)
+	// EarlierPending reports whether a different pending row for the same
+	// tenant, bucket, and non-empty object key still has sink pending and
+	// was created earlier than createdAt/id. An empty key returns false:
+	// user and bucket events are not held behind each other.
+	EarlierPending(ctx context.Context, tenantID, bucket, key, sink, id string, createdAt time.Time) (bool, error)
+	// PendingBySink counts pending rows whose attempt for that sink is still pending.
+	PendingBySink(ctx context.Context) (map[string]int, error)
 }

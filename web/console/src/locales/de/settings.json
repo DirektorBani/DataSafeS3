@@ -1,7 +1,9 @@
 {
   "tabs": {
     "buckets": "Bucket settings",
-    "system": "Administrator settings"
+    "system": "Administrator settings",
+    "security": "Security posture",
+    "events": "Event delivery"
   },
   "buckets": {
     "confirmDiscard": "Discard unsaved changes?",
@@ -86,5 +88,29 @@
     "quotasDescription": "0 = unlimited",
     "maxSize": "Max size (bytes)",
     "maxObjects": "Max objects"
+  },
+  "events": {
+    "title": "Event delivery",
+    "description": "Per-sink status for the durable outbox. Kafka stays disabled until STORAGE_KAFKA_BROKERS is set.",
+    "loading": "Loading event delivery…",
+    "loadError": "Unable to load event delivery.",
+    "queueDepth": "Pending outbox rows: {{count}}",
+    "sinkQueue": "Queue depth: {{count}}",
+    "lastError": "Last error: {{error}}",
+    "noError": "No error recorded.",
+    "sendTest": "Send test event",
+    "sending": "Sending…",
+    "testSent": "Test event queued ({{id}})",
+    "testFailed": "Test event was not queued",
+    "status": {
+      "connected": "Connected",
+      "degraded": "Degraded",
+      "disabled": "Disabled"
+    },
+    "sinks": {
+      "kafka": "Kafka",
+      "nats": "NATS",
+      "webhook": "Webhooks"
+    }
   }
 }

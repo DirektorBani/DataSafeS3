@@ -17,6 +17,7 @@ import { SettingsLayout } from "@/components/settings/SettingsLayout";
 import { BucketSettingsPage } from "@/pages/settings-buckets";
 import { AdministratorSettingsPage } from "@/pages/settings-system";
 import { SecuritySettingsPage } from "@/pages/settings-security";
+import { EventDeliveryPage } from "@/pages/settings-events";
 import { ProfilePage } from "@/pages/profile";
 import { GatewayPage } from "@/pages/gateway";
 import { FederationPage } from "@/pages/federation";
@@ -216,6 +217,7 @@ export function App() {
           <Route path="buckets" element={<BucketSettingsPage />} />
           <Route path="system" element={<AdministratorSettingsPage />} />
           <Route path="security" element={<SecuritySettingsPage />} />
+          <Route path="events" element={<EventDeliveryPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -15,6 +15,7 @@ type memSink struct {
 	events  []Event
 	closed  bool
 	failFor int
+	failKey string
 	calls   int
 }
 
@@ -30,7 +31,7 @@ func (m *memSink) Publish(ctx context.Context, e Event) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	if m.failFor > 0 {
+	if m.failFor > 0 && (m.failKey == "" || e.Key == m.failKey) {
 		m.failFor--
 		return errors.New("unavailable")
 	}
@@ -49,6 +50,14 @@ func (m *memSink) count() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.events)
+}
+
+func (m *memSink) snapshot() []Event {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]Event, len(m.events))
+	copy(out, m.events)
+	return out
 }
 
 func TestEventSinkContract(t *testing.T) {
@@ -351,5 +360,129 @@ func TestDispatcherRetryAfterIsCapped(t *testing.T) {
 	att := got.Attempts["webhook"]
 	if att.Attempts != 1 || !att.NextAttemptAt.Equal(now.Add(maxBackoff)) {
 		t.Fatalf("next %s want %s (%+v)", att.NextAttemptAt, now.Add(maxBackoff), att)
+	}
+}
+
+func orderRow(id, eventType, tenant, bucket, key string, at time.Time) OutboxRecord {
+	return NormalizeOutbox(OutboxRecord{
+		ID:        id,
+		EventType: eventType,
+		TenantID:  tenant,
+		Bucket:    bucket,
+		Key:       key,
+		CreatedAt: at,
+		Attempts: map[string]SinkAttempt{
+			"kafka": {Status: StatusPending, NextAttemptAt: at},
+		},
+	}, at)
+}
+
+func TestDispatcherDeliversSameKeyInOrderAfterFailure(t *testing.T) {
+	store := newMemOutbox()
+	sink := &memSink{name: "kafka", failFor: 1, failKey: "obj"}
+	d := NewDispatcher(store, []EventSink{sink}, Config{MaxAttempts: 5, Retention: time.Hour, DeadRetention: time.Hour}, nil, Observer{})
+	d.purgeEvery = time.Hour
+	t0 := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	created := orderRow("01CREATE000000000000000000", "ObjectCreated", "ten", "b", "obj", t0)
+	deleted := orderRow("01DELETE000000000000000000", "ObjectDeleted", "ten", "b", "obj", t0.Add(time.Second))
+	other := orderRow("01OTHER0000000000000000000", "ObjectCreated", "ten", "b", "other", t0.Add(2*time.Second))
+	// Insert the later row first. ListDue walks a map, so delivery order is not insert order.
+	if _, err := store.InsertOutbox(context.Background(), deleted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.InsertOutbox(context.Background(), other); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.InsertOutbox(context.Background(), created); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for i := 0; i < 4; i++ {
+		if err := d.ProcessOnce(ctx, t0.Add(time.Duration(i)*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := sink.snapshot()
+	if len(got) != 3 {
+		t.Fatalf("delivered %d %+v", len(got), got)
+	}
+	if got[0].Key == "obj" && got[0].Type != "ObjectCreated" {
+		t.Fatalf("first obj event %s, want ObjectCreated", got[0].Type)
+	}
+	var obj []string
+	var sawOther bool
+	for _, e := range got {
+		if e.Key == "other" {
+			sawOther = true
+			continue
+		}
+		obj = append(obj, e.Type)
+	}
+	if !sawOther {
+		t.Fatal("other key was blocked by the stuck key")
+	}
+	if len(obj) != 2 || obj[0] != "ObjectCreated" || obj[1] != "ObjectDeleted" {
+		t.Fatalf("obj order %v", obj)
+	}
+	// The other key is delivered while obj's create is still failing or already recovered.
+	// It must not be held until obj is done: it appears, and obj stays in order.
+	del, err := store.GetOutbox(ctx, deleted.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if del.Status != StatusDelivered {
+		t.Fatalf("delete status %s", del.Status)
+	}
+}
+
+func TestDispatcherLaterRowProceedsWhenEarlierIsDead(t *testing.T) {
+	store := newMemOutbox()
+	sink := &memSink{name: "kafka", failFor: 1, failKey: "obj"}
+	d := NewDispatcher(store, []EventSink{sink}, Config{MaxAttempts: 1, Retention: 24 * time.Hour, DeadRetention: 24 * time.Hour}, nil, Observer{})
+	d.purgeEvery = 24 * time.Hour
+	t0 := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	d.lastPurge = t0
+	created := orderRow("01CREATE000000000000000000", "ObjectCreated", "ten", "b", "obj", t0)
+	deleted := orderRow("01DELETE000000000000000000", "ObjectDeleted", "ten", "b", "obj", t0.Add(time.Second))
+	if _, err := store.InsertOutbox(context.Background(), deleted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.InsertOutbox(context.Background(), created); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		if err := d.ProcessOnce(ctx, t0.Add(time.Duration(i)*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cr, err := store.GetOutbox(ctx, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cr.Attempts["kafka"].Status != StatusDead {
+		t.Fatalf("create sink %+v", cr.Attempts["kafka"])
+	}
+	got := sink.snapshot()
+	if len(got) != 1 || got[0].Type != "ObjectDeleted" || got[0].ID != deleted.ID {
+		t.Fatalf("after dead earlier row, got %+v", got)
+	}
+}
+
+func TestDispatcherEmptyKeyIsNotOrdered(t *testing.T) {
+	store := newMemOutbox()
+	sink := &memSink{name: "kafka", failFor: 1}
+	d := NewDispatcher(store, []EventSink{sink}, Config{MaxAttempts: 5, Retention: time.Hour, DeadRetention: time.Hour}, nil, Observer{})
+	d.purgeEvery = time.Hour
+	t0 := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	first := orderRow("01USERA0000000000000000000", "UserCreated", "ten", "", "", t0)
+	second := orderRow("01USERB0000000000000000000", "UserCreated", "ten", "", "", t0.Add(time.Second))
+	_, _ = store.InsertOutbox(context.Background(), second)
+	_, _ = store.InsertOutbox(context.Background(), first)
+	if err := d.ProcessOnce(context.Background(), t0.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if sink.count() != 1 {
+		t.Fatalf("empty-key later row should publish while the earlier row fails, got %d", sink.count())
 	}
 }

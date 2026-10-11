@@ -32,6 +32,8 @@ func freshTestServer(t *testing.T) *api.Server {
 	if _, ok := os.LookupEnv("STORAGE_AUTO_HOME_BUCKET"); !ok {
 		t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
 	}
+	t.Setenv("STORAGE_KAFKA_BROKERS", "")
+	t.Setenv("STORAGE_NATS_URL", "")
 	dir := t.TempDir()
 	s, err := api.NewServer(api.Config{
 		DataDir:       dir,
@@ -322,5 +324,69 @@ func TestUserBucketIsolation(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
 	if len(resp.Buckets) != 1 {
 		t.Fatalf("user should see 1 bucket, got %d", len(resp.Buckets))
+	}
+}
+
+func TestEventDeliveryAdminOnly(t *testing.T) {
+	s := testServer(t)
+	adminTok := loginToken(t, s, "admin", "admin")
+	createBody, _ := json.Marshal(map[string]string{
+		"username": "evuser", "password": "usr123", "role": auth.RoleUser, "email": "e@test.com",
+	})
+	req := authReq(http.MethodPost, "/api/v1/users", adminTok, createBody)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	userTok := loginToken(t, s, "evuser", "usr123")
+	req = authReq(http.MethodGet, "/api/v1/events/delivery", userTok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("user delivery want 403 got %d", rec.Code)
+	}
+	req = authReq(http.MethodPost, "/api/v1/events/test", userTok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("user test want 403 got %d", rec.Code)
+	}
+
+	req = authReq(http.MethodGet, "/api/v1/events/delivery", adminTok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin delivery %d %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		QueueDepth int `json:"queue_depth"`
+		Sinks      []struct {
+			Name   string `json:"name"`
+			Status string `json:"status"`
+		} `json:"sinks"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.QueueDepth != 0 {
+		t.Fatalf("queue %d", body.QueueDepth)
+	}
+	sawKafka := false
+	for _, sk := range body.Sinks {
+		if sk.Name == "kafka" {
+			sawKafka = true
+			if sk.Status != "disabled" {
+				t.Fatalf("kafka status %s", sk.Status)
+			}
+		}
+	}
+	if !sawKafka {
+		t.Fatalf("sinks %+v", body.Sinks)
+	}
+
+	req = authReq(http.MethodPost, "/api/v1/events/test", adminTok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("test with no sinks want 409 got %d %s", rec.Code, rec.Body.String())
 	}
 }

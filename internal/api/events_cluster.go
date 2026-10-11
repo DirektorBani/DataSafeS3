@@ -15,13 +15,32 @@ import (
 )
 
 type webhookEventSink struct {
-	server *Server
+	server  *Server
+	mu      sync.Mutex
+	lastErr string
 }
 
 func (w *webhookEventSink) Name() string { return "webhook" }
 
 func (w *webhookEventSink) Publish(ctx context.Context, e events.Event) error {
-	return w.server.deliverWebhooks(ctx, e)
+	err := w.server.deliverWebhooks(ctx, e)
+	w.mu.Lock()
+	if err == nil {
+		w.lastErr = ""
+	} else {
+		w.lastErr = err.Error()
+	}
+	w.mu.Unlock()
+	return err
+}
+
+func (w *webhookEventSink) Health(context.Context) (string, string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.lastErr != "" {
+		return "degraded", w.lastErr
+	}
+	return "connected", ""
 }
 
 func (w *webhookEventSink) Close() error { return nil }
@@ -30,11 +49,12 @@ func (w *webhookEventSink) Close() error { return nil }
 // NATS is registered when STORAGE_NATS_URL is non-empty.
 // The webhook sink is registered when at least one webhook is enabled, and is
 // refreshed after webhook create, update, and delete.
-// Kafka (E02) should Dispatcher.Register when STORAGE_KAFKA_BROKERS is non-empty.
+// Kafka is registered when STORAGE_KAFKA_BROKERS is non-empty.
 func (s *Server) syncEventSinks() {
 	if s == nil || s.eventDisp == nil {
 		return
 	}
+	_ = s.syncKafkaSink()
 	if natsURLConfigured() {
 		if !s.eventDisp.HasSink("nats") {
 			s.eventDisp.Register(newNATSEventSink())
@@ -86,7 +106,7 @@ func (s *Server) webhookMatchesConfigured(eventType string) bool {
 	return false
 }
 
-func (s *Server) wireEventSinks() {
+func (s *Server) wireEventSinks() error {
 	cfg := events.ConfigFromEnv()
 	s.eventCfg = cfg
 	if m, ok := s.meta.(metadata.OutboxMutator); ok {
@@ -99,7 +119,12 @@ func (s *Server) wireEventSinks() {
 		Dead:      observability.AddEventsDead,
 		Lag:       observability.ObserveEventsDeliveryLag,
 	})
+	if err := s.syncKafkaSink(); err != nil {
+		return err
+	}
 	s.syncEventSinks()
+	s.noteKafkaBrokers()
+	return nil
 }
 
 func (s *Server) outboxStore() events.OutboxStore {

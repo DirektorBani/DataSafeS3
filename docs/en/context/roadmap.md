@@ -82,7 +82,7 @@ Prioritized backlog from [feature audit 2026-06-17](../../testing/feature-audit-
 | A.3 | migrate-boltdb command | **done** | `storage-server migrate-boltdb` with integrity report |
 | A.4 | Performance review doc | **done** | [performance-review.md](performance-review.md) |
 | A.5 | STS AssumeRole | **done** | `POST /api/v1/sts/assume-role`; session tokens in SigV4; credentials bound to authenticated user |
-| A.6 | Event notifications | **partial** | Durable outbox for admin and S3 object events, webhooks, bucket notifications, and **NATS** (`STORAGE_NATS_URL`; JetStream ack when a stream covers the subject, otherwise core publish); Kafka planned, not wired; RabbitMQ is not a sink |
+| A.6 | Event notifications | **partial** | Durable outbox for admin and S3 object events, webhooks, bucket notifications, **NATS** (`STORAGE_NATS_URL`; JetStream ack when a stream covers the subject, otherwise core publish), and opt-in **Kafka** (`STORAGE_KAFKA_BROKERS`, franz-go, acks=all). Kafka is off unless brokers are set. RabbitMQ is not a sink |
 | A.7 | SSE-S3 | **partial** | AES-256-GCM via `STORAGE_SSE_MASTER_KEY` |
 | A.8 | Cluster health probe | **done** | Live `/healthz` every 10s; cluster metrics |
 | A.9 | Object Lock API subset | **done** | Retention GET/PUT XML; governance/compliance modes |

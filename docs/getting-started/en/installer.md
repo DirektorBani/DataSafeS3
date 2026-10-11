@@ -90,6 +90,7 @@ storage-server is deployed on the leader by Apply (`deploy-storage-server.sh`) o
 | 5 | `binary` | off | `deploy/compose/docker-compose.local-binary.yml` + build Linux binary + console `dist` |
 | 6 | `identity` | off | Start LDAP + Keycloak lab sidecars (`scripts/start-*-test`). Turns **dev mode on** so the HTTP lab IdP is reachable. |
 | 7 | `dev` | off | `STORAGE_DEV=true` (HTTP/private outbound, skip weak-secret warnings). Also `-Dev` / `--dev`. |
+| 8 | `kafka` | off | `deploy/compose/docker-compose.kafka.yml` — one Apache Kafka KRaft broker (`apache/kafka:3.9.2`). Sets `STORAGE_KAFKA_BROKERS=kafka:19092`. Not part of `--yes` without `--profiles`. |
 
 SSO for the console is **OIDC** (Keycloak / other IdP via Settings), not an edge oauth2-proxy gate.
 

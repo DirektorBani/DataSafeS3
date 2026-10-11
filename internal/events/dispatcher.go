@@ -24,7 +24,13 @@ type Observer struct {
 }
 
 // Dispatcher is the single delivery loop for one process.
-// Register sinks before Run. E02 adds Kafka by calling Register when brokers are configured.
+// Register a sink only when that sink is configured. Kafka is registered
+// by the API process when STORAGE_KAFKA_BROKERS is non-empty.
+//
+// Per object key, a sink does not receive a later row while an earlier row
+// for the same tenant, bucket, and key still has that sink pending. One
+// stuck key does not block other keys or other sinks. An empty key is not
+// ordered. When the earlier attempt is dead or delivered, later rows proceed.
 type Dispatcher struct {
 	store      OutboxStore
 	cfg        Config
@@ -130,6 +136,34 @@ func (d *Dispatcher) HasSink(name string) bool {
 	defer d.mu.Unlock()
 	_, ok := d.byName[name]
 	return ok
+}
+
+// HealthReporter is optional. Sinks that track a connection or the last
+// publish error implement it. Status is "connected" or "degraded".
+type HealthReporter interface {
+	Health(ctx context.Context) (status, lastError string)
+}
+
+// Health reports one registered sink. registered is false when name is not
+// in the dispatcher; status is then "disabled".
+func (d *Dispatcher) Health(ctx context.Context, name string) (registered bool, status, lastError string) {
+	if d == nil || name == "" {
+		return false, "disabled", ""
+	}
+	d.mu.Lock()
+	sk := d.byName[name]
+	d.mu.Unlock()
+	if sk == nil {
+		return false, "disabled", ""
+	}
+	if h, ok := sk.(HealthReporter); ok {
+		st, errStr := h.Health(ctx)
+		if st == "" {
+			st = "connected"
+		}
+		return true, st, errStr
+	}
+	return true, "connected", ""
 }
 
 // SinkNames returns the snapshot of registered sink names.
@@ -257,13 +291,26 @@ func (d *Dispatcher) deliver(ctx context.Context, sinks map[string]EventSink, re
 	if rec.Status != StatusPending {
 		return nil
 	}
+	dirty := false
 	for name, att := range rec.Attempts {
-		if att.Status != StatusPending && att.Status != "" {
+		if !SinkStillPending(att) {
 			continue
 		}
 		if att.NextAttemptAt.After(now) {
 			continue
 		}
+		if rec.Key != "" {
+			blocked, err := d.store.EarlierPending(ctx, rec.TenantID, rec.Bucket, rec.Key, name, rec.ID, rec.CreatedAt)
+			if err != nil {
+				return err
+			}
+			if blocked {
+				// Leave attempts and NextAttemptAt alone so a blocked row is
+				// not rewritten on every tick. Other keys still deliver.
+				continue
+			}
+		}
+		dirty = true
 		sink := sinks[name]
 		var pubErr error
 		if sink == nil {
@@ -335,6 +382,9 @@ func (d *Dispatcher) deliver(ctx context.Context, sinks map[string]EventSink, re
 		rec.Attempts[name] = att
 		slog.Warn("event sink delivery failed",
 			"event_id", rec.ID, "sink", name, "attempts", att.Attempts, "next_attempt_at", att.NextAttemptAt, "err", att.LastError)
+	}
+	if !dirty {
+		return nil
 	}
 	AggregateStatus(rec, now)
 	return d.store.SaveOutbox(ctx, *rec)

@@ -315,6 +315,19 @@ Not a tagged release. `VERSION` stays **1.4.1** until a later release commit. Pu
 
 Details: [event-outbox.md](event-outbox.md).
 
+## Unreleased: Kafka sink (opt-in)
+
+Not a tagged release. `VERSION` stays **1.4.1**. No new metadata migration.
+
+- Leave `STORAGE_KAFKA_BROKERS` empty to keep the previous behaviour: no Kafka client and no connection. The installer profile `kafka` is off unless you pass it. Default `--yes` profiles do not include it.
+- A non-empty broker list registers a franz-go producer (`acks=all`, idempotent, topic `STORAGE_KAFKA_TOPIC` default `datasafe.events`). SASL `PLAIN` without TLS refuses to start. SCRAM-SHA-256 and SCRAM-SHA-512 are accepted. Username and password may be supplied with `STORAGE_KAFKA_SASL_USERNAME_FILE` and `STORAGE_KAFKA_SASL_PASSWORD_FILE`.
+- Webhook and NATS payloads are unchanged. Kafka messages are a separate JSON document (`Records[]` plus `datasafe`).
+- The dispatcher now holds per-object order on every sink. A stuck key blocks only that key. If an earlier row goes `dead`, later rows for that key are delivered and the dead one is a gap.
+- A change in the broker list between process starts is written to Activity as `kafka_brokers_changed` (the new addresses, not SASL secrets).
+- Console: **Settings → Event delivery**. `GET /api/v1/events/delivery` and `POST /api/v1/events/test` are administrator-only.
+
+Details: [kafka.md](../../en/integrations/kafka.md).
+
 ## Checklist
 
 - [ ] Backup metadata and objects

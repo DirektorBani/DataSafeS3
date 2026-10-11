@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-07-10 (proposed) · 2026-10-11 (accepted)  
-**Related:** E01 durable outbox · E02 Kafka sink (later) · E03 S3 events, bucket notifications, webhook classification, NATS JetStream
+**Related:** E01 durable outbox · E02 Kafka sink · E03 S3 events, bucket notifications, webhook classification, NATS JetStream
 
 ## Context
 
@@ -24,7 +24,9 @@ Events are written to a metadata outbox (bolt buckets `event_outbox` / `event_ou
 
 Webhook and NATS are adapters on this dispatcher. A sink is registered only when configured: NATS when `STORAGE_NATS_URL` is set, webhook when at least one webhook is enabled (refreshed on webhook changes), bucket-notification when a bucket has a notification URL. An event whose snapshot is empty is not stored and is not replayed. `Publish` may return `*events.TerminalError` (the sink is dead immediately; used for HTTP 4xx other than 408 and 429, and for 3xx) or `*events.RetryAfterError` (retried, waiting at least `After`, capped at 5 minutes). NATS publishes with a JetStream ack when the connected server has JetStream and a stream covers the subject; otherwise it is core publish, which cannot confirm subscriber delivery. S3 SigV4 object events and bucket-notification webhooks are written through the same row and `*WithOutbox` helpers. That is required for Kafka. The row and `Dispatcher.Register` are the extension point.
 
-Kafka is not in this decision's runtime. E02 registers a sink with `Dispatcher.Register` only when `STORAGE_KAFKA_BROKERS` is set, and must not add a client or a connection when that variable is empty. **Do not** add a Kafka module to `go.mod` until E02. The RabbitMQ stub is removed. RabbitMQ is not a planned sink.
+Kafka uses `github.com/twmb/franz-go` (pure Go, no CGO). That client is the owner-approved choice. The module is linked into the storage-server binary. A client, its goroutines, and any broker connection are created only inside `Dispatcher.Register`, and only when `STORAGE_KAFKA_BROKERS` is non-empty. An empty value does not construct a client. The producer uses `acks=all` and franz-go's default idempotent producer (this code does not call `DisableIdempotentWrite`). The record key is `tenant/bucket/key`. The body is S3-notification-shaped JSON plus a `datasafe` block; webhook and NATS bodies are unchanged. SASL PLAIN without TLS refuses startup. The RabbitMQ stub stays removed. RabbitMQ is not a planned sink.
+
+The dispatcher keeps per-object order for every sink, not only Kafka. It does not publish a later row for the same tenant, bucket, and non-empty object key to a sink while an earlier row still has that sink pending. One stuck key does not block other keys or other sinks. An empty object key is not ordered. When the earlier attempt is `dead` or `delivered`, later rows for that key proceed. A dead earlier row is a gap: it is not published.
 
 Delivery is at-least-once. A lost leader lease during `Publish` can duplicate a delivery. Empty sink lists mark the row delivered immediately. Sink names are snapshotted onto the row at insert; a sink registered later does not inherit older rows.
 

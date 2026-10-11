@@ -224,6 +224,48 @@ func (p *pgRecordingSink) Publish(context.Context, events.Event) error {
 	return nil
 }
 func (p *pgRecordingSink) Close() error { return nil }
+func TestPostgresEarlierPendingSameKey(t *testing.T) {
+	s := openOutboxPostgres(t)
+	ctx := context.Background()
+	t0 := time.Now().UTC().Add(-time.Minute).Truncate(time.Microsecond)
+	created := events.NormalizeOutbox(events.OutboxRecord{
+		ID: "01PGCREATE0000000000000000", EventType: "ObjectCreated",
+		TenantID: "ten", Bucket: "b", Key: "obj", CreatedAt: t0,
+		Attempts: map[string]events.SinkAttempt{"kafka": {Status: events.StatusPending, NextAttemptAt: t0}},
+	}, t0)
+	deleted := events.NormalizeOutbox(events.OutboxRecord{
+		ID: "01PGDELETE0000000000000000", EventType: "ObjectDeleted",
+		TenantID: "ten", Bucket: "b", Key: "obj", CreatedAt: t0.Add(time.Second),
+		Attempts: map[string]events.SinkAttempt{"kafka": {Status: events.StatusPending, NextAttemptAt: t0}},
+	}, t0.Add(time.Second))
+	t.Cleanup(func() {
+		_, _ = s.pool.Exec(context.Background(), `DELETE FROM event_outbox WHERE id IN ($1,$2)`, created.ID, deleted.ID)
+	})
+	if _, err := s.InsertOutbox(ctx, created); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.InsertOutbox(ctx, deleted); err != nil {
+		t.Fatal(err)
+	}
+	blocked, err := s.EarlierPending(ctx, "ten", "b", "obj", "kafka", deleted.ID, deleted.CreatedAt)
+	if err != nil || !blocked {
+		t.Fatalf("blocked %v err %v", blocked, err)
+	}
+	by, err := s.PendingBySink(ctx)
+	if err != nil || by["kafka"] < 2 {
+		t.Fatalf("pending by sink %+v err %v", by, err)
+	}
+	created.Attempts["kafka"] = events.SinkAttempt{Status: events.StatusDead, Attempts: 1}
+	events.AggregateStatus(&created, time.Now().UTC())
+	if err := s.SaveOutbox(ctx, created); err != nil {
+		t.Fatal(err)
+	}
+	blocked, err = s.EarlierPending(ctx, "ten", "b", "obj", "kafka", deleted.ID, deleted.CreatedAt)
+	if err != nil || blocked {
+		t.Fatalf("after dead earlier, blocked %v err %v", blocked, err)
+	}
+}
+
 func (p *pgRecordingSink) count() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()

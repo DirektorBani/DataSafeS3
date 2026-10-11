@@ -31,7 +31,19 @@ One loop per process, poll interval 1 second. It is not an environment variable.
 - **Retention:** `delivered` rows are deleted `STORAGE_EVENTS_RETENTION` after `delivered_at` (default 24h). `dead` rows are deleted `STORAGE_EVENTS_DEAD_RETENTION` after `dead_at` (default 168h). `dropped` rows use the dead retention, measured from `updated_at`.
 - **Cap:** `STORAGE_EVENTS_MAX_PENDING` (default 100000). `0` means unlimited. When a new row would exceed the cap, the oldest pending rows are marked `dropped` with reason `pending cap exceeded`. The object or bucket write still commits. The process increments `datasafe_events_dropped_total{reason="pending_cap"}` and writes Activity action `events_outbox_dropped`.
 
-A sink is registered only when it is configured. NATS is registered when `STORAGE_NATS_URL` is set. The webhook sink is registered when at least one webhook is enabled, and that set is refreshed when webhooks are created, updated, or deleted. The bucket-notification sink is registered when a bucket has a notification URL (including after process start) and when a matching object write enqueues one. Kafka is not registered in this change.
+A sink is registered only when it is configured. NATS is registered when `STORAGE_NATS_URL` is set. The webhook sink is registered when at least one webhook is enabled, and that set is refreshed when webhooks are created, updated, or deleted. The bucket-notification sink is registered when a bucket has a notification URL (including after process start) and when a matching object write enqueues one. Kafka is registered when `STORAGE_KAFKA_BROKERS` is non-empty. An empty value does not create a client or a connection. See [Kafka](../../en/integrations/kafka.md).
+
+## Per-object order
+
+For each sink, the dispatcher does not deliver a later row for the same tenant, bucket, and object key while an earlier row still has that sink `pending`. List order is by due time, so a retry can make a delete due before its create. The sink still receives the create first.
+
+One stuck key blocks only that key on that sink. Other keys keep moving. Other sinks on the same key are independent: a failing Kafka attempt does not hold the webhook attempt.
+
+An empty object key is not held behind another empty key. `UserCreated` and bucket events use an empty key; ordering them would block every such event for the tenant.
+
+When the earlier attempt becomes `dead` (attempts exhausted, or a terminal error), later rows for that key proceed. The dead row is not published. Consumers see a gap. They must not assume every change of that object was delivered.
+
+Delivery stays at-least-once. A duplicate of an earlier `event_id` can still appear. Order is among distinct rows, per sink, per object key.
 
 Sink names that apply to the event are copied onto the row at insert. `nats` is copied when that sink is registered. `webhook` is copied when an enabled webhook lists the event type or `*`. The bucket-notification sink is not copied onto those rows; a matching bucket rule gets its own row. A sink configured later does not receive rows already queued, and it does not receive events that were never written. If the snapshot is empty and no bucket rule matches, the metadata change does not insert an outbox row. Those events are not replayed.
 

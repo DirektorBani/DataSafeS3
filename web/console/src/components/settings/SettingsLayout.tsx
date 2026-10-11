@@ -10,7 +10,9 @@ export function SettingsLayout() {
     ? "system"
     : pathname.includes("/security")
       ? "security"
-      : "buckets";
+      : pathname.includes("/events")
+        ? "events"
+        : "buckets";
 
   return (
     <div className="space-y-4">
@@ -21,6 +23,8 @@ export function SettingsLayout() {
             navigate("/admin/settings/system");
           } else if (value === "security") {
             navigate("/admin/settings/security");
+          } else if (value === "events") {
+            navigate("/admin/settings/events");
           } else {
             navigate("/admin/settings/buckets");
           }
@@ -30,6 +34,7 @@ export function SettingsLayout() {
           <TabsTrigger value="buckets">{t("tabs.buckets")}</TabsTrigger>
           <TabsTrigger value="system">{t("tabs.system")}</TabsTrigger>
           <TabsTrigger value="security">{t("tabs.security")}</TabsTrigger>
+          <TabsTrigger value="events">{t("tabs.events")}</TabsTrigger>
         </TabsList>
       </Tabs>
       <Outlet />

@@ -191,7 +191,10 @@ func NewServer(cfg Config) (*Server, error) {
 	observability.SetStorageStats(s.storageStats)
 	observability.SetExtendedStats(s.extendedStats)
 	s.wireReplicationHooks()
-	s.wireEventSinks()
+	if err := s.wireEventSinks(); err != nil {
+		meta.Close()
+		return nil, err
+	}
 	s.cluster = newClusterMonitor(s.meta)
 	haCfg := ha.ConfigFromEnv()
 	if haCfg.Enabled {
@@ -542,6 +545,9 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /api/v1/tokens", allRoles(s.handleListAPITokens))
 	mux.HandleFunc("POST /api/v1/tokens", allRoles(s.handleCreateAPIToken))
 	mux.HandleFunc("DELETE /api/v1/tokens/{id}", allRoles(s.handleDeleteAPIToken))
+
+	mux.HandleFunc("GET /api/v1/events/delivery", adminOnly(s.handleEventDelivery))
+	mux.HandleFunc("POST /api/v1/events/test", adminOnly(s.handleEventTest))
 
 	mux.HandleFunc("GET /api/v1/webhooks", adminOnly(s.handleListWebhooks))
 	mux.HandleFunc("POST /api/v1/webhooks", adminOnly(s.handleCreateWebhook))

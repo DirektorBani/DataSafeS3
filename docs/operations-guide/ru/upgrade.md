@@ -263,6 +263,19 @@ docker compose --profile postgres up -d
 
 Подробно: [event-outbox.md](event-outbox.md).
 
+## Незарелижено: sink Kafka (только по включению)
+
+Это не тег. `VERSION` остаётся **1.4.1**. Новой миграции метаданных нет.
+
+- Пустой `STORAGE_KAFKA_BROKERS` сохраняет прежнее поведение: нет клиента Kafka и нет соединения. Профиль установщика `kafka` выключен, пока его не передали. Профили `--yes` по умолчанию его не содержат.
+- Непустой список брокеров регистрирует продюсер franz-go (`acks=all`, идемпотентный, топик `STORAGE_KAFKA_TOPIC`, по умолчанию `datasafe.events`). SASL `PLAIN` без TLS отказывается стартовать. Принимаются SCRAM-SHA-256 и SCRAM-SHA-512. Имя и пароль можно задать через `STORAGE_KAFKA_SASL_USERNAME_FILE` и `STORAGE_KAFKA_SASL_PASSWORD_FILE`.
+- Тела webhook и NATS не меняются. Сообщения Kafka — отдельный JSON (`Records[]` и блок `datasafe`).
+- Диспетчер держит порядок по объекту для каждого sink. Застрявший ключ блокирует только этот ключ. Если более ранняя строка стала `dead`, более поздние для этого ключа доставляются, а мёртвая — пропуск.
+- Смена списка брокеров между стартами пишется в Activity как `kafka_brokers_changed` (новые адреса, не секреты SASL).
+- Консоль: **Настройки → Доставка событий**. `GET /api/v1/events/delivery` и `POST /api/v1/events/test` только для администратора.
+
+Подробно: [kafka.md](../../ru/integrations/kafka.md).
+
 ## Чеклист
 
 - [ ] Backup метаданных и объектов

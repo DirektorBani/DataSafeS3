@@ -1293,6 +1293,14 @@ export const api = {
   deleteAPIToken: (id: string) =>
     fetchJSON<void>(`/tokens/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
+  eventDelivery: () =>
+    fetchJSON<{
+      queue_depth: number;
+      sinks: { name: string; status: "connected" | "degraded" | "disabled" | string; last_error: string; queue_depth: number }[];
+    }>("/events/delivery"),
+  sendTestEvent: () =>
+    fetchJSON<{ event_id: string }>("/events/test", { method: "POST" }),
+
   listWebhooks: () => fetchJSON<{ webhooks: Webhook[] }>("/webhooks"),
   createWebhook: (body: { name?: string; url: string; events?: string[]; headers?: Record<string, string>; enabled?: boolean }) =>
     fetchJSON<{ webhook: Webhook }>("/webhooks", {

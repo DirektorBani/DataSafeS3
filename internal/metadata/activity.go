@@ -43,6 +43,9 @@ const (
 	ActionInventoryExported   = "inventory_exported"
 	// Outbox pending cap evicted older rows so object writes could continue.
 	ActionEventsOutboxDropped = "events_outbox_dropped"
+	// Kafka broker list changed between process starts. The resource name is
+	// the new broker list, never a SASL secret.
+	ActionKafkaBrokersChanged = "kafka_brokers_changed"
 )
 
 type ActivityRecord struct {

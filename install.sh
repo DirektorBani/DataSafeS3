@@ -19,9 +19,9 @@ DRY_RUN=0
 CLUSTER=0
 
 # Parallel arrays (bash 3.2-safe)
-OPT_IDS=(core postgres monitoring data binary identity dev)
-OPT_ON=(1 1 1 1 0 0 0)
-OPT_LOCKED=(1 0 0 0 0 0 0)
+OPT_IDS=(core postgres monitoring data binary identity dev kafka)
+OPT_ON=(1 1 1 1 0 0 0 0)
+OPT_LOCKED=(1 0 0 0 0 0 0 0)
 OPT_LABEL=(
   "Core (console + S3 API)"
   "PostgreSQL metadata"
@@ -30,6 +30,7 @@ OPT_LABEL=(
   "Build from source (local Linux binary)"
   "Identity lab (LDAP + Keycloak)"
   "Dev mode (STORAGE_DEV=true; HTTP/private outbound)"
+  "Kafka lab (one KRaft broker; opt-in, not a default profile)"
 )
 
 usage() {
@@ -44,8 +45,9 @@ DataSafeS3 interactive installer
   ./install.sh --project datasafe --tag v1.4.1 --data-root "$HOME/.local/share/datasafe"
   ./install.sh --dev --yes --profiles core,postgres,data
 
-Profiles: core, postgres, monitoring, data, binary, identity, dev
+Profiles: core, postgres, monitoring, data, binary, identity, dev, kafka
   --dev or profile dev opts into STORAGE_DEV=true. Default install is production-safe.
+  kafka is opt-in only. A default install does not start a broker and does not set STORAGE_KAFKA_BROKERS.
 Cluster Wave 1+2 DryRun: inventory + render (live Apply later)
 Docs: docs/getting-started/en/installer.md
 EOF
@@ -483,6 +485,11 @@ ensure_env() {
     set_env_key .env STORAGE_OIDC_ROPC_ENABLED true
     ok "Identity lab env keys patched (LDAP + OIDC test defaults)"
   fi
+  if [ "$(opt_get kafka)" = "1" ]; then
+    set_env_key .env STORAGE_KAFKA_BROKERS "kafka:19092"
+    set_env_key .env STORAGE_KAFKA_TOPIC "datasafe.events"
+    ok "Kafka lab: STORAGE_KAFKA_BROKERS=kafka:19092 (not part of the default profiles)"
+  fi
 }
 
 make_data_dirs() {
@@ -520,11 +527,13 @@ compose_up() {
   local args=(compose -p "$PROJECT_NAME" -f docker-compose.yml)
   [ "$(opt_get data)" = "1" ] && args+=(-f docker-compose.local-data.yml)
   [ "$(opt_get binary)" = "1" ] && args+=(-f deploy/compose/docker-compose.local-binary.yml)
+  [ "$(opt_get kafka)" = "1" ] && args+=(-f deploy/compose/docker-compose.kafka.yml)
   [ "$(opt_get postgres)" = "1" ] && args+=(--profile postgres)
 
   local services=(storage-server caddy)
   [ "$(opt_get postgres)" = "1" ] && services=(postgres "${services[@]}")
   [ "$(opt_get monitoring)" = "1" ] && services+=(prometheus grafana)
+  [ "$(opt_get kafka)" = "1" ] && services+=(kafka)
 
   if [ "$DRY_RUN" = "1" ]; then
     info "DRY-RUN docker ${args[*]} config"
@@ -575,6 +584,9 @@ show_done() {
   if [ "$(opt_get identity)" = "1" ]; then
     echo "  Keycloak: http://localhost:8180/admin"
     echo "  LDAP:     ldap://localhost:389"
+  fi
+  if [ "$(opt_get kafka)" = "1" ]; then
+    echo "  Kafka:    localhost:9092 (bootstrap), in-stack kafka:19092"
   fi
   echo ""
   echo "  Pre-created users / passwords"

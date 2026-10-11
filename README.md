@@ -90,6 +90,8 @@ flowchart TB
   api -.-> external
 ```
 
+Kafka is an opt-in event sink. A default install does not set `STORAGE_KAFKA_BROKERS` and does not start a broker. The process opens no Kafka connection unless that variable is non-empty. Installer profile `kafka` is not one of the default profiles.
+
 ---
 
 ## Quick start
@@ -106,7 +108,7 @@ flowchart TB
 chmod +x install.sh && ./install.sh
 ```
 
-Or `install.cmd` on Windows. Menu: Core, Postgres, Monitoring, host data, optional build / Identity lab.  
+Or `install.cmd` on Windows. Menu: Core, Postgres, Monitoring, host data, optional build / Identity lab / Kafka. Kafka is opt-in only and is not part of the default profile set.  
 Docs: [EN](docs/getting-started/en/installer.md) · [RU](docs/getting-started/ru/installer.md)
 
 **Manual** (equivalent default profile):

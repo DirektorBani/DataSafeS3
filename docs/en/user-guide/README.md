@@ -504,6 +504,7 @@ The containers below are **not** in the main `docker-compose.yml`. Start them af
 | **Elasticsearch** | `scripts\start-elasticsearch-test.cmd` | 19200 | Structured log sink |
 | **Kibana** | `scripts\start-kibana-test.cmd` | 5601 | Discover on index `datasafe-logs*` |
 | **Loki** | *no dedicated script* | 3100 (typical) | HTTP log push; your own container on network `datasafe_default` |
+| **Kafka** | installer profile `kafka` (`deploy/compose/docker-compose.kafka.yml`) | 9092 | Opt-in event sink. Not in the default profiles. No broker and no `STORAGE_KAFKA_BROKERS` unless you select `kafka`. |
 
 Stop LDAP/Keycloak: `scripts\stop-ldap-keycloak-test.cmd` (full reset: `--remove`).
 

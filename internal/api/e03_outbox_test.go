@@ -22,6 +22,7 @@ import (
 func e03Server(t *testing.T) (*Server, auth.Credentials) {
 	t.Helper()
 	t.Setenv("STORAGE_NATS_URL", "")
+	t.Setenv("STORAGE_KAFKA_BROKERS", "")
 	t.Setenv("STORAGE_DEV", "true")
 	dir := t.TempDir()
 	srv, err := NewServer(Config{

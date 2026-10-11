@@ -59,6 +59,9 @@ type SystemConfig struct {
 	MFA                      MFASettings      `json:"mfa,omitempty"`
 	Cluster                  ClusterConfig    `json:"cluster,omitempty"`
 	Logging                  LoggingConfig    `json:"logging,omitempty"`
+	// KafkaBrokers is the last STORAGE_KAFKA_BROKERS value this process recorded.
+	// It is compared at startup so a broker-list change is written to Activity.
+	KafkaBrokers string `json:"kafka_brokers,omitempty"`
 }
 
 type TrashRecord struct {
