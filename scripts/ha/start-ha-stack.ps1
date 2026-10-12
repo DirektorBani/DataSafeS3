@@ -108,7 +108,13 @@ Write-Host "[ha] Starting HA stack (2x postgres, 3x storage-server, object-repli
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $BaseUrl = "http://127.0.0.1:8082"
-$StandbyUrls = @("http://127.0.0.1:9001", "http://127.0.0.1:9003")
+$StandbyPort = "19011"
+$Standby2Port = "19013"
+foreach ($line in Get-Content $EnvFile) {
+    if ($line -match '^\s*HA_STANDBY_HTTP_PORT=(.+)$') { $StandbyPort = $Matches[1].Trim() }
+    if ($line -match '^\s*HA_STANDBY2_HTTP_PORT=(.+)$') { $Standby2Port = $Matches[1].Trim() }
+}
+$StandbyUrls = @("http://127.0.0.1:$StandbyPort", "http://127.0.0.1:$Standby2Port")
 Write-Host "[ha] Waiting for primary console $BaseUrl ..."
 for ($i = 1; $i -le 90; $i++) {
     try {

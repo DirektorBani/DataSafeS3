@@ -9,6 +9,13 @@ $ErrorActionPreference = "Stop"
 
 function Write-Step($msg) { Write-Host "[postgres-failover] $msg" }
 
+Write-Step "Fence the old Postgres primary (see scripts/ha/promote.ps1) before pg_promote"
+Write-Step "A re-run is safe when the standby is already a primary and the old primary is read-only"
+if ($DryRun) {
+    Write-Step "DRY RUN: would fence the old primary, then pg_promote on $StandbyContainer"
+    Write-Step "DRY RUN complete"
+    exit 0
+}
 Write-Step "Setting STORAGE_READ_ONLY on primary storage-server (stop writes)"
 if (-not $DryRun) {
   docker compose -p $ComposeProject exec -T storage-server sh -c 'export STORAGE_READ_ONLY=true' 2>$null
@@ -16,14 +23,12 @@ if (-not $DryRun) {
 }
 
 Write-Step "Promoting standby PostgreSQL"
-$promote = @"
-SELECT pg_promote(wait := false);
-"@
-if ($DryRun) {
-  Write-Step "DRY RUN: would run pg_promote on $StandbyContainer"
-} else {
-  docker exec $StandbyContainer psql -U datasafe -d datasafe -c $promote
+$recovery = docker exec $StandbyContainer psql -U datasafe -d datasafe -Atqc "SELECT pg_is_in_recovery();" 2>$null
+if ("$recovery".Trim() -eq "f") {
+  Write-Step "standby is already a primary; nothing to do"
+  exit 0
 }
+docker exec $StandbyContainer psql -U datasafe -d datasafe -c "SELECT pg_promote(wait := false);"
 
 Write-Step "Waiting for promoted node to accept connections"
 for ($i = 1; $i -le 30; $i++) {

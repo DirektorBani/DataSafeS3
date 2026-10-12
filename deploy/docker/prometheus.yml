@@ -12,7 +12,9 @@ scrape_configs:
 
   # Optional multi-node scrape (cluster). Copy targets example and mount:
   #   ./deploy/docker/prometheus/targets:/etc/prometheus/targets:ro
-  # Edit cluster-nodes.json with each node's host:9000 (VIP or per-node).
+  # The shipped cluster-nodes.json has an empty target list, so single-node
+  # is scraped only by the storage-server job above. Add each extra node's
+  # host:9000 here (VIP or per-node). Do not repeat storage-server:9000.
   - job_name: "datasafe-cluster-nodes"
     file_sd_configs:
       - files:

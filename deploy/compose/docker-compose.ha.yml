@@ -70,7 +70,7 @@ services:
       STORAGE_POSTGRES_PASSWORD: ${STORAGE_POSTGRES_PASSWORD:-datasafe}
       STORAGE_POSTGRES_DB: ${STORAGE_POSTGRES_DB:-datasafe}
     ports:
-      - "${HA_STANDBY_HTTP_PORT:-9001}:9001"
+      - "${HA_STANDBY_HTTP_PORT:-19011}:9001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,7 +104,7 @@ services:
       STORAGE_POSTGRES_PASSWORD: ${STORAGE_POSTGRES_PASSWORD:-datasafe}
       STORAGE_POSTGRES_DB: ${STORAGE_POSTGRES_DB:-datasafe}
     ports:
-      - "${HA_STANDBY2_HTTP_PORT:-9003}:9003"
+      - "${HA_STANDBY2_HTTP_PORT:-19013}:9003"
     depends_on:
       postgres:
         condition: service_healthy

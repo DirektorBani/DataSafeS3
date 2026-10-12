@@ -63,6 +63,40 @@ func TestLeaderAcquireAndRenew(t *testing.T) {
 	}
 }
 
+type failRenew struct {
+	memStore
+}
+
+func (f *failRenew) RenewLeader(context.Context, string, time.Duration) (bool, error) {
+	return false, fmt.Errorf("cannot execute UPDATE in a read-only transaction")
+}
+
+func TestLeaderRenewFailureRefusesWritesImmediately(t *testing.T) {
+	store := &failRenew{}
+	cfg := ha.Config{Enabled: true, NodeID: "node-a", LeaderTTL: time.Minute, RenewEvery: 20 * time.Millisecond}
+	l := ha.New(cfg, store)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errc := make(chan error, 1)
+	go func() { errc <- l.Start(ctx) }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for l.IsLeader(context.Background()) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if l.IsLeader(context.Background()) {
+		t.Fatal("fenced leader still reports the lease")
+	}
+	select {
+	case err := <-errc:
+		if err == nil {
+			t.Fatal("renew failure returned nil")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("leader loop did not stop")
+	}
+}
+
 func TestLeaderRaceConcurrentAcquire(t *testing.T) {
 	store := &memStore{}
 	cfg := ha.Config{Enabled: true, NodeID: "node-a", LeaderTTL: time.Minute, RenewEvery: time.Second}

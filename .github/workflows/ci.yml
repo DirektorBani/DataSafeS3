@@ -87,7 +87,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: docker build (server)
-        run: docker build -f deploy/docker/Dockerfile .
+        run: docker build -t datasafe-storage-server:ci -f deploy/docker/Dockerfile .
+      - name: Save image for the promote drill
+        run: docker save datasafe-storage-server:ci | gzip -1 > datasafe-storage-server-ci.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: storage-server-image
+          retention-days: 1
+          path: datasafe-storage-server-ci.tar.gz
 
   # Prod bolt container, resource budget vs the published v1.4.1 image, and
   # install.sh --yes --profiles core. PRs into main and pushes to main.
@@ -293,3 +300,37 @@ jobs:
           KAFKA_INTEGRATION: "1"
           STORAGE_KAFKA_BROKERS: localhost:9092
         run: go test -count=1 -timeout 12m ./internal/api -run TestKafkaBrokerIntegration
+
+  # Postgres primary + replica, two storage-server nodes, webhook traffic
+  # across a scripted promote. Ports stay off :9000 and :9001.
+  # The image is the docker-build artifact, the same Dockerfile output.
+  ha-promote-drill:
+    needs: [docker-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: storage-server-image
+      - name: Load release image
+        run: gzip -dc datasafe-storage-server-ci.tar.gz | docker load
+      - name: Scripted promote drill
+        env:
+          PROMOTE_DRILL_IMAGE: datasafe-storage-server:ci
+          PROMOTE_DRILL_SKIP_BUILD: "1"
+        run: bash scripts/ha/run-promote-drill.sh
+      - name: Evidence pack
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dr-evidence
+          if-no-files-found: ignore
+          path: |
+            /tmp/datasafe-promote-drill/evidence/summary.md
+            /tmp/datasafe-promote-drill/evidence/evidence.json
+            /tmp/datasafe-promote-drill/evidence.zip
+            /tmp/datasafe-promote-drill/storage-a.log
+            /tmp/datasafe-promote-drill/storage-b.log
+            /tmp/datasafe-promote-drill/postgres-a.log
+            /tmp/datasafe-promote-drill/postgres-b.log

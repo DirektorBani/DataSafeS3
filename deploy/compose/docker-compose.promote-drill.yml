@@ -1,0 +1,125 @@
+# Local scripted-promote drill. Ports stay off :9000 and :9001 (vault stand).
+#   bash scripts/ha/run-promote-drill.sh
+# Override HA_DRILL_HTTP_A, HA_DRILL_HTTP_B, HA_DRILL_PG_A, HA_DRILL_PG_B, HA_DRILL_WEBHOOK.
+
+services:
+  postgres-a:
+    container_name: ds-promote-pg-a
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: datasafe
+      POSTGRES_PASSWORD: datasafe
+      POSTGRES_DB: datasafe
+    command:
+      - postgres
+      - -c
+      - "listen_addresses=*"
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - hot_standby=on
+    volumes:
+      - pg-a:/var/lib/postgresql/data
+      - ${HA_DRILL_ROOT}/deploy/docker/postgres/init/02-replication-hba.sh:/docker-entrypoint-initdb.d/02-replication-hba.sh:ro
+    ports:
+      - "127.0.0.1:${HA_DRILL_PG_A:-15442}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datasafe -d datasafe"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  postgres-b:
+    container_name: ds-promote-pg-b
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: datasafe
+      POSTGRES_PASSWORD: datasafe
+      POSTGRES_DB: datasafe
+      PGUSER: datasafe
+    volumes:
+      - pg-b:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${HA_DRILL_PG_B:-15443}:5432"
+    depends_on:
+      postgres-a:
+        condition: service_healthy
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -e
+        if [ ! -f /var/lib/postgresql/data/PG_VERSION ]; then
+          until pg_isready -h postgres-a -p 5432 -U "$$POSTGRES_USER"; do sleep 1; done
+          mkdir -p /var/lib/postgresql/data
+          chown postgres:postgres /var/lib/postgresql/data
+          PGPASSWORD="$$POSTGRES_PASSWORD" su-exec postgres pg_basebackup -h postgres-a -p 5432 -U "$$POSTGRES_USER" -D /var/lib/postgresql/data -Fp -Xs -P -R
+        fi
+        exec docker-entrypoint.sh postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datasafe -d datasafe"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  webhook:
+    container_name: ds-promote-hook
+    image: python:3.12-alpine
+    command: ["python", "/hook.py"]
+    volumes:
+      - ${HA_DRILL_ROOT}/scripts/ha/drill_webhook.py:/hook.py:ro
+      - ${HA_DRILL_STATE}/webhook:/data
+    ports:
+      - "127.0.0.1:${HA_DRILL_WEBHOOK:-18080}:8080"
+
+  storage-a:
+    container_name: ds-promote-a
+    image: ${PROMOTE_DRILL_IMAGE:-datasafe-promote-drill}
+    environment: &storage_env
+      STORAGE_ADDR: ":9000"
+      STORAGE_DATA_DIR: /data
+      STORAGE_REGION: us-east-1
+      STORAGE_METADATA_BACKEND: postgres
+      STORAGE_POSTGRES_DSN: postgres://datasafe:datasafe@postgres-a:5432/datasafe?sslmode=disable
+      STORAGE_HA_ENABLED: "true"
+      STORAGE_NODE_ID: node-a
+      STORAGE_HA_LEADER_TTL: 15s
+      STORAGE_DEV: "true"
+      STORAGE_ACCESS_KEY: datasafe
+      STORAGE_SECRET_KEY: datasafesecret
+      STORAGE_ADMIN_USER: admin
+      STORAGE_ADMIN_PASSWORD: admin
+      STORAGE_JWT_SECRET: datasafe-jwt-secret
+    volumes:
+      - stor-a:/data
+    ports:
+      - "127.0.0.1:${HA_DRILL_HTTP_A:-19100}:9000"
+    depends_on:
+      postgres-a:
+        condition: service_healthy
+    restart: unless-stopped
+
+  storage-b:
+    container_name: ds-promote-b
+    image: ${PROMOTE_DRILL_IMAGE:-datasafe-promote-drill}
+    environment:
+      <<: *storage_env
+      STORAGE_NODE_ID: node-b
+      STORAGE_POSTGRES_DSN: ${STORAGE_B_DSN:-postgres://datasafe:datasafe@postgres-a:5432/datasafe?sslmode=disable}
+    volumes:
+      - stor-b:/data
+    ports:
+      - "127.0.0.1:${HA_DRILL_HTTP_B:-19101}:9000"
+    depends_on:
+      postgres-a:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pg-a:
+  pg-b:
+  stor-a:
+  stor-b:

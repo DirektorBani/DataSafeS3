@@ -517,3 +517,65 @@ func TestDispatcherEmptyKeyIsNotOrdered(t *testing.T) {
 		t.Fatalf("empty-key later row should publish while the earlier row fails, got %d", sink.count())
 	}
 }
+
+// readOnlyStore accepts reads and refuses the write that marks a row delivered.
+type readOnlyStore struct {
+	*memOutbox
+}
+
+func (s *readOnlyStore) SaveOutbox(context.Context, OutboxRecord) error {
+	return errors.New("ERROR: cannot execute UPDATE in a read-only transaction (SQLSTATE 25006)")
+}
+
+func TestDispatcherReadOnlyStopsWithoutRepublish(t *testing.T) {
+	base := newMemOutbox()
+	store := &readOnlyStore{memOutbox: base}
+	sink := &memSink{name: "webhook"}
+	leading := true
+	resigned := 0
+	d := NewDispatcher(store, []EventSink{sink}, Config{MaxAttempts: 5, Retention: time.Hour, DeadRetention: time.Hour}, func(context.Context) bool {
+		return leading
+	}, Observer{})
+	d.purgeEvery = time.Hour
+	d.SetOnFence(func() {
+		resigned++
+		leading = false
+	})
+	now := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+	for _, key := range []string{"in-flight", "queued"} {
+		rec := NormalizeOutbox(OutboxRecord{
+			EventType: "ObjectCreated",
+			Bucket:    "b",
+			Key:       key,
+			Attempts: map[string]SinkAttempt{
+				"webhook": {Status: StatusPending, NextAttemptAt: now},
+			},
+		}, now)
+		if _, err := base.InsertOutbox(context.Background(), rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := d.ProcessOnce(context.Background(), now)
+	if !errors.Is(err, ErrStoreFenced) {
+		t.Fatalf("err %v", err)
+	}
+	if sink.count() != 1 {
+		t.Fatalf("publishes %d, want 1", sink.count())
+	}
+	if resigned != 1 {
+		t.Fatalf("resign calls %d", resigned)
+	}
+	err = d.ProcessOnce(context.Background(), now.Add(time.Second))
+	if !errors.Is(err, ErrStoreFenced) {
+		t.Fatalf("second tick %v", err)
+	}
+	if sink.count() != 1 {
+		t.Fatalf("republished, count %d", sink.count())
+	}
+	if !StoreFenced(errors.New("ha: not cluster leader")) {
+		t.Fatal("not cluster leader should fence")
+	}
+	if StoreFenced(errors.New("connection reset")) {
+		t.Fatal("transient error must not fence")
+	}
+}

@@ -8,17 +8,26 @@ DRY_RUN="${DRY_RUN:-0}"
 
 log() { echo "[postgres-failover] $*"; }
 
+log "Fence the old Postgres primary before pg_promote (scripts/ha/promote.sh)"
+log "A re-run is safe when the standby is already a primary and the old primary is read-only"
+if [[ "$DRY_RUN" == "1" ]]; then
+  log "DRY RUN: would fence the old primary, then SELECT pg_promote() on $STANDBY_CONTAINER"
+  log "DRY RUN complete"
+  exit 0
+fi
+
 log "Stopping writes on primary storage-server"
 if [[ "$DRY_RUN" != "1" ]]; then
   docker compose -p "$COMPOSE_PROJECT" stop storage-server 2>/dev/null || true
 fi
 
 log "Promoting standby PostgreSQL ($STANDBY_CONTAINER)"
-if [[ "$DRY_RUN" == "1" ]]; then
-  log "DRY RUN: would run SELECT pg_promote()"
-else
-  docker exec "$STANDBY_CONTAINER" psql -U datasafe -d datasafe -c "SELECT pg_promote(wait := false);"
+recovery="$(docker exec "$STANDBY_CONTAINER" psql -U datasafe -d datasafe -Atqc "SELECT pg_is_in_recovery();" 2>/dev/null || true)"
+if [[ "$recovery" == "f" ]]; then
+  log "standby is already a primary; nothing to do"
+  exit 0
 fi
+docker exec "$STANDBY_CONTAINER" psql -U datasafe -d datasafe -c "SELECT pg_promote(wait := false);"
 
 log "Waiting for promoted node"
 for i in $(seq 1 30); do

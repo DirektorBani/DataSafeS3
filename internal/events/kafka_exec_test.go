@@ -46,6 +46,11 @@ func fakeBridge() {
 				_, _ = os.Stderr.WriteString("bridge crashed\n")
 				os.Exit(2)
 			}
+			if d, perr := time.ParseDuration(os.Getenv("SLOW_PUBLISH")); perr == nil && d > 0 && n == 1 {
+				time.Sleep(d)
+				_ = bridgeproto.Write(out, bridgeproto.KindErr, []byte("broker unreachable"))
+				break
+			}
 			if failFirst && n == 1 {
 				_ = bridgeproto.Write(out, bridgeproto.KindErr, []byte("first produce failed"))
 			} else {
@@ -194,6 +199,78 @@ func TestKafkaExecCrashRestartsWithBackoffAndKeepsRowsPending(t *testing.T) {
 	status, _ = sink.(HealthReporter).Health(ctx)
 	if status != "connected" {
 		t.Fatalf("after restart status %s", status)
+	}
+}
+
+func TestKafkaExecBrokerOutageDoesNotRestartBridge(t *testing.T) {
+	var buf bytes.Buffer
+	bridgeLogMu.Lock()
+	prev := bridgeLogger
+	bridgeLogger = slog.New(slog.NewTextHandler(&buf, nil))
+	bridgeLogMu.Unlock()
+	t.Cleanup(func() {
+		bridgeLogMu.Lock()
+		bridgeLogger = prev
+		bridgeLogMu.Unlock()
+	})
+
+	t.Setenv("BE_FAKE_BRIDGE", "1")
+	t.Setenv("SLOW_PUBLISH", "1s")
+	t.Setenv("STORAGE_KAFKA_BRIDGE", os.Args[0])
+	t.Setenv("STORAGE_KAFKA_BROKERS", "127.0.0.1:1")
+	t.Setenv("STORAGE_KAFKA_SASL_MECHANISM", "")
+	sink, err := NewKafkaSink(KafkaConfig{Brokers: []string{"127.0.0.1:1"}, Topic: "datasafe.events", ClientID: "datasafe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sink.Close() })
+
+	es := sink.(*execSink)
+	es.mu.Lock()
+	pid := es.cmd.Process.Pid
+	es.mu.Unlock()
+	before := bridgeRestartCount(t)
+
+	// The caller deadline is shorter than the child produce (SLOW_PUBLISH),
+	// which is the broker-down case: the produce does not finish in time and
+	// the child process stays up.
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	ev := Event{TenantID: "ten", Bucket: "b", Key: "obj", Type: "ObjectCreated", CreatedAt: time.Now().UTC()}
+	err = sink.Publish(ctx, ev)
+	cancel()
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("outage publish %v", err)
+	}
+	if strings.Contains(err.Error(), "bridge exited") || strings.Contains(strings.ToLower(err.Error()), "kafka") {
+		t.Fatalf("outage looked like a process failure: %v", err)
+	}
+	if got := bridgeRestartCount(t); got != before {
+		t.Fatalf("bridge restarts %v, before %v", got, before)
+	}
+	es.mu.Lock()
+	pid2 := es.cmd.Process.Pid
+	es.mu.Unlock()
+	if pid2 != pid || !processAlive(pid) {
+		t.Fatalf("child pid %d -> %d alive %v", pid, pid2, processAlive(pid))
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel2()
+	if err := sink.Publish(ctx2, ev); err != nil {
+		t.Fatal(err)
+	}
+	if got := bridgeRestartCount(t); got != before {
+		t.Fatalf("bridge restarts after the late reply %v, before %v", got, before)
+	}
+	es.mu.Lock()
+	pid3 := es.cmd.Process.Pid
+	es.mu.Unlock()
+	if pid3 != pid {
+		t.Fatalf("child restarted after recovery: %d -> %d", pid, pid3)
+	}
+	text := strings.ToLower(buf.String())
+	if strings.Contains(text, "event bridge exited") || strings.Contains(text, "kafka") {
+		t.Fatalf("outage was logged as a restart: %s", buf.String())
 	}
 }
 

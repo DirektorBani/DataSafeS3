@@ -200,6 +200,9 @@ func NewServer(cfg Config) (*Server, error) {
 	if haCfg.Enabled {
 		if pg, ok := meta.(*pgmeta.Store); ok {
 			s.haLeader = ha.New(haCfg, pg)
+			if s.eventDisp != nil {
+				s.eventDisp.SetOnFence(s.haLeader.Resign)
+			}
 		}
 	}
 	s.routes()
