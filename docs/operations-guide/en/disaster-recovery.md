@@ -57,7 +57,9 @@ Before `pg_promote`, the script sets `default_transaction_read_only=on` on the o
 
 That is not a power fence. A superuser can still `SET transaction_read_only = off` in a session. The storage-server does not. When its leader-lease renew fails against the read-only database, the process drops the lease immediately (`internal/ha`) and `leaderGuard` rejects HTTP writes with `not cluster leader`. It does not wait for the old TTL, and it does not acquire the lease again until the process is started against the new primary.
 
-A follower that has never held the lease keeps trying. It takes the lease only after the previous one expires or is released, so it does not steal a live lease. That takeover is automatic on a shared database. A process that already led and then lost the lease does not try again in the same process. The renew interval is at most one third of the lease, including when the lease is shorter than 15 seconds.
+A follower that has never held the lease keeps trying. It takes the lease only after the previous one expires or is released, so it does not steal a live lease. That takeover is automatic on a shared database. Takeover takes about as long as the lease that is still running: a 10s lease was observed at about 9s, and the default 30s lease at about 26s. A process that already led and then lost the lease does not try again in the same process. The renew interval is at most one third of the lease, including when the lease is shorter than 15 seconds.
+
+When a node becomes leader, and about every 2 seconds, it reloads webhook and bucket-notification sinks from the database. A webhook created while a node was a follower is delivered after that node takes over. A row whose sink is not registered yet stays pending; those attempts are not counted toward dead.
 
 The event dispatcher does the same as soon as an outbox write is refused. A read-only transaction (`SQLSTATE 25006`) or a not-leader error from the store stops the loop and drops the lease. This process does not publish that row again. A row that was already handed to the sink, and then could not be marked delivered, can be delivered once more by the new leader.
 

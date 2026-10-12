@@ -175,8 +175,9 @@ func (d *Dispatcher) registerLocked(sink EventSink) {
 	d.byName[sink.Name()] = sink
 }
 
-// Unregister removes a sink and closes it. Pending rows that named it
-// keep that name (copied at insert) and fail until dead or a later retry.
+// Unregister removes a sink and closes it. Pending rows that named it keep
+// that name. While the sink is absent those attempts stay pending: they are
+// not counted and they are not marked dead. A later register delivers them.
 func (d *Dispatcher) Unregister(name string) {
 	if d == nil || name == "" {
 		return
@@ -480,14 +481,15 @@ func (d *Dispatcher) deliver(ctx context.Context, sinks map[string]EventSink, re
 		if d.fencedAlready() || (d.leader != nil && !d.leader(ctx)) {
 			return ErrStoreFenced
 		}
-		dirty = true
 		sink := sinks[name]
-		var pubErr error
 		if sink == nil {
-			pubErr = errors.New("sink not registered")
-		} else {
-			pubErr = sink.Publish(ctx, rec.Event())
+			// The row was written on a node that had this sink. This process
+			// may register it when it becomes leader or on the next refresh.
+			// Counting the miss would mark the row dead before that delivery.
+			continue
 		}
+		dirty = true
+		pubErr := sink.Publish(ctx, rec.Event())
 		if pubErr != nil && ctx.Err() != nil && errors.Is(pubErr, context.Canceled) {
 			// Shutdown is not a failed attempt. Leave the sink pending.
 			continue

@@ -182,6 +182,51 @@ func TestDispatcherFailingSinkBecomesDead(t *testing.T) {
 	}
 }
 
+func TestUnregisteredSinkDoesNotBurnAttempts(t *testing.T) {
+	store := newMemOutbox()
+	d := NewDispatcher(store, nil, Config{MaxAttempts: 1, Retention: time.Hour, DeadRetention: time.Hour}, nil, Observer{})
+	d.purgeEvery = time.Hour
+	now := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
+	rec := NormalizeOutbox(OutboxRecord{
+		EventType: "ObjectCreated",
+		Bucket:    "b",
+		Key:       "k",
+		Attempts: map[string]SinkAttempt{
+			"webhook": {Status: StatusPending, NextAttemptAt: now},
+		},
+	}, now)
+	if _, err := store.InsertOutbox(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		if err := d.ProcessOnce(context.Background(), now.Add(time.Duration(i)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := store.GetOutbox(context.Background(), rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != StatusPending || got.Attempts["webhook"].Attempts != 0 {
+		t.Fatalf("unregistered sink changed the row: status %s %+v", got.Status, got.Attempts["webhook"])
+	}
+	sink := &memSink{name: "webhook"}
+	d.Register(sink)
+	if err := d.ProcessOnce(context.Background(), now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if sink.count() != 1 {
+		t.Fatalf("delivered %d", sink.count())
+	}
+	got, err = store.GetOutbox(context.Background(), rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Attempts["webhook"].Status != StatusDelivered {
+		t.Fatalf("status %+v", got.Attempts["webhook"])
+	}
+}
+
 func TestDispatcherRetriesThenDelivers(t *testing.T) {
 	store := newMemOutbox()
 	sink := &memSink{name: "nats", failFor: 2}

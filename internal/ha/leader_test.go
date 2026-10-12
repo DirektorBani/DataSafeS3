@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -55,6 +56,37 @@ func (m *memStore) CurrentLeader(_ context.Context) (string, time.Time, bool, er
 		return "", time.Time{}, false, nil
 	}
 	return m.holder, m.exp, true, nil
+}
+
+func TestLeaderOnAcquiredFiresOnce(t *testing.T) {
+	store := &memStore{}
+	l := ha.New(ha.Config{Enabled: true, NodeID: "node-a", LeaderTTL: time.Second, RenewEvery: 30 * time.Millisecond}, store)
+	var n atomic.Int32
+	l.SetOnAcquired(func() { n.Add(1) })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- l.Start(ctx) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for n.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if n.Load() != 1 {
+		t.Fatalf("onAcquired calls %d", n.Load())
+	}
+	time.Sleep(100 * time.Millisecond)
+	if n.Load() != 1 {
+		t.Fatalf("renew called onAcquired again: %d", n.Load())
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("leader did not stop")
+	}
 }
 
 func TestLeaderAcquireAndRenew(t *testing.T) {

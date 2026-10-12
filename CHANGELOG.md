@@ -33,6 +33,8 @@ All notable changes to DataSafeS3 are documented in this file.
 
 ### Fixed
 
+- **Simultaneous start on empty Postgres.** Several nodes no longer exit with `user already exists`. Bootstrap of the admin user runs under the migration advisory lock, and an existing admin is success.
+- **Webhook delivery after HA takeover.** A follower reloads sinks from the database when it becomes leader and about every 2 seconds, so a webhook created after that process started is registered. An outbox row for a sink that is not registered yet stays pending and does not count attempts toward dead. Takeover waits out the current lease (about 9s for a 10s lease, about 26s for the default 30s lease).
 - **Promote-drill Docker client on Git Bash.** The helper looked for an executable bit. Git Bash does not set that on the Linux client, so every run downloaded the 82 MB archive again. The script now keeps a non-empty file, writes the download to a partial tarball, and resumes with `curl -C - --retry 5 --retry-delay 3`, including through `HTTPS_PROXY`.
 - **Gateway connection create response.** `POST /api/v1/gateway/connections` no longer returns `secret_key`. The list endpoint already omitted it. The stored credential is unchanged.
 - **Concurrent PUT of one key.** Writers on one node no longer share `<key>.tmp` or insert a second unversioned row. Temps are unique, Bolt `Put` and Postgres `ON CONFLICT` keep the last writer, and that writer's bytes, etag, and size agree. Twenty parallel PUTs of one key all return 200.

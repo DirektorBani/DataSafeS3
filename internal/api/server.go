@@ -42,6 +42,8 @@ type Config struct {
 	SSEMasterKey    string
 	ReadOnly        bool
 	FieldEncryption *fieldenc.Service
+	// NodeID overrides STORAGE_NODE_ID for this process. Empty keeps the environment value.
+	NodeID string
 }
 
 type Server struct {
@@ -202,9 +204,13 @@ func NewServer(cfg Config) (*Server, error) {
 	haCfg := ha.ConfigFromEnv()
 	if haCfg.Enabled {
 		if pg, ok := meta.(*pgmeta.Store); ok {
+			if cfg.NodeID != "" {
+				haCfg.NodeID = cfg.NodeID
+			}
 			s.haLeader = ha.New(haCfg, pg)
 			if s.eventDisp != nil {
 				s.eventDisp.SetOnFence(s.haLeader.Resign)
+				s.haLeader.SetOnAcquired(s.syncEventSinks)
 			}
 		}
 	}
@@ -213,6 +219,9 @@ func NewServer(cfg Config) (*Server, error) {
 }
 
 func (s *Server) Close() error {
+	// Drop the process-wide gauges before the pool is closed. The next
+	// server in this process installs its own callback.
+	observability.SetExtendedStats(nil)
 	if s.eventDisp != nil {
 		_ = s.eventDisp.Close()
 	}
@@ -255,7 +264,30 @@ func (s *Server) StartBackground(ctx context.Context) {
 		go s.cluster.Run(ctx)
 	}
 	if s.eventDisp != nil {
+		go s.runEventSinkRefresh(ctx)
 		go s.eventDisp.Run(ctx)
+	}
+}
+
+// runEventSinkRefresh reloads webhook and bucket-notification sinks from the
+// database. A follower that started before a webhook was created otherwise
+// never registers it, and after takeover those rows fail with "sink not registered".
+func (s *Server) runEventSinkRefresh(ctx context.Context) {
+	ticker := time.NewTicker(eventSinkRefreshInterval)
+	defer ticker.Stop()
+	wasLeader := false
+	for {
+		leader := s.isEventLeader(ctx)
+		if leader && !wasLeader {
+			s.syncEventSinks()
+		}
+		wasLeader = leader
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.syncEventSinks()
+		}
 	}
 }
 
@@ -413,28 +445,43 @@ func newLoginRateLimiter() *ipRateLimiter {
 	return newIPRateLimiter(limit, window)
 }
 
+// schemaLocker is the Postgres migration advisory lock. Bolt has one process.
+type schemaLocker interface {
+	WithSchemaLock(ctx context.Context, fn func() error) error
+}
+
 func (s *Server) seedAdminUser() error {
-	n, err := s.meta.CountUsers()
-	if err != nil {
+	seed := func() error {
+		n, err := s.meta.CountUsers()
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			return nil
+		}
+		hash, err := auth.HashPassword(s.cfg.AdminPassword)
+		if err != nil {
+			return err
+		}
+		err = s.meta.PutUser(metadata.UserRecord{
+			ID:           "admin-bootstrap",
+			Username:     s.cfg.AdminUser,
+			Email:        s.cfg.AdminUser + "@localhost",
+			PasswordHash: hash,
+			Role:         metadata.RoleAdministrator,
+			Status:       metadata.StatusActive,
+			TenantID:     metadata.DefaultTenantID,
+			CreatedAt:    time.Now().UTC(),
+		})
+		if errors.Is(err, metadata.ErrUserExists) {
+			return nil
+		}
 		return err
 	}
-	if n > 0 {
-		return nil
+	if locker, ok := s.meta.(schemaLocker); ok {
+		return locker.WithSchemaLock(context.Background(), seed)
 	}
-	hash, err := auth.HashPassword(s.cfg.AdminPassword)
-	if err != nil {
-		return err
-	}
-	return s.meta.PutUser(metadata.UserRecord{
-		ID:           "admin-bootstrap",
-		Username:     s.cfg.AdminUser,
-		Email:        s.cfg.AdminUser + "@localhost",
-		PasswordHash: hash,
-		Role:         metadata.RoleAdministrator,
-		Status:       metadata.StatusActive,
-		TenantID:     metadata.DefaultTenantID,
-		CreatedAt:    time.Now().UTC(),
-	})
+	return seed()
 }
 
 // ensureSetupFlagsForExistingInstall skips the wizard on upgrades where admins

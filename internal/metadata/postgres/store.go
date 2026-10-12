@@ -112,6 +112,27 @@ type sqlExec interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 }
 
+// WithSchemaLock holds the same session advisory lock as migrations.
+// Bootstrap and other one-time writes use it so several nodes can start
+// together on an empty database.
+func (s *Store) WithSchemaLock(ctx context.Context, fn func() error) error {
+	if fn == nil {
+		return nil
+	}
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("schema lock: %w", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationAdvisoryLock); err != nil {
+		return fmt.Errorf("schema lock: %w", err)
+	}
+	defer func() {
+		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, migrationAdvisoryLock)
+	}()
+	return fn()
+}
+
 func (s *Store) migrate() error {
 	ctx := context.Background()
 	conn, err := s.pool.Acquire(ctx)

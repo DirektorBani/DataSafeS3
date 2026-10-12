@@ -2,10 +2,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
 	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -39,12 +41,23 @@ func (s *Store) putUser(rec metadata.UserRecord, evs []events.OutboxRecord) (int
 			rec.ID, rec.Username, rec.Email, rec.PasswordHash, rec.Role, rec.Status, rec.TenantID, optionalText(rec.TeamID),
 			rec.MFAEnabled, rec.TOTPSecret, codes, rec.AuthSource, rec.MaxSizeBytes, rec.MaxObjects,
 			timestamptzPtr(rec.LastLogin), rec.Locale, rec.WebAuthnCredentials, rec.CreatedAt)
-		return err
+		return userAlreadyExists(err)
 	}
 	if len(evs) == 0 {
 		return 0, run(s.pool)
 	}
 	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error { return run(tx) })
+}
+
+func userAlreadyExists(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return metadata.ErrUserExists
+	}
+	return err
 }
 
 func (s *Store) GetUser(id string) (metadata.UserRecord, error) {

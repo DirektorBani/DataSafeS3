@@ -61,8 +61,9 @@ type Leader struct {
 	cfg   Config
 	store LeaderStore
 
-	mu   sync.Mutex
-	lost bool
+	mu         sync.Mutex
+	lost       bool
+	onAcquired func()
 }
 
 func New(cfg Config, store LeaderStore) *Leader {
@@ -72,6 +73,27 @@ func New(cfg Config, store LeaderStore) *Leader {
 func (l *Leader) Enabled() bool { return l.cfg.Enabled }
 
 func (l *Leader) NodeID() string { return l.cfg.NodeID }
+
+// SetOnAcquired runs once when this process first obtains the lease, including
+// a follower that takes over after the previous lease expires. It does not run
+// again on renew, and it does not run after a failed renew.
+func (l *Leader) SetOnAcquired(fn func()) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	l.onAcquired = fn
+	l.mu.Unlock()
+}
+
+func (l *Leader) notifyAcquired() {
+	l.mu.Lock()
+	fn := l.onAcquired
+	l.mu.Unlock()
+	if fn != nil {
+		fn()
+	}
+}
 
 // Start acquires the lease and runs the renew loop until ctx is cancelled.
 // A process that has never held the lease keeps trying. It becomes leader only
@@ -89,6 +111,7 @@ func (l *Leader) Start(ctx context.Context) error {
 	if !l.waitForLease(ctx) {
 		return nil
 	}
+	l.notifyAcquired()
 	ticker := time.NewTicker(l.cfg.RenewEvery)
 	defer ticker.Stop()
 	for {
