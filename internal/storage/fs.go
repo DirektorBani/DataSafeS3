@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"crypto/md5"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -63,8 +64,21 @@ func (b *FSBackend) PutObjectVersion(_ context.Context, bucket, key, versionID s
 	return b.writeObjectFile(path, r, size, contentType)
 }
 
+// tempSibling is a unique sibling of path. Concurrent writers of one key must
+// not share "<path>.tmp": the loser unlinks it and the winner's rename fails.
+func tempSibling(path string) (string, error) {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", err
+	}
+	return path + "." + hex.EncodeToString(buf[:]) + ".tmp", nil
+}
+
 func (b *FSBackend) writeObjectFile(path string, r io.Reader, size int64, contentType string) (string, error) {
-	tmp := path + ".tmp"
+	tmp, err := tempSibling(path)
+	if err != nil {
+		return "", err
+	}
 	f, err := os.Create(tmp)
 	if err != nil {
 		return "", err
@@ -86,6 +100,7 @@ func (b *FSBackend) writeObjectFile(path string, r io.Reader, size int64, conten
 		return "", fmt.Errorf("size mismatch: expected %d got %d", size, n)
 	}
 	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
 		return "", err
 	}
 	etag := hex.EncodeToString(h.Sum(nil))
@@ -203,7 +218,10 @@ func (b *FSBackend) UploadPart(_ context.Context, bucket, key, uploadID string, 
 		return "", err
 	}
 	partPath := filepath.Join(dir, fmt.Sprintf("part.%05d", partNumber))
-	tmp := partPath + ".tmp"
+	tmp, err := tempSibling(partPath)
+	if err != nil {
+		return "", err
+	}
 	f, err := os.Create(tmp)
 	if err != nil {
 		return "", err
@@ -225,6 +243,7 @@ func (b *FSBackend) UploadPart(_ context.Context, bucket, key, uploadID string, 
 		return "", fmt.Errorf("part size mismatch")
 	}
 	if err := os.Rename(tmp, partPath); err != nil {
+		os.Remove(tmp)
 		return "", err
 	}
 	return `"` + hex.EncodeToString(h.Sum(nil)) + `"`, nil
@@ -270,7 +289,10 @@ func (b *FSBackend) CompleteMultipartUpload(_ context.Context, bucket, key, uplo
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return "", err
 	}
-	tmp := dest + ".tmp"
+	tmp, err := tempSibling(dest)
+	if err != nil {
+		return "", err
+	}
 	out, err := os.Create(tmp)
 	if err != nil {
 		return "", err
@@ -297,6 +319,7 @@ func (b *FSBackend) CompleteMultipartUpload(_ context.Context, bucket, key, uplo
 		return "", err
 	}
 	if err := os.Rename(tmp, dest); err != nil {
+		os.Remove(tmp)
 		return "", err
 	}
 	_ = os.RemoveAll(dir)
@@ -329,7 +352,10 @@ func (b *FSBackend) CopyObject(_ context.Context, srcBucket, srcKey, dstBucket, 
 		return "", err
 	}
 	defer in.Close()
-	tmp := dst + ".tmp"
+	tmp, err := tempSibling(dst)
+	if err != nil {
+		return "", err
+	}
 	out, err := os.Create(tmp)
 	if err != nil {
 		return "", err
@@ -345,6 +371,7 @@ func (b *FSBackend) CopyObject(_ context.Context, srcBucket, srcKey, dstBucket, 
 		return "", err
 	}
 	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
 		return "", err
 	}
 	return `"` + hex.EncodeToString(h.Sum(nil)) + `"`, nil

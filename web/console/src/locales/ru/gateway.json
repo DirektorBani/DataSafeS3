@@ -27,6 +27,7 @@
     "region": "Регион",
     "accessKey": "Ключ доступа",
     "secretKey": "Секретный ключ",
+    "ruleName": "Имя правила",
     "localBucket": "Локальный бакет-источник",
     "remoteConnection": "Удалённое подключение",
     "remoteBucket": "Удалённый бакет назначения"

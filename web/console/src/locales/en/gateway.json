@@ -27,6 +27,7 @@
     "region": "Region",
     "accessKey": "Access key",
     "secretKey": "Secret key",
+    "ruleName": "Rule name",
     "localBucket": "Local source bucket",
     "remoteConnection": "Remote connection",
     "remoteBucket": "Remote destination bucket"

@@ -677,6 +677,9 @@ func (s *Server) handleCreateGatewayConnection(w http.ResponseWriter, r *http.Re
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	// The secret stays in the store for the worker. The response omits it,
+	// the same way GET /gateway/connections does.
+	req.SecretKey = ""
 	writeJSON(w, http.StatusCreated, map[string]any{"connection": req})
 }
 

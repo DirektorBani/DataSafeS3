@@ -60,14 +60,35 @@ mkdir -p "$STATE/webhook" "$STATE/work" "$STATE/bin"
 
 # Static client (glibc-free) so the helper container can docker exec without
 # installing packages and without Python on the host.
-if [[ ! -x "$STATE/bin/docker" ]]; then
+# Git Bash reports an ELF as non-executable, so -x is always false there and
+# every run downloaded the client again. -s is true only for a non-empty file.
+# The binary is renamed into place after tar succeeds, so a partial download
+# does not satisfy -s. curl resumes that partial tarball. HTTPS_PROXY (or
+# https_proxy) is passed through; curl also reads it from the environment.
+if [[ ! -s "$STATE/bin/docker" ]]; then
   echo "[drill] downloading Docker client 28.5.1 for the helper container"
+  tarball="$STATE/bin/docker-28.5.1.tgz.partial"
+  proxy="${HTTPS_PROXY:-${https_proxy:-}}"
+  curl_cmd=(curl -fL --retry 5 --retry-delay 3 -C - -o "$tarball")
+  if [[ -n "$proxy" ]]; then
+    curl_cmd+=(--proxy "$proxy")
+  fi
+  curl_cmd+=("https://download.docker.com/linux/static/stable/x86_64/docker-28.5.1.tgz")
+  if ! "${curl_cmd[@]}"; then
+    rc=$?
+    # 33: the partial file is already the full object (range not satisfiable).
+    if [[ "$rc" -ne 33 || ! -s "$tarball" ]]; then
+      echo "[drill] docker client download failed" >&2
+      exit 1
+    fi
+  fi
   cli_tmp="$(mktemp -d)"
-  curl -fsSL -o "$cli_tmp/docker.tgz" "https://download.docker.com/linux/static/stable/x86_64/docker-28.5.1.tgz"
-  tar -xzf "$cli_tmp/docker.tgz" -C "$cli_tmp" docker/docker
-  mv "$cli_tmp/docker/docker" "$STATE/bin/docker"
-  chmod +x "$STATE/bin/docker"
-  rm -rf "$cli_tmp"
+  tar -xzf "$tarball" -C "$cli_tmp" docker/docker
+  install_tmp="$STATE/bin/docker.partial.$$"
+  mv "$cli_tmp/docker/docker" "$install_tmp"
+  chmod +x "$install_tmp"
+  mv -f "$install_tmp" "$STATE/bin/docker"
+  rm -rf "$cli_tmp" "$tarball"
 fi
 rm -f "$STATE/webhook/events.jsonl" "$STATE/ok-keys" "$STATE/stop-traffic" "$STATE/promote-timing.json"
 : >"$STATE/ok-keys"

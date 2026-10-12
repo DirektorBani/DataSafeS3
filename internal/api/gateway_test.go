@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -169,5 +170,36 @@ func TestGatewaySyncScheduleAPIAndDueRun(t *testing.T) {
 	jobs, _ = srv.Meta().ListSyncJobs(created.Rule.ID, 10)
 	if len(jobs) != 1 {
 		t.Fatalf("off must not schedule another job, jobs=%d", len(jobs))
+	}
+}
+
+func TestCreateGatewayConnectionOmitsSecret(t *testing.T) {
+	srv := testServer(t)
+	tok := loginToken(t, srv, "admin", "admin")
+	const secret = "gateway-secret-do-not-echo"
+	body := []byte(`{"name":"ext","endpoint":"http://127.0.0.1:9","region":"us-east-1","access_key":"AKIA","secret_key":"` + secret + `","path_style":true}`)
+	req := authReq(http.MethodPost, "/api/v1/gateway/connections", tok, body)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status %d %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), secret) || strings.Contains(rec.Body.String(), "secret_key") {
+		t.Fatalf("response echoed the secret: %s", rec.Body.String())
+	}
+	var resp struct {
+		Connection struct {
+			ID string `json:"id"`
+		} `json:"connection"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	got, err := srv.Meta().GetGatewayConnection(resp.Connection.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SecretKey != secret {
+		t.Fatalf("stored secret %q", got.SecretKey)
 	}
 }

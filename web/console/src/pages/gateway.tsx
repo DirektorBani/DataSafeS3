@@ -49,7 +49,7 @@ export function GatewayPage() {
     path_style: true,
     tls_verify: false,
   });
-  const [ruleForm, setRuleForm] = useState({ source_bucket: "", dest_connection_id: "", dest_bucket: "", sync_schedule: "" });
+  const [ruleForm, setRuleForm] = useState({ name: "", source_bucket: "", dest_connection_id: "", dest_bucket: "", sync_schedule: "" });
 
   const health = useQuery({ queryKey: ["gateway-health"], queryFn: () => api.gatewayHealth(), refetchInterval: 5000 });
   const connections = useQuery({ queryKey: ["gateway-connections"], queryFn: async () => (await api.listGatewayConnections()).connections });
@@ -95,7 +95,7 @@ export function GatewayPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["replication-rules"] });
       queryClient.invalidateQueries({ queryKey: ["repl-queue"] });
-      setRuleForm({ source_bucket: "", dest_connection_id: "", dest_bucket: "", sync_schedule: "" });
+      setRuleForm({ name: "", source_bucket: "", dest_connection_id: "", dest_bucket: "", sync_schedule: "" });
       toast.success(t("gateway:toast.ruleCreated"));
     },
     onError: (e: Error) => toast.error(e.message),
@@ -232,6 +232,10 @@ export function GatewayPage() {
               <CardDescription>{t("gateway:rules.add.description")}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-3">
+              <div className="sm:col-span-3">
+                <Label>{t("gateway:fields.ruleName")}</Label>
+                <Input value={ruleForm.name} onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })} />
+              </div>
               <div>
                 <Label>{t("gateway:fields.localBucket")}</Label>
                 <Select value={ruleForm.source_bucket || "__none__"} onValueChange={(v) => setRuleForm({ ...ruleForm, source_bucket: v === "__none__" ? "" : v })}>
@@ -433,7 +437,8 @@ function RuleCard({
     <Card>
       <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
-          <p className="font-medium">{rule.source_bucket} → {rule.dest_bucket}</p>
+          {rule.name ? <p className="font-medium">{rule.name}</p> : null}
+          <p className={rule.name ? "text-sm" : "font-medium"}>{rule.source_bucket} → {rule.dest_bucket}</p>
           <p className="text-xs text-muted-foreground">via {connName}</p>
           {rule.last_sync_at ? (
             <p className="text-xs text-muted-foreground">

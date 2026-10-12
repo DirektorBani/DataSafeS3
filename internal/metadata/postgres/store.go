@@ -13,8 +13,14 @@ import (
 	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// migrationAdvisoryLock is a session lock held for the whole migration pass.
+// Distinct from outboxAdvisoryLock. Several nodes starting on an empty database
+// otherwise race in CREATE EXTENSION (pg_extension_name_index).
+const migrationAdvisoryLock int64 = 83420021
 
 const postgresPingAttempts = 30
 
@@ -102,10 +108,29 @@ func (s *Store) Close() error {
 	return nil
 }
 
+type sqlExec interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+}
+
 func (s *Store) migrate() error {
 	ctx := context.Background()
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("migration lock: %w", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationAdvisoryLock); err != nil {
+		return fmt.Errorf("migration lock: %w", err)
+	}
+	defer func() {
+		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, migrationAdvisoryLock)
+	}()
+	return s.migrateLocked(ctx, conn)
+}
+
+func (s *Store) migrateLocked(ctx context.Context, conn *pgxpool.Conn) error {
 	var version int64
-	err := s.pool.QueryRow(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations WHERE dirty = FALSE`).Scan(&version)
+	err := conn.QueryRow(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations WHERE dirty = FALSE`).Scan(&version)
 	if err != nil {
 		version = 0
 	}
@@ -123,7 +148,7 @@ func (s *Store) migrate() error {
 		if err != nil {
 			return err
 		}
-		tx, err := s.pool.Begin(ctx)
+		tx, err := conn.Begin(ctx)
 		if err != nil {
 			return err
 		}
@@ -139,12 +164,16 @@ func (s *Store) migrate() error {
 			return err
 		}
 	}
-	return s.backfillBucketOwners(ctx)
+	return s.backfillBucketOwnersQ(ctx, conn)
 }
 
 func (s *Store) backfillBucketOwners(ctx context.Context) error {
+	return s.backfillBucketOwnersQ(ctx, s.pool)
+}
+
+func (s *Store) backfillBucketOwnersQ(ctx context.Context, q sqlExec) error {
 	// Backfill owner_id from username; skip rows that would violate idx_buckets_scope_owner_name.
-	_, err := s.pool.Exec(ctx, `
+	_, err := q.Exec(ctx, `
 		UPDATE buckets b
 		SET owner_id = u.id
 		FROM users u
@@ -162,7 +191,7 @@ func (s *Store) backfillBucketOwners(ctx context.Context) error {
 		return err
 	}
 	// Drop empty legacy orphans superseded by a scoped bucket for the same owner/name.
-	_, err = s.pool.Exec(ctx, `
+	_, err = q.Exec(ctx, `
 		DELETE FROM buckets b
 		WHERE (b.owner_id IS NULL OR b.owner_id = '')
 		  AND b.owner <> ''

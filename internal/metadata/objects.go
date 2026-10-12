@@ -85,6 +85,7 @@ func (s *Store) putObjectTx(tx *bolt.Tx, rec ObjectRecord, versioned bool) error
 		return latest.Put(latestIndexKey(rec.Bucket, rec.Key), []byte(rec.VersionID))
 	}
 	// Non-versioned: remove version index and legacy entries, store flat key.
+	// Bucket.Put overwrites, so the last bolt transaction for this key wins.
 	_ = s.deleteAllVersionsTx(tx, rec.Bucket, rec.Key)
 	return objects.Put(objectKey(rec.Bucket, rec.Key), data)
 }

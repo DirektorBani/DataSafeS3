@@ -7,9 +7,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
@@ -40,6 +42,9 @@ type Service struct {
 	ObjectOutbox func(ctx context.Context, bucket metadata.BucketRecord, obj metadata.ObjectRecord, kind string) []events.OutboxRecord
 	// OnOutboxDropped reports rows the pending cap marked dropped inside the commit.
 	OnOutboxDropped func(n int)
+	// putStripes serializes writers of one key on this process so the file,
+	// etag, and metadata row belong to the same last writer.
+	putStripes [64]sync.Mutex
 }
 
 func NewService(backend storage.ObjectBackend, meta metadata.MetadataStore, signer *auth.Signer, region, ownerKey string) *Service {
@@ -412,8 +417,23 @@ func (s *Service) PutObjectNotifying(ctx context.Context, bucket, key string, r 
 	return s.putObject(ctx, bucket, key, r, size, contentType, userMeta, build)
 }
 
+func (s *Service) lockPut(bucket, key string) func() {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(bucket))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write([]byte(key))
+	mu := &s.putStripes[h.Sum32()%uint32(len(s.putStripes))]
+	mu.Lock()
+	return mu.Unlock
+}
+
 func (s *Service) putObject(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string, userMeta map[string]string, build func(metadata.ObjectRecord) []events.OutboxRecord) (metadata.ObjectRecord, int, error) {
 	bucket = s.normalizeBucketKey(bucket)
+	// One node, one key: the last writer to enter this section wins, and its
+	// bytes, etag, and metadata row agree. Unique temp names cover writers
+	// outside this process.
+	unlock := s.lockPut(bucket, key)
+	defer unlock()
 	bucketRec, err := s.Meta.GetBucketByKey(bucket)
 	if err != nil {
 		return metadata.ObjectRecord{}, 0, err

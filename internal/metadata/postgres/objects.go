@@ -94,11 +94,27 @@ func (s *Store) putObjectQ(ctx context.Context, q pgExec, rec metadata.ObjectRec
 	if err != nil {
 		return err
 	}
+	// Last commit wins. A plain INSERT races with another writer of the same
+	// unversioned key (23505 objects_pkey). ON CONFLICT updates that row.
 	_, err = q.Exec(ctx, `
 		INSERT INTO objects (bucket, key, version_id, size, etag, content_type, last_modified,
 			scheduled_delete_at, is_delete_marker, legal_hold, retention_until, storage_class,
 			metadata, tags, created_at, is_latest)
-		VALUES ($1,$2,'', $3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,TRUE)`,
+		VALUES ($1,$2,'', $3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,TRUE)
+		ON CONFLICT (bucket, key, version_id) DO UPDATE SET
+			size = EXCLUDED.size,
+			etag = EXCLUDED.etag,
+			content_type = EXCLUDED.content_type,
+			last_modified = EXCLUDED.last_modified,
+			scheduled_delete_at = EXCLUDED.scheduled_delete_at,
+			is_delete_marker = EXCLUDED.is_delete_marker,
+			legal_hold = EXCLUDED.legal_hold,
+			retention_until = EXCLUDED.retention_until,
+			storage_class = EXCLUDED.storage_class,
+			metadata = EXCLUDED.metadata,
+			tags = EXCLUDED.tags,
+			created_at = EXCLUDED.created_at,
+			is_latest = TRUE`,
 		rec.Bucket, rec.Key, rec.Size, rec.ETag, rec.ContentType, rec.LastModified,
 		timestamptzPtr(rec.ScheduledDeleteAt), rec.IsDeleteMarker, rec.LegalHold,
 		timestamptzPtr(rec.RetentionUntil), rec.StorageClass, meta, tags, rec.CreatedAt)

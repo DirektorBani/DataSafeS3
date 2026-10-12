@@ -27,6 +27,7 @@
     "region": "Region",
     "accessKey": "Access key",
     "secretKey": "Secret key",
+    "ruleName": "Nom de la règle",
     "localBucket": "Local source bucket",
     "remoteConnection": "Remote connection",
     "remoteBucket": "Remote destination bucket"
@@ -68,7 +69,7 @@
       "never": "Aucune synchronisation planifiée ou manuelle pour l'instant",
       "objects": "{{count}} objets",
       "error": "Dernière erreur"
-    },
+    }
   },
   "jobs": {
     "empty": "No manual sync jobs yet. Use Sync now on a replication rule."
