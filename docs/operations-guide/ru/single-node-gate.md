@@ -44,12 +44,14 @@ bash scripts/single-node-gate.sh all
 Профиль core через установщик, на только что собранном образе (у Compose `pull_policy: if_not_present`, поэтому побеждает локальный тег; в реестр ничего не пушится):
 
 ```bash
+docker build -t ghcr.io/direktorbani/datasafe-console:v1.5.0 -f deploy/docker/Dockerfile.console .
 docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
-(cd web/console && npm ci && npm run build)
 ./install.sh --yes --profiles core --project datasafe-gate --data-root "${TMPDIR:-/tmp}/datasafe-gate"
 bash scripts/single-node-gate.sh smoke-installed
 docker compose -p datasafe-gate -f docker-compose.yml down -v
 ```
+
+CI дополнительно распаковывает `git archive HEAD` (без `web/console/dist`) и запускает тот же профиль core на `PUBLIC_HTTP_PORT=18080`. `GET /` должен быть 200 и содержать `id="root"`.
 
 Не указывайте `measure` на этот перетегированный образ. Скрипт отказывается сравнивать два образа с одним id. Сначала снова сделайте `docker pull` для `v1.4.1`.
 
@@ -59,7 +61,7 @@ Windows, из корня репозитория (Docker Desktop запущен):
 .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
 ```
 
-`-Yes` пропускает меню, вопрос про каталог данных и подтверждение. Профиль `core` оставляет выключенными Postgres, мониторинг, тома данных на хосте, identity lab и dev mode. Если порт 8080 не стал healthy, `-Yes` завершается с ошибкой.
+`-Yes` пропускает меню, вопрос про каталог данных и подтверждение. Профиль `core` оставляет выключенными Postgres, мониторинг, тома данных на хосте, identity lab и dev mode. Если граница консоли не стала healthy (`/healthz` и `GET /` с `id="root"`), `-Yes` завершается с ошибкой.
 
 ## Честно
 

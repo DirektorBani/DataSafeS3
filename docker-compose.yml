@@ -131,6 +131,22 @@ services:
 
 
 
+  # One-shot copy from the published console image. A fresh tree has no
+  # web/console/dist; Docker must not create that path as an empty mount.
+  console-assets:
+    image: ${DATASAFE_CONSOLE_IMAGE:-ghcr.io/direktorbani/datasafe-console:v1.5.0}
+    pull_policy: if_not_present
+    restart: "no"
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.console
+    environment:
+      CONSOLE_SRC: /srv/console
+    volumes:
+      - console-dist:/console-assets
+      - ./deploy/docker/copy-console-assets.sh:/copy-console-assets.sh:ro
+    command: ["/bin/sh", "/copy-console-assets.sh"]
+
   caddy:
 
     image: caddy:2-alpine
@@ -143,6 +159,10 @@ services:
 
         condition: service_healthy
 
+      console-assets:
+
+        condition: service_completed_successfully
+
     ports:
 
       - "${PUBLIC_HTTP_PORT:-8080}:80"
@@ -151,7 +171,7 @@ services:
 
       - ./deploy/docker/Caddyfile:/etc/caddy/Caddyfile:ro
 
-      - ./web/console/dist:/srv/console:ro
+      - console-dist:/srv/console:ro
 
 
 
@@ -234,6 +254,8 @@ volumes:
   storage-data:
 
   postgres-data:
+
+  console-dist:
 
 
 

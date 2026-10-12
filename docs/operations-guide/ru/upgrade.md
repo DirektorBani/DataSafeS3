@@ -301,11 +301,14 @@ Webhook, NATS и Kafka — внешняя лента событий, а не с�
 ```bash
 git pull
 export TAG=v1.5.0
+# .env (или оболочка) должны указывать опубликованные образы тега:
+# DATASAFE_SERVER_IMAGE=ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+# DATASAFE_CONSOLE_IMAGE=ghcr.io/direktorbani/datasafe-console:v1.5.0
 docker compose --profile postgres pull
 docker compose --profile postgres up -d
 ```
 
-Пока тега нет, соберите этот коммит (`docker compose --profile postgres build storage-server`) вместо pull `v1.5.0`. Проверьте, что `GET /healthz` возвращает `"version":"1.5.0"` и `commit`. На лаборатории из трёх узлов удалите `.env.erasure` и `.env.site-a` перед пересозданием стендов.
+Сделайте `pull` образов server и console с тегом `v1.5.0`. Для этого обновления не запускайте `docker compose build`. Проверьте, что `GET /healthz` возвращает `"version":"1.5.0"` и `commit`, а `GET /` на порту консоли отдаёт SPA (`id="root"`). На лаборатории из трёх узлов удалите `.env.erasure` и `.env.site-a` перед пересозданием стендов.
 
 ## Чеклист
 
@@ -318,4 +321,4 @@ docker compose --profile postgres up -d
 - [ ] v1.0.3 (опционально): включить [field encryption](field-encryption.md) — KEK, env, security-status
 - [ ] v1.1.0: убрать `STORAGE_OUTBOUND_HTTP_ALLOW`; настроить `STORAGE_METRICS_TOKEN` и Prometheus bearer
 - [ ] v1.4.1: `STORAGE_DEV` выключен, если вы не включали его явно; в установщике или `.env` есть `STORAGE_METRICS_TOKEN`; скрейп Prometheus работает
-- [ ] v1.5.0: storage-server и console одного тега; удалите старые `.env.erasure` / `.env.site-a`, если лаборатории должны взять новые порты; оставьте `STORAGE_KAFKA_BROKERS` пустым, если внешняя лента не нужна
+- [ ] v1.5.0: `docker compose pull` образов server и console `v1.5.0` (не собирайте их); удалите старые `.env.erasure` / `.env.site-a`, если лаборатории должны взять новые порты; оставьте `STORAGE_KAFKA_BROKERS` пустым, если внешняя лента не нужна

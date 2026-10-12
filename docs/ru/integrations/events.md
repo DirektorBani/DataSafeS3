@@ -32,7 +32,7 @@ Kafka необязательна. Задайте `STORAGE_KAFKA_BROKERS` спи�
 
 ## Консоль
 
-**Настройки → Доставка событий** показывает webhook, NATS и Kafka. На карточке: статус, глубина очереди, счётчики доставленных и ошибок (процессные счётчики `datasafe_events_delivered_total` и `datasafe_events_failed_total`) и последняя ошибка. Фраза про `STORAGE_KAFKA_BROKERS` видна только пока Kafka выключена.
+**Настройки → Доставка событий** показывает webhook, NATS и Kafka. На карточке: статус, глубина очереди, счётчики доставленных и ошибок (процессные счётчики `datasafe_events_delivered_total` и `datasafe_events_failed_total`) и последняя ошибка. Счётчики доставленных и ошибок живут в памяти процесса и сбрасываются в ноль при перезапуске storage-server. Фраза про `STORAGE_KAFKA_BROKERS` видна только пока Kafka выключена.
 
 `GET /api/v1/events/delivery` читает этот кэш и не опрашивает брокер. `POST /api/v1/events/test` вставляет одну строку outbox. Оба вызова только для администратора.
 

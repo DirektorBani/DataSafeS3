@@ -34,13 +34,13 @@ install.cmd
 ./install.sh --dry-run --yes --profiles core,postgres,data
 ```
 
-Один профиль `core` — production-путь одного узла: storage-server и Caddy, метаданные Bolt, dev mode выключен, без Postgres и без мониторинга. `--yes` ничего не спрашивает. Если `http://127.0.0.1:8080/healthz` не готов, `--yes` завершается с ошибкой.
+Один профиль `core` — production-путь одного узла: storage-server и Caddy, метаданные Bolt, dev mode выключен, без Postgres и без мониторинга. Консоль берётся из `DATASAFE_CONSOLE_IMAGE`; собирать `npm run build` на хосте не нужно. `--yes` ничего не спрашивает. Если `http://127.0.0.1:${PUBLIC_HTTP_PORT:-8080}/healthz` не готов или `GET /` не 200 с маркером консоли `id="root"`, `--yes` завершается с ошибкой.
 
 ```powershell
 .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
 ```
 
-`-Yes` ждёт ответ `http://127.0.0.1:8080/healthz` и завершается с кодом 0. Docker Compose пишет прогресс в stderr. В Windows PowerShell 5.1 этот поток — текст, а не ошибка установки, в том числе если вывод скрипта перенаправлен (`*> log`).
+`-Yes` ждёт ответ `http://127.0.0.1:8080/healthz` и `GET /` со статусом 200 и `id="root"`, затем завершается с кодом 0. Порт меняет `PUBLIC_HTTP_PORT`. Docker Compose пишет прогресс в stderr. В Windows PowerShell 5.1 этот поток — текст, а не ошибка установки, в том числе если вывод скрипта перенаправлен (`*> log`).
 
 Job CI, который проходит этот путь и бюджет ресурсов: [гейт одного узла](../../operations-guide/ru/single-node-gate.md).
 

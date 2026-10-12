@@ -82,7 +82,7 @@ This section describes how DataSafeS3 components relate, how user requests flow,
 |-----------|---------|
 | **Caddy** | Reverse proxy on port **8080**: static web console, proxies `/api/*`, `/healthz`, `/metrics` to `storage-server` |
 | **storage-server** | Single Go process: S3 API (SigV4), Admin REST API (`/api/v1/*`), Gateway worker, Prometheus metrics |
-| **web/console** | React SPA (built to `web/console/dist`, served by Caddy) |
+| **web/console** | React SPA (published image `ghcr.io/direktorbani/datasafe-console`, served by Caddy) |
 | **MetadataStore** | Metadata: users, buckets, tenants, grants, policies, shares, Gateway queue — **BoltDB** (`metadata.db`) or **PostgreSQL** (`postgres` profile) |
 | **FSBackend** | Object bytes on disk in `STORAGE_DATA_DIR/objects/` (in Docker — volume `/data`) |
 | **Prometheus** | Scrapes `storage-server:9000/metrics` every 15 s |
@@ -481,11 +481,12 @@ go build -trimpath -ldflags="-s -w" -o deploy\docker\storage-server-linux .\cmd\
 docker compose --profile postgres -f docker-compose.yml -f deploy/compose/docker-compose.local-binary.yml up -d storage-server --no-deps
 ```
 
-**Rebuild console only:**
+**Rebuild console only (local dist overlay):**
 
 ```cmd
 scripts\build-console.cmd
-docker compose up -d caddy --no-deps
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.local-console.yml up console-assets
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.local-console.yml up -d caddy --no-deps
 ```
 
 **Alternatives for Docker pull issues:** `scripts\ensure-docker-pull-proxy.cmd` (local direct-proxy on `127.0.0.1:10801`) or `netsh winhttp reset proxy`. Details: [local development](../context/local-dev.md).

@@ -9,7 +9,7 @@ if not exist .env (
 )
 if not defined DATASAFE_DATA_ROOT set DATASAFE_DATA_ROOT=D:/datasafe-data
 
-set COMPOSE_ARGS=-p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml -f deploy/compose/docker-compose.local-binary.yml
+set COMPOSE_ARGS=-p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml -f deploy/compose/docker-compose.local-binary.yml -f deploy/compose/docker-compose.local-console.yml
 
 echo Building Linux storage-server binary from current source...
 set CGO_ENABLED=0
@@ -31,6 +31,8 @@ docker run --rm -v "%DATASAFE_DATA_ROOT%/storage:/data" --user root alpine:3.20 
 
 echo Starting stack with postgres profile and locally built binary...
 docker compose %COMPOSE_ARGS% up -d postgres storage-server --no-deps
+if errorlevel 1 exit /b 1
+docker compose %COMPOSE_ARGS% up console-assets
 if errorlevel 1 exit /b 1
 docker compose %COMPOSE_ARGS% up -d caddy prometheus grafana --no-deps
 if errorlevel 1 exit /b 1

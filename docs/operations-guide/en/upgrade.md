@@ -353,11 +353,14 @@ After the git tag `v1.5.0` is published:
 ```bash
 git pull
 export TAG=v1.5.0
+# .env (or the shell) should name the published tag images:
+# DATASAFE_SERVER_IMAGE=ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+# DATASAFE_CONSOLE_IMAGE=ghcr.io/direktorbani/datasafe-console:v1.5.0
 docker compose --profile postgres pull
 docker compose --profile postgres up -d
 ```
 
-Until that tag exists, build from this commit (`docker compose --profile postgres build storage-server`) instead of pulling `v1.5.0`. Confirm `GET /healthz` returns `"version":"1.5.0"` and a `commit`. On a 3-node lab, delete `.env.erasure` and `.env.site-a` before recreating those stands.
+Pull the `v1.5.0` server and console images. Do not `docker compose build` for this upgrade. Confirm `GET /healthz` returns `"version":"1.5.0"` and a `commit`, and `GET /` on the console port returns the SPA (`id="root"`). On a 3-node lab, delete `.env.erasure` and `.env.site-a` before recreating those stands.
 
 ## Checklist
 
@@ -370,4 +373,4 @@ Until that tag exists, build from this commit (`docker compose --profile postgre
 - [ ] v1.0.3 (optional): enable [field encryption](field-encryption.md) — generate KEK, set env, verify security-status
 - [ ] v1.1.0: remove `STORAGE_OUTBOUND_HTTP_ALLOW`; configure `STORAGE_METRICS_TOKEN` + Prometheus bearer if used
 - [ ] v1.4.1: `STORAGE_DEV` is false unless you opted in; installer or `.env` has `STORAGE_METRICS_TOKEN`; Prometheus scrape still works
-- [ ] v1.5.0: storage-server and console are the same tag; delete old `.env.erasure` / `.env.site-a` if those labs should use the new ports; leave `STORAGE_KAFKA_BROKERS` empty unless you want the external feed
+- [ ] v1.5.0: `docker compose pull` the `v1.5.0` server and console images (do not build them); delete old `.env.erasure` / `.env.site-a` if those labs should use the new ports; leave `STORAGE_KAFKA_BROKERS` empty unless you want the external feed

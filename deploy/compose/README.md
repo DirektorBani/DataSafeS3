@@ -35,7 +35,8 @@ cp deploy/compose/env/.env.ha.example .env.ha
 
 | Overlay | Purpose |
 |---------|---------|
-| `docker-compose.local-binary.yml` | Mount prebuilt `deploy/docker/storage-server-linux` + console dist |
+| `docker-compose.local-binary.yml` | Mount prebuilt `deploy/docker/storage-server-linux` |
+| `docker-compose.local-console.yml` | Copy host `web/console/dist` into the console volume instead of `DATASAFE_CONSOLE_IMAGE` |
 | `docker-compose.dev.yml` | Vite HMR console (`--profile dev`) and explicit `STORAGE_DEV=true` |
 | `docker-compose.audit.yml` | Feature-audit / CI (higher login rate limit, explicit `STORAGE_DEV=true`) |
 | `docker-compose.security-test.yml` | Stricter security QA defaults |

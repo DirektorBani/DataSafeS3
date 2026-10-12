@@ -32,7 +32,7 @@ Setup, SASL, and the record shape: [Kafka](kafka.md).
 
 ## Console
 
-**Settings → Event delivery** lists webhook, NATS, and Kafka. Each card shows status, queue depth, delivered and failed counts (the process counters `datasafe_events_delivered_total` and `datasafe_events_failed_total`), and the last error. The sentence about `STORAGE_KAFKA_BROKERS` is shown only while Kafka is disabled.
+**Settings → Event delivery** lists webhook, NATS, and Kafka. Each card shows status, queue depth, delivered and failed counts (the process counters `datasafe_events_delivered_total` and `datasafe_events_failed_total`), and the last error. Those delivered and failed counters live in process memory and reset to zero when storage-server restarts. The sentence about `STORAGE_KAFKA_BROKERS` is shown only while Kafka is disabled.
 
 `GET /api/v1/events/delivery` reads that cache. It does not ping the broker. `POST /api/v1/events/test` inserts one outbox row. Both are administrator-only.
 

@@ -18,6 +18,15 @@ services:
     ports:
       - "5173:5173"
 
+  # Vite serves the UI. Do not pull the published console image for this profile.
+  console-assets:
+    image: alpine:3.20
+    pull_policy: if_not_present
+    build: !reset null
+    volumes: !override []
+    entrypoint: ["/bin/true"]
+    command: []
+
   caddy:
     volumes:
       - ./deploy/docker/Caddyfile.dev:/etc/caddy/Caddyfile:ro

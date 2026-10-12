@@ -72,19 +72,18 @@ helm uninstall datasafe -n datasafe
 docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .
 ```
 
-**console** (static assets served by Caddy — no separate console Dockerfile):
+**console** (static assets served by Caddy from `deploy/docker/Dockerfile.console`):
 
 ```bash
-# From repository root (Windows):
-scripts/build-console.cmd
+# Published image (Compose default and this chart):
+# ghcr.io/direktorbani/datasafe-console:<tag>
 
-# Or manually:
+# Local production build, served only with the local-dist overlay:
 cd web/console && npm ci && npm run build
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.local-console.yml up -d
 ```
 
-Docker Compose and Helm mount `web/console/dist` into Caddy (same as `docker-compose.yml`). To package a console image for Kubernetes, copy `dist/` into any static-file base (e.g. `FROM caddy:2-alpine` with `COPY dist/ /srv/console/`).
-
-The chart copies console static files from `console.image` into a shared `emptyDir` via an init container on the Caddy pod (same pattern as Docker Compose mounting `web/console/dist`).
+Default Compose copies `/srv/console` from `DATASAFE_CONSOLE_IMAGE` into the `console-dist` volume. The chart copies console static files from `console.image` into a shared `emptyDir` via an init container on the Caddy pod (same copy, different volume).
 
 ## Architecture
 

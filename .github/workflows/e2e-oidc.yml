@@ -32,9 +32,12 @@ jobs:
           DATASAFE_DATA_ROOT: ${{ github.workspace }}/.datasafe-data-oidc
         run: |
           mkdir -p "$DATASAFE_DATA_ROOT/storage" "$DATASAFE_DATA_ROOT/postgres"
-          docker compose -p datasafe-oidc -f docker-compose.yml -f docker-compose.local-data.yml --profile postgres up -d --build storage-server caddy postgres
+          docker compose -p datasafe-oidc -f docker-compose.yml -f docker-compose.local-data.yml -f deploy/compose/docker-compose.local-console.yml --profile postgres up -d --build storage-server caddy postgres
           for i in $(seq 1 90); do
-            if curl -sf http://127.0.0.1:8080/healthz; then exit 0; fi
+            if curl -sf http://127.0.0.1:8080/healthz >/dev/null \
+              && curl -sf http://127.0.0.1:8080/ | grep -q 'id="root"'; then
+              exit 0
+            fi
             sleep 2
           done
           exit 1
@@ -50,5 +53,5 @@ jobs:
       - name: Tear down
         if: always()
         run: |
-          docker compose -p datasafe-oidc -f docker-compose.yml -f docker-compose.local-data.yml --profile postgres down -v --remove-orphans || true
+          docker compose -p datasafe-oidc -f docker-compose.yml -f docker-compose.local-data.yml -f deploy/compose/docker-compose.local-console.yml --profile postgres down -v --remove-orphans || true
           docker rm -f datasafe-keycloak-ci || true

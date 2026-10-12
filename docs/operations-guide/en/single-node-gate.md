@@ -44,12 +44,14 @@ bash scripts/single-node-gate.sh all
 Core profile through the installer, using the image you just built (Compose `pull_policy` is `if_not_present`, so the local tag wins and nothing is pushed):
 
 ```bash
+docker build -t ghcr.io/direktorbani/datasafe-console:v1.5.0 -f deploy/docker/Dockerfile.console .
 docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
-(cd web/console && npm ci && npm run build)
 ./install.sh --yes --profiles core --project datasafe-gate --data-root "${TMPDIR:-/tmp}/datasafe-gate"
 bash scripts/single-node-gate.sh smoke-installed
 docker compose -p datasafe-gate -f docker-compose.yml down -v
 ```
+
+CI also unpacks `git archive HEAD` (no `web/console/dist`) and runs the same core install on `PUBLIC_HTTP_PORT=18080`. `GET /` must be 200 and contain `id="root"`.
 
 Do not point `measure` at that retagged name. The script refuses to compare two images with the same id. Pull `v1.4.1` again first.
 
@@ -59,7 +61,7 @@ Windows, from the repo root (Docker Desktop running):
 .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
 ```
 
-`-Yes` skips the menu, the data-root prompt, and the confirm prompt. Profile `core` leaves Postgres, monitoring, host data volumes, the identity lab, and dev mode off. If port 8080 does not become healthy, `-Yes` exits with an error.
+`-Yes` skips the menu, the data-root prompt, and the confirm prompt. Profile `core` leaves Postgres, monitoring, host data volumes, the identity lab, and dev mode off. If the console edge is not healthy (`/healthz` and `GET /` with `id="root"`), `-Yes` exits with an error.
 
 ## Honesty
 
