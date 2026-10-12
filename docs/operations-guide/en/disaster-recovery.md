@@ -57,6 +57,10 @@ Before `pg_promote`, the script sets `default_transaction_read_only=on` on the o
 
 That is not a power fence. A superuser can still `SET transaction_read_only = off` in a session. The storage-server does not. When its leader-lease renew fails against the read-only database, the process drops the lease immediately (`internal/ha`) and `leaderGuard` rejects HTTP writes with `not cluster leader`. It does not wait for the old TTL, and it does not acquire the lease again until the process is started against the new primary.
 
+A follower that has never held the lease keeps trying. It takes the lease only after the previous one expires or is released, so it does not steal a live lease. That takeover is automatic on a shared database. Takeover takes about as long as the lease that is still running: a 10s lease was observed at about 9s, and the default 30s lease at about 26s. A process that already led and then lost the lease does not try again in the same process. The renew interval is at most one third of the lease, including when the lease is shorter than 15 seconds.
+
+When a node becomes leader, and about every 2 seconds, it reloads webhook and bucket-notification sinks from the database. A webhook created while a node was a follower is delivered after that node takes over. A row whose sink is not registered yet stays pending; those attempts are not counted toward dead.
+
 The event dispatcher does the same as soon as an outbox write is refused. A read-only transaction (`SQLSTATE 25006`) or a not-leader error from the store stops the loop and drops the lease. This process does not publish that row again. A row that was already handed to the sink, and then could not be marked delivered, can be delivered once more by the new leader.
 
 Patroni demotes the old primary instead. That node re-enters recovery and refuses writes. The cluster script does not issue `ALTER SYSTEM`.
@@ -70,6 +74,29 @@ bash scripts/ha/run-promote-drill.sh
 ```
 
 CI job `ha-promote-drill` runs that command on the image produced by `deploy/docker/Dockerfile` (the `docker-build` artifact). It starts Postgres primary and replica, node-a, then node-b only after node-a holds the lease, and a webhook sink. It writes objects while promote runs, then writes `scripts/collect-dr-evidence.sh` output (folder, `summary.md`, `evidence.json`, zip). Host ports default to 19100, 19101, 15442, 15443, and 18080 so the lab does not use `:9000` or `:9001` (the vault stand). Override `HA_DRILL_HTTP_A`, `HA_DRILL_HTTP_B`, `HA_DRILL_PG_A`, `HA_DRILL_PG_B`, and `HA_DRILL_WEBHOOK`. The HA stack's published standby ports default to **19011** and **19013** (`HA_STANDBY_HTTP_PORT`, `HA_STANDBY2_HTTP_PORT`).
+
+The drill does not need Python on the host. Port checks, S3 helpers, and the evidence pack run inside the webhook container. That container is `python:3.12-alpine` with a static Docker client mounted from the state directory. The script downloads that client when the file is missing or empty (`-s`, so Git Bash does not re-download the ELF every run) and resumes a partial download with `curl`. On Windows, from Git Bash:
+
+```bash
+bash scripts/ha/run-promote-drill.sh
+```
+
+Linux keeps state in `/tmp/datasafe-promote-drill` (the CI artifact path). Git Bash uses `.promote-drill-state` in the repo unless `HA_DRILL_STATE` is set. The SSH lab gate still calls `collect-dr-evidence.sh --lab` with host `python3`.
+
+### Lab host ports
+
+Each stand publishes its own host ports so `scripts/ha/run-all-ha-tests.ps1` can run while the main stack, the vault stand, or another lab is already up. Scripts read the stand's `.env` when that file exists. A previously copied `.env.erasure` or `.env.site-a` keeps its old values until you delete it and let the start script copy the example again.
+
+| Stand | Console | S3 | Postgres | Prometheus | Grafana |
+|-------|---------|----|----------|------------|---------|
+| Main dev | 8080 | 9000 | 5432 | 9090 | 3000 |
+| Vault | — | 9001 | 5434 | — | Vault 8200 |
+| HA | 8082 | 9002 | 5442 (standby 5443) | 9092 | 3002 |
+| Erasure | 8084 | 9004 | 5444 | 9094 | 3004 |
+| Site A | 8086 | 9006 | 5446 | 9096 | 3006 |
+| Site B | 9082 | 9193 | 5542 | 9192 | 3102 |
+
+HA standby HTTP stays **19011** and **19013**. The NATS profile on the HA compose file publishes **14222** and **18222**. Promote-drill ports stay **19100**, **19101**, **15442**, **15443**, and webhook **18080**.
 
 ## Recovery steps
 
@@ -98,7 +125,7 @@ Run quarterly DR drill: restore backup to an isolated environment, run `bash scr
 
 ### Not covered
 
-- Automatic failover across availability zones. Nothing here elects a leader by itself.
+- Automatic failover across availability zones. Nothing here elects a Postgres primary by itself. A storage follower that shares the database retries the leader lease and takes it only after the previous lease expires. A process that already held the lease and then lost it does not try again.
 - Object bytes moving with the metadata. Each node's disk is its own. The post-promote read is a new object written on the new leader.
 - A power fence or STONITH. A superuser session can turn read-only off.
 - Rebuilding the fenced primary as a new standby. The script does not run `pg_basebackup` in reverse.

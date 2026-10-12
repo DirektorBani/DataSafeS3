@@ -4,6 +4,8 @@
 #     -f deploy/compose/docker-compose.local-binary.yml -f deploy/compose/docker-compose.ha-erasure.yml --profile postgres up -d
 services:
   storage-server:
+    ports: !override
+      - "${ERASURE_STORAGE_PORT:-9004}:9000"
     environment:
       STORAGE_OBJECT_BACKEND: erasure
       STORAGE_ERASURE_LAYOUT: ${STORAGE_ERASURE_LAYOUT:-dev}
@@ -16,6 +18,22 @@ services:
       - erasure-shard-4:/shards/d4
       - erasure-shard-5:/shards/d5
       - erasure-shard-6:/shards/d6
+
+  caddy:
+    ports: !override
+      - "${PUBLIC_HTTP_PORT:-8084}:80"
+
+  postgres:
+    ports: !override
+      - "${STORAGE_POSTGRES_PUBLISH_PORT:-5444}:5432"
+
+  prometheus:
+    ports: !override
+      - "${PROMETHEUS_PORT:-9094}:9090"
+
+  grafana:
+    ports: !override
+      - "${GRAFANA_PORT:-3004}:3000"
 
 volumes:
   erasure-shard-1:

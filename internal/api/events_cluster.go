@@ -46,10 +46,15 @@ func (w *webhookEventSink) Health(context.Context) (string, string) {
 
 func (w *webhookEventSink) Close() error { return nil }
 
+// eventSinkRefreshInterval is how often every node reloads sinks from the database.
+// Webhook CRUD on one node is not visible to the others until this refresh, or
+// until the node that just became leader runs syncEventSinks from the lease callback.
+const eventSinkRefreshInterval = 2 * time.Second
+
 // syncEventSinks registers a sink only when it is configured.
 // NATS is registered when STORAGE_NATS_URL is non-empty.
-// The webhook sink is registered when at least one webhook is enabled, and is
-// refreshed after webhook create, update, and delete.
+// The webhook sink is registered when at least one webhook is enabled.
+// Callers are webhook CRUD on this node, leadership gain, and the periodic refresh.
 // Kafka is registered when STORAGE_KAFKA_BROKERS is non-empty.
 func (s *Server) syncEventSinks() {
 	if s == nil || s.eventDisp == nil {

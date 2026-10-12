@@ -52,7 +52,7 @@ function Stop-Project($Project) {
 
 Write-Host "=== DataSafe HA test suite ==="
 Write-Host "FreshVolumes=$FreshVolumes SkipBuild=$SkipBuild"
-Write-Host "Port note: HA/site-A use :8082/:9002; main dev stack uses :8080/:9000"
+Write-Host "Port note: main :8080/:9000, vault storage :9001, HA :8082/:9002, erasure :8084/:9004, site A :8086/:9006, site B :9082/:9193. Scripts read the stand .env when it exists."
 Write-Host ""
 
 # Go unit tests

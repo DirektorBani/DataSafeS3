@@ -677,6 +677,9 @@ func (s *Server) handleCreateGatewayConnection(w http.ResponseWriter, r *http.Re
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	// The secret stays in the store for the worker. The response omits it,
+	// the same way GET /gateway/connections does.
+	req.SecretKey = ""
 	writeJSON(w, http.StatusCreated, map[string]any{"connection": req})
 }
 
@@ -760,9 +763,19 @@ func (s *Server) handleCreateReplicationRule(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	sched, err := normalizeSyncSchedule(req.SyncSchedule)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
 	req.ID = randomID()
 	req.CreatedAt = time.Now().UTC()
 	req.Enabled = true
+	req.SyncSchedule = sched
+	req.LastSyncAt = nil
+	req.LastSyncStatus = ""
+	req.LastSyncError = ""
+	req.LastSyncObjects = 0
 	if err := s.meta.PutReplicationRule(req); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -788,27 +801,12 @@ func (s *Server) handleTriggerSyncJob(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 		return
 	}
-	job := metadata.SyncJob{
-		ID:        randomID(),
-		RuleID:    rule.ID,
-		Status:    metadata.SyncJobRunning,
-		StartedAt: time.Now().UTC(),
-	}
-	if err := s.meta.PutSyncJob(job); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+	if !s.tryBeginGatewaySync(rule.ID) {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "sync already running"})
 		return
 	}
-	synced, errs, msg := s.runSyncJob(r.Context(), rule)
-	now := time.Now().UTC()
-	job.Objects = synced
-	job.Errors = errs
-	job.Message = msg
-	job.Status = metadata.SyncJobCompleted
-	if errs > 0 {
-		job.Status = metadata.SyncJobFailed
-	}
-	job.EndedAt = &now
-	_ = s.meta.PutSyncJob(job)
+	defer s.endGatewaySync(rule.ID)
+	job := s.finishSyncJob(r.Context(), rule)
 	writeJSON(w, http.StatusOK, map[string]any{"job": job})
 }
 

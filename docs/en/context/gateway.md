@@ -41,9 +41,10 @@ Gateway replicates objects from local DataSafeS3 buckets to external S3-compatib
 2. **Source bucket** — select a local DataSafeS3 bucket (e.g. `my-data`).
 3. **Remote connection** — select the connection you created by name.
 4. **Remote bucket** — bucket name on remote S3 (e.g. `replica-test`).
-5. Click **Add Rule**.
+5. **Schedule** — leave **Default** unless this rule needs its own interval.
+6. Click **Add Rule**.
 
-When a rule is created, existing objects are queued for initial replication.
+When a rule is created, existing objects are queued for initial replication. The rule card shows the last manual or scheduled run, including the error text when the run failed. **Sync Jobs** lists those runs.
 
 ### Step 4 — Verify Replication
 
@@ -164,6 +165,8 @@ curl -s -X POST http://localhost:8080/api/v1/gateway/connections ^
   -d "{\"name\":\"External S3 Test\",\"endpoint\":\"http://host.docker.internal:9100\",\"region\":\"us-east-1\",\"access_key\":\"minioadmin\",\"secret_key\":\"minioadmin\",\"path_style\":true,\"tls_verify\":false}"
 ```
 
+The response does not include `secret_key`. The list endpoint omits it the same way. The value stays in metadata for the replication worker.
+
 ### 2. Test Connection
 
 ```cmd
@@ -220,8 +223,10 @@ flowchart LR
 
 - **Events:** PUT, DELETE (including delete marker), COPY via S3 API and console.
 - **Retry:** exponential backoff, up to 5 attempts (`STORAGE_GATEWAY_MAX_RETRIES`).
-- **Scheduled sync:** full bucket scan every hour (`STORAGE_GATEWAY_FULL_SYNC_INTERVAL`).
-- **Manual sync:** "Sync now" button on a rule — full synchronization.
+- **Default full scan:** every enabled rule with an empty schedule is queued once per `STORAGE_GATEWAY_FULL_SYNC_INTERVAL` (default `1h`). `STORAGE_GATEWAY_CONTINUOUS_SYNC=true` shortens that global interval to 5 minutes. This scan does not write a sync job.
+- **Per-rule schedule (opt-in):** `sync_schedule` on the rule. Empty inherits the global scan. `off` stops the scheduled full scan for that rule; object events still replicate. A duration from `1m` to `168h` (`15m`, `1h`, `6h`, `24h` in the console) copies that rule on its own interval and is excluded from the global scan. The first run is within about 30 seconds, then every interval. Each of those runs, and **Sync now**, writes a sync job and the last-run fields (`last_sync_at`, `last_sync_status`, `last_sync_error`, `last_sync_objects`). The console rule card shows the rule name when `name` is set.
+- **Manual sync:** "Sync now" on a rule copies the bucket and records the job.
+- Change the schedule without recreating the rule: `PATCH /api/v1/gateway/replication/{id}` with `{"sync_schedule":"15m"}`. An invalid value returns 400. This is not continuous multi-destination sync.
 
 ---
 
@@ -231,7 +236,8 @@ flowchart LR
 |------------|--------------|----------|
 | `STORAGE_GATEWAY_WORKER_INTERVAL` | `2s` | Queue processing interval |
 | `STORAGE_GATEWAY_MAX_RETRIES` | `5` | Max attempts per task |
-| `STORAGE_GATEWAY_FULL_SYNC_INTERVAL` | `1h` | Periodic full sync |
+| `STORAGE_GATEWAY_FULL_SYNC_INTERVAL` | `1h` | Periodic full scan for rules with an empty schedule |
+| `STORAGE_GATEWAY_CONTINUOUS_SYNC` | unset | `true` sets the global full-scan interval to 5 minutes |
 
 ---
 

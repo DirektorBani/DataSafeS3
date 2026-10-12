@@ -107,13 +107,15 @@ Write-Host "[ha] Starting HA stack (2x postgres, 3x storage-server, object-repli
 & docker @Compose up -d postgres postgres-standby storage-server object-replicator storage-server-standby storage-server-standby-2 caddy prometheus grafana
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$BaseUrl = "http://127.0.0.1:8082"
-$StandbyPort = "19011"
-$Standby2Port = "19013"
-foreach ($line in Get-Content $EnvFile) {
-    if ($line -match '^\s*HA_STANDBY_HTTP_PORT=(.+)$') { $StandbyPort = $Matches[1].Trim() }
-    if ($line -match '^\s*HA_STANDBY2_HTTP_PORT=(.+)$') { $Standby2Port = $Matches[1].Trim() }
-}
+. (Join-Path $PSScriptRoot "lab-ports.ps1")
+$haPorts = Read-LabEnv $EnvFile
+$ConsolePort = Get-LabPort $haPorts "PUBLIC_HTTP_PORT" "8082"
+$S3Port = Get-LabPort $haPorts "HA_PRIMARY_STORAGE_PORT" "9002"
+$PgPort = Get-LabPort $haPorts "STORAGE_POSTGRES_PUBLISH_PORT" "5442"
+$PgStandbyPort = Get-LabPort $haPorts "STORAGE_POSTGRES_STANDBY_PORT" "5443"
+$StandbyPort = Get-LabPort $haPorts "HA_STANDBY_HTTP_PORT" "19011"
+$Standby2Port = Get-LabPort $haPorts "HA_STANDBY2_HTTP_PORT" "19013"
+$BaseUrl = "http://127.0.0.1:$ConsolePort"
 $StandbyUrls = @("http://127.0.0.1:$StandbyPort", "http://127.0.0.1:$Standby2Port")
 Write-Host "[ha] Waiting for primary console $BaseUrl ..."
 for ($i = 1; $i -le 90; $i++) {
@@ -142,10 +144,10 @@ foreach ($StandbyUrl in $StandbyUrls) {
 Write-Host ""
 Write-Host "[ha] Stack ready:"
 Write-Host "  Primary console:  $BaseUrl  (admin/admin)"
-Write-Host "  Primary S3/API:   http://127.0.0.1:9002"
+Write-Host "  Primary S3/API:   http://127.0.0.1:$S3Port"
 Write-Host "  Standby read API: $($StandbyUrls -join ', ')"
-Write-Host "  Postgres primary: localhost:5442"
-Write-Host "  Postgres standby: localhost:5443"
+Write-Host "  Postgres primary: localhost:$PgPort"
+Write-Host "  Postgres standby: localhost:$PgStandbyPort"
 Write-Host ""
 Write-Host "Run: scripts\ha\test-ha-cluster.ps1"
 if ($WithIntegrations) {

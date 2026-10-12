@@ -1,6 +1,6 @@
 # Gateway (external S3 / MinIO) + Federation peers for HA lab (project datasafe-ha).
 param(
-    [string]$ConsoleUrl = "http://127.0.0.1:8082",
+    [string]$ConsoleUrl = "",
     [string]$AdminUser = "admin",
     [string]$AdminPass = "admin",
     [string]$MinioHostPort = "9100",
@@ -16,7 +16,12 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "lab-ports.ps1")
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+if (-not $ConsoleUrl) {
+    $haPorts = Read-LabEnv (Join-Path $Root ".env.ha")
+    $ConsoleUrl = "http://127.0.0.1:$(Get-LabPort $haPorts "PUBLIC_HTTP_PORT" "8082")"
+}
 Set-Location $Root
 
 $MinioContainer = "datasafe-minio-test"

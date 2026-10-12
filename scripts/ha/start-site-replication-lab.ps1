@@ -107,8 +107,13 @@ function Complete-InitialSetup {
     }
 }
 
-$BaseA = "http://127.0.0.1:8082"
-$BaseB = "http://127.0.0.1:9082"
+. (Join-Path $PSScriptRoot "lab-ports.ps1")
+$siteAPorts = Read-LabEnv (Join-Path $Root ".env.site-a")
+$siteBPorts = Read-LabEnv (Join-Path $Root ".env.site-b")
+$BaseA = "http://127.0.0.1:$(Get-LabPort $siteAPorts "PUBLIC_HTTP_PORT" "8086")"
+$S3A = Get-LabPort $siteAPorts "SITE_A_STORAGE_PORT" "9006"
+$BaseB = "http://127.0.0.1:$(Get-LabPort $siteBPorts "SITE_B_HTTP_PORT" "9082")"
+$S3B = Get-LabPort $siteBPorts "SITE_B_STORAGE_PORT" "9193"
 foreach ($pair in @(@($BaseA, "A"), @($BaseB, "B"))) {
     $url = $pair[0]; $label = $pair[1]
     Write-Host "[site-repl] Waiting for site $label $url ..."
@@ -125,7 +130,7 @@ foreach ($pair in @(@($BaseA, "A"), @($BaseB, "B"))) {
 
 Write-Host ""
 Write-Host "[site-repl] Lab ready:"
-Write-Host "  Site A (source):  $BaseA  S3 direct http://127.0.0.1:9002"
-Write-Host "  Site B (peer):    $BaseB  S3 direct http://127.0.0.1:9193"
+Write-Host "  Site A (source):  $BaseA  S3 direct http://127.0.0.1:$S3A"
+Write-Host "  Site B (peer):    $BaseB  S3 direct http://127.0.0.1:$S3B"
 Write-Host ""
 Write-Host "Run: scripts\ha\test-site-replication.ps1"

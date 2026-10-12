@@ -122,8 +122,8 @@ services:
     profiles: ["nats"]
     image: nats:2-alpine
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "${HA_NATS_PORT:-14222}:4222"
+      - "${HA_NATS_MONITOR_PORT:-18222}:8222"
     command: ["-js", "-m", "8222"]
 
 volumes:

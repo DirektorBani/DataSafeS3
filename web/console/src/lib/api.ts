@@ -393,6 +393,11 @@ export type ReplicationRule = {
   dest_bucket: string;
   enabled: boolean;
   created_at: string;
+  sync_schedule?: string;
+  last_sync_at?: string;
+  last_sync_status?: string;
+  last_sync_error?: string;
+  last_sync_objects?: number;
 };
 
 export type SiteReplicationPeer = {
@@ -1668,6 +1673,12 @@ export const api = {
   createReplicationRule: (body: Partial<ReplicationRule>) =>
     fetchJSON<{ rule: ReplicationRule }>("/gateway/replication", {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  updateReplicationRule: (id: string, body: { sync_schedule: string }) =>
+    fetchJSON<{ rule: ReplicationRule }>(`/gateway/replication/${encodeURIComponent(id)}`, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),

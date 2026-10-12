@@ -81,8 +81,11 @@ Write-Host "[erasure] Starting erasure stack..."
 & docker @Compose up -d postgres storage-server caddy
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$BaseUrl = "http://127.0.0.1:8082"
-Write-Host "[erasure] Waiting for $BaseUrl ..."
+. (Join-Path $PSScriptRoot "lab-ports.ps1")
+$erasurePorts = Read-LabEnv $EnvFile
+$BaseUrl = "http://127.0.0.1:$(Get-LabPort $erasurePorts "PUBLIC_HTTP_PORT" "8084")"
+$S3Port = Get-LabPort $erasurePorts "ERASURE_STORAGE_PORT" "9004"
+Write-Host "[erasure] Waiting for $BaseUrl (S3 :$S3Port) ..."
 for ($i = 1; $i -le 90; $i++) {
     try {
         $h = Invoke-RestMethod -Uri "$BaseUrl/healthz" -TimeoutSec 3

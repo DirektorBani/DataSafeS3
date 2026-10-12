@@ -340,3 +340,76 @@ func TestEventSinkFailureAndRecoveryWriteActivity(t *testing.T) {
 		t.Fatalf("activity %v", seen)
 	}
 }
+
+func TestFollowerStartedBeforeWebhookDeliversAfterTakeover(t *testing.T) {
+	t.Setenv("STORAGE_NATS_URL", "")
+	t.Setenv("STORAGE_KAFKA_BROKERS", "")
+	t.Setenv("STORAGE_HA_ENABLED", "false")
+	var hits atomic.Int32
+	hook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer hook.Close()
+
+	dir := t.TempDir()
+	srv, err := NewServer(Config{
+		DataDir: dir, AdminUser: "admin", AdminPassword: "admin", JWTSecret: "test",
+		Metadata: metadata.Config{Backend: metadata.BackendBolt, DataDir: dir},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	if srv.eventDisp.HasSink("webhook") {
+		t.Fatal("webhook sink registered before any webhook exists")
+	}
+	if err := srv.meta.PutWebhook(metadata.WebhookRecord{
+		ID: "wh-later", Name: "later", URL: hook.URL, Events: []string{"ObjectCreated"},
+		Enabled: true, CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if srv.eventDisp.HasSink("webhook") {
+		t.Fatal("writing a webhook to the database registered it on this follower")
+	}
+	now := time.Now().UTC()
+	rec := events.NormalizeOutbox(events.OutboxRecord{
+		EventType: "ObjectCreated",
+		Bucket:    "b",
+		Key:       "k",
+		Payload:   []byte(`{"bucket":"b","key":"k"}`),
+		CreatedAt: now,
+		Attempts: map[string]events.SinkAttempt{
+			"webhook": {Status: events.StatusPending, NextAttemptAt: now},
+		},
+	}, now)
+	if _, err := srv.outboxStore().InsertOutbox(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		if err := srv.eventDisp.ProcessOnce(context.Background(), now.Add(time.Duration(i)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("delivered before leadership refresh: %d", hits.Load())
+	}
+	got, err := srv.outboxStore().GetOutbox(context.Background(), rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != events.StatusPending || got.Attempts["webhook"].Attempts != 0 {
+		t.Fatalf("attempts burned: status %s %+v", got.Status, got.Attempts["webhook"])
+	}
+	srv.syncEventSinks()
+	if !srv.eventDisp.HasSink("webhook") {
+		t.Fatal("leadership refresh did not register the webhook sink")
+	}
+	if err := srv.eventDisp.ProcessOnce(context.Background(), now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("hits %d", hits.Load())
+	}
+}

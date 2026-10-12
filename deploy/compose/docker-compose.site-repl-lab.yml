@@ -4,9 +4,27 @@ services:
   storage-server:
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    ports: !override
+      - "${SITE_A_STORAGE_PORT:-9006}:9000"
     environment:
       STORAGE_SITE_REPLICATION_ENABLED: "true"
       STORAGE_SITE_REPL_WORKER_INTERVAL: ${STORAGE_SITE_REPL_WORKER_INTERVAL:-2s}
       STORAGE_CLUSTER_ID: ${STORAGE_CLUSTER_ID:-cluster-a}
-      STORAGE_CLUSTER_ENDPOINT: ${STORAGE_CLUSTER_ENDPOINT:-http://host.docker.internal:9000}
+      STORAGE_CLUSTER_ENDPOINT: ${STORAGE_CLUSTER_ENDPOINT:-http://host.docker.internal:9006}
       STORAGE_TRUSTED_CLUSTER_REPL_ENABLED: ${STORAGE_TRUSTED_CLUSTER_REPL_ENABLED:-true}
+
+  caddy:
+    ports: !override
+      - "${PUBLIC_HTTP_PORT:-8086}:80"
+
+  postgres:
+    ports: !override
+      - "${STORAGE_POSTGRES_PUBLISH_PORT:-5446}:5432"
+
+  prometheus:
+    ports: !override
+      - "${PROMETHEUS_PORT:-9096}:9090"
+
+  grafana:
+    ports: !override
+      - "${GRAFANA_PORT:-3006}:3000"

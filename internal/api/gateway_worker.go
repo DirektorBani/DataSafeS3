@@ -107,7 +107,7 @@ func (s *Server) runReplicationFullSyncWorker(ctx context.Context) {
 				continue
 			}
 			for _, rule := range rules {
-				if !rule.Enabled {
+				if !ruleUsesGlobalFullSync(rule) {
 					continue
 				}
 				s.enqueueFullBucketScan(rule)

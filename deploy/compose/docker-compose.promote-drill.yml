@@ -24,7 +24,7 @@ services:
       - hot_standby=on
     volumes:
       - pg-a:/var/lib/postgresql/data
-      - ${HA_DRILL_ROOT}/deploy/docker/postgres/init/02-replication-hba.sh:/docker-entrypoint-initdb.d/02-replication-hba.sh:ro
+      - ${HA_DRILL_ROOT_MOUNT:-${HA_DRILL_ROOT}}/deploy/docker/postgres/init/02-replication-hba.sh:/docker-entrypoint-initdb.d/02-replication-hba.sh:ro
     ports:
       - "127.0.0.1:${HA_DRILL_PG_A:-15442}:5432"
     healthcheck:
@@ -68,10 +68,17 @@ services:
   webhook:
     container_name: ds-promote-hook
     image: python:3.12-alpine
+    # Python is in the image. The drill mounts a static Docker client (no host
+    # Python, no package install inside the container). The socket is used only
+    # to docker exec the drill's own containers.
     command: ["python", "/hook.py"]
     volumes:
-      - ${HA_DRILL_ROOT}/scripts/ha/drill_webhook.py:/hook.py:ro
-      - ${HA_DRILL_STATE}/webhook:/data
+      - ${HA_DRILL_ROOT_MOUNT:-${HA_DRILL_ROOT}}/scripts/ha/drill_webhook.py:/hook.py:ro
+      - ${HA_DRILL_STATE_MOUNT:-${HA_DRILL_STATE}}/webhook:/data
+      - ${HA_DRILL_ROOT_MOUNT:-${HA_DRILL_ROOT}}:/workspace:ro
+      - ${HA_DRILL_STATE_MOUNT:-${HA_DRILL_STATE}}:/state
+      - ${HA_DRILL_STATE_MOUNT:-${HA_DRILL_STATE}}/bin/docker:/usr/local/bin/docker:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "127.0.0.1:${HA_DRILL_WEBHOOK:-18080}:8080"
 

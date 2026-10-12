@@ -3,11 +3,15 @@ package s3_test
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/DirektorBani/datasafe/internal/api"
@@ -199,6 +203,100 @@ func TestS3PutObject_rejectsTraversalKey(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status %d", resp.StatusCode)
+	}
+}
+
+func TestS3ParallelPutSameKeyLastWriterWins(t *testing.T) {
+	srv, creds := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/parbucket", nil)
+	signRequest(t, req, creds, "us-east-1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("create bucket status %d", resp.StatusCode)
+	}
+
+	const n = 20
+	payloads := make([][]byte, n)
+	for i := range payloads {
+		payloads[i] = []byte(fmt.Sprintf("body-%02d-%s", i, strings.Repeat("x", i)))
+	}
+	var wg sync.WaitGroup
+	errc := make(chan string, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			req, err := http.NewRequest(http.MethodPut, ts.URL+"/parbucket/same-key", bytes.NewReader(payloads[i]))
+			if err != nil {
+				errc <- err.Error()
+				return
+			}
+			if req.Host == "" {
+				req.Host = req.URL.Host
+			}
+			if err := auth.SignRequest(req, creds, "us-east-1", "s3", "UNSIGNED-PAYLOAD"); err != nil {
+				errc <- err.Error()
+				return
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				errc <- err.Error()
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				b, _ := io.ReadAll(resp.Body)
+				errc <- fmt.Sprintf("put %d status %d %s", i, resp.StatusCode, b)
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errc)
+	for msg := range errc {
+		t.Error(msg)
+	}
+	if t.Failed() {
+		return
+	}
+
+	req, _ = http.NewRequest(http.MethodGet, ts.URL+"/parbucket/same-key", nil)
+	signRequest(t, req, creds, "us-east-1")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get status %d", resp.StatusCode)
+	}
+	got, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matched := false
+	for _, p := range payloads {
+		if bytes.Equal(got, p) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		t.Fatalf("body is not one of the 20 payloads (%d bytes)", len(got))
+	}
+	sum := md5.Sum(got)
+	want := `"` + hex.EncodeToString(sum[:]) + `"`
+	if resp.Header.Get("ETag") != want {
+		t.Fatalf("etag %q, want %q", resp.Header.Get("ETag"), want)
+	}
+	if resp.ContentLength != int64(len(got)) {
+		t.Fatalf("content-length %d, body %d", resp.ContentLength, len(got))
 	}
 }
 

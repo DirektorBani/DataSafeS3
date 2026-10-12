@@ -3,7 +3,6 @@ package ha
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -48,9 +47,11 @@ func ConfigFromEnv() Config {
 			cfg.LeaderTTL = d
 		}
 	}
+	// Renew at least three times per lease. A floor of 10s made a lease under
+	// 15s renew on the same interval as the lease, so one missed tick dropped it.
 	cfg.RenewEvery = cfg.LeaderTTL / 3
-	if cfg.RenewEvery < 5*time.Second {
-		cfg.RenewEvery = 10 * time.Second
+	if cfg.RenewEvery <= 0 {
+		cfg.RenewEvery = time.Nanosecond
 	}
 	return cfg
 }
@@ -60,8 +61,9 @@ type Leader struct {
 	cfg   Config
 	store LeaderStore
 
-	mu   sync.Mutex
-	lost bool
+	mu         sync.Mutex
+	lost       bool
+	onAcquired func()
 }
 
 func New(cfg Config, store LeaderStore) *Leader {
@@ -72,7 +74,33 @@ func (l *Leader) Enabled() bool { return l.cfg.Enabled }
 
 func (l *Leader) NodeID() string { return l.cfg.NodeID }
 
-// Start acquires the lease and runs renew loop until ctx cancelled.
+// SetOnAcquired runs once when this process first obtains the lease, including
+// a follower that takes over after the previous lease expires. It does not run
+// again on renew, and it does not run after a failed renew.
+func (l *Leader) SetOnAcquired(fn func()) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	l.onAcquired = fn
+	l.mu.Unlock()
+}
+
+func (l *Leader) notifyAcquired() {
+	l.mu.Lock()
+	fn := l.onAcquired
+	l.mu.Unlock()
+	if fn != nil {
+		fn()
+	}
+}
+
+// Start acquires the lease and runs the renew loop until ctx is cancelled.
+// A process that has never held the lease keeps trying. It becomes leader only
+// after the previous lease expires or is released, so it cannot steal a live
+// lease. A process that already held the lease and then fails renew does not
+// return to this loop: markLost refuses writes immediately, which keeps a
+// fenced primary from leading again in the same process.
 func (l *Leader) Start(ctx context.Context) error {
 	if !l.cfg.Enabled {
 		return nil
@@ -80,14 +108,10 @@ func (l *Leader) Start(ctx context.Context) error {
 	if l.store == nil {
 		return ErrHANotPostgres
 	}
-	ok, err := l.store.TryAcquireLeader(ctx, l.cfg.NodeID, l.cfg.LeaderTTL)
-	if err != nil {
-		return err
+	if !l.waitForLease(ctx) {
+		return nil
 	}
-	if !ok {
-		holder, exp, _, _ := l.store.CurrentLeader(ctx)
-		return fmt.Errorf("%w (holder=%s expires=%s)", ErrLeaderHeld, holder, exp.UTC())
-	}
+	l.notifyAcquired()
 	ticker := time.NewTicker(l.cfg.RenewEvery)
 	defer ticker.Stop()
 	for {
@@ -109,6 +133,41 @@ func (l *Leader) Start(ctx context.Context) error {
 				return ErrNotLeader
 			}
 		}
+	}
+}
+
+// waitForLease reports whether this process acquired the lease.
+// Cancelled context returns false without an error so shutdown stays quiet.
+func (l *Leader) waitForLease(ctx context.Context) bool {
+	for {
+		if ctx.Err() != nil {
+			return false
+		}
+		ok, err := l.store.TryAcquireLeader(ctx, l.cfg.NodeID, l.cfg.LeaderTTL)
+		if ok {
+			return true
+		}
+		if err != nil && ctx.Err() != nil {
+			return false
+		}
+		if !l.sleepAcquire(ctx) {
+			return false
+		}
+	}
+}
+
+func (l *Leader) sleepAcquire(ctx context.Context) bool {
+	wait := l.cfg.RenewEvery
+	if wait <= 0 {
+		wait = time.Second
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 

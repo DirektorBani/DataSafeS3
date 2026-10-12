@@ -3,6 +3,7 @@ package erasure
 import (
 	"context"
 	"crypto/md5"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -130,14 +131,22 @@ func (b *Backend) writeMeta(bucket, key, versionID string, meta objectMeta) erro
 			}
 			continue
 		}
-		tmp := path + ".tmp"
+		tmp, err := tempSibling(path)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
 		if err := os.WriteFile(tmp, data, 0o644); err != nil {
+			os.Remove(tmp)
 			if firstErr == nil {
 				firstErr = err
 			}
 			continue
 		}
 		if err := os.Rename(tmp, path); err != nil {
+			os.Remove(tmp)
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -241,15 +250,31 @@ func md5Sum(data []byte) []byte {
 	return h.Sum(nil)
 }
 
+func tempSibling(path string) (string, error) {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", err
+	}
+	return path + "." + hex.EncodeToString(buf[:]) + ".tmp", nil
+}
+
 func writeShard(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	tmp, err := tempSibling(path)
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func (b *Backend) readShards(bucket, key, versionID string) ([][]byte, objectMeta, error) {
@@ -492,11 +517,16 @@ func (b *Backend) HealOnce(ctx context.Context) (int64, error) {
 				if err := os.MkdirAll(filepath.Dir(mp), 0o755); err != nil {
 					continue
 				}
-				tmp := mp + ".tmp"
+				tmp, err := tempSibling(mp)
+				if err != nil {
+					continue
+				}
 				if err := os.WriteFile(tmp, metaBytes, 0o644); err != nil {
+					os.Remove(tmp)
 					continue
 				}
 				if err := os.Rename(tmp, mp); err != nil {
+					os.Remove(tmp)
 					continue
 				}
 				healedBytes += int64(len(metaBytes))

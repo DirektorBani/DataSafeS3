@@ -2,11 +2,15 @@ package postgres
 
 import (
 	"context"
+	"fmt"
+	"net/url"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestPostgresStoreIntegration(t *testing.T) {
@@ -102,4 +106,119 @@ func TestMigrationVersionParse(t *testing.T) {
 	if migrationVersion("migrations/010_foo.up.sql") != 10 {
 		t.Fatal("expected version 10")
 	}
+}
+
+func TestPostgresConcurrentPutObjectUpsert(t *testing.T) {
+	s := openTestPostgres(t)
+	defer s.Close()
+	bucket := fmt.Sprintf("pg-race-%d", time.Now().UnixNano())
+	if err := s.PutBucket(metadata.BucketRecord{
+		Name: bucket, Owner: "tester", CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = s.DeleteObject(bucket, "same")
+		_ = s.DeleteBucket(bucket)
+	}()
+	const n = 20
+	var wg sync.WaitGroup
+	errc := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			err := s.PutObject(metadata.ObjectRecord{
+				Bucket: bucket, Key: "same",
+				Size: int64(i + 1), ETag: fmt.Sprintf("etag-%d", i),
+				ContentType: "text/plain", LastModified: time.Now().UTC(),
+				CreatedAt: time.Now().UTC(),
+			})
+			if err != nil {
+				errc <- err
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errc)
+	for err := range errc {
+		t.Error(err)
+	}
+	got, err := s.GetObject(bucket, "same")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("etag-%d", got.Size-1)
+	if got.ETag != want {
+		t.Fatalf("etag %q size %d are not one writer's row", got.ETag, got.Size)
+	}
+}
+
+func TestMigrateConcurrentFreshDatabase(t *testing.T) {
+	dsn := os.Getenv("TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_DSN not set — skipping postgres integration test")
+	}
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	defer admin.Close()
+	if err := admin.Ping(ctx); err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	name := fmt.Sprintf("ds_mig_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec(context.Background(), "DROP DATABASE "+name+" WITH (FORCE)")
+	})
+	fresh, err := withDatabase(dsn, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const n = 6
+	var wg sync.WaitGroup
+	errc := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s, err := Open(fresh, "")
+			if err != nil {
+				errc <- err
+				return
+			}
+			s.Close()
+		}()
+	}
+	wg.Wait()
+	close(errc)
+	for err := range errc {
+		t.Error(err)
+	}
+}
+
+func openTestPostgres(t *testing.T) *Store {
+	t.Helper()
+	dsn := os.Getenv("TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_DSN not set — skipping postgres integration test")
+	}
+	s, err := Open(dsn, "")
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	return s
+}
+
+func withDatabase(dsn, name string) (string, error) {
+	u, err := url.Parse(dsn)
+	if err != nil {
+		return "", err
+	}
+	u.Path = "/" + name
+	return u.String(), nil
 }

@@ -27,6 +27,7 @@
     "region": "Region",
     "accessKey": "Access key",
     "secretKey": "Secret key",
+    "ruleName": "Regelname",
     "localBucket": "Local source bucket",
     "remoteConnection": "Remote connection",
     "remoteBucket": "Remote destination bucket"
@@ -50,7 +51,25 @@
     "selectConnection": "Select connection",
     "addAction": "Add Rule",
     "empty": "No replication rules yet.",
-    "syncNow": "Sync now"
+    "syncNow": "Sync now",
+    "schedule": {
+      "label": "Zeitplan",
+      "default": "Standard (stündlicher Vollabgleich)",
+      "off": "Aus (nur Ereignisse)",
+      "m15": "Alle 15 Minuten",
+      "h1": "Jede Stunde",
+      "h6": "Alle 6 Stunden",
+      "h24": "Alle 24 Stunden",
+      "save": "Zeitplan speichern",
+      "saved": "Zeitplan gespeichert",
+      "hint": "Standard behält das Server-Intervall für den Vollabgleich. Aus stoppt diesen Abgleich für die Regel. Ein eigenes Intervall kopiert nur diese Regel."
+    },
+    "lastRun": {
+      "label": "Letzter Lauf",
+      "never": "Noch keine geplante oder manuelle Synchronisierung",
+      "objects": "{{count}} Objekte",
+      "error": "Letzter Fehler"
+    }
   },
   "jobs": {
     "empty": "No manual sync jobs yet. Use Sync now on a replication rule."

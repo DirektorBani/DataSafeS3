@@ -27,6 +27,7 @@
     "region": "Region",
     "accessKey": "Access key",
     "secretKey": "Secret key",
+    "ruleName": "Nom de la règle",
     "localBucket": "Local source bucket",
     "remoteConnection": "Remote connection",
     "remoteBucket": "Remote destination bucket"
@@ -50,7 +51,25 @@
     "selectConnection": "Select connection",
     "addAction": "Add Rule",
     "empty": "No replication rules yet.",
-    "syncNow": "Sync now"
+    "syncNow": "Sync now",
+    "schedule": {
+      "label": "Planification",
+      "default": "Par défaut (parcours complet chaque heure)",
+      "off": "Désactivé (événements seulement)",
+      "m15": "Toutes les 15 minutes",
+      "h1": "Toutes les heures",
+      "h6": "Toutes les 6 heures",
+      "h24": "Toutes les 24 heures",
+      "save": "Enregistrer la planification",
+      "saved": "Planification enregistrée",
+      "hint": "Par défaut, l'intervalle global du parcours complet reste en vigueur. Désactivé arrête ce parcours pour la règle. Un intervalle propre copie seulement cette règle."
+    },
+    "lastRun": {
+      "label": "Dernière exécution",
+      "never": "Aucune synchronisation planifiée ou manuelle pour l'instant",
+      "objects": "{{count}} objets",
+      "error": "Dernière erreur"
+    }
   },
   "jobs": {
     "empty": "No manual sync jobs yet. Use Sync now on a replication rule."
