@@ -19,6 +19,7 @@
 ```http
 GET  /api/v1/gateway/connections
 POST /api/v1/gateway/replication
+PATCH /api/v1/gateway/replication/{id}
 POST /api/v1/gateway/replication/{id}/sync
 ```
 

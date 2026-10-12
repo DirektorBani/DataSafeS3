@@ -2,12 +2,19 @@
 # Note: object replication requires peer endpoints reachable from inside the storage-server
 # container (use host.docker.internal or docker network aliases, not 127.0.0.1 host ports).
 param(
-    [string]$PrimaryConsole = "http://127.0.0.1:8082",
-    [string]$PeerConsole = "http://127.0.0.1:9082",
+    [string]$PrimaryConsole = "",
+    [string]$PeerConsole = "",
     [int]$WaitSeconds = 60,
     [switch]$PairingOnly
 )
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "lab-ports.ps1")
+$labRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$haPorts = Read-LabEnv (Join-Path $labRoot ".env.ha")
+$siteBPorts = Read-LabEnv (Join-Path $labRoot ".env.site-b")
+if (-not $PrimaryConsole) { $PrimaryConsole = "http://127.0.0.1:$(Get-LabPort $haPorts "PUBLIC_HTTP_PORT" "8082")" }
+if (-not $PeerConsole) { $PeerConsole = "http://127.0.0.1:$(Get-LabPort $siteBPorts "SITE_B_HTTP_PORT" "9082")" }
+$PrimaryS3 = "http://127.0.0.1:$(Get-LabPort $haPorts "HA_PRIMARY_STORAGE_PORT" "9002")"
 
 function Invoke-Api {
     param(
@@ -63,7 +70,7 @@ if (-not $remote) {
     Write-Host '[pair] No remote cluster on primary - generating pairing code on primary'
     $code = Invoke-Api POST "$PrimaryConsole/api/v1/clusters/pairing-codes" -Headers $primaryH
     if ($code.Code -ne 201) { throw "pairing code create failed $($code.Code) $($code.Body)" }
-    $primaryApi = ($PrimaryConsole -replace ':8082', ':9002')
+    $primaryApi = $PrimaryS3
     $join = Invoke-Api POST "$PeerConsole/api/v1/clusters/pair/join" -Headers $peerH -BodyObj @{
         initiator_url = $primaryApi
         token         = $code.Json.token

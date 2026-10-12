@@ -27,6 +27,7 @@ coverage.out
 # Local runtime data (legacy paths; prefer _local/data/)
 data/
 .datasafe-data/
+.promote-drill-state/
 **/metadata.db
 
 # License / secrets

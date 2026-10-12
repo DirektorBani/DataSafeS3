@@ -8,6 +8,26 @@ param(
     [string]$PgStandbyPort = "5443"
 )
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "lab-ports.ps1")
+$haPorts = Read-LabEnv (Join-Path (Resolve-Path (Join-Path $PSScriptRoot "..\..")) ".env.ha")
+if (-not $PSBoundParameters.ContainsKey("BaseUrl")) {
+    $BaseUrl = "http://127.0.0.1:$(Get-LabPort $haPorts "PUBLIC_HTTP_PORT" "8082")"
+}
+if (-not $PSBoundParameters.ContainsKey("PrimaryDirect")) {
+    $PrimaryDirect = "http://127.0.0.1:$(Get-LabPort $haPorts "HA_PRIMARY_STORAGE_PORT" "9002")"
+}
+if (-not $PSBoundParameters.ContainsKey("StandbyUrls")) {
+    $StandbyUrls = @(
+        "http://127.0.0.1:$(Get-LabPort $haPorts "HA_STANDBY_HTTP_PORT" "19011")",
+        "http://127.0.0.1:$(Get-LabPort $haPorts "HA_STANDBY2_HTTP_PORT" "19013")"
+    )
+}
+if (-not $PSBoundParameters.ContainsKey("PgPrimaryPort")) {
+    $PgPrimaryPort = Get-LabPort $haPorts "STORAGE_POSTGRES_PUBLISH_PORT" "5442"
+}
+if (-not $PSBoundParameters.ContainsKey("PgStandbyPort")) {
+    $PgStandbyPort = Get-LabPort $haPorts "STORAGE_POSTGRES_STANDBY_PORT" "5443"
+}
 $results = [System.Collections.Generic.List[object]]::new()
 
 function Record($Step, $Status, $Notes) {

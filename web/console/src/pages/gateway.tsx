@@ -1,9 +1,30 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CheckCircle2, Plus, RefreshCw, Trash2, XCircle, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { api, type GatewayConnection, type ReplicationRule } from "@/lib/api";
+
+const SCHEDULE_OPTIONS = ["", "off", "15m", "1h", "6h", "24h"] as const;
+
+function scheduleOptionLabel(value: string, t: (key: string) => string) {
+  switch (value) {
+    case "":
+      return t("gateway:rules.schedule.default");
+    case "off":
+      return t("gateway:rules.schedule.off");
+    case "15m":
+      return t("gateway:rules.schedule.m15");
+    case "1h":
+      return t("gateway:rules.schedule.h1");
+    case "6h":
+      return t("gateway:rules.schedule.h6");
+    case "24h":
+      return t("gateway:rules.schedule.h24");
+    default:
+      return value;
+  }
+}
 import { formatBytes } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -28,7 +49,7 @@ export function GatewayPage() {
     path_style: true,
     tls_verify: false,
   });
-  const [ruleForm, setRuleForm] = useState({ source_bucket: "", dest_connection_id: "", dest_bucket: "" });
+  const [ruleForm, setRuleForm] = useState({ source_bucket: "", dest_connection_id: "", dest_bucket: "", sync_schedule: "" });
 
   const health = useQuery({ queryKey: ["gateway-health"], queryFn: () => api.gatewayHealth(), refetchInterval: 5000 });
   const connections = useQuery({ queryKey: ["gateway-connections"], queryFn: async () => (await api.listGatewayConnections()).connections });
@@ -74,7 +95,7 @@ export function GatewayPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["replication-rules"] });
       queryClient.invalidateQueries({ queryKey: ["repl-queue"] });
-      setRuleForm({ source_bucket: "", dest_connection_id: "", dest_bucket: "" });
+      setRuleForm({ source_bucket: "", dest_connection_id: "", dest_bucket: "", sync_schedule: "" });
       toast.success(t("gateway:toast.ruleCreated"));
     },
     onError: (e: Error) => toast.error(e.message),
@@ -240,6 +261,18 @@ export function GatewayPage() {
                 <Input value={ruleForm.dest_bucket} onChange={(e) => setRuleForm({ ...ruleForm, dest_bucket: e.target.value })} />
               </div>
               <div className="sm:col-span-3">
+                <Label>{t("gateway:rules.schedule.label")}</Label>
+                <Select value={ruleForm.sync_schedule || "__default__"} onValueChange={(v) => setRuleForm({ ...ruleForm, sync_schedule: v === "__default__" ? "" : v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {SCHEDULE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt || "__default__"} value={opt || "__default__"}>{scheduleOptionLabel(opt, t)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-xs text-muted-foreground">{t("gateway:rules.schedule.hint")}</p>
+              </div>
+              <div className="sm:col-span-3">
                 <Button
                   onClick={() => createRule.mutate()}
                   disabled={createRule.isPending || !ruleForm.source_bucket || !ruleForm.dest_connection_id || !ruleForm.dest_bucket}
@@ -253,32 +286,17 @@ export function GatewayPage() {
             <p className="text-sm text-muted-foreground text-center py-4">{t("gateway:rules.empty")}</p>
           )}
           {(rules.data ?? []).map((r: ReplicationRule) => (
-            <Card key={r.id}>
-              <CardContent className="flex items-center justify-between py-4">
-                <div>
-                  <p className="font-medium">{r.source_bucket} → {r.dest_bucket}</p>
-                  <p className="text-xs text-muted-foreground">via {connName(r.dest_connection_id)}</p>
-                  {bucketVisibility(r.source_bucket) === "public-read" && (
-                    <p className="mt-1 flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300">
-                      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
-                      {t("gateway:rules.publicReadWarning")}
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={async () => {
-                    const res = await api.triggerSyncJob(r.id);
-                    toast.success(res.job.message ?? String(res.job.objects_synced));
-                    queryClient.invalidateQueries({ queryKey: ["sync-jobs"] });
-                    queryClient.invalidateQueries({ queryKey: ["gateway-health"] });
-                  }}>{t("gateway:rules.syncNow")}</Button>
-                  <Button size="sm" variant="ghost" onClick={async () => {
-                    await api.deleteReplicationRule(r.id);
-                    queryClient.invalidateQueries({ queryKey: ["replication-rules"] });
-                  }}><Trash2 className="h-4 w-4" /></Button>
-                </div>
-              </CardContent>
-            </Card>
+            <RuleCard
+              key={r.id}
+              rule={r}
+              connName={connName(r.dest_connection_id)}
+              publicRead={bucketVisibility(r.source_bucket) === "public-read"}
+              onChanged={() => {
+                queryClient.invalidateQueries({ queryKey: ["replication-rules"] });
+                queryClient.invalidateQueries({ queryKey: ["sync-jobs"] });
+                queryClient.invalidateQueries({ queryKey: ["gateway-health"] });
+              }}
+            />
           ))}
         </TabsContent>
 
@@ -380,5 +398,87 @@ export function GatewayPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function RuleCard({
+  rule,
+  connName,
+  publicRead,
+  onChanged,
+}: {
+  rule: ReplicationRule;
+  connName: string;
+  publicRead: boolean;
+  onChanged: () => void;
+}) {
+  const { t, i18n } = useTranslation(["gateway", "common"]);
+  const stored = rule.sync_schedule || "";
+  const [schedule, setSchedule] = useState(stored);
+  useEffect(() => setSchedule(stored), [stored]);
+  const options = SCHEDULE_OPTIONS.includes(stored as (typeof SCHEDULE_OPTIONS)[number])
+    ? SCHEDULE_OPTIONS
+    : [...SCHEDULE_OPTIONS, stored];
+
+  const save = useMutation({
+    mutationFn: () => api.updateReplicationRule(rule.id, { sync_schedule: schedule }),
+    onSuccess: () => {
+      toast.success(t("gateway:rules.schedule.saved"));
+      onChanged();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <p className="font-medium">{rule.source_bucket} → {rule.dest_bucket}</p>
+          <p className="text-xs text-muted-foreground">via {connName}</p>
+          {rule.last_sync_at ? (
+            <p className="text-xs text-muted-foreground">
+              {t("gateway:rules.lastRun.label")}: {rule.last_sync_status} · {new Date(rule.last_sync_at).toLocaleString(i18n.language)} · {t("gateway:rules.lastRun.objects", { count: rule.last_sync_objects ?? 0 })}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">{t("gateway:rules.lastRun.never")}</p>
+          )}
+          {rule.last_sync_error ? (
+            <p className="text-xs text-destructive">{t("gateway:rules.lastRun.error")}: {rule.last_sync_error}</p>
+          ) : null}
+          {publicRead && (
+            <p className="mt-1 flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+              {t("gateway:rules.publicReadWarning")}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <div className="flex items-center gap-2">
+            <Select value={schedule || "__default__"} onValueChange={(v) => setSchedule(v === "__default__" ? "" : v)}>
+              <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {options.map((opt) => (
+                  <SelectItem key={opt || "__default__"} value={opt || "__default__"}>{scheduleOptionLabel(opt, t)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button size="sm" variant="outline" disabled={save.isPending || schedule === stored} onClick={() => save.mutate()}>
+              {t("gateway:rules.schedule.save")}
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={async () => {
+              const res = await api.triggerSyncJob(rule.id);
+              toast.success(res.job.message ?? String(res.job.objects_synced));
+              onChanged();
+            }}>{t("gateway:rules.syncNow")}</Button>
+            <Button size="sm" variant="ghost" onClick={async () => {
+              await api.deleteReplicationRule(rule.id);
+              onChanged();
+            }}><Trash2 className="h-4 w-4" /></Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

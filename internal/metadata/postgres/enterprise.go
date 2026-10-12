@@ -149,21 +149,31 @@ func (s *Store) DeleteGatewayConnection(id string) error {
 	return nil
 }
 
+const replicationRuleCols = `id, name, source_bucket, dest_connection_id, dest_bucket, enabled, created_at, COALESCE(sync_schedule,''), last_sync_at, COALESCE(last_sync_status,''), COALESCE(last_sync_error,''), COALESCE(last_sync_objects,0)`
+
+func scanReplicationRule(scan func(dest ...any) error) (metadata.ReplicationRule, error) {
+	var rec metadata.ReplicationRule
+	var last pgtype.Timestamptz
+	err := scan(&rec.ID, &rec.Name, &rec.SourceBucket, &rec.DestConnection, &rec.DestBucket, &rec.Enabled, &rec.CreatedAt,
+		&rec.SyncSchedule, &last, &rec.LastSyncStatus, &rec.LastSyncError, &rec.LastSyncObjects)
+	rec.LastSyncAt = timePtr(last)
+	return rec, err
+}
+
 func (s *Store) PutReplicationRule(rec metadata.ReplicationRule) error {
 	_, err := s.pool.Exec(context.Background(), `
-		INSERT INTO replication_rules (id, name, source_bucket, dest_connection_id, dest_bucket, enabled, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
-		ON CONFLICT (id) DO UPDATE SET name=$2, source_bucket=$3, dest_connection_id=$4, dest_bucket=$5, enabled=$6`,
-		rec.ID, rec.Name, rec.SourceBucket, rec.DestConnection, rec.DestBucket, rec.Enabled, rec.CreatedAt)
+		INSERT INTO replication_rules (id, name, source_bucket, dest_connection_id, dest_bucket, enabled, created_at, sync_schedule, last_sync_at, last_sync_status, last_sync_error, last_sync_objects)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		ON CONFLICT (id) DO UPDATE SET name=$2, source_bucket=$3, dest_connection_id=$4, dest_bucket=$5, enabled=$6,
+			sync_schedule=$8, last_sync_at=$9, last_sync_status=$10, last_sync_error=$11, last_sync_objects=$12`,
+		rec.ID, rec.Name, rec.SourceBucket, rec.DestConnection, rec.DestBucket, rec.Enabled, rec.CreatedAt,
+		rec.SyncSchedule, timestamptzPtr(rec.LastSyncAt), rec.LastSyncStatus, rec.LastSyncError, rec.LastSyncObjects)
 	return err
 }
 
 func (s *Store) GetReplicationRule(id string) (metadata.ReplicationRule, error) {
-	var rec metadata.ReplicationRule
-	err := s.pool.QueryRow(context.Background(), `
-		SELECT id, name, source_bucket, dest_connection_id, dest_bucket, enabled, created_at
-		FROM replication_rules WHERE id=$1`, id).Scan(
-		&rec.ID, &rec.Name, &rec.SourceBucket, &rec.DestConnection, &rec.DestBucket, &rec.Enabled, &rec.CreatedAt)
+	rec, err := scanReplicationRule(s.pool.QueryRow(context.Background(), `
+		SELECT `+replicationRuleCols+` FROM replication_rules WHERE id=$1`, id).Scan)
 	if err != nil {
 		return rec, metadata.ErrNotFound
 	}
@@ -171,16 +181,15 @@ func (s *Store) GetReplicationRule(id string) (metadata.ReplicationRule, error) 
 }
 
 func (s *Store) ListReplicationRules() ([]metadata.ReplicationRule, error) {
-	rows, err := s.pool.Query(context.Background(), `
-		SELECT id, name, source_bucket, dest_connection_id, dest_bucket, enabled, created_at FROM replication_rules`)
+	rows, err := s.pool.Query(context.Background(), `SELECT `+replicationRuleCols+` FROM replication_rules`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []metadata.ReplicationRule
 	for rows.Next() {
-		var rec metadata.ReplicationRule
-		if err := rows.Scan(&rec.ID, &rec.Name, &rec.SourceBucket, &rec.DestConnection, &rec.DestBucket, &rec.Enabled, &rec.CreatedAt); err != nil {
+		rec, err := scanReplicationRule(rows.Scan)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, rec)

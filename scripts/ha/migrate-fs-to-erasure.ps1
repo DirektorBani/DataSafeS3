@@ -1,9 +1,14 @@
 ﻿# Re-upload all objects via Admin API so erasure backend rewrites shards (maintenance window).
 param(
-    [string]$BaseUrl = "http://127.0.0.1:8082",
+    [string]$BaseUrl = "",
     [switch]$DryRun
 )
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "lab-ports.ps1")
+if (-not $BaseUrl) {
+    $ports = Read-LabEnv (Join-Path (Resolve-Path (Join-Path $PSScriptRoot "..\..")) ".env.erasure")
+    $BaseUrl = "http://127.0.0.1:$(Get-LabPort $ports "PUBLIC_HTTP_PORT" "8084")"
+}
 
 for ($i = 0; $i -lt 30; $i++) {
     try {

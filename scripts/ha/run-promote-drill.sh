@@ -9,6 +9,11 @@
 # HA_DRILL_PG_A=15442 HA_DRILL_PG_B=15443 HA_DRILL_WEBHOOK=18080
 # They do not use :9000 or :9001.
 #
+# Helpers run inside the webhook container. The image supplies Python.
+# The drill downloads a static Docker client once into the state dir and
+# mounts it into that container, so Git Bash on Windows does not need Python:
+#   bash scripts/ha/run-promote-drill.sh
+#
 # KEEP_DRILL=1 leaves the compose project up.
 # The image is deploy/docker/Dockerfile, the same build docker-build produces.
 # PROMOTE_DRILL_SKIP_BUILD=1 uses an image that is already loaded
@@ -32,18 +37,47 @@ export HA_DRILL_PG_A="${HA_DRILL_PG_A:-15442}"
 export HA_DRILL_PG_B="${HA_DRILL_PG_B:-15443}"
 export HA_DRILL_WEBHOOK="${HA_DRILL_WEBHOOK:-18080}"
 export HA_DRILL_ROOT="$ROOT"
+case "$(uname -s 2>/dev/null || true)" in
+  MINGW*|MSYS*|CYGWIN*)
+    export MSYS_NO_PATHCONV=1
+    : "${HA_DRILL_STATE:=$ROOT/.promote-drill-state}"
+    ;;
+esac
 export HA_DRILL_STATE="${HA_DRILL_STATE:-/tmp/datasafe-promote-drill}"
 export PROMOTE_DRILL_IMAGE="${PROMOTE_DRILL_IMAGE:-datasafe-promote-drill}"
 
 STATE="$HA_DRILL_STATE"
-mkdir -p "$STATE/webhook" "$STATE/work"
+host_mount() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1" | tr -d '\r\n'
+  else
+    printf '%s' "$1"
+  fi
+}
+export HA_DRILL_ROOT_MOUNT="$(host_mount "$ROOT")"
+export HA_DRILL_STATE_MOUNT="$(host_mount "$STATE")"
+mkdir -p "$STATE/webhook" "$STATE/work" "$STATE/bin"
+
+# Static client (glibc-free) so the helper container can docker exec without
+# installing packages and without Python on the host.
+if [[ ! -x "$STATE/bin/docker" ]]; then
+  echo "[drill] downloading Docker client 28.5.1 for the helper container"
+  cli_tmp="$(mktemp -d)"
+  curl -fsSL -o "$cli_tmp/docker.tgz" "https://download.docker.com/linux/static/stable/x86_64/docker-28.5.1.tgz"
+  tar -xzf "$cli_tmp/docker.tgz" -C "$cli_tmp" docker/docker
+  mv "$cli_tmp/docker/docker" "$STATE/bin/docker"
+  chmod +x "$STATE/bin/docker"
+  rm -rf "$cli_tmp"
+fi
 rm -f "$STATE/webhook/events.jsonl" "$STATE/ok-keys" "$STATE/stop-traffic" "$STATE/promote-timing.json"
 : >"$STATE/ok-keys"
 
 COMPOSE=(docker compose -p datasafe-promote-drill -f deploy/compose/docker-compose.promote-drill.yml)
 A="http://127.0.0.1:${HA_DRILL_HTTP_A}"
 B="http://127.0.0.1:${HA_DRILL_HTTP_B}"
-S3="$ROOT/scripts/ha/drill_s3.py"
+S3="/workspace/scripts/ha/drill_s3.py"
+S3A="http://storage-a:9000"
+S3B="http://storage-b:9000"
 cleanup_done=0
 
 dump_logs() {
@@ -65,13 +99,20 @@ on_exit() {
 trap on_exit EXIT
 
 port_free() {
-  python3 - "$1" <<'PY'
-import socket, sys
-s = socket.socket()
-s.settimeout(0.2)
-rc = s.connect_ex(("127.0.0.1", int(sys.argv[1])))
-sys.exit(0 if rc != 0 else 1)
-PY
+  docker run --rm --add-host=host.docker.internal:host-gateway python:3.12-alpine python -c 'import socket,sys; s=socket.socket(); s.settimeout(0.5); rc=s.connect_ex(("host.docker.internal", int(sys.argv[1]))); raise SystemExit(0 if rc != 0 else 1)' "$1"
+}
+
+drill_py() {
+  docker exec -i -w /workspace ds-promote-hook python "$@"
+}
+
+cpath() {
+  local p="$1"
+  case "$p" in
+    "$STATE"|"$STATE"/*) printf '/state%s' "${p#"$STATE"}" ;;
+    "$ROOT"|"$ROOT"/*) printf '/workspace%s' "${p#"$ROOT"}" ;;
+    *) printf '%s' "$p" ;;
+  esac
 }
 
 echo "[drill] removing a previous datasafe-promote-drill project"
@@ -142,7 +183,7 @@ for _ in $(seq 1 8); do
 done
 
 json_get() {
-  python3 -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"
+  drill_py -c 'import json,sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"
 }
 
 echo "[drill] initial setup and webhook"
@@ -163,7 +204,7 @@ curl -fsS -X POST "$A/api/v1/webhooks" -H "authorization: Bearer $token" -H 'con
 echo x >"$STATE/work/body"
 bucket_ok=0
 for _ in 1 2 3 4 5 6 7 8; do
-  if python3 "$S3" mb "$A" dr-drill >/dev/null; then
+  if drill_py "$S3" mb "$S3A" dr-drill >/dev/null; then
     bucket_ok=1
     break
   fi
@@ -171,7 +212,7 @@ for _ in 1 2 3 4 5 6 7 8; do
 done
 if [[ "$bucket_ok" != "1" ]]; then
   echo "promote-drill: create bucket failed" >&2
-  python3 "$S3" mb "$A" dr-drill || true
+  drill_py "$S3" mb "$S3A" dr-drill || true
   exit 1
 fi
 
@@ -179,7 +220,7 @@ put_ok() {
   local base="$1" key="$2" try
   echo "$key" >"$STATE/work/body"
   for try in 1 2 3 4 5 6 7 8; do
-    if python3 "$S3" put "$base" dr-drill "$key" "$STATE/work/body" >/dev/null; then
+    if drill_py "$S3" put "$base" dr-drill "$key" "$(cpath "$STATE/work/body")" >/dev/null; then
       echo "$key" >>"$STATE/ok-keys"
       return 0
     fi
@@ -190,13 +231,13 @@ put_ok() {
 
 echo "[drill] five objects before promote"
 for i in 1 2 3 4 5; do
-  put_ok "$A" "obj-$i"
+  put_ok "$S3A" "obj-$i"
 done
 
 echo "[drill] waiting for replication lag 0 and the first deliveries"
 for _ in $(seq 1 40); do
   lag="$(docker exec ds-promote-pg-a psql -U datasafe -d datasafe -Atqc "SELECT COALESCE((SELECT MAX(pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn))::bigint FROM pg_stat_replication), -1);")"
-  got="$(python3 - "$STATE/webhook/events.jsonl" <<'PY'
+  got="$(drill_py - "$(cpath "$STATE/webhook/events.jsonl")" <<'PY'
 import json, sys
 n=0
 try:
@@ -224,7 +265,7 @@ echo "[drill] traffic during promote, then fence and pg_promote"
   n=0
   while [[ ! -f "$STATE/stop-traffic" ]]; do
     n=$((n + 1))
-    put_ok "$A" "during-$n" || true
+    put_ok "$S3A" "during-$n" || true
     sleep 0.2
   done
 ) &
@@ -278,7 +319,7 @@ bash "$ROOT/scripts/ha/promote.sh" --execute \
   --timing-file "$STATE/promote-timing-rerun.json"
 rerun_rc=$?
 set -e
-python3 - "$STATE/promote-timing-rerun.json" "$rerun_rc" "$STATE/rerun.json" <<'PY'
+drill_py - "$(cpath "$STATE/promote-timing-rerun.json")" "$rerun_rc" "$(cpath "$STATE/rerun.json")" <<'PY'
 import json, sys
 timing = {}
 try:
@@ -305,7 +346,7 @@ mapfile -t keys <"$STATE/ok-keys"
 for _ in $(seq 1 60); do
   missing=0
   for key in "${keys[@]}"; do
-    if ! python3 - "$key" "$STATE/webhook/events.jsonl" <<'PY'
+    if ! drill_py - "$key" "$(cpath "$STATE/webhook/events.jsonl")" <<'PY'
 import json, sys
 key=sys.argv[1]
 path=sys.argv[2]
@@ -344,10 +385,11 @@ if [[ "$missing" -ne 0 ]]; then
 fi
 
 echo "[drill] evidence pack"
+export DR_PY_CONTAINER=ds-promote-hook DR_HOST_ROOT="$ROOT" DR_HOST_STATE="$STATE"
 bash "$ROOT/scripts/collect-dr-evidence.sh" \
   --out "$STATE/evidence" \
-  --new-url "$B" \
-  --old-url "$A" \
+  --new-url "$S3B" \
+  --old-url "$S3A" \
   --pg-new ds-promote-pg-b \
   --pg-old ds-promote-pg-a \
   --timing-file "$STATE/promote-timing.json" \

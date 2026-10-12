@@ -90,7 +90,52 @@ export DR_OUT="$OUT" DR_NEW="$NEW_URL" DR_OLD="$OLD_URL" DR_BASE="$BASE_URL" \
   DR_WEBHOOK="$WEBHOOK" DR_BUCKET="$BUCKET" DR_VERSION="$VERSION_FILE" \
   DR_LAB="$LAB" DR_PGUSER="$PGUSER" DR_PGDATABASE="$PGDATABASE" DR_S3="$S3" DR_ROOT="$ROOT"
 
-python3 - <<'PY'
+# DR_PY_CONTAINER (set by the promote drill) runs this helper inside a container
+# that has Python and a Docker client. The SSH lab leaves it unset and uses host python3.
+map_drill_path() {
+  local p="$1"
+  if [[ -z "${DR_PY_CONTAINER:-}" || -z "$p" ]]; then
+    printf '%s' "$p"
+    return
+  fi
+  local state="${DR_HOST_STATE:-}"
+  local root="${DR_HOST_ROOT:-}"
+  if [[ -n "$state" && "$p" == "$state"* ]]; then
+    printf '/state%s' "${p#"$state"}"
+    return
+  fi
+  if [[ -n "$root" && "$p" == "$root"* ]]; then
+    printf '/workspace%s' "${p#"$root"}"
+    return
+  fi
+  printf '%s' "$p"
+}
+
+if [[ -n "${DR_PY_CONTAINER:-}" ]]; then
+  DR_OUT="$(map_drill_path "$DR_OUT")"
+  DR_TIMING="$(map_drill_path "$DR_TIMING")"
+  DR_RERUN="$(map_drill_path "$DR_RERUN")"
+  DR_KEYS="$(map_drill_path "$DR_KEYS")"
+  DR_WEBHOOK="$(map_drill_path "$DR_WEBHOOK")"
+  DR_VERSION="$(map_drill_path "$DR_VERSION")"
+  DR_S3="$(map_drill_path "$DR_S3")"
+  DR_ROOT="$(map_drill_path "$DR_ROOT")"
+fi
+
+run_evidence_py() {
+  if [[ -n "${DR_PY_CONTAINER:-}" ]]; then
+    docker exec -i -w /workspace \
+      -e DR_OUT -e DR_NEW -e DR_OLD -e DR_BASE \
+      -e DR_PG_NEW -e DR_PG_OLD -e DR_TIMING -e DR_RERUN -e DR_KEYS \
+      -e DR_WEBHOOK -e DR_BUCKET -e DR_VERSION \
+      -e DR_LAB -e DR_PGUSER -e DR_PGDATABASE -e DR_S3 -e DR_ROOT \
+      "$DR_PY_CONTAINER" python -
+  else
+    python3 -
+  fi
+}
+
+run_evidence_py <<'PY'
 import json, os, subprocess, urllib.request, datetime, hashlib, pathlib, zipfile
 
 out = pathlib.Path(os.environ["DR_OUT"])

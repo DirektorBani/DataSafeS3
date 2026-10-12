@@ -71,6 +71,29 @@ bash scripts/ha/run-promote-drill.sh
 
 CI job `ha-promote-drill` runs that command on the image produced by `deploy/docker/Dockerfile` (the `docker-build` artifact). It starts Postgres primary and replica, node-a, then node-b only after node-a holds the lease, and a webhook sink. It writes objects while promote runs, then writes `scripts/collect-dr-evidence.sh` output (folder, `summary.md`, `evidence.json`, zip). Host ports default to 19100, 19101, 15442, 15443, and 18080 so the lab does not use `:9000` or `:9001` (the vault stand). Override `HA_DRILL_HTTP_A`, `HA_DRILL_HTTP_B`, `HA_DRILL_PG_A`, `HA_DRILL_PG_B`, and `HA_DRILL_WEBHOOK`. The HA stack's published standby ports default to **19011** and **19013** (`HA_STANDBY_HTTP_PORT`, `HA_STANDBY2_HTTP_PORT`).
 
+The drill does not need Python on the host. Port checks, S3 helpers, and the evidence pack run inside the webhook container. That container is `python:3.12-alpine` with a static Docker client mounted from the state directory (downloaded once with `curl`). On Windows, from Git Bash:
+
+```bash
+bash scripts/ha/run-promote-drill.sh
+```
+
+Linux keeps state in `/tmp/datasafe-promote-drill` (the CI artifact path). Git Bash uses `.promote-drill-state` in the repo unless `HA_DRILL_STATE` is set. The SSH lab gate still calls `collect-dr-evidence.sh --lab` with host `python3`.
+
+### Lab host ports
+
+Each stand publishes its own host ports so `scripts/ha/run-all-ha-tests.ps1` can run while the main stack, the vault stand, or another lab is already up. Scripts read the stand's `.env` when that file exists. A previously copied `.env.erasure` or `.env.site-a` keeps its old values until you delete it and let the start script copy the example again.
+
+| Stand | Console | S3 | Postgres | Prometheus | Grafana |
+|-------|---------|----|----------|------------|---------|
+| Main dev | 8080 | 9000 | 5432 | 9090 | 3000 |
+| Vault | — | 9001 | 5434 | — | Vault 8200 |
+| HA | 8082 | 9002 | 5442 (standby 5443) | 9092 | 3002 |
+| Erasure | 8084 | 9004 | 5444 | 9094 | 3004 |
+| Site A | 8086 | 9006 | 5446 | 9096 | 3006 |
+| Site B | 9082 | 9193 | 5542 | 9192 | 3102 |
+
+HA standby HTTP stays **19011** and **19013**. The NATS profile on the HA compose file publishes **14222** and **18222**. Promote-drill ports stay **19100**, **19101**, **15442**, **15443**, and webhook **18080**.
+
 ## Recovery steps
 
 ### Metadata loss / primary Postgres down

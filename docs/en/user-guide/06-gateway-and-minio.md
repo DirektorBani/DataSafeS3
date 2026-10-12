@@ -88,7 +88,8 @@ scripts\setup-minio-gateway.cmd
 2. **Source bucket** — your DataSafeS3 bucket (e.g. `my-data`).
 3. **Remote connection** — `External S3 Test`.
 4. **Remote bucket** — `replica-test`.
-5. **Add Rule**.
+5. **Schedule** — **Default** keeps the hourly full scan. **Off** stops that scan for this rule. **15 minutes**, **1 hour**, **6 hours**, or **24 hours** copies only this rule on that interval.
+6. **Add Rule**. The card shows the last run and, when the run failed, the error. **Sync Jobs** lists those runs.
 
 ### Step 3 — Verification
 

@@ -231,13 +231,18 @@ type GatewayConnection struct {
 }
 
 type ReplicationRule struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	SourceBucket   string    `json:"source_bucket"`
-	DestConnection string    `json:"dest_connection_id"`
-	DestBucket     string    `json:"dest_bucket"`
-	Enabled        bool      `json:"enabled"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	SourceBucket    string     `json:"source_bucket"`
+	DestConnection  string     `json:"dest_connection_id"`
+	DestBucket      string     `json:"dest_bucket"`
+	Enabled         bool       `json:"enabled"`
+	CreatedAt       time.Time  `json:"created_at"`
+	SyncSchedule    string     `json:"sync_schedule,omitempty"`
+	LastSyncAt      *time.Time `json:"last_sync_at,omitempty"`
+	LastSyncStatus  string     `json:"last_sync_status,omitempty"`
+	LastSyncError   string     `json:"last_sync_error,omitempty"`
+	LastSyncObjects int        `json:"last_sync_objects,omitempty"`
 }
 
 type SyncJob struct {

@@ -1,13 +1,20 @@
 # Site replication E2E — two DataSafeS3 stacks (site A -> site B).
 param(
-    [string]$SourceUrl = "http://127.0.0.1:8082",
-    [string]$PeerConsoleUrl = "http://127.0.0.1:9082",
-    [string]$PeerS3Endpoint = "http://host.docker.internal:9193",
+    [string]$SourceUrl = "",
+    [string]$PeerConsoleUrl = "",
+    [string]$PeerS3Endpoint = "",
     [string]$AccessKey = "datasafe",
     [string]$SecretKey = "datasafesecret",
     [int]$MaxWaitSec = 90
 )
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "lab-ports.ps1")
+$labRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$siteAPorts = Read-LabEnv (Join-Path $labRoot ".env.site-a")
+$siteBPorts = Read-LabEnv (Join-Path $labRoot ".env.site-b")
+if (-not $SourceUrl) { $SourceUrl = "http://127.0.0.1:$(Get-LabPort $siteAPorts "PUBLIC_HTTP_PORT" "8086")" }
+if (-not $PeerConsoleUrl) { $PeerConsoleUrl = "http://127.0.0.1:$(Get-LabPort $siteBPorts "SITE_B_HTTP_PORT" "9082")" }
+if (-not $PeerS3Endpoint) { $PeerS3Endpoint = "http://host.docker.internal:$(Get-LabPort $siteBPorts "SITE_B_STORAGE_PORT" "9193")" }
 $results = [System.Collections.Generic.List[object]]::new()
 
 function Record($Step, $Status, $Notes) {

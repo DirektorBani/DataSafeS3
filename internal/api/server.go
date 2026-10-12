@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/api/s3"
@@ -63,6 +64,8 @@ type Server struct {
 	haLeader              *ha.Leader
 	invJobs               *inventory.JobStore
 	activityRetentionDays int
+	gatewaySyncMu         sync.Mutex
+	gatewaySyncing        map[string]struct{}
 }
 
 var corsAllowedOrigins []string
@@ -233,6 +236,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 	go s.runActivityRetentionWorker(ctx)
 	go s.runReplicationWorker(ctx)
 	go s.runReplicationFullSyncWorker(ctx)
+	go s.runScheduledGatewaySync(ctx)
 	go s.runSiteReplicationWorker(ctx)
 	go s.runTrustedClusterWorker(ctx)
 	go s.runClusterCertRotator(ctx)
@@ -630,6 +634,7 @@ func (s *Server) routes() {
 	mux.HandleFunc("POST /api/v1/gateway/connections/{id}/test", adminOnly(s.handleTestGatewayConnection))
 	mux.HandleFunc("GET /api/v1/gateway/replication", adminOnly(s.handleListReplicationRules))
 	mux.HandleFunc("POST /api/v1/gateway/replication", adminOnly(s.handleCreateReplicationRule))
+	mux.HandleFunc("PATCH /api/v1/gateway/replication/{id}", adminOnly(s.handlePatchReplicationRule))
 	mux.HandleFunc("DELETE /api/v1/gateway/replication/{id}", adminOnly(s.handleDeleteReplicationRule))
 	mux.HandleFunc("POST /api/v1/gateway/replication/{id}/sync", adminOnly(s.handleTriggerSyncJob))
 	mux.HandleFunc("GET /api/v1/gateway/sync-jobs", adminOnly(s.handleListSyncJobs))

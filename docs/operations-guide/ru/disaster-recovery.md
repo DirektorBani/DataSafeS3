@@ -56,6 +56,29 @@ bash scripts/ha/run-promote-drill.sh
 
 Задание CI `ha-promote-drill` запускает эту команду на образе из `deploy/docker/Dockerfile` (артефакт `docker-build`). Поднимаются Postgres primary и replica, узел A, затем узел B только после того как A держит аренду, и webhook. Во время promote идут записи объектов, затем `scripts/collect-dr-evidence.sh` пишет каталог, `summary.md`, `evidence.json` и zip. Порты хоста по умолчанию 19100, 19101, 15442, 15443 и 18080: лаб не занимает `:9000` и `:9001` (стенд Vault). Переопределение: `HA_DRILL_HTTP_A`, `HA_DRILL_HTTP_B`, `HA_DRILL_PG_A`, `HA_DRILL_PG_B`, `HA_DRILL_WEBHOOK`. Публичные порты standby HA-стека по умолчанию **19011** и **19013** (`HA_STANDBY_HTTP_PORT`, `HA_STANDBY2_HTTP_PORT`).
 
+Python на хосте не нужен. Проверка портов, S3-хелперы и пакет свидетельств выполняются внутри контейнера webhook. Это `python:3.12-alpine` и статический клиент Docker, который drill один раз скачивает через `curl` в каталог состояния. На Windows из Git Bash:
+
+```bash
+bash scripts/ha/run-promote-drill.sh
+```
+
+На Linux состояние лежит в `/tmp/datasafe-promote-drill` (путь артефакта CI). Git Bash использует `.promote-drill-state` в репозитории, если не задан `HA_DRILL_STATE`. SSH-гейт лаборатории по-прежнему вызывает `collect-dr-evidence.sh --lab` с `python3` на хосте.
+
+### Порты стендов
+
+У каждого стенда свои порты хоста, чтобы `scripts/ha/run-all-ha-tests.ps1` проходил, пока уже запущены основной стек, Vault или другой стенд. Скрипты читают `.env` стенда, если файл есть. Старый скопированный `.env.erasure` или `.env.site-a` сохраняет прежние значения, пока его не удалить и не дать стартовому скрипту скопировать пример заново.
+
+| Стенд | Консоль | S3 | Postgres | Prometheus | Grafana |
+|-------|---------|----|----------|------------|---------|
+| Основной dev | 8080 | 9000 | 5432 | 9090 | 3000 |
+| Vault | — | 9001 | 5434 | — | Vault 8200 |
+| HA | 8082 | 9002 | 5442 (standby 5443) | 9092 | 3002 |
+| Erasure | 8084 | 9004 | 5444 | 9094 | 3004 |
+| Сайт A | 8086 | 9006 | 5446 | 9096 | 3006 |
+| Сайт B | 9082 | 9193 | 5542 | 9192 | 3102 |
+
+HTTP standby HA остаётся **19011** и **19013**. Профиль NATS в HA-compose публикует **14222** и **18222**. Порты promote-drill: **19100**, **19101**, **15442**, **15443**, webhook **18080**.
+
 ## Восстановление
 
 ### Postgres / метаданные

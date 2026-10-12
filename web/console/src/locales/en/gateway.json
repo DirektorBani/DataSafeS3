@@ -51,6 +51,24 @@
     "addAction": "Add Rule",
     "empty": "No replication rules yet.",
     "syncNow": "Sync now",
+    "schedule": {
+      "label": "Schedule",
+      "default": "Default (hourly full scan)",
+      "off": "Off (events only)",
+      "m15": "Every 15 minutes",
+      "h1": "Every hour",
+      "h6": "Every 6 hours",
+      "h24": "Every 24 hours",
+      "save": "Save schedule",
+      "saved": "Schedule saved",
+      "hint": "Default keeps the server full-scan interval. Off stops that scan for this rule. A custom interval copies this rule on its own schedule."
+    },
+    "lastRun": {
+      "label": "Last run",
+      "never": "No scheduled or manual sync yet",
+      "objects": "{{count}} objects",
+      "error": "Last error"
+    },
     "publicReadWarning": "Source bucket is public-read — Gateway applies the same policy on the remote bucket."
   },
   "jobs": {
