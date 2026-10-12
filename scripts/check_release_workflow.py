@@ -38,13 +38,15 @@ def main() -> None:
     need(workflow, 'docker push "${SERVER_IMAGE}:latest"', "release.yml")
     need(workflow, 'docker push "${CONSOLE_IMAGE}:${GITHUB_REF_NAME}"', "release.yml")
     need(workflow, "ghcr.io/direktorbani/datasafe-storage-server", "release.yml")
-    need(dockerfile, "-tags datasafe_sinkexec", "Dockerfile")
-    need(dockerfile, "internal/buildinfo.Version=$${ver}", "Dockerfile")
-    need(dockerfile, "internal/buildinfo.Commit=$${commit}", "Dockerfile")
-    need(dockerfile, "/out/datasafe-kafka-bridge", "Dockerfile")
-    need(dockerfile, "/usr/lib/datasafe/datasafe-kafka-bridge", "Dockerfile")
+    script = (ROOT / "deploy/docker/link-version.sh").read_text(encoding="utf-8")
     need(dockerfile, "ARG VERSION=dev", "Dockerfile")
     need(dockerfile, "ARG GIT_COMMIT=unknown", "Dockerfile")
+    need(dockerfile, 'VERSION="$VERSION" GIT_COMMIT="$GIT_COMMIT" ./deploy/docker/link-version.sh', "Dockerfile")
+    need(dockerfile, "/usr/lib/datasafe/datasafe-kafka-bridge", "Dockerfile")
+    need(script, "-tags datasafe_sinkexec", "link-version.sh")
+    need(script, "internal/buildinfo.Version=${ver}", "link-version.sh")
+    need(script, "internal/buildinfo.Commit=${commit}", "link-version.sh")
+    need(script, "/out/datasafe-kafka-bridge", "link-version.sh")
 
     if errors:
         for err in errors:
