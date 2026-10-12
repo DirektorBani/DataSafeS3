@@ -1,0 +1,15 @@
+# Serve a host production build instead of the published console image.
+# Build first: cd web/console && npm ci && npm run build
+#
+#   docker compose -f docker-compose.yml -f deploy/compose/docker-compose.local-console.yml up -d
+services:
+  console-assets:
+    image: alpine:3.20
+    pull_policy: if_not_present
+    build: !reset null
+    environment:
+      CONSOLE_SRC: /host-dist
+    volumes: !override
+      - console-dist:/console-assets
+      - ./deploy/docker/copy-console-assets.sh:/copy-console-assets.sh:ro
+      - ./web/console/dist:/host-dist:ro

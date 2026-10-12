@@ -4,7 +4,7 @@
 
 Job CI `single-node-gate` проверяет, что pull request по-прежнему запускается одним production-контейнером: встроенный Bolt, `STORAGE_DEV=false`, без процессов Postgres, NATS и Kafka, и пустой outbox уведомлений, когда получатели не настроены.
 
-Это незарелиженная работа поверх v1.4.1. Файл `VERSION` не менялся. Job не публикует образ и не пушит тег.
+Вошло в **v1.5.0**. Job не публикует образ и не пушит тег. Бюджет ресурсов по-прежнему сравнивается с опубликованным образом **v1.4.1**. Перетегирование установщика совпадает с текущим пином **v1.5.0**; этого образа нет в GHCR, пока не запушен релизный тег.
 
 ## Что он гарантирует
 
@@ -44,12 +44,14 @@ bash scripts/single-node-gate.sh all
 Профиль core через установщик, на только что собранном образе (у Compose `pull_policy: if_not_present`, поэтому побеждает локальный тег; в реестр ничего не пушится):
 
 ```bash
-docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
-(cd web/console && npm ci && npm run build)
+docker build -t ghcr.io/direktorbani/datasafe-console:v1.5.0 -f deploy/docker/Dockerfile.console .
+docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
 ./install.sh --yes --profiles core --project datasafe-gate --data-root "${TMPDIR:-/tmp}/datasafe-gate"
 bash scripts/single-node-gate.sh smoke-installed
 docker compose -p datasafe-gate -f docker-compose.yml down -v
 ```
+
+CI дополнительно распаковывает `git archive HEAD` (без `web/console/dist`) и запускает тот же профиль core на `PUBLIC_HTTP_PORT=18080`. `GET /` должен быть 200 и содержать `id="root"`.
 
 Не указывайте `measure` на этот перетегированный образ. Скрипт отказывается сравнивать два образа с одним id. Сначала снова сделайте `docker pull` для `v1.4.1`.
 
@@ -59,7 +61,7 @@ Windows, из корня репозитория (Docker Desktop запущен):
 .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
 ```
 
-`-Yes` пропускает меню, вопрос про каталог данных и подтверждение. Профиль `core` оставляет выключенными Postgres, мониторинг, тома данных на хосте, identity lab и dev mode. Если порт 8080 не стал healthy, `-Yes` завершается с ошибкой.
+`-Yes` пропускает меню, вопрос про каталог данных и подтверждение. Профиль `core` оставляет выключенными Postgres, мониторинг, тома данных на хосте, identity lab и dev mode. Если граница консоли не стала healthy (`/healthz` и `GET /` с `id="root"`), `-Yes` завершается с ошибкой.
 
 ## Честно
 
@@ -67,7 +69,7 @@ Windows, из корня репозитория (Docker Desktop запущен):
 - Проверка TCP не видит UDP, включая DNS. Ошибка резолва до TCP-соединения должна попасть в шаблоны логов выше.
 - Входящие клиенты (smoke, Caddy, healthcheck) разрешены. Любой другой сокет не на loopback валит job, включая порт брокера.
 - Zip evidence собирает `scripts/single-node-gate.sh` из Admin API. Linux CI не запускает `collect-evidence-pack.ps1`.
-- Шаг установщика локально перетегирует образ PR в `ghcr.io/direktorbani/datasafe-storage-server:v1.4.1`, чтобы `./install.sh --tag v1.4.1` поднял биты PR. Job этот тег не пушит. Обычная установка без перетегирования тянет опубликованный образ.
+- Шаг установщика локально перетегирует образ PR в `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0`, чтобы `./install.sh` (тег по умолчанию `v1.5.0`) поднял биты PR. Job этот тег не пушит. Обычная установка без перетегирования тянет опубликованный образ, которого нет, пока не запушен релизный тег. Baseline бюджета остаётся опубликованный образ `v1.4.1`.
 - Вход в `ghcr.io` перед pull baseline необязателен. Fork pull request его пропускает, а неудачный login не валит job. Образ `v1.4.1` публичный.
 - Windows job в CI только проверяет, что `install.ps1` разбирается и документирует `-Yes -Profiles core`.
 - В старт входит время создания контейнера Docker. Процедура одна и та же для обоих образов; лимит применяется к разнице медиан.

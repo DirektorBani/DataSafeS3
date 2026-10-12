@@ -2,7 +2,18 @@
 
 All notable changes to DataSafeS3 are documented in this file.
 
-## [Unreleased]
+## [1.5.0] - 2026-10-12
+
+Minor release. Durable event delivery, optional Kafka, scripted HA promote, and per-rule gateway sync. `VERSION` is **1.5.0**. This commit does not push the git tag. Images are published when `release.yml` runs on `v1.5.0`.
+
+### Upgrade
+
+- Postgres migrations `020` (`event_outbox`) and `021` (gateway sync schedule) run on startup. Bolt opens the outbox buckets when the database opens. A v1.4.x binary leaves them in place and ignores them. The down migrations drop the table and its events, or the schedule columns.
+- The no-op Kafka and RabbitMQ sinks are removed. Kafka delivers only when `STORAGE_KAFKA_BROKERS` is set. An empty value does not dial. Webhook and NATS settings are unchanged. These sinks are an external event feed, not the cluster interconnect.
+- Lab ports moved. Erasure defaults are console **8084**, S3 **9004**, Postgres **5444**. Site A defaults are console **8086**, S3 **9006**, Postgres **5446**. Delete an old `.env.erasure` or `.env.site-a` and copy the example again. A copied file keeps the previous ports.
+- Automatic storage-leader takeover waits out the current lease. A 10s lease takes about 9s. The default 30s lease takes about 26s. A process that already held the lease and then lost it does not acquire it again.
+
+Guides: [events EN](docs/en/integrations/events.md) · [RU](docs/ru/integrations/events.md) · [HA EN](docs/operations-guide/en/high-availability.md) · [RU](docs/operations-guide/ru/high-availability.md) · [upgrade EN](docs/operations-guide/en/upgrade.md#upgrading-to-v150) · [RU](docs/operations-guide/ru/upgrade.md#обновление-до-v150).
 
 ### Added
 
@@ -24,6 +35,8 @@ All notable changes to DataSafeS3 are documented in this file.
 
 ### Changed
 
+- **Event delivery page.** Each sink shows delivered and failed counts from `datasafe_events_delivered_total` and `datasafe_events_failed_total` (`GET /api/v1/events/delivery`). Those counters are process memory and reset to zero when storage-server restarts. The sentence that Kafka stays off until `STORAGE_KAFKA_BROKERS` is set is shown only while that sink is disabled. The console sidebar shows the server version from `GET /api/v1/health`.
+- `GET /healthz` and `GET /api/v1/health` include `version` and `commit`, set with `-ldflags` from `VERSION` and the git commit in `deploy/docker/Dockerfile`. `release.yml` passes both when it publishes the tag.
 - Webhook and NATS delivery goes through the outbox. `STORAGE_NATS_URL` and console webhook settings are unchanged. An empty NATS URL does not register a sink and does not dial. A webhook sink is registered only while at least one webhook is enabled. With no configured sink, admin mutations do not write outbox rows, and events from that period are not replayed later. Each console webhook keeps one delivery-history row per outbox event; retries update that row.
 - Removed the no-op RabbitMQ and Kafka sinks from process wiring. There is one `events.EventSink` interface. Kafka is a real sink only when `STORAGE_KAFKA_BROKERS` is set. The container image runs franz-go in `/usr/lib/datasafe/datasafe-kafka-bridge` and starts it only then. A `go build` without `-tags datasafe_sinkexec` links it into the binary and still does not dial when brokers are empty.
 - **S3 SigV4 object events** (put, copy, delete including delete markers, multipart complete) write outbox rows in the same metadata transaction when a sink is registered. With no sink and no matching bucket notification, those PUTs do not grow the outbox.
@@ -33,6 +46,7 @@ All notable changes to DataSafeS3 are documented in this file.
 
 ### Fixed
 
+- **Fresh install console.** Default Compose copies `/srv/console` from `DATASAFE_CONSOLE_IMAGE` (`ghcr.io/direktorbani/datasafe-console:v1.5.0`) into the `console-dist` volume and Caddy serves that volume. A `git archive` tree has no `web/console/dist`, so the old bind mount was an empty directory and `GET /` was 404 while `/healthz` still returned 200. `install.sh` and `install.ps1` now require `GET /` 200 and the `id="root"` marker on the edge (port `PUBLIC_HTTP_PORT`, default 8080). Host `web/console/dist` is the overlay `deploy/compose/docker-compose.local-console.yml`.
 - **Simultaneous start on empty Postgres.** Several nodes no longer exit with `user already exists`. Bootstrap of the admin user runs under the migration advisory lock, and an existing admin is success.
 - **Webhook delivery after HA takeover.** A follower reloads sinks from the database when it becomes leader and about every 2 seconds, so a webhook created after that process started is registered. An outbox row for a sink that is not registered yet stays pending and does not count attempts toward dead. Takeover waits out the current lease (about 9s for a 10s lease, about 26s for the default 30s lease).
 - **Promote-drill Docker client on Git Bash.** The helper looked for an executable bit. Git Bash does not set that on the Linux client, so every run downloaded the 82 MB archive again. The script now keeps a non-empty file, writes the download to a partial tarball, and resumes with `curl -C - --retry 5 --retry-delay 3`, including through `HTTPS_PROXY`.
@@ -53,11 +67,11 @@ All notable changes to DataSafeS3 are documented in this file.
 ### Honesty
 
 - Promote is a script. Nothing in this tree elects a new Postgres primary on its own, and nothing fails a node over between availability zones. A storage follower that shares the database retries the leader lease and takes it only after expiry. A process that already held the lease and then lost it does not try again. The fence is `default_transaction_read_only` on the old primary plus an immediate drop of the storage-server leader lease when renew fails. A superuser can turn that GUC off in a session. The script does not rebuild the old primary as a standby. Object bytes stay on the node that wrote them; the drill's post-promote read is a new object on the new leader. Delivery during the drill is at-least-once: one extra post is allowed for a row that was published and then could not be marked delivered. The compose drill runs the image from `deploy/docker/Dockerfile`. CI job `ha-promote-drill` loads the `docker-build` artifact instead of building that image a second time. Node-a is started and becomes leader before node-b starts. The SSH lab gate runs the promote dry-run and a healthz evidence pack. The timed Patroni step is still the existing kill-leader drill.
-- This entry is unreleased. `VERSION` is still 1.4.1. No tag.
-- `datasafe_events_sink_degraded` is 1 from registration until the first successful probe, so a destination that has not connected yet looks degraded. The 5-minute alert does not fire for a probe that succeeds immediately. Activity does not record the waiting sentence, only a real error and the later recovery. Dropped events have a reason label, not a destination label. Compose pins Grafana `13.2.3` and Prometheus `v3.15.0`. The Helm chart image tags in `values.yaml` stay `v1.2.0`; the Helm overview JSON includes the same Event delivery row, and Helm Prometheus does not mount the example alert file.
+- Container images for this release are published when `release.yml` runs on the git tag `v1.5.0`. This commit does not push that tag. `GET /healthz` and `GET /api/v1/health` report `version` and `commit` from the image ldflags. The single-node gate still compares RSS and startup with the published `v1.4.1` image, because `v1.5.0` is not on GHCR until the tag is pushed. The installer step retags the pull-request server image and builds the console image as `v1.5.0` locally so Compose uses the pull-request bits. A fresh `git archive` plus `install.sh --yes --profiles core` must return `GET /` 200.
+- `datasafe_events_sink_degraded` is 1 from registration until the first successful probe, so a destination that has not connected yet looks degraded. The 5-minute alert does not fire for a probe that succeeds immediately. Activity does not record the waiting sentence, only a real error and the later recovery. Dropped events have a reason label, not a destination label. Compose pins Grafana `13.2.3` and Prometheus `v3.15.0`. Helm Prometheus and Grafana image tags in `values.yaml` stay `v1.2.0`. The DataSafeS3 server and console tags in that file are `v1.5.0`. The Helm overview JSON includes the same Event delivery row, and Helm Prometheus does not mount the example alert file.
 - The gate's resource limits can still fail on a noisy GitHub runner when most PR samples are slow. The step summary prints min and max beside the medians. The job does not widen the +10% or +1s limits.
 - GHCR login in `single-node-gate` is optional. It is skipped for fork pull requests and when no token is present, and a failed login does not fail the job. `ghcr.io/direktorbani/datasafe-storage-server:v1.4.1` is a public image.
-- The installer step retags the PR image as `ghcr.io/direktorbani/datasafe-storage-server:v1.4.1` locally so Compose uses the pull request bits. It does not push that tag. Outbox emptiness is the Prometheus gauge, not a Bolt key count. The TCP check does not see UDP DNS.
+- The installer step retags the PR server image as `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0` and tags a locally built `ghcr.io/direktorbani/datasafe-console:v1.5.0` so Compose uses the pull request bits. It does not push those tags. The resource baseline stays the published `v1.4.1` image. Outbox emptiness is the Prometheus gauge, not a Bolt key count. The TCP check does not see UDP DNS.
 - Object bytes are written before the metadata transaction. The S3 outbox row commits with the object or delete-marker row. Soft-delete commits the event with the original-object delete, after the trash copy and trash row. Multipart completion deletes the upload record in a following transaction and does not enqueue replication. Creating a tenant member writes the user, membership, and groups first, then inserts the event. Bucket create is one transaction with the bucket row; visibility and team updates after that are separate.
 - Bucket notification `time` is the object record time at commit, not the HTTP send time. `event` stays `put` or `delete` (multipart posts `put`). `bucket` stays the storage key. The stored payload includes `_webhook_url`, which is stripped before the POST. There is no console delivery-history row for a per-bucket URL. Copy and put share the event value `put`, so a Copy-only filter also matches a normal PUT. Delete and delete-marker share `delete`. `PutBucketNotificationConfiguration` still keeps one URL (last topic, then last queue). `s3:ObjectCreated:*` now matches the posted event `put`; previously the generic `:*` check prevented that.
 - A bucket notification that fails is retried. The previous HTTP path discarded the error. 3xx is terminal, same as 4xx other than 408 and 429. The console webhook sink retries every matching hook together: one hook's 429 retries hooks that already returned 2xx. The sink is dead immediately only when every failure on that attempt is terminal.
@@ -338,6 +352,7 @@ First public **DataSafeS3 Community Edition** release.
 
 Container images: `ghcr.io/direktorbani/datasafe-storage-server:v1.0.0`, `ghcr.io/direktorbani/datasafe-console:v1.0.0`.
 
+[1.5.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.5.0
 [1.4.1]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.4.1
 [1.4.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.4.0
 [1.3.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.3.0

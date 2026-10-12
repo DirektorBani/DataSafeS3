@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 YES=0
-TAG="v1.4.1"
+TAG="v1.5.0"
 DEV=0
 DATA_ROOT=""
 PROFILES=""
@@ -42,7 +42,7 @@ DataSafeS3 interactive installer
   ./install.sh --yes --profiles core
   ./install.sh --dry-run --yes --profiles core,postgres,data
   ./install.sh --cluster --dry-run --yes
-  ./install.sh --project datasafe --tag v1.4.1 --data-root "$HOME/.local/share/datasafe"
+  ./install.sh --project datasafe --tag v1.5.0 --data-root "$HOME/.local/share/datasafe"
   ./install.sh --dev --yes --profiles core,postgres,data
 
 Profiles: core, postgres, monitoring, data, binary, identity, dev, kafka
@@ -346,12 +346,12 @@ show_plan() {
   info "Project:  $PROJECT_NAME"
   info "Data:     $data"
   if [ "$(opt_get binary)" = "1" ]; then
-    info "Images:   local build"
+    info "Images:   local build (storage-server-linux + web/console/dist)"
   else
-    info "Images:   ghcr.io/direktorbani/datasafe-storage-server:$TAG"
+    info "Images:   ghcr.io/direktorbani/datasafe-storage-server:$TAG + ghcr.io/direktorbani/datasafe-console:$TAG"
   fi
   [ "$(opt_get data)" = "1" ] && files="$files + docker-compose.local-data.yml"
-  [ "$(opt_get binary)" = "1" ] && files="$files + deploy/compose/docker-compose.local-binary.yml"
+  [ "$(opt_get binary)" = "1" ] && files="$files + deploy/compose/docker-compose.local-binary.yml + deploy/compose/docker-compose.local-console.yml"
   info "Compose:  $files"
   echo ""
   if [ "$YES" = "0" ]; then
@@ -409,7 +409,7 @@ set_env_key() {
 
 find_local_server_image() {
   local img candidates="datasafe-storage-server:latest
-ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
+ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
 ghcr.io/direktorbani/datasafe-storage-server:v1.1.0
 ghcr.io/direktorbani/datasafe-storage-server:v1.0.3
 ghcr.io/direktorbani/datasafe-storage-server:v1.0.2
@@ -527,6 +527,7 @@ compose_up() {
   local args=(compose -p "$PROJECT_NAME" -f docker-compose.yml)
   [ "$(opt_get data)" = "1" ] && args+=(-f docker-compose.local-data.yml)
   [ "$(opt_get binary)" = "1" ] && args+=(-f deploy/compose/docker-compose.local-binary.yml)
+  [ "$(opt_get binary)" = "1" ] && args+=(-f deploy/compose/docker-compose.local-console.yml)
   [ "$(opt_get kafka)" = "1" ] && args+=(-f deploy/compose/docker-compose.kafka.yml)
   [ "$(opt_get postgres)" = "1" ] && args+=(--profile postgres)
 
@@ -554,22 +555,46 @@ compose_up() {
   ok "Compose up requested"
 }
 
+edge_port() {
+  if [ -n "${PUBLIC_HTTP_PORT:-}" ]; then
+    printf '%s' "$PUBLIC_HTTP_PORT"
+    return
+  fi
+  if [ -f .env ]; then
+    local v
+    v="$(grep -E '^[[:space:]]*PUBLIC_HTTP_PORT=' .env | tail -n1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+    if [ -n "$v" ]; then
+      printf '%s' "$v"
+      return
+    fi
+  fi
+  printf '8080'
+}
+
 wait_healthy() {
   title "6) Verify"
-  local i url="http://127.0.0.1:8080/healthz"
-  info "Waiting for $url ..."
+  local i port base health body
+  port="$(edge_port)"
+  base="http://127.0.0.1:${port}"
+  health="${base}/healthz"
+  info "Waiting for $health and GET ${base}/ (index.html) ..."
   i=1
   while [ "$i" -le 90 ]; do
-    if command -v curl >/dev/null 2>&1 && curl -fsS "$url" >/dev/null 2>&1; then
-      ok "Console edge healthy"
-      return 0
+    if command -v curl >/dev/null 2>&1 && curl -fsS "$health" >/dev/null 2>&1; then
+      body="$(curl -fsS "${base}/" 2>/dev/null || true)"
+      case "$body" in
+        *'id="root"'*)
+          ok "Console edge healthy"
+          return 0
+          ;;
+      esac
     fi
     sleep 2
     i=$((i + 1))
   done
-  warn "healthz not ready yet - check docker compose -p $PROJECT_NAME ps"
+  warn "console edge not ready (need GET / 200 with id=\"root\") - check docker compose -p $PROJECT_NAME ps"
   if [ "$YES" = "1" ]; then
-    err "healthz not ready"
+    err "console edge not ready"
     exit 1
   fi
 }
@@ -578,7 +603,7 @@ show_done() {
   title "Done"
   echo ""
   echo "  URLs"
-  echo "  Console:  http://localhost:8080"
+  echo "  Console:  http://localhost:$(edge_port)"
   echo "  S3 API:   http://localhost:9000"
   [ "$(opt_get monitoring)" = "1" ] && echo "  Grafana:  http://localhost:3000"
   if [ "$(opt_get identity)" = "1" ]; then

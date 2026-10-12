@@ -87,13 +87,13 @@ File: `deploy/docker/Caddyfile`
 |------|----------|
 | `/api/*` | storage-server:9000 |
 | `/healthz`, `/metrics` | storage-server:9000 |
-| everything else | Статическая сборка (`web/console/dist`) |
+| everything else | Статика консоли из `DATASAFE_CONSOLE_IMAGE` (том `console-dist`) |
 
 Консоль и API на одном origin `:8080`. Для Vite HMR: `docker compose --profile dev -f docker-compose.yml -f deploy/compose/docker-compose.dev.yml`.
 
 ## web-console
 
-React + TypeScript SPA. **По умолчанию** в Compose и Helm — **production-сборка** из `web/console/dist` (или образ `ghcr.io/direktorbani/datasafe-console` в Kubernetes). Профиль **`dev`** — Vite с hot reload (`deploy/compose/docker-compose.dev.yml`).
+React + TypeScript SPA. **По умолчанию** Compose копирует production-сборку из `ghcr.io/direktorbani/datasafe-console` в том (`deploy/compose/docker-compose.local-console.yml` вместо этого берёт `web/console/dist` с хоста). **Helm** копирует тот же образ init-контейнером. Профиль **`dev`** — Vite с hot reload (`deploy/compose/docker-compose.dev.yml`).
 
 ## Observability stack
 

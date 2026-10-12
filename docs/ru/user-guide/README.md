@@ -82,7 +82,7 @@
 |-----------|------------|
 | **Caddy** | Reverse proxy на порту **8080**: статическая веб-консоль, проксирование `/api/*`, `/healthz`, `/metrics` на `storage-server` |
 | **storage-server** | Единый Go-процесс: S3 API (SigV4), Admin REST API (`/api/v1/*`), Gateway worker, метрики Prometheus |
-| **web/console** | React SPA (сборка в `web/console/dist`, отдаётся Caddy) |
+| **web/console** | React SPA (образ `ghcr.io/direktorbani/datasafe-console`, отдаётся Caddy) |
 | **MetadataStore** | Метаданные: пользователи, бакеты, tenants, grants, политики, shares, очередь Gateway — **BoltDB** (`metadata.db`) или **PostgreSQL** (профиль `postgres`) |
 | **FSBackend** | Байты объектов на диске в `STORAGE_DATA_DIR/objects/` (в Docker — volume `/data`) |
 | **Prometheus** | Scrape `storage-server:9000/metrics` каждые 15 с |
@@ -481,11 +481,12 @@ go build -trimpath -ldflags="-s -w" -o deploy\docker\storage-server-linux .\cmd\
 docker compose --profile postgres -f docker-compose.yml -f deploy/compose/docker-compose.local-binary.yml up -d storage-server --no-deps
 ```
 
-**Пересборка только консоли:**
+**Пересборка только консоли (локальный dist):**
 
 ```cmd
 scripts\build-console.cmd
-docker compose up -d caddy --no-deps
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.local-console.yml up console-assets
+docker compose -f docker-compose.yml -f deploy/compose/docker-compose.local-console.yml up -d caddy --no-deps
 ```
 
 **Альтернативы при проблемах с Docker pull:** `scripts\ensure-docker-pull-proxy.cmd` (локальный direct-proxy на `127.0.0.1:10801`) или `netsh winhttp reset proxy`. Подробнее: [локальная разработка](../context/local-dev.md).

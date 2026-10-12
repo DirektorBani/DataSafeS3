@@ -5,7 +5,7 @@ set -euo pipefail
 
 LEADER_IP=""
 BUNDLE=""
-IMAGE="${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.4.1}"
+IMAGE="${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.5.0}"
 DATA_ROOT="/var/lib/datasafe"
 PG_VIP=""
 LAYOUT="production"
@@ -86,7 +86,7 @@ if [ -f /etc/datasafe/lab-mode ]; then
     lab_net="ds-lab-${hn}"
   fi
   NET_ARGS=(--network "container:${lab_net}")
-  IMAGE="${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.4.1}"
+  IMAGE="${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.5.0}"
 fi
 
 docker run -d --name datasafe-storage-leader --restart unless-stopped \

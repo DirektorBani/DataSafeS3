@@ -1,6 +1,7 @@
 {
   "brand": "DataSafeS3",
   "tagline": "Stockage d'objets",
+  "version": "Version {{version}}",
   "cancel": "Annuler",
   "confirm": "Confirmer",
   "save": "Enregistrer",

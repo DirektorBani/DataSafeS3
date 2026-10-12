@@ -8,7 +8,7 @@ English | **[Русский](../ru/troubleshooting.md)**
 |---------|-------|-----|
 | `setup_required` 403 | Setup wizard not completed | Finish `/setup` or `POST /setup/complete` |
 | Docker build fails on Windows | WinHTTP proxy `127.0.0.1:10801` | `scripts\dev-docker-local-binary.cmd` |
-| Console 404 on refresh | Caddy not serving SPA | `docker compose up -d caddy` |
+| Console 404 on refresh | Console volume empty | `docker compose up console-assets` then `docker compose up -d caddy` (default image, or `-f deploy/compose/docker-compose.local-console.yml` after `npm run build`) |
 | S3 403 SignatureDoesNotMatch | Wrong keys or clock skew | Check `STORAGE_ACCESS_KEY`, sync NTP |
 | PostgreSQL connection refused | Profile not started | `docker compose --profile postgres up -d` |
 

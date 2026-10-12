@@ -34,13 +34,13 @@ Non-interactive (CI / scripts):
 ./install.sh --dry-run --yes --profiles core,postgres,data
 ```
 
-Profile `core` alone is the production single-node path: storage-server and Caddy, Bolt metadata, dev mode off, no Postgres and no monitoring. `--yes` does not prompt. If `http://127.0.0.1:8080/healthz` is not ready, `--yes` exits with an error.
+Profile `core` alone is the production single-node path: storage-server and Caddy, Bolt metadata, dev mode off, no Postgres and no monitoring. The console comes from `DATASAFE_CONSOLE_IMAGE`; no host `npm run build` is required. `--yes` does not prompt. If `http://127.0.0.1:${PUBLIC_HTTP_PORT:-8080}/healthz` is not ready, or `GET /` is not 200 with the console marker `id="root"`, `--yes` exits with an error.
 
 ```powershell
 .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
 ```
 
-`-Yes` waits until `http://127.0.0.1:8080/healthz` responds, then exits 0. Docker Compose writes its progress to stderr. On Windows PowerShell 5.1 that stream is text, not a failed install, including when you redirect the script with `*> log`.
+`-Yes` waits until `http://127.0.0.1:8080/healthz` responds and `GET /` is 200 with `id="root"`, then exits 0. `PUBLIC_HTTP_PORT` changes that port. Docker Compose writes its progress to stderr. On Windows PowerShell 5.1 that stream is text, not a failed install, including when you redirect the script with `*> log`.
 
 The CI job that runs this path and the resource budget is [the single-node gate](../../operations-guide/en/single-node-gate.md).
 
@@ -94,7 +94,7 @@ storage-server is deployed on the leader by Apply (`deploy-storage-server.sh`) o
 
 SSO for the console is **OIDC** (Keycloak / other IdP via Settings), not an edge oauth2-proxy gate.
 
-Image tag (default `v1.4.1`) sets `DATASAFE_SERVER_IMAGE` / `DATASAFE_CONSOLE_IMAGE` unless **5** (local binary) is selected.
+Image tag (default `v1.5.0`) sets `DATASAFE_SERVER_IMAGE` / `DATASAFE_CONSOLE_IMAGE` unless **5** (local binary) is selected.
 
 ## Dev mode and metrics (v1.4.1)
 

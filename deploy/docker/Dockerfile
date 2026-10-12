@@ -7,8 +7,13 @@ RUN go mod download
 COPY . .
 # franz-go lives in a second static binary. The server does not import it.
 # The child is started only when STORAGE_KAFKA_BROKERS is set. No CGO.
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -tags datasafe_sinkexec -ldflags="-s -w" -o /out/storage-server ./cmd/storage-server \
- && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/datasafe-kafka-bridge ./cmd/datasafe-kafka-bridge
+# release.yml passes VERSION and GIT_COMMIT. A build with no args reads VERSION
+# and reports commit "unknown". The link step is a script so Docker does not
+# eat the shell variables (a $$ in RUN becomes the build container's pid).
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+RUN chmod +x deploy/docker/link-version.sh \
+ && VERSION="$VERSION" GIT_COMMIT="$GIT_COMMIT" ./deploy/docker/link-version.sh
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates wget su-exec

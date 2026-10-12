@@ -7,8 +7,10 @@
 #   docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
 #   bash scripts/single-node-gate.sh all
 #
-# Core installer (after the PR image is tagged as the pin the installer writes):
-#   docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
+# Core installer (after the PR image is tagged as the pin the installer writes).
+# The resource baseline stays the published v1.4.1 image. The installer default
+# tag is the VERSION pin (v1.5.0), which is not published until the release tag.
+#   docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
 #   ./install.sh --yes --profiles core --project datasafe-gate --data-root /tmp/datasafe-gate
 #   bash scripts/single-node-gate.sh smoke-installed
 #

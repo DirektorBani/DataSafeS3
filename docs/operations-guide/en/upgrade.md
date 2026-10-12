@@ -300,9 +300,27 @@ docker compose --profile postgres up -d
 
 Re-run `install.ps1` / `install.sh` if you want generated secrets and the metrics token wired for you. Confirm `GET /metrics` without a bearer is **401** when the token is set, and that Grafana still shows the Overview dashboard.
 
-## Unreleased: durable event outbox
+## Upgrading to v1.5.0
 
-Not a tagged release. `VERSION` stays **1.4.1** until a later release commit. Pulling this change onto a v1.4.1 host is forward-compatible:
+Minor release on **v1.4.1**. Take storage-server and console from the same tag. `GET /healthz` and `GET /api/v1/health` report `version` and `commit`.
+
+Images `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0` and `datasafe-console:v1.5.0` appear when `release.yml` runs on the git tag. This repository commit does not push that tag.
+
+### Breaking and operator notes
+
+| Topic | What changes |
+|-------|----------------|
+| Postgres | Migration `020` creates `event_outbox`. Migration `021` adds gateway sync-schedule columns. Both run on startup. A rollback to a v1.4.x binary leaves them in place and ignores them. The down migrations drop the table (and the events in `020`) or the schedule columns. |
+| Bolt | Buckets `event_outbox` and `event_outbox_due` are created the next time the database opens. v1.4.x ignores unknown buckets. |
+| Sinks | The no-op Kafka and RabbitMQ stubs are gone. Kafka delivers only when `STORAGE_KAFKA_BROKERS` is set. An empty value does not dial. Webhook and NATS URLs are unchanged. |
+| Lab ports | Erasure defaults are console **8084**, S3 **9004**, Postgres **5444**. Site A defaults are console **8086**, S3 **9006**, Postgres **5446**. Delete an old `.env.erasure` or `.env.site-a` and copy the example again. A copied file keeps the previous ports. |
+| Takeover | A follower takes the leader lease only after it expires. Time is about the remaining lease (about 9s for a 10s lease, about 26s for the default 30s). A process that already held the lease and then lost it does not acquire it again. |
+
+Webhook, NATS, and Kafka are an external event feed, not the link between storage nodes. See [events](../../en/integrations/events.md) and [high availability](high-availability.md).
+
+### What v1.4.1 hosts gain
+
+Pulling v1.5.0 onto a v1.4.1 host is forward-compatible for data:
 
 - Postgres applies migration `020` (`event_outbox`) on startup. A rollback to a v1.4.x binary leaves the table in place and ignores it. The down migration drops the table and the events in it.
 - Bolt creates buckets `event_outbox` and `event_outbox_due` the next time the database opens. v1.4.x ignores unknown buckets.
@@ -315,9 +333,9 @@ Not a tagged release. `VERSION` stays **1.4.1** until a later release commit. Pu
 
 Details: [event-outbox.md](event-outbox.md).
 
-## Unreleased: Kafka sink (opt-in)
+### Kafka (opt-in)
 
-Not a tagged release. `VERSION` stays **1.4.1**. No new metadata migration.
+No metadata migration beyond `020` and `021`.
 
 - Leave `STORAGE_KAFKA_BROKERS` empty to keep the previous behaviour: no Kafka client and no connection. The installer profile `kafka` is off unless you pass it. Default `--yes` profiles do not include it.
 - A non-empty broker list registers a franz-go producer (`acks=all`, idempotent, topic `STORAGE_KAFKA_TOPIC` default `datasafe.events`). SASL `PLAIN` without TLS refuses to start. SCRAM-SHA-256 and SCRAM-SHA-512 are accepted. Username and password may be supplied with `STORAGE_KAFKA_SASL_USERNAME_FILE` and `STORAGE_KAFKA_SASL_PASSWORD_FILE`.
@@ -327,6 +345,22 @@ Not a tagged release. `VERSION` stays **1.4.1**. No new metadata migration.
 - Console: **Settings → Event delivery**. `GET /api/v1/events/delivery` and `POST /api/v1/events/test` are administrator-only.
 
 Details: [kafka.md](../../en/integrations/kafka.md).
+
+### Upgrade steps (v1.5.0)
+
+After the git tag `v1.5.0` is published:
+
+```bash
+git pull
+export TAG=v1.5.0
+# .env (or the shell) should name the published tag images:
+# DATASAFE_SERVER_IMAGE=ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+# DATASAFE_CONSOLE_IMAGE=ghcr.io/direktorbani/datasafe-console:v1.5.0
+docker compose --profile postgres pull
+docker compose --profile postgres up -d
+```
+
+Pull the `v1.5.0` server and console images. Do not `docker compose build` for this upgrade. Confirm `GET /healthz` returns `"version":"1.5.0"` and a `commit`, and `GET /` on the console port returns the SPA (`id="root"`). On a 3-node lab, delete `.env.erasure` and `.env.site-a` before recreating those stands.
 
 ## Checklist
 
@@ -339,3 +373,4 @@ Details: [kafka.md](../../en/integrations/kafka.md).
 - [ ] v1.0.3 (optional): enable [field encryption](field-encryption.md) — generate KEK, set env, verify security-status
 - [ ] v1.1.0: remove `STORAGE_OUTBOUND_HTTP_ALLOW`; configure `STORAGE_METRICS_TOKEN` + Prometheus bearer if used
 - [ ] v1.4.1: `STORAGE_DEV` is false unless you opted in; installer or `.env` has `STORAGE_METRICS_TOKEN`; Prometheus scrape still works
+- [ ] v1.5.0: `docker compose pull` the `v1.5.0` server and console images (do not build them); delete old `.env.erasure` / `.env.site-a` if those labs should use the new ports; leave `STORAGE_KAFKA_BROKERS` empty unless you want the external feed

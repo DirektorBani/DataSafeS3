@@ -32,7 +32,7 @@
 		reverse_proxy storage-server:9000
 	}
 
-	# Console (pre-built static assets from web/console/dist on host)
+	# Console (named volume filled from DATASAFE_CONSOLE_IMAGE, or the local-dist overlay)
 	handle {
 		root * /srv/console
 		try_files {path} /index.html

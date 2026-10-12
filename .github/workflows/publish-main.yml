@@ -32,6 +32,8 @@ jobs:
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           docker build -f deploy/docker/Dockerfile \
+            --build-arg VERSION="$(tr -d '[:space:]' < VERSION)" \
+            --build-arg GIT_COMMIT="${GITHUB_SHA}" \
             -t "${SERVER_IMAGE}:main" \
             -t "${SERVER_IMAGE}:sha-${SHORT_SHA}" \
             .

@@ -11,7 +11,7 @@
 #>
 param(
   [switch]$Yes,
-  [string]$Tag = "v1.4.1",
+  [string]$Tag = "v1.5.0",
   [string]$DataRoot = "",
   [string]$Profiles = "",
   [string]$ProjectName = "datasafe",
@@ -45,7 +45,7 @@ DataSafeS3 interactive installer
   .\install.ps1 -Yes -Profiles core,postgres,monitoring,data
   .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
   .\install.ps1 -DryRun -Yes -Profiles core,postgres,data
-  .\install.ps1 -Tag v1.4.1 -DataRoot D:/datasafe-data
+  .\install.ps1 -Tag v1.5.0 -DataRoot D:/datasafe-data
   .\install.ps1 -Dev -Yes -Profiles core,postgres,data
   .\install.ps1 -Cluster -DryRun
 
@@ -230,7 +230,7 @@ function Normalize-MenuKey([string]$ans) {
 function Find-LocalServerImage {
   $candidates = @(
     "datasafe-storage-server:latest",
-    "ghcr.io/direktorbani/datasafe-storage-server:v1.4.1",
+    "ghcr.io/direktorbani/datasafe-storage-server:v1.5.0",
     "ghcr.io/direktorbani/datasafe-storage-server:v1.1.0",
     "ghcr.io/direktorbani/datasafe-storage-server:v1.0.3",
     "ghcr.io/direktorbani/datasafe-storage-server:v1.0.2",
@@ -359,11 +359,14 @@ function Show-Plan([string]$dataRootPath) {
   if ($script:Opts["binary"].On) {
     Write-Info "Images:   local build (storage-server-linux + web/console/dist)"
   } else {
-    Write-Info "Images:   ghcr.io/direktorbani/datasafe-storage-server:$Tag (+ console)"
+    Write-Info "Images:   ghcr.io/direktorbani/datasafe-storage-server:$Tag + ghcr.io/direktorbani/datasafe-console:$Tag"
   }
   $files = @("docker-compose.yml")
   if ($script:Opts["data"].On) { $files += "docker-compose.local-data.yml" }
-  if ($script:Opts["binary"].On) { $files += "deploy/compose/docker-compose.local-binary.yml" }
+  if ($script:Opts["binary"].On) {
+    $files += "deploy/compose/docker-compose.local-binary.yml"
+    $files += "deploy/compose/docker-compose.local-console.yml"
+  }
   if ($script:Opts["kafka"].On) { $files += "deploy/compose/docker-compose.kafka.yml" }
   Write-Info ("Compose:  " + ($files -join " + "))
   Write-Host ""
@@ -431,7 +434,7 @@ function Ensure-EnvFile([string]$dataRootPath) {
       throw @"
 No local storage-server image found, and binary mode must not rebuild (Docker Hub/GHCR pull is broken via proxy 127.0.0.1:10801).
 Fix: run scripts\ensure-docker-pull-proxy.cmd, or pull once:
-  docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
+  docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
 Then re-run installer with binary selected.
 "@
     }
@@ -614,7 +617,10 @@ function Start-IdentityLab {
 function Get-ComposeArgs {
   $args = @("compose", "-p", $ProjectName, "-f", "docker-compose.yml")
   if ($script:Opts["data"].On) { $args += @("-f", "docker-compose.local-data.yml") }
-  if ($script:Opts["binary"].On) { $args += @("-f", "deploy/compose/docker-compose.local-binary.yml") }
+  if ($script:Opts["binary"].On) {
+    $args += @("-f", "deploy/compose/docker-compose.local-binary.yml")
+    $args += @("-f", "deploy/compose/docker-compose.local-console.yml")
+  }
   if ($script:Opts["kafka"].On) { $args += @("-f", "deploy/compose/docker-compose.kafka.yml") }
   if ($script:Opts["postgres"].On) { $args += @("--profile", "postgres") }
   return ,$args
@@ -669,14 +675,31 @@ If the error mentions 127.0.0.1:10801 or registry pull/build:
   Write-Ok "Compose up requested"
 }
 
+function Get-EdgePort {
+  if ($env:PUBLIC_HTTP_PORT) { return [string]$env:PUBLIC_HTTP_PORT }
+  $envPath = Join-Path $Root ".env"
+  if (Test-Path -LiteralPath $envPath) {
+    foreach ($line in @(Get-Content -LiteralPath $envPath)) {
+      if ($line -match '^\s*PUBLIC_HTTP_PORT\s*=\s*(.+)\s*$') {
+        return $Matches[1].Trim().Trim('"').Trim("'")
+      }
+    }
+  }
+  return "8080"
+}
+
 function Wait-Healthy {
   Write-Title "6) Verify"
-  $url = "http://127.0.0.1:8080/healthz"
-  Write-Info "Waiting for $url ..."
+  $port = Get-EdgePort
+  $base = "http://127.0.0.1:$port"
+  Write-Info "Waiting for $base/healthz and GET $base/ (index.html) ..."
   for ($i = 1; $i -le 90; $i++) {
     try {
-      $r = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3
-      if ($r.StatusCode -eq 200) {
+      $health = Invoke-WebRequest -Uri "$base/healthz" -UseBasicParsing -TimeoutSec 3
+      $page = Invoke-WebRequest -Uri "$base/" -UseBasicParsing -TimeoutSec 3
+      $body = $page.Content
+      if ($body -is [byte[]]) { $body = [System.Text.Encoding]::UTF8.GetString($body) }
+      if ($health.StatusCode -eq 200 -and $page.StatusCode -eq 200 -and [string]$body -match 'id="root"') {
         Write-Ok "Console edge healthy"
         return
       }
@@ -684,16 +707,16 @@ function Wait-Healthy {
     Start-Sleep -Seconds 2
   }
   if ($Yes) {
-    throw "healthz not ready yet - check: docker compose -p $ProjectName ps / logs"
+    throw "console edge not ready (need GET / 200 with id=`"root`") - check: docker compose -p $ProjectName ps / logs"
   }
-  Write-Warn "healthz not ready yet - check: docker compose -p $ProjectName ps / logs"
+  Write-Warn "console edge not ready (need GET / 200 with id=`"root`") - check: docker compose -p $ProjectName ps / logs"
 }
 
 function Show-Done {
   Write-Title "Done"
   Write-Host ""
   Write-Host "  URLs" -ForegroundColor Cyan
-  Write-Host "  Console:  http://localhost:8080"
+  Write-Host "  Console:  http://localhost:$(Get-EdgePort)"
   Write-Host "  S3 API:   http://localhost:9000"
   if ($script:Opts["monitoring"].On) {
     Write-Host "  Grafana:  http://localhost:3000"

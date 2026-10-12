@@ -1,7 +1,7 @@
 {
   "name": "datasafe-console",
   "private": true,
-  "version": "1.4.1",
+  "version": "1.5.0",
   "author": "Трачук Илья",
   "description": "Web console for Датасейф S3 object storage",
   "type": "module",

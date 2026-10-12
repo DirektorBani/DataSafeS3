@@ -2,7 +2,7 @@
 
 # Kafka
 
-Kafka is an opt-in event sink. A default install does not set `STORAGE_KAFKA_BROKERS`, does not start a broker, and does not open a connection. `VERSION` is still 1.4.1. This page is unreleased work.
+Kafka is an opt-in event sink for an external feed. It is not how storage nodes talk to each other. A default install does not set `STORAGE_KAFKA_BROKERS`, does not start a broker, and does not open a connection. Shipped in **v1.5.0**. Overview: [events](events.md).
 
 The client is [franz-go](https://github.com/twmb/franz-go) (`github.com/twmb/franz-go`), pure Go, no CGO. That choice is recorded in [ADR-0002](../../architecture/adr/0002-event-sink-interface.md). The container image keeps the client in a second static binary, `/usr/lib/datasafe/datasafe-kafka-bridge`. The server process does not import the module. It starts that program only when `STORAGE_KAFKA_BROKERS` is non-empty, so a default process does not map the client and does not start a child. A `go build` without `-tags datasafe_sinkexec` links the client into the server binary instead; `go test` uses that path. Either way, the client object, its goroutines, and any dial exist only when the broker list is non-empty.
 

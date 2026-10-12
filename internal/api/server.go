@@ -16,6 +16,7 @@ import (
 
 	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/buildinfo"
 	"github.com/DirektorBani/datasafe/internal/cluster/pki"
 	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/ha"
@@ -509,7 +510,11 @@ func (s *Server) routes() {
 	mux := s.mux
 	openapi.Register(mux)
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":  "ok",
+			"version": buildinfo.Version,
+			"commit":  buildinfo.Commit,
+		})
 	})
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.HandleFunc("POST /api/v1/admin/login", rateLimitByIP(s.loginRateLimit, s.handleAdminLogin))

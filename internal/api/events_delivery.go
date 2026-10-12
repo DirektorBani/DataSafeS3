@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/events"
+	"github.com/DirektorBani/datasafe/internal/observability"
 )
 
 // knownDeliverySinks are always listed so the console page is stable when a
@@ -44,11 +45,14 @@ func (s *Server) handleEventDelivery(w http.ResponseWriter, r *http.Request) {
 				status, last = st, errStr
 			}
 		}
+		delivered, failed := observability.EventSinkTotals(name)
 		sinks = append(sinks, map[string]any{
 			"name":        name,
 			"status":      status,
 			"last_error":  last,
 			"queue_depth": bySink[name],
+			"delivered":   delivered,
+			"failed":      failed,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

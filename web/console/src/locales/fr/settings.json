@@ -91,7 +91,10 @@
   },
   "events": {
     "title": "Livraison des événements",
-    "description": "État de chaque destinataire pour la file d'attente. Kafka reste désactivé tant que STORAGE_KAFKA_BROKERS n'est pas défini.",
+    "description": "État de chaque destinataire pour la file d'attente.",
+    "kafkaDisabled": "Kafka reste désactivé tant que STORAGE_KAFKA_BROKERS n'est pas défini.",
+    "delivered": "Livrés : {{count}}",
+    "failed": "Échecs : {{count}}",
     "loading": "Chargement de la livraison des événements…",
     "loadError": "Impossible de charger la livraison des événements.",
     "queueDepth": "Événements en attente : {{count}}",
