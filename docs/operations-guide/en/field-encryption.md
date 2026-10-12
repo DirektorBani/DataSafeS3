@@ -110,7 +110,7 @@ docker compose --profile postgres up -d storage-server
 **Security status** (no secrets in response):
 
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:9000/api/v1/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:9000/api/v1/admin/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"YOUR_PASSWORD"}' | jq -r .token)
 

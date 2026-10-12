@@ -1,6 +1,7 @@
 {
   "brand": "DataSafeS3",
   "tagline": "Objektspeicher",
+  "version": "Version {{version}}",
   "cancel": "Abbrechen",
   "confirm": "Bestätigen",
   "save": "Speichern",

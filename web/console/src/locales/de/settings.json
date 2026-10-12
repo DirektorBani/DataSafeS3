@@ -91,7 +91,10 @@
   },
   "events": {
     "title": "Ereigniszustellung",
-    "description": "Status jedes Empfängers für die Zustellwarteschlange. Kafka bleibt aus, bis STORAGE_KAFKA_BROKERS gesetzt ist.",
+    "description": "Status jedes Empfängers für die Zustellwarteschlange.",
+    "kafkaDisabled": "Kafka bleibt aus, bis STORAGE_KAFKA_BROKERS gesetzt ist.",
+    "delivered": "Zugestellt: {{count}}",
+    "failed": "Fehlgeschlagen: {{count}}",
     "loading": "Ereigniszustellung wird geladen…",
     "loadError": "Ereigniszustellung konnte nicht geladen werden.",
     "queueDepth": "Ereignisse in der Warteschlange: {{count}}",

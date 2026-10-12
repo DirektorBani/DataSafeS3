@@ -11,6 +11,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: release pins
         run: bash scripts/check-release-pins.sh
+      - name: release workflow
+        run: bash scripts/check-release-workflow.sh
       - name: shell scripts are LF
         run: |
           if git ls-files -z '*.sh' | xargs -0 -r grep -l $'\r'; then
@@ -87,7 +89,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: docker build (server)
-        run: docker build -t datasafe-storage-server:ci -f deploy/docker/Dockerfile .
+        run: |
+          docker build -t datasafe-storage-server:ci -f deploy/docker/Dockerfile \
+            --build-arg VERSION="$(tr -d '[:space:]' < VERSION)" \
+            --build-arg GIT_COMMIT="${GITHUB_SHA}" \
+            .
       - name: Save image for the promote drill
         run: docker save datasafe-storage-server:ci | gzip -1 > datasafe-storage-server-ci.tar.gz
       - uses: actions/upload-artifact@v4
@@ -117,7 +123,11 @@ jobs:
       - name: Pull v1.4.1 baseline
         run: docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
       - name: Build PR storage-server image
-        run: docker build -t datasafe-storage-server:gate -f deploy/docker/Dockerfile .
+        run: |
+          docker build -t datasafe-storage-server:gate -f deploy/docker/Dockerfile \
+            --build-arg VERSION="$(tr -d '[:space:]' < VERSION)" \
+            --build-arg GIT_COMMIT="${GITHUB_SHA}" \
+            .
       - name: Budget and lone-container smoke
         run: bash scripts/single-node-gate.sh all
       - uses: actions/setup-node@v4
@@ -130,7 +140,7 @@ jobs:
           npm run build
       - name: Install core profile (non-interactive)
         run: |
-          docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
+          docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
           bash install.sh --yes --profiles core --project datasafe-gate --data-root "${{ runner.temp }}/datasafe-gate"
       - name: Smoke the core install
         run: bash scripts/single-node-gate.sh smoke-installed

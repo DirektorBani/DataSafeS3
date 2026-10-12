@@ -14,6 +14,8 @@ import (
 
 	"github.com/DirektorBani/datasafe/internal/api"
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/buildinfo"
+	"github.com/DirektorBani/datasafe/internal/observability"
 )
 
 func testServer(t *testing.T) *api.Server {
@@ -387,6 +389,22 @@ func TestEventDeliveryAdminOnly(t *testing.T) {
 		t.Fatalf("sinks %+v", body.Sinks)
 	}
 
+	before := deliverySinkCounts(t, rec.Body.Bytes(), "webhook")
+	observability.AddEventsDelivered("webhook")
+	observability.AddEventsDelivered("webhook")
+	observability.AddEventsFailed("webhook", "timeout")
+	observability.AddEventsFailed("webhook", "http_5xx")
+	req = authReq(http.MethodGet, "/api/v1/events/delivery", adminTok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin delivery counts %d %s", rec.Code, rec.Body.String())
+	}
+	after := deliverySinkCounts(t, rec.Body.Bytes(), "webhook")
+	if after.delivered != before.delivered+2 || after.failed != before.failed+2 {
+		t.Fatalf("webhook counters before %+v after %+v", before, after)
+	}
+
 	req = authReq(http.MethodPost, "/api/v1/events/test", adminTok, nil)
 	rec = httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -476,6 +494,57 @@ func TestEventDeliveryUnreachableBrokerDoesNotBlock(t *testing.T) {
 	_ = eventDeliveryBody(t, client, ts.URL, adminTok)
 	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Fatalf("GET during produce took %s", elapsed)
+	}
+}
+
+type sinkCountBody struct {
+	delivered uint64
+	failed    uint64
+}
+
+func deliverySinkCounts(t *testing.T, raw []byte, name string) sinkCountBody {
+	t.Helper()
+	var body struct {
+		Sinks []struct {
+			Name      string `json:"name"`
+			Delivered uint64 `json:"delivered"`
+			Failed    uint64 `json:"failed"`
+		} `json:"sinks"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, sk := range body.Sinks {
+		if sk.Name == name {
+			return sinkCountBody{delivered: sk.Delivered, failed: sk.Failed}
+		}
+	}
+	t.Fatalf("sink %s missing in %s", name, raw)
+	return sinkCountBody{}
+}
+
+func TestHealthReportsVersionAndCommit(t *testing.T) {
+	s := testServer(t)
+	for _, path := range []string{"/healthz", "/api/v1/health"} {
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s %d %s", path, rec.Code, rec.Body.String())
+		}
+		var body struct {
+			Status  string `json:"status"`
+			Version string `json:"version"`
+			Commit  string `json:"commit"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Status != "ok" || body.Version != buildinfo.Version || body.Commit != buildinfo.Commit {
+			t.Fatalf("%s %+v", path, body)
+		}
+		if body.Version == "" || body.Commit == "" {
+			t.Fatalf("%s empty version or commit", path)
+		}
 	}
 }
 

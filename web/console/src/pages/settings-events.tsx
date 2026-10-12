@@ -32,9 +32,13 @@ export function EventDeliveryPage() {
     },
   });
 
+  const sinks = delivery.data?.sinks ?? [];
+  const kafkaDisabled = sinks.some((sink) => sink.name === "kafka" && sink.status === "disabled");
+
   return (
     <div className="space-y-4">
       <PageHeader title={t("events.title")} description={t("events.description")} />
+      {kafkaDisabled && <p className="text-sm text-muted-foreground">{t("events.kafkaDisabled")}</p>}
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {t("events.queueDepth", { count: delivery.data?.queue_depth ?? 0 })}
@@ -53,7 +57,7 @@ export function EventDeliveryPage() {
         <p className="text-destructive">{t("events.loadError")}</p>
       ) : (
         <div className="grid gap-3">
-          {(delivery.data?.sinks ?? []).map((sink) => (
+          {sinks.map((sink) => (
             <Card key={sink.name}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-base">{t(`events.sinks.${sink.name}`, { defaultValue: sink.name })}</CardTitle>
@@ -61,6 +65,8 @@ export function EventDeliveryPage() {
               </CardHeader>
               <CardContent className="space-y-1 text-sm">
                 <p>{t("events.sinkQueue", { count: sink.queue_depth })}</p>
+                <p>{t("events.delivered", { count: sink.delivered ?? 0 })}</p>
+                <p>{t("events.failed", { count: sink.failed ?? 0 })}</p>
                 <p className="text-muted-foreground break-all">
                   {sink.last_error ? t("events.lastError", { error: sink.last_error }) : t("events.noError")}
                 </p>

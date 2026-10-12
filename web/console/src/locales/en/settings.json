@@ -103,7 +103,10 @@
   },
   "events": {
     "title": "Event delivery",
-    "description": "Per-sink status for the durable outbox. Kafka stays disabled until STORAGE_KAFKA_BROKERS is set.",
+    "description": "Per-sink status for the durable outbox.",
+    "kafkaDisabled": "Kafka stays disabled until STORAGE_KAFKA_BROKERS is set.",
+    "delivered": "Delivered: {{count}}",
+    "failed": "Failed: {{count}}",
     "loading": "Loading event delivery…",
     "loadError": "Unable to load event delivery.",
     "queueDepth": "Pending outbox rows: {{count}}",

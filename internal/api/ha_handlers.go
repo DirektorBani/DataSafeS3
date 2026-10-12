@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/DirektorBani/datasafe/internal/buildinfo"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/observability"
 	"github.com/DirektorBani/datasafe/internal/storage"
@@ -69,6 +70,8 @@ func isReadOnlyExempt(method, path string) bool {
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{
 		"status":         "ok",
+		"version":        buildinfo.Version,
+		"commit":         buildinfo.Commit,
 		"read_only_mode": s.isReadOnly(),
 	}
 	obCfg := storage.ObjectBackendFromEnv(s.cfg.DataDir, s.cfg.ReadOnly)

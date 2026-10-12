@@ -4,7 +4,7 @@
 
 Product documentation for DataSafeS3 — a self-hosted storage platform for secure and governed data management. Documentation focuses on **product value**, not comparisons with other products.
 
-**Current Community release:** [v1.4.1](../CHANGELOG.md#141---2026-10-11) (2026-10-11)
+**Current Community release:** [v1.5.0](../CHANGELOG.md#150---2026-10-12) (2026-10-12)
 
 ---
 
@@ -81,6 +81,8 @@ Environment variables and system settings: [User guide — Administrator setting
 | **Upgrade** | [operations-guide/en/upgrade.md](operations-guide/en/upgrade.md) | [operations-guide/ru/upgrade.md](operations-guide/ru/upgrade.md) |
 | **Scaling** | [operations-guide/en/scaling.md](operations-guide/en/scaling.md) | [operations-guide/ru/scaling.md](operations-guide/ru/scaling.md) |
 | **2-node HA reference** | [operations-guide/en/reference-deployment-2node.md](operations-guide/en/reference-deployment-2node.md) | [operations-guide/ru/reference-deployment-2node.md](operations-guide/ru/reference-deployment-2node.md) |
+| **High availability** | [operations-guide/en/high-availability.md](operations-guide/en/high-availability.md) | [operations-guide/ru/high-availability.md](operations-guide/ru/high-availability.md) |
+| **Event integrations** | [en/integrations/events.md](en/integrations/events.md) | [ru/integrations/events.md](ru/integrations/events.md) |
 | **Partner integrations** | [operations-guide/en/partner-cookbook.md](operations-guide/en/partner-cookbook.md) | [operations-guide/ru/partner-cookbook.md](operations-guide/ru/partner-cookbook.md) |
 | **Disaster recovery** | [operations-guide/en/disaster-recovery.md](operations-guide/en/disaster-recovery.md) | [operations-guide/ru/disaster-recovery.md](operations-guide/ru/disaster-recovery.md) |
 | **Monitoring** | [operations-guide/en/monitoring.md](operations-guide/en/monitoring.md) | [operations-guide/ru/monitoring.md](operations-guide/ru/monitoring.md) |

@@ -1,7 +1,7 @@
 ﻿# Default values for DataSafeS3 Helm chart.
-# Release images on GHCR — pin a tag in production (e.g. v1.4.1):
-#   storageServer.image.tag: v1.4.1
-#   console.image.tag: v1.4.1
+# Release images on GHCR — pin a tag in production (e.g. v1.5.0):
+#   storageServer.image.tag: v1.5.0
+#   console.image.tag: v1.5.0
 # Local build: docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .
 
 global:
@@ -20,7 +20,7 @@ storageServer:
   # Published image: ghcr.io/direktorbani/datasafe-storage-server (build locally via deploy/docker/Dockerfile).
   image:
     repository: ghcr.io/direktorbani/datasafe-storage-server
-    tag: v1.4.1
+    tag: v1.5.0
     pullPolicy: IfNotPresent
   replicaCount: 1
   podAnnotations: {}
@@ -181,7 +181,7 @@ console:
   # Build: docker build -f deploy/docker/Dockerfile.console -t ghcr.io/direktorbani/datasafe-console:latest .
   image:
     repository: ghcr.io/direktorbani/datasafe-console
-    tag: v1.4.1
+    tag: v1.5.0
     pullPolicy: IfNotPresent
   # When false, Caddy serves an emptyDir populated by initContainer from console.image.
   existingConfigMap: ""

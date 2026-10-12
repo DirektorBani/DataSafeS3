@@ -11,7 +11,7 @@
 #>
 param(
   [switch]$Yes,
-  [string]$Tag = "v1.4.1",
+  [string]$Tag = "v1.5.0",
   [string]$DataRoot = "",
   [string]$Profiles = "",
   [string]$ProjectName = "datasafe",
@@ -45,7 +45,7 @@ DataSafeS3 interactive installer
   .\install.ps1 -Yes -Profiles core,postgres,monitoring,data
   .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
   .\install.ps1 -DryRun -Yes -Profiles core,postgres,data
-  .\install.ps1 -Tag v1.4.1 -DataRoot D:/datasafe-data
+  .\install.ps1 -Tag v1.5.0 -DataRoot D:/datasafe-data
   .\install.ps1 -Dev -Yes -Profiles core,postgres,data
   .\install.ps1 -Cluster -DryRun
 
@@ -230,7 +230,7 @@ function Normalize-MenuKey([string]$ans) {
 function Find-LocalServerImage {
   $candidates = @(
     "datasafe-storage-server:latest",
-    "ghcr.io/direktorbani/datasafe-storage-server:v1.4.1",
+    "ghcr.io/direktorbani/datasafe-storage-server:v1.5.0",
     "ghcr.io/direktorbani/datasafe-storage-server:v1.1.0",
     "ghcr.io/direktorbani/datasafe-storage-server:v1.0.3",
     "ghcr.io/direktorbani/datasafe-storage-server:v1.0.2",
@@ -431,7 +431,7 @@ function Ensure-EnvFile([string]$dataRootPath) {
       throw @"
 No local storage-server image found, and binary mode must not rebuild (Docker Hub/GHCR pull is broken via proxy 127.0.0.1:10801).
 Fix: run scripts\ensure-docker-pull-proxy.cmd, or pull once:
-  docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
+  docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
 Then re-run installer with binary selected.
 "@
     }

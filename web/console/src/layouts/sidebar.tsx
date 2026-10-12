@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -33,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
+import { api } from "@/lib/api";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 
@@ -63,6 +65,26 @@ function NavItem({
       <Icon className="h-4 w-4 shrink-0" />
       {label}
     </NavLink>
+  );
+}
+
+function ServerVersion() {
+  const { t } = useTranslation("common");
+  const health = useQuery({
+    queryKey: ["server-version"],
+    queryFn: () => api.health(),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const version = health.data?.version;
+  if (!version) return null;
+  const commit = health.data?.commit;
+  const short = commit && commit !== "unknown" ? commit.slice(0, 12) : "";
+  return (
+    <p className="px-1 text-xs text-muted-foreground">
+      {t("common:version", { version })}
+      {short ? <span className="font-mono"> {short}</span> : null}
+    </p>
   );
 }
 
@@ -140,6 +162,7 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t p-3 space-y-2">
+        <ServerVersion />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="w-full justify-start gap-2">

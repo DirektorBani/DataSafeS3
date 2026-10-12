@@ -3,6 +3,7 @@ package observability
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	dto "github.com/prometheus/client_model/go"
 )
 
 // Event delivery metrics. The dispatcher updates these.
@@ -76,6 +77,42 @@ func SetEventsSinkDegraded(sink string, degraded bool) {
 		v = 1
 	}
 	eventsSinkDegraded.WithLabelValues(sink).Set(v)
+}
+
+// EventSinkTotals sums the process counters for one sink.
+// Failed is the total across failure reasons. A sink that has never
+// delivered or failed returns 0 without creating a series.
+func EventSinkTotals(sink string) (delivered, failed uint64) {
+	if sink == "" {
+		return 0, 0
+	}
+	return counterSumForSink(eventsDeliveredTotal, sink), counterSumForSink(eventsFailedTotal, sink)
+}
+
+func counterSumForSink(vec *prometheus.CounterVec, sink string) uint64 {
+	ch := make(chan prometheus.Metric)
+	go func() {
+		vec.Collect(ch)
+		close(ch)
+	}()
+	var sum float64
+	for m := range ch {
+		var dm dto.Metric
+		if err := m.Write(&dm); err != nil || dm.Counter == nil {
+			continue
+		}
+		match := false
+		for _, lp := range dm.GetLabel() {
+			if lp.GetName() == "sink" && lp.GetValue() == sink {
+				match = true
+				break
+			}
+		}
+		if match {
+			sum += dm.GetCounter().GetValue()
+		}
+	}
+	return uint64(sum)
 }
 
 // ClearEventsSinkDegraded removes the series so an unregistered destination does not stay alerting.

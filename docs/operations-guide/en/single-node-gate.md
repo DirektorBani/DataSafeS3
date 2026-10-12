@@ -4,7 +4,7 @@
 
 CI job `single-node-gate` checks that a pull request still runs as one production container: embedded Bolt, `STORAGE_DEV=false`, no Postgres, NATS, or Kafka process, and an empty notification outbox when nothing is configured to receive events.
 
-This is unreleased work on top of v1.4.1. `VERSION` is unchanged. The job does not publish an image and does not push a tag.
+Shipped in **v1.5.0**. The job does not publish an image and does not push a tag. The resource budget still compares with the published **v1.4.1** image. The installer retag matches the current pin, **v1.5.0**, which is not on GHCR until the release tag is pushed.
 
 ## What it guarantees
 
@@ -44,7 +44,7 @@ bash scripts/single-node-gate.sh all
 Core profile through the installer, using the image you just built (Compose `pull_policy` is `if_not_present`, so the local tag wins and nothing is pushed):
 
 ```bash
-docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
+docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
 (cd web/console && npm ci && npm run build)
 ./install.sh --yes --profiles core --project datasafe-gate --data-root "${TMPDIR:-/tmp}/datasafe-gate"
 bash scripts/single-node-gate.sh smoke-installed
@@ -67,7 +67,7 @@ Windows, from the repo root (Docker Desktop running):
 - The TCP check does not see UDP, including DNS. A name lookup that fails before a TCP connect has to show up in the log patterns above.
 - Inbound clients (the smoke, Caddy, the healthcheck) are allowed. Any other non-loopback socket fails the job, including a broker port.
 - The evidence zip is built by `scripts/single-node-gate.sh` from the Admin API. Linux CI does not run `collect-evidence-pack.ps1`.
-- The installer step retags the PR image as `ghcr.io/direktorbani/datasafe-storage-server:v1.4.1` **locally** so `./install.sh --tag v1.4.1` runs the PR bits. The job does not push that tag. A normal install without that retag pulls the published image.
+- The installer step retags the PR image as `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0` **locally** so `./install.sh` (default tag `v1.5.0`) runs the PR bits. The job does not push that tag. A normal install without that retag pulls the published image, which does not exist until the release tag is pushed. The budget baseline remains the published `v1.4.1` image.
 - Login to `ghcr.io` before the baseline pull is optional. Fork pull requests skip it, and a failed login does not fail the job. The `v1.4.1` image is public.
 - The Windows CI job only checks that `install.ps1` parses and documents `-Yes -Profiles core`.
 - Startup includes Docker create time. It is the same procedure for both images; the limit applies to the difference of medians.

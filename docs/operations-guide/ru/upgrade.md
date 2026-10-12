@@ -248,9 +248,27 @@ docker compose --profile postgres up -d
 
 Либо снова запустите `install.ps1` / `install.sh`, чтобы получить сгенерированные секреты и токен метрик. Проверьте: `GET /metrics` без bearer даёт **401**, когда токен задан, а Grafana Overview по-прежнему показывает данные.
 
-## Незарелижено: долговечный outbox событий
+## Обновление до v1.5.0
 
-Это не тег. `VERSION` остаётся **1.4.1**, пока отдельный релизный коммит его не сменит. Подтянуть это изменение на хост v1.4.1 можно без поломки данных:
+Минорный релиз поверх **v1.4.1**. Берите storage-server и console одного тега. `GET /healthz` и `GET /api/v1/health` отдают `version` и `commit`.
+
+Образы `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0` и `datasafe-console:v1.5.0` появляются, когда `release.yml` выполняется на git-теге. Этот коммит тег не пушит.
+
+### Что ломается и что сделать оператору
+
+| Тема | Что меняется |
+|------|----------------|
+| Postgres | Миграция `020` создаёт `event_outbox`. Миграция `021` добавляет колонки расписания gateway. Обе применяются при старте. Откат на бинарь v1.4.x оставляет их и игнорирует. Down-миграции удаляют таблицу (и события в `020`) или колонки расписания. |
+| Bolt | Бакеты `event_outbox` и `event_outbox_due` создаются при следующем открытии базы. v1.4.x неизвестные бакеты не читает. |
+| Sink | Заглушки Kafka и RabbitMQ удалены. Kafka доставляет только при заданном `STORAGE_KAFKA_BROKERS`. Пустое значение не делает dial. URL webhook и NATS не меняются. |
+| Порты лаборатории | Erasure по умолчанию: консоль **8084**, S3 **9004**, Postgres **5444**. Site A: консоль **8086**, S3 **9006**, Postgres **5446**. Удалите старый `.env.erasure` или `.env.site-a` и скопируйте пример заново. Скопированный файл хранит прежние порты. |
+| Перехват | Follower берёт аренду лидера только после её истечения. Время примерно равно оставшейся аренде (около 9 с при аренде 10 с, около 26 с при 30 с по умолчанию). Процесс, который уже держал аренду и потерял её, снова её не берёт. |
+
+Webhook, NATS и Kafka — внешняя лента событий, а не связь между узлами storage. См. [события](../../ru/integrations/events.md) и [высокую доступность](high-availability.md).
+
+### Что получает хост v1.4.1
+
+Подтянуть v1.5.0 на хост v1.4.1 можно без поломки данных:
 
 - Postgres применяет миграцию `020` (`event_outbox`) при старте. Откат на бинарь v1.4.x оставляет таблицу и игнорирует её. Down-миграция удаляет таблицу вместе с событиями.
 - Bolt создаёт бакеты `event_outbox` и `event_outbox_due` при следующем открытии базы. v1.4.x неизвестные бакеты не читает.
@@ -263,9 +281,9 @@ docker compose --profile postgres up -d
 
 Подробно: [event-outbox.md](event-outbox.md).
 
-## Незарелижено: sink Kafka (только по включению)
+### Kafka (только по включению)
 
-Это не тег. `VERSION` остаётся **1.4.1**. Новой миграции метаданных нет.
+Новой миграции метаданных, кроме `020` и `021`, нет.
 
 - Пустой `STORAGE_KAFKA_BROKERS` сохраняет прежнее поведение: нет клиента Kafka и нет соединения. Профиль установщика `kafka` выключен, пока его не передали. Профили `--yes` по умолчанию его не содержат.
 - Непустой список брокеров регистрирует продюсер franz-go (`acks=all`, идемпотентный, топик `STORAGE_KAFKA_TOPIC`, по умолчанию `datasafe.events`). SASL `PLAIN` без TLS отказывается стартовать. Принимаются SCRAM-SHA-256 и SCRAM-SHA-512. Имя и пароль можно задать через `STORAGE_KAFKA_SASL_USERNAME_FILE` и `STORAGE_KAFKA_SASL_PASSWORD_FILE`.
@@ -275,6 +293,19 @@ docker compose --profile postgres up -d
 - Консоль: **Настройки → Доставка событий**. `GET /api/v1/events/delivery` и `POST /api/v1/events/test` только для администратора.
 
 Подробно: [kafka.md](../../ru/integrations/kafka.md).
+
+### Шаги (v1.5.0)
+
+После публикации git-тега `v1.5.0`:
+
+```bash
+git pull
+export TAG=v1.5.0
+docker compose --profile postgres pull
+docker compose --profile postgres up -d
+```
+
+Пока тега нет, соберите этот коммит (`docker compose --profile postgres build storage-server`) вместо pull `v1.5.0`. Проверьте, что `GET /healthz` возвращает `"version":"1.5.0"` и `commit`. На лаборатории из трёх узлов удалите `.env.erasure` и `.env.site-a` перед пересозданием стендов.
 
 ## Чеклист
 
@@ -287,3 +318,4 @@ docker compose --profile postgres up -d
 - [ ] v1.0.3 (опционально): включить [field encryption](field-encryption.md) — KEK, env, security-status
 - [ ] v1.1.0: убрать `STORAGE_OUTBOUND_HTTP_ALLOW`; настроить `STORAGE_METRICS_TOKEN` и Prometheus bearer
 - [ ] v1.4.1: `STORAGE_DEV` выключен, если вы не включали его явно; в установщике или `.env` есть `STORAGE_METRICS_TOKEN`; скрейп Prometheus работает
+- [ ] v1.5.0: storage-server и console одного тега; удалите старые `.env.erasure` / `.env.site-a`, если лаборатории должны взять новые порты; оставьте `STORAGE_KAFKA_BROKERS` пустым, если внешняя лента не нужна

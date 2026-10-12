@@ -4,7 +4,7 @@
 
 Admin notifications and S3 SigV4 object events are written to the metadata store and delivered by one dispatcher per `storage-server` process. A restart or a down receiver no longer drops the event: the row stays `pending` until every registered sink succeeds or exhausts its attempts.
 
-This is unreleased work on top of v1.4.1. `VERSION` is unchanged.
+Shipped in **v1.5.0**. Webhooks, NATS, and Kafka are an external event feed, not the cluster interconnect. See [events](../../en/integrations/events.md).
 
 ## What is stored
 

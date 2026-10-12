@@ -1,6 +1,7 @@
 {
   "brand": "DataSafeS3",
   "tagline": "Object storage",
+  "version": "Version {{version}}",
   "cancel": "Cancel",
   "confirm": "Confirm",
   "save": "Save",

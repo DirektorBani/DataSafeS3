@@ -878,7 +878,7 @@ export async function logout(): Promise<{ oidc_logout_url?: string }> {
 }
 
 export const api = {
-  health: () => fetchJSON<{ status: string }>("/health"),
+  health: () => fetchJSON<{ status: string; version: string; commit: string }>("/health"),
 
   listBuckets: (filter?: "owned" | "shared" | "tenant" | "all") => {
     const q = filter && filter !== "all" ? `?filter=${encodeURIComponent(filter)}` : "";
@@ -1301,7 +1301,14 @@ export const api = {
   eventDelivery: () =>
     fetchJSON<{
       queue_depth: number;
-      sinks: { name: string; status: "connected" | "degraded" | "disabled" | string; last_error: string; queue_depth: number }[];
+      sinks: {
+        name: string;
+        status: "connected" | "degraded" | "disabled" | string;
+        last_error: string;
+        queue_depth: number;
+        delivered: number;
+        failed: number;
+      }[];
     }>("/events/delivery"),
   sendTestEvent: () =>
     fetchJSON<{ event_id: string }>("/events/test", { method: "POST" }),
