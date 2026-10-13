@@ -534,6 +534,9 @@ func (h *Handler) putObject(w http.ResponseWriter, r *http.Request, bucket, key 
 	if !h.validObjectKey(w, r, key) {
 		return
 	}
+	if h.rejectBlockedPresign(w, r, creds, bucket) {
+		return
+	}
 	if !h.authorize(w, r, creds, bucket, key, "s3:PutObject") {
 		return
 	}
@@ -565,12 +568,14 @@ func (h *Handler) getObject(w http.ResponseWriter, r *http.Request, bucket, key 
 	}
 	creds, authErr := h.Svc.Signer.Authenticate(r)
 	if authErr != nil {
-		if errors.Is(authErr, auth.ErrMissingAuth) && h.Svc.IsPublicReadBucket(bucket) {
-			h.serveObjectPublic(w, r, bucket, key)
+		if errors.Is(authErr, auth.ErrMissingAuth) && h.serveAnonymousGet(w, r, bucket, key) {
 			observability.IncS3ReadOps(bucket)
 			return
 		}
 		h.writeAuthError(w, r, authErr)
+		return
+	}
+	if h.rejectBlockedPresign(w, r, creds, bucket) {
 		return
 	}
 	if !h.authorize(w, r, creds, bucket, key, "s3:GetObject") {
@@ -584,13 +589,49 @@ func (h *Handler) getObject(w http.ResponseWriter, r *http.Request, bucket, key 
 	observability.IncS3ReadOps(bucket)
 }
 
-func (h *Handler) serveObjectPublic(w http.ResponseWriter, r *http.Request, logicalBucket, key string) {
-	sk, err := h.Svc.PublicReadStorageKey(logicalBucket)
+func (h *Handler) serveAnonymousGet(w http.ResponseWriter, r *http.Request, logicalBucket, key string) bool {
+	rec, err := h.Svc.ResolvePublicRead(logicalBucket, tenantHint(r), requestSourceIP(r), r.TLS != nil, key)
 	if err != nil {
-		mapErr(w, r, err)
-		return
+		if errors.Is(err, ErrPublicBlocked) {
+			writeError(w, r, http.StatusForbidden, "AccessDenied", "public access is blocked by policy")
+			return true
+		}
+		if errors.Is(err, ErrPublicAmbiguous) {
+			writeError(w, r, http.StatusNotFound, "NoSuchBucket", "bucket not found")
+			return true
+		}
+		return false
 	}
-	h.serveObject(w, r, sk, key)
+	h.serveObject(w, r, rec.EffectiveStorageKey(), key)
+	return true
+}
+
+func (h *Handler) serveAnonymousHead(w http.ResponseWriter, r *http.Request, logicalBucket, key string) bool {
+	rec, err := h.Svc.ResolvePublicRead(logicalBucket, tenantHint(r), requestSourceIP(r), r.TLS != nil, key)
+	if err != nil {
+		if errors.Is(err, ErrPublicBlocked) {
+			writeError(w, r, http.StatusForbidden, "AccessDenied", "public access is blocked by policy")
+			return true
+		}
+		if errors.Is(err, ErrPublicAmbiguous) {
+			writeError(w, r, http.StatusNotFound, "NoSuchBucket", "bucket not found")
+			return true
+		}
+		return false
+	}
+	h.serveHeadObject(w, r, rec.EffectiveStorageKey(), key)
+	return true
+}
+
+func (h *Handler) rejectBlockedPresign(w http.ResponseWriter, r *http.Request, creds auth.Credentials, bucket string) bool {
+	if r.URL.Query().Get("X-Amz-Algorithm") == "" {
+		return false
+	}
+	if msg := h.Svc.PresignBlockReason(creds.AccessKey, bucket); msg != "" {
+		writeError(w, r, http.StatusForbidden, "AccessDenied", msg)
+		return true
+	}
+	return false
 }
 
 func (h *Handler) serveObject(w http.ResponseWriter, r *http.Request, storageBucket, key string) {
@@ -649,17 +690,14 @@ func (h *Handler) headObject(w http.ResponseWriter, r *http.Request, bucket, key
 	}
 	creds, authErr := h.Svc.Signer.Authenticate(r)
 	if authErr != nil {
-		if errors.Is(authErr, auth.ErrMissingAuth) && h.Svc.IsPublicReadBucket(bucket) {
-			sk, err := h.Svc.PublicReadStorageKey(bucket)
-			if err != nil {
-				mapErr(w, r, err)
-				return
-			}
-			h.serveHeadObject(w, r, sk, key)
+		if errors.Is(authErr, auth.ErrMissingAuth) && h.serveAnonymousHead(w, r, bucket, key) {
 			observability.IncS3ReadOps(bucket)
 			return
 		}
 		h.writeAuthError(w, r, authErr)
+		return
+	}
+	if h.rejectBlockedPresign(w, r, creds, bucket) {
 		return
 	}
 	if !h.authorize(w, r, creds, bucket, key, "s3:GetObject") {
@@ -697,6 +735,10 @@ func (h *Handler) deleteObject(w http.ResponseWriter, r *http.Request, bucket, k
 	}
 	creds, ok := h.authenticate(w, r)
 	if !ok {
+		return
+	}
+	if r.URL.Query().Get("X-Amz-Algorithm") != "" {
+		writeError(w, r, http.StatusForbidden, "AccessDenied", "presigned DELETE is not allowed")
 		return
 	}
 	if !h.authorize(w, r, creds, bucket, key, "s3:DeleteObject") {

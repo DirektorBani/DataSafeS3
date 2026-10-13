@@ -105,7 +105,7 @@ jobs:
   # Prod bolt container, resource budget vs the published v1.4.1 image, and
   # install.sh --yes --profiles core. PRs into main and pushes to main.
   single-node-gate:
-    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -173,7 +173,7 @@ jobs:
 
   # Syntax only. A full Windows Docker install is not part of this job.
   install-ps1-syntax:
-    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

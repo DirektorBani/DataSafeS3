@@ -37,6 +37,7 @@ import {
 } from "@/lib/api";
 import { formatBytes, formatDate, formatDuration, formatSpeed } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
+import { SharingPolicyCard } from "@/components/sharing-policy-card";
 import { CopyButton } from "@/components/copy-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -93,7 +94,6 @@ export function BucketDetailPage() {
     { label: t("bucketDetail:presign.1h"), seconds: 3600 },
     { label: t("bucketDetail:presign.24h"), seconds: 86400 },
     { label: t("bucketDetail:presign.7d"), seconds: 604800 },
-    { label: t("bucketDetail:presign.30d"), seconds: 2592000 },
   ] as const;
   const LIFECYCLE_ACTIONS = [
     { value: "expire", label: t("bucketDetail:lifecycle.expire") },
@@ -127,6 +127,7 @@ export function BucketDetailPage() {
   const [createdShare, setCreatedShare] = useState<{ max_downloads: number; download_count: number } | null>(null);
   const [shareExpires, setShareExpires] = useState("3600");
   const [shareMaxDownloads, setShareMaxDownloads] = useState("0");
+  const [sharePassword, setSharePassword] = useState("");
   const [customExpires, setCustomExpires] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ObjectRow | null>(null);
   const [deleteMode, setDeleteMode] = useState<DeleteMode>("now");
@@ -481,6 +482,7 @@ export function BucketDetailPage() {
         key: obj.key,
         expires_in_sec: expires || 3600,
         max_downloads: maxDl,
+        password: sharePassword || undefined,
       });
     },
     onSuccess: (res) => {
@@ -554,6 +556,7 @@ export function BucketDetailPage() {
           {showAccessTab && <TabsTrigger value="access">{t("bucketDetail:tabs.share")}</TabsTrigger>}
           <TabsTrigger value="lifecycle">{t("bucketDetail:tabs.lifecycle")}</TabsTrigger>
           <TabsTrigger value="trash">{t("bucketDetail:tabs.trash")}</TabsTrigger>
+          <TabsTrigger value="sharing">{t("bucketDetail:tabs.sharing")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="objects" className="space-y-4">
@@ -975,8 +978,9 @@ export function BucketDetailPage() {
                       const body = {
                         grants: accessDraft.map((g) => ({
                           user_id: g.user_id,
-                          can_read: g.can_read,
-                          can_write: g.can_write,
+                          can_read: g.level === "admin" || g.can_read || g.can_write,
+                          can_write: g.level === "admin" || g.can_write,
+                          level: g.level || (g.can_write ? "write" : g.can_read ? "read" : "read"),
                         })),
                         prefix_grants: prefixAccessDraft
                           .filter((g) => g.user_id && g.prefix?.trim())
@@ -1043,11 +1047,40 @@ export function BucketDetailPage() {
                             setAccessDraft((prev) => {
                               const rest = prev.filter((g) => g.user_id !== userId);
                               if (!on && !row.can_read) return rest;
-                              return [...rest, { user_id: userId, username: uname, can_read: on || row.can_read, can_write: on }];
+                              const level = on ? (row.level === "admin" ? "admin" : "write") : "read";
+                              return [...rest, {
+                                ...row,
+                                user_id: userId,
+                                username: uname,
+                                can_read: on || row.can_read,
+                                can_write: on,
+                                level,
+                              }];
                             });
                           }}
                         />
                         {t("bucketDetail:access.write")}
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={inDraft && row.level === "admin"}
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            setAccessDraft((prev) => {
+                              const rest = prev.filter((g) => g.user_id !== userId);
+                              if (!on && !row.can_read && !row.can_write) return rest;
+                              return [...rest, {
+                                user_id: userId,
+                                username: uname,
+                                can_read: on || row.can_read || row.can_write,
+                                can_write: on || row.can_write,
+                                level: on ? "admin" : row.can_write ? "write" : "read",
+                              }];
+                            });
+                          }}
+                        />
+                        {t("bucketDetail:access.admin")}
                       </label>
                     </div>
                   );
@@ -1247,6 +1280,10 @@ export function BucketDetailPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="sharing">
+          <SharingPolicyCard scope="bucket" scopeId={bucket} canEdit />
+        </TabsContent>
       </Tabs>
 
       {/* Share dialog */}
@@ -1272,6 +1309,10 @@ export function BucketDetailPage() {
             {shareExpires === "custom" && (
               <Input type="number" placeholder={t("bucketDetail:placeholder.seconds")} value={customExpires} onChange={(e) => setCustomExpires(e.target.value)} />
             )}
+            <div className="space-y-2">
+              <Label>{t("bucketDetail:share.password")}</Label>
+              <Input type="password" value={sharePassword} onChange={(e) => setSharePassword(e.target.value)} autoComplete="new-password" />
+            </div>
             <div className="space-y-2">
               <Label>{t("bucketDetail:share.maxDownloads")}</Label>
               <Input type="number" min={0} value={shareMaxDownloads} onChange={(e) => setShareMaxDownloads(e.target.value)} />

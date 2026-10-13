@@ -14,7 +14,10 @@ export default defineConfig({
     strictPort: true,
     host: true,
     proxy: {
-      "/api": "http://127.0.0.1:9000",
+      "/api": {
+        target: "http://127.0.0.1:9000",
+        xfwd: true,
+      },
       "/healthz": "http://127.0.0.1:9000",
       "/metrics": "http://127.0.0.1:9000",
     },

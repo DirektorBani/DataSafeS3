@@ -26,6 +26,7 @@ import (
 	pgmeta "github.com/DirektorBani/datasafe/internal/metadata/postgres"
 	"github.com/DirektorBani/datasafe/internal/observability"
 	"github.com/DirektorBani/datasafe/internal/openapi"
+	"github.com/DirektorBani/datasafe/internal/policy"
 	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
 	"github.com/DirektorBani/datasafe/internal/storage"
 	"github.com/DirektorBani/datasafe/internal/storage/erasure"
@@ -137,6 +138,18 @@ func NewServer(cfg Config) (*Server, error) {
 		if rec.ExpiresAt != nil && time.Now().UTC().After(*rec.ExpiresAt) {
 			return auth.Credentials{}, false
 		}
+		if rec.OwnerID != "" || rec.Owner != "" {
+			var user metadata.UserRecord
+			var uerr error
+			if rec.OwnerID != "" {
+				user, uerr = meta.GetUser(rec.OwnerID)
+			} else {
+				user, uerr = meta.GetUserByUsername(rec.Owner)
+			}
+			if uerr != nil || user.Status != metadata.StatusActive {
+				return auth.Credentials{}, false
+			}
+		}
 		return auth.Credentials{
 			AccessKey:    rec.AccessKey,
 			SecretKey:    rec.SecretKey,
@@ -144,6 +157,7 @@ func NewServer(cfg Config) (*Server, error) {
 		}, true
 	}
 	signer := auth.NewSigner(cfg.Region, lookup)
+	signer.RootAccessKey = cfg.AccessKey
 	_ = meta.PutAccessKey(metadata.AccessKeyRecord{
 		AccessKey: cfg.AccessKey,
 		SecretKey: cfg.SecretKey,
@@ -216,6 +230,10 @@ func NewServer(cfg Config) (*Server, error) {
 		}
 	}
 	s.routes()
+	if auth.OperatorWriteAllEnabled() {
+		slog.Warn("STORAGE_OPERATOR_WRITE_ALL is enabled: operators can write every bucket; this compatibility mode is removed in 1.7.0")
+		s.logActivityAs("system", "", metadata.ActionOperatorWriteAll, "config", "STORAGE_OPERATOR_WRITE_ALL")
+	}
 	return s, nil
 }
 
@@ -716,8 +734,15 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /api/v1/clusters/{id}/replication-rules", adminOnly(s.handleListClusterReplicationRules))
 	mux.HandleFunc("POST /api/v1/clusters/{id}/replication-rules", adminOnly(s.handleCreateClusterReplicationRule))
 	mux.HandleFunc("DELETE /api/v1/clusters/{id}/replication-rules/{ruleId}", adminOnly(s.handleDeleteClusterReplicationRule))
-	mux.HandleFunc("POST /api/v1/clusters/{id}/revoke-notify", s.handleClusterRevokeNotify)
-	mux.HandleFunc("POST /api/v1/clusters/{id}/rotate", s.handleClusterRotate)
+	mux.HandleFunc("POST /api/v1/clusters/{id}/revoke-notify", s.requireClusterPeer(s.handleClusterRevokeNotify))
+	mux.HandleFunc("POST /api/v1/clusters/{id}/rotate", s.requireClusterPeer(s.handleClusterRotate))
+	mux.HandleFunc("GET /api/v1/settings/sharing", adminOnly(s.handleGetGlobalSharing))
+	mux.HandleFunc("PUT /api/v1/settings/sharing", adminOnly(s.handlePutGlobalSharing))
+	mux.HandleFunc("GET /api/v1/tenants/{id}/sharing", allRoles(s.handleGetTenantSharing))
+	mux.HandleFunc("PUT /api/v1/tenants/{id}/sharing", allRoles(s.handlePutTenantSharing))
+	mux.HandleFunc("GET /api/v1/buckets/{bucket}/sharing", allRoles(s.handleGetBucketSharing))
+	mux.HandleFunc("PUT /api/v1/buckets/{bucket}/sharing", allRoles(s.handlePutBucketSharing))
+	mux.HandleFunc("POST /api/v1/buckets/{bucket}/shares/revoke-all", allRoles(s.handleRevokeAllSharedLinks))
 	mux.HandleFunc("POST /api/v1/sts/assume-role", allRoles(s.handleAssumeRole))
 	mux.HandleFunc("POST /api/v1/buckets/{bucket}/objects/transition-storage-class", allRoles(s.handleTransitionStorageClass))
 	mux.HandleFunc("PUT /api/v1/buckets/{bucket}/object-retention", allRoles(s.handlePutObjectRetention))
@@ -841,6 +866,20 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 		TeamID     string `json:"team_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
+	vis := req.Visibility
+	if vis == "" {
+		vis = "private"
+	}
+	if vis == "public-read" {
+		if !s.mayCreatePublicRead(info) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "public_read_forbidden"})
+			return
+		}
+		if s.publicAccessBlockedForNewBucket(info) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "public_access_blocked"})
+			return
+		}
+	}
 	var evPtr *events.OutboxRecord
 	if evs := s.outboxRecords(metadata.EventBucketCreated, bucket, "", "", "", map[string]any{"bucket": bucket, "owner": owner}); len(evs) == 1 {
 		evPtr = &evs[0]
@@ -855,14 +894,13 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	s.noteOutboxDropped(dropped)
-	vis := req.Visibility
-	if vis == "" {
-		vis = "private"
-	}
-	if vis == "private" || vis == "public-read" {
-		_ = s.applyBucketVisibilityPolicy(info, bucket, vis)
-	}
 	s.stampBucketOwnership(bucket, info)
+	if vis == "private" || vis == "public-read" {
+		if err := s.applyBucketVisibilityPolicy(info, bucket, vis); err != nil {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+			return
+		}
+	}
 	if req.TeamID != "" && auth.CanSeeAllBuckets(info.Role) {
 		if rec, err := s.resolveBucketForUser(info, bucket); err == nil {
 			if _, err := s.meta.GetTeam(req.TeamID); err == nil {
@@ -878,7 +916,12 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleDeleteBucketJSON(w http.ResponseWriter, r *http.Request) {
 	bucket := r.PathValue("bucket")
 	info, _ := authFrom(r)
-	if !s.canWriteBucket(info, bucket) {
+	brec, err := s.resolveBucketForUser(info, bucket)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	if !s.isBucketAdmin(info, brec) && !auth.CanWriteAllBuckets(info.Role) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}
@@ -1115,6 +1158,11 @@ func (s *Server) handleListObjectsJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePresign(w http.ResponseWriter, r *http.Request) {
+	info, ok := authFrom(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+		return
+	}
 	var req struct {
 		Method   string `json:"method"`
 		Bucket   string `json:"bucket"`
@@ -1126,22 +1174,83 @@ func (s *Server) handlePresign(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.Method == "" {
-		req.Method = http.MethodGet
+	method := strings.ToUpper(strings.TrimSpace(req.Method))
+	if method == "" {
+		method = http.MethodGet
+	}
+	switch method {
+	case http.MethodGet, http.MethodHead:
+		if !s.canAccessBucket(info, req.Bucket) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+			return
+		}
+	case http.MethodPut:
+		if !s.canWriteBucket(info, req.Bucket) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+			return
+		}
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "method not allowed"})
+		return
+	}
+	brec, err := s.resolveBucketForUser(info, req.Bucket)
+	if err != nil && auth.CanSeeAllBuckets(info.Role) {
+		brec, err = s.meta.GetBucket(req.Bucket)
+	}
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	eff := s.effectiveSharingForRecord(brec)
+	if !eff.ShareLinksAllowed {
+		writeJSON(w, http.StatusForbidden, sharingDisabledBody())
+		return
+	}
+	if !eff.PresignAllowed {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "presign_disabled", "message": "Presigned URLs are disabled for this bucket"})
+		return
 	}
 	if req.Expires <= 0 {
 		req.Expires = 3600
 	}
+	maxTTL := eff.MaxPresignTTLSec
+	if maxTTL <= 0 || maxTTL > auth.MaxPresignSeconds {
+		maxTTL = auth.MaxPresignSeconds
+	}
+	if int64(req.Expires) > maxTTL {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "max_presign_ttl", "max_presign_ttl_sec": maxTTL})
+		return
+	}
 	if req.Endpoint == "" {
 		req.Endpoint = "http://" + r.Host
 	}
-	creds := auth.Credentials{AccessKey: s.cfg.AccessKey, SecretKey: s.cfg.SecretKey}
-	url, err := s.svc.Signer.PresignURL(req.Method, req.Endpoint, req.Bucket, req.Key, creds, time.Duration(req.Expires)*time.Second)
+	accessKey := "AKIA" + randomHex(8)
+	secretKey := randomHex(20)
+	exp := time.Now().UTC().Add(time.Duration(req.Expires) * time.Second)
+	if err := s.meta.PutAccessKey(metadata.AccessKeyRecord{
+		AccessKey: accessKey,
+		SecretKey: secretKey,
+		Label:     "presign",
+		OwnerID:   info.UserID,
+		Owner:     info.Username,
+		ExpiresAt: &exp,
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	creds := auth.Credentials{AccessKey: accessKey, SecretKey: secretKey}
+	url, err := s.svc.Signer.PresignURL(method, req.Endpoint, req.Bucket, req.Key, creds, time.Duration(req.Expires)*time.Second)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"url": url})
+	s.logActivity(r, metadata.ActionPresignIssued, "object", req.Bucket+"/"+req.Key)
+	s.publishEvent(r.Context(), "PresignIssued", req.Bucket, req.Key, "", brec.EffectiveTenantID(), map[string]any{
+		"actor": info.Username, "method": method, "expires_seconds": req.Expires,
+		"bucket": req.Bucket, "key": req.Key, "client_ip": clientIP(r),
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"url": url, "expires_at": exp})
 }
 
 func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
@@ -1256,6 +1365,14 @@ func (s *Server) handlePutPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	if err := policy.Validate(req.Policy); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	if s.effectiveSharingForRecord(rec).PublicAccessBlocked && policy.Evaluate(req.Policy, "s3:GetObject", policy.ObjectARN(bucket, "object"), "") {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "public_access_blocked"})
 		return
 	}
 	if err := s.meta.SetBucketPolicy(rec.EffectiveStorageKey(), req.Policy); err != nil {

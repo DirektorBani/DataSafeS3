@@ -287,6 +287,35 @@ export type BucketAccessGrant = {
   prefix?: string;
   can_read: boolean;
   can_write: boolean;
+  level?: "read" | "write" | "admin" | string;
+};
+
+export type SharingPolicy = {
+  public_access_blocked?: boolean | null;
+  share_links_allowed?: boolean | null;
+  presign_allowed?: boolean | null;
+  max_share_ttl_sec?: number | null;
+  max_presign_ttl_sec?: number | null;
+  share_password_required?: boolean | null;
+};
+
+export type EffectiveSharing = {
+  public_access_blocked: boolean;
+  share_links_allowed: boolean;
+  presign_allowed: boolean;
+  max_share_ttl_sec: number;
+  max_presign_ttl_sec: number;
+  share_password_required: boolean;
+  public_access_blocked_by?: string;
+  share_links_blocked_by?: string;
+  presign_blocked_by?: string;
+  password_required_by?: string;
+};
+
+export type SharingView = {
+  policy: SharingPolicy;
+  effective: EffectiveSharing;
+  locked: string[];
 };
 
 export type UserNotification = {
@@ -323,6 +352,7 @@ export type LDAPConfig = {
 export type SecurityStatus = {
   weak_secrets: string[];
   doc?: string;
+  operator_write_all?: boolean;
 };
 
 export type OIDCConfig = {
@@ -1469,6 +1499,26 @@ export const api = {
       { method: "POST" },
     ),
   getSecurityStatus: () => fetchJSON<SecurityStatus>("/settings/security-status"),
+  getGlobalSharing: () => fetchJSON<SharingView>("/settings/sharing"),
+  putGlobalSharing: (body: SharingPolicy) =>
+    fetchJSON<SharingView>("/settings/sharing", { method: "PUT", body: JSON.stringify(body) }),
+  getTenantSharing: (id: string) => fetchJSON<SharingView>(`/tenants/${encodeURIComponent(id)}/sharing`),
+  putTenantSharing: (id: string, body: SharingPolicy) =>
+    fetchJSON<SharingView>(`/tenants/${encodeURIComponent(id)}/sharing`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  getBucketSharing: (bucket: string) =>
+    fetchJSON<SharingView>(`/buckets/${encodeURIComponent(bucket)}/sharing`),
+  putBucketSharing: (bucket: string, body: SharingPolicy) =>
+    fetchJSON<SharingView>(`/buckets/${encodeURIComponent(bucket)}/sharing`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  revokeAllShares: (bucket: string) =>
+    fetchJSON<{ revoked: number }>(`/buckets/${encodeURIComponent(bucket)}/shares/revoke-all`, {
+      method: "POST",
+    }),
   mfaEnroll: () =>
     fetchJSON<{ secret: string; otpauth_uri: string; qr_url: string; qr_code: string }>("/mfa/enroll", { method: "POST" }),
   mfaVerify: (code: string) =>
@@ -1654,7 +1704,7 @@ export const api = {
     const q = key ? `?key=${encodeURIComponent(key)}` : "";
     return fetchJSON<{ shares: SharedLink[] }>(`/buckets/${encodeURIComponent(bucket)}/shares${q}`);
   },
-  createSharedLink: (bucket: string, body: { key: string; expires_in_sec?: number; max_downloads?: number }) =>
+  createSharedLink: (bucket: string, body: { key: string; expires_in_sec?: number; max_downloads?: number; password?: string }) =>
     fetchJSON<{ share: SharedLink; url: string }>(`/buckets/${encodeURIComponent(bucket)}/shares`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

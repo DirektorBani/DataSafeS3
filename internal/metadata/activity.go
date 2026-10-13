@@ -34,6 +34,11 @@ const (
 	ActionShareDownloaded       = "share.downloaded"
 	ActionShareLimitReached     = "share.limit_reached"
 	ActionShareExpired          = "share.expired"
+	ActionShareRevoked          = "share.revoked"
+	ActionShareBlocked          = "share.blocked"
+	ActionPresignIssued         = "presign_issued"
+	ActionSharingPolicyChanged  = "sharing_policy_changed"
+	ActionOperatorWriteAll      = "operator_write_all_enabled"
 	// Governance Evidence Pack (v1.4)
 	ActionObjectLockChanged   = "object_lock_changed"
 	ActionObjectRetentionSet  = "object_retention_set"

@@ -12,6 +12,9 @@ import (
 	"time"
 )
 
+// MaxPresignSeconds is the AWS ceiling for X-Amz-Expires (7 days).
+const MaxPresignSeconds int64 = 7 * 24 * 3600
+
 type Credentials struct {
 	AccessKey    string
 	SecretKey    string
@@ -19,9 +22,10 @@ type Credentials struct {
 }
 
 type Signer struct {
-	Region  string
-	Service string
-	Lookup  func(accessKey string) (Credentials, bool)
+	Region        string
+	Service       string
+	Lookup        func(accessKey string) (Credentials, bool)
+	RootAccessKey string
 }
 
 func NewSigner(region string, lookup func(string) (Credentials, bool)) *Signer {
@@ -80,24 +84,31 @@ func (s *Signer) verifyPresigned(r *http.Request) (Credentials, error) {
 		return Credentials{}, ErrInvalidAuth
 	}
 	accessKey := credFields[0]
+	if s.RootAccessKey != "" && accessKey == s.RootAccessKey {
+		return Credentials{}, ErrInvalidAuth
+	}
 	creds, ok := s.Lookup(accessKey)
 	if !ok {
 		return Credentials{}, ErrInvalidAuth
 	}
-	if exp := q.Get("X-Amz-Expires"); exp != "" {
-		dateStr := q.Get("X-Amz-Date")
-		if dateStr == "" {
-			return Credentials{}, ErrInvalidAuth
-		}
-		t, err := time.Parse("20060102T150405Z", dateStr)
-		if err != nil {
-			return Credentials{}, ErrInvalidAuth
-		}
-		var secs int64
-		fmt.Sscanf(exp, "%d", &secs)
-		if time.Since(t) > time.Duration(secs)*time.Second {
-			return Credentials{}, ErrExpired
-		}
+	exp := q.Get("X-Amz-Expires")
+	if exp == "" {
+		return Credentials{}, ErrInvalidAuth
+	}
+	dateStr := q.Get("X-Amz-Date")
+	if dateStr == "" {
+		return Credentials{}, ErrInvalidAuth
+	}
+	t, err := time.Parse("20060102T150405Z", dateStr)
+	if err != nil {
+		return Credentials{}, ErrInvalidAuth
+	}
+	var secs int64
+	if _, scanErr := fmt.Sscanf(exp, "%d", &secs); scanErr != nil || secs <= 0 || secs > MaxPresignSeconds {
+		return Credentials{}, ErrInvalidAuth
+	}
+	if time.Since(t) > time.Duration(secs)*time.Second {
+		return Credentials{}, ErrExpired
 	}
 	signedHeaders := strings.Split(q.Get("X-Amz-SignedHeaders"), ";")
 	canonical := canonicalPresignedRequest(r, signedHeaders)

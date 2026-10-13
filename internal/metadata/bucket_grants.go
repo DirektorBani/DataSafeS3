@@ -23,6 +23,7 @@ func splitGrantKey(k []byte) (string, string) {
 }
 
 func (s *Store) PutBucketAccessGrant(grant BucketAccessGrant) error {
+	NormalizeGrantLevel(&grant)
 	return s.db.Update(func(tx *bolt.Tx) error {
 		data, err := json.Marshal(grant)
 		if err != nil {
@@ -48,6 +49,7 @@ func (s *Store) ListBucketAccessGrants(bucketKey string) ([]BucketAccessGrant, e
 			if err := json.Unmarshal(v, &g); err != nil {
 				return err
 			}
+			NormalizeGrantLevel(&g)
 			out = append(out, g)
 			return nil
 		})
@@ -83,6 +85,7 @@ func (s *Store) ReplaceBucketAccessGrants(bucketKey string, grants []BucketAcces
 		}
 		for _, g := range grants {
 			g.BucketKey = bucketKey
+			NormalizeGrantLevel(&g)
 			data, err := json.Marshal(g)
 			if err != nil {
 				return err

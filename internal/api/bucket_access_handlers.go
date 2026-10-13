@@ -84,6 +84,7 @@ func (s *Server) servePutBucketAccess(w http.ResponseWriter, r *http.Request, lo
 			UserID   string `json:"user_id"`
 			CanRead  bool   `json:"can_read"`
 			CanWrite bool   `json:"can_write"`
+			Level    string `json:"level"`
 		} `json:"grants"`
 		PrefixGrants []struct {
 			UserID   string `json:"user_id"`
@@ -112,8 +113,9 @@ func (s *Server) servePutBucketAccess(w http.ResponseWriter, r *http.Request, lo
 		grants = append(grants, metadata.BucketAccessGrant{
 			BucketKey: bucketKey,
 			UserID:    g.UserID,
-			CanRead:   g.CanRead || g.CanWrite,
-			CanWrite:  g.CanWrite,
+			CanRead:   g.CanRead || g.CanWrite || g.Level == metadata.GrantLevelAdmin || g.Level == metadata.GrantLevelWrite,
+			CanWrite:  g.CanWrite || g.Level == metadata.GrantLevelAdmin || g.Level == metadata.GrantLevelWrite,
+			Level:     g.Level,
 		})
 	}
 	var prefixGrants []metadata.BucketPrefixAccessGrant

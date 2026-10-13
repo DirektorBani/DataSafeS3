@@ -110,19 +110,25 @@ func (s *Service) Authorize(logicalBucket, key, action, principal string) bool {
 		if !s.bucketVisibleToAccessKey(ak, rec) {
 			return false
 		}
+		var allowed bool
 		if auth.IsS3WriteAction(action) {
 			if key != "" {
-				return s.objectWritableByAccessKey(ak, rec, key)
+				allowed = s.objectWritableByAccessKey(ak, rec, key)
+			} else {
+				allowed = s.bucketWritableByAccessKey(ak, rec)
 			}
-			return s.bucketWritableByAccessKey(ak, rec)
+		} else if key != "" {
+			allowed = s.objectVisibleToAccessKey(ak, rec, key)
+		} else {
+			allowed = true
 		}
-		if key != "" {
-			return s.objectVisibleToAccessKey(ak, rec, key)
+		if !allowed || s.policyDenies(rec, action, key, principal, &ak) {
+			return false
 		}
 		return true
 	}
 	if rec.Owner == principal {
-		return true
+		return !s.policyDenies(rec, action, key, principal, nil)
 	}
 	resource := policy.BucketARN(logicalBucket)
 	if key != "" {

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"sort"
 	"strings"
@@ -223,9 +224,17 @@ func (s *Server) handleUpdateBucketSettings(w http.ResponseWriter, r *http.Reque
 	if req.StorageClass != "" {
 		rec.StorageClass = req.StorageClass
 	}
+	if req.RetentionMode != nil && strings.EqualFold(*req.RetentionMode, "COMPLIANCE") && !s.isBucketAdmin(info, rec) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+		return
+	}
 	if req.Visibility != "" {
 		if err := s.applyBucketVisibilityPolicy(info, name, req.Visibility); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			status := http.StatusInternalServerError
+			if errors.Is(err, errSharingForbidden) || errors.Is(err, errPublicBlocked) {
+				status = http.StatusForbidden
+			}
+			writeJSON(w, status, map[string]any{"error": err.Error()})
 			return
 		}
 		rec, _ = s.meta.GetBucket(name)

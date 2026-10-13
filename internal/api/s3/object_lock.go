@@ -39,6 +39,10 @@ func (h *Handler) putBucketObjectLock(w http.ResponseWriter, r *http.Request, bu
 	if !h.authorize(w, r, creds, bucket, "", "s3:PutBucketObjectLockConfiguration") {
 		return
 	}
+	if !h.Svc.CallerIsBucketAdmin(creds.AccessKey, bucket) {
+		writeError(w, r, http.StatusForbidden, "AccessDenied", "bucket admin required")
+		return
+	}
 	var cfg ObjectLockConfiguration
 	if err := xml.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		writeError(w, r, http.StatusBadRequest, "MalformedXML", "invalid xml")
@@ -87,6 +91,10 @@ func (h *Handler) putObjectRetention(w http.ResponseWriter, r *http.Request, buc
 	var body ObjectLockRetention
 	if err := xml.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, r, http.StatusBadRequest, "MalformedXML", "invalid xml")
+		return
+	}
+	if strings.EqualFold(body.Mode, "COMPLIANCE") && !h.Svc.CallerIsBucketAdmin(creds.AccessKey, bucket) {
+		writeError(w, r, http.StatusForbidden, "AccessDenied", "bucket admin required")
 		return
 	}
 	sk, ok := h.storageBucket(w, r, creds, bucket)

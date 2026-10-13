@@ -22,9 +22,10 @@ type ShareInfo = {
   expires_at?: string;
   max_downloads: number;
   download_count: number;
+  password_required?: boolean;
 };
 
-type ShareErrorKind = "not_found" | "expired" | "limit_reached" | "generic";
+type ShareErrorKind = "not_found" | "expired" | "limit_reached" | "blocked" | "invalid_password" | "generic";
 
 type ShareError = {
   kind: ShareErrorKind;
@@ -43,8 +44,17 @@ function classifyShareError(
   if (status === 410 || lower.includes("expired")) {
     return { kind: "expired", message: t("error.expired") };
   }
+  if (status === 403 && (lower.includes("sharing_disabled") || lower.includes("disabled") || lower.includes("отключ"))) {
+    return { kind: "blocked", message: t("error.blocked") };
+  }
   if (status === 403 && (lower.includes("limit") || lower.includes("download"))) {
     return { kind: "limit_reached", message: t("error.limitReached") };
+  }
+  if (lower.includes("invalid_password")) {
+    return { kind: "invalid_password", message: t("error.invalidPassword") };
+  }
+  if (status === 401 || lower.includes("password_required")) {
+    return { kind: "invalid_password", message: t("error.passwordRequired") };
   }
   return {
     kind: "generic",
@@ -52,8 +62,10 @@ function classifyShareError(
   };
 }
 
-async function fetchShareInfo(token: string, t: (key: string) => string): Promise<ShareInfo> {
-  const res = await fetch(`/api/v1/public/share/${encodeURIComponent(token)}`);
+async function fetchShareInfo(token: string, t: (key: string) => string, password?: string): Promise<ShareInfo> {
+  const headers: Record<string, string> = {};
+  if (password) headers["X-DataSafe-Share-Password"] = password;
+  const res = await fetch(`/api/v1/public/share/${encodeURIComponent(token)}`, { headers });
   const text = await res.text();
   let message = text || res.statusText;
   try {
@@ -89,6 +101,8 @@ export function PublicSharePage() {
   const [error, setError] = useState<ShareError | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [passwordRequired, setPasswordRequired] = useState(false);
+  const [password, setPassword] = useState("");
 
   useEffect(() => {
     if (!token) {
@@ -101,7 +115,14 @@ export function PublicSharePage() {
     setError(null);
     fetchShareInfo(token, t)
       .then((data) => {
-        if (!cancelled) setInfo(data);
+        if (cancelled) return;
+        if (data.password_required && !data.filename) {
+          setPasswordRequired(true);
+          setInfo(null);
+          return;
+        }
+        setPasswordRequired(false);
+        setInfo(data);
       })
       .catch((err: ShareError) => {
         if (!cancelled) setError(err);
@@ -114,26 +135,60 @@ export function PublicSharePage() {
     };
   }, [token, t]);
 
-  const downloadUrl = token
-    ? `/api/v1/public/share/${encodeURIComponent(token)}/download`
-    : "#";
+  const unlock = useCallback(async () => {
+    if (!token) return;
+    setError(null);
+    try {
+      const data = await fetchShareInfo(token, t, password);
+      if (data.password_required && !data.filename) {
+        setError({ kind: "generic", message: t("error.invalidPassword") });
+        return;
+      }
+      setPasswordRequired(false);
+      setInfo(data);
+    } catch (err) {
+      setError(err as ShareError);
+    }
+  }, [password, t, token]);
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     if (!token) return;
     setDownloading(true);
-    const anchor = document.createElement("a");
-    anchor.href = downloadUrl;
-    anchor.download = info?.filename ?? "";
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => setDownloading(false), 1500);
-  }, [downloadUrl, info?.filename, token]);
+    try {
+      const headers: Record<string, string> = {};
+      if (password) headers["X-DataSafe-Share-Password"] = password;
+      const res = await fetch(`/api/v1/public/share/${encodeURIComponent(token)}/download`, { headers });
+      if (!res.ok) {
+        const text = await res.text();
+        let message = text;
+        try {
+          const json = JSON.parse(text) as { error?: string };
+          if (json.error) message = json.error;
+        } catch {
+          /* raw */
+        }
+        setError(classifyShareError(res.status, message, t));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = info?.filename ?? "download";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      window.setTimeout(() => setDownloading(false), 400);
+    }
+  }, [info?.filename, password, t, token]);
 
   const downloadsRemaining =
     info && info.max_downloads > 0
       ? Math.max(0, info.max_downloads - info.download_count)
       : null;
+  const showPasswordForm = !loading && passwordRequired && !info;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -149,14 +204,24 @@ export function PublicSharePage() {
             )}
           </div>
           <CardTitle className="text-2xl">
-            {loading ? t("brand") : error ? t("title.shared") : info?.filename ?? t("brand")}
+            {loading
+              ? t("brand")
+              : showPasswordForm
+                ? t("brand")
+                : error
+                  ? t("title.shared")
+                  : info?.filename ?? t("brand")}
           </CardTitle>
           <CardDescription>
             {loading
               ? t("loading")
-              : error
-                ? error.message
-                : t("ready")}
+              : showPasswordForm && error?.kind === "invalid_password"
+                ? t("error.invalidPassword")
+                : showPasswordForm
+                  ? t("hint.password")
+                  : error
+                    ? error.message
+                    : t("ready")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -166,12 +231,29 @@ export function PublicSharePage() {
             </div>
           )}
 
-          {!loading && error && (
+          {!loading && error && error.kind !== "invalid_password" && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-center text-sm text-muted-foreground">
               {error.kind === "limit_reached" && <p>{t("hint.limitReached")}</p>}
               {error.kind === "expired" && <p>{t("hint.expired")}</p>}
               {error.kind === "not_found" && <p>{t("hint.notFound")}</p>}
               {error.kind === "generic" && <p>{t("hint.generic")}</p>}
+              {error.kind === "blocked" && <p>{t("hint.blocked")}</p>}
+            </div>
+          )}
+
+          {!loading && passwordRequired && !info && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">{t("hint.password")}</p>
+              <input
+                type="password"
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+              <Button className="w-full" onClick={() => void unlock()}>
+                {t("download")}
+              </Button>
             </div>
           )}
 

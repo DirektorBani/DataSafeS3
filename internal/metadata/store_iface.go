@@ -245,6 +245,11 @@ type MetadataStore interface {
 	ListDueSiteReplicationTasks(limit int, now time.Time) ([]SiteReplicationTask, error)
 	SiteReplicationStatus() (SiteReplicationStatus, error)
 
+	// Sharing policies (global, tenant, bucket). scope_id is empty for global.
+	PutSharingPolicy(rec SharingPolicy) error
+	GetSharingPolicy(scope, scopeID string) (SharingPolicy, error)
+	TouchSharePasswordFailure(id string, failures int, at *time.Time) error
+
 	// Field encryption KEK registry
 	ListEncryptionKeys(ctx context.Context) ([]EncryptionKeyRecord, error)
 	GetEncryptionKey(ctx context.Context, kekID string) (EncryptionKeyRecord, error)

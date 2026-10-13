@@ -18,16 +18,20 @@ var (
 )
 
 type SharedLinkRecord struct {
-	ID            string     `json:"id"`
-	Bucket        string     `json:"bucket"`
-	Key           string     `json:"key"`
-	Token         string     `json:"token,omitempty"`
-	TokenHash     string     `json:"token_hash,omitempty"`
-	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
-	MaxDownloads  int        `json:"max_downloads"`
-	DownloadCount int        `json:"download_count"`
-	CreatedBy     string     `json:"created_by"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID                string     `json:"id"`
+	Bucket            string     `json:"bucket"`
+	Key               string     `json:"key"`
+	Token             string     `json:"token,omitempty"`
+	TokenHash         string     `json:"token_hash,omitempty"`
+	ExpiresAt         *time.Time `json:"expires_at,omitempty"`
+	MaxDownloads      int        `json:"max_downloads"`
+	DownloadCount     int        `json:"download_count"`
+	CreatedBy         string     `json:"created_by"`
+	CreatedAt         time.Time  `json:"created_at"`
+	PasswordHash      string     `json:"password_hash,omitempty"`
+	BlockedReason     string     `json:"blocked_reason,omitempty"`
+	PasswordFailures  int        `json:"password_failures,omitempty"`
+	PasswordFailureAt *time.Time `json:"password_failure_at,omitempty"`
 }
 
 func HashShareToken(token string) string {

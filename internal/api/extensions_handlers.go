@@ -94,7 +94,7 @@ func (s *Server) handleRestoreTrash(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 		return
 	}
-	if !s.canAccessBucket(info, tr.OriginalBucket) {
+	if !s.canWriteBucket(info, tr.OriginalBucket) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}
@@ -117,7 +117,8 @@ func (s *Server) handlePurgeTrash(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 		return
 	}
-	if !s.canAccessBucket(info, tr.OriginalBucket) {
+	brec, berr := s.bucketByStoredName(tr.OriginalBucket)
+	if berr != nil || !s.isBucketAdmin(info, brec) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}

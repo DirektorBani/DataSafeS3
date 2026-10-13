@@ -14,6 +14,7 @@ type bucketAccessGrantView struct {
 	Prefix   string `json:"prefix,omitempty"`
 	CanRead  bool   `json:"can_read"`
 	CanWrite bool   `json:"can_write"`
+	Level    string `json:"level,omitempty"`
 }
 
 type bucketAccessInfo struct {
@@ -29,6 +30,9 @@ func (s *Server) canManageBucketGrants(info auth.TokenInfo, rec metadata.BucketR
 		return true
 	}
 	if rec.OwnerID == info.UserID || (rec.Owner != "" && rec.Owner == info.Username) {
+		return true
+	}
+	if auth.GrantIsAdmin(s.grantsForRBAC(s.bucketGrantsFor(rec)), info.UserID) {
 		return true
 	}
 	tid := rec.EffectiveTenantID()
@@ -109,7 +113,7 @@ func (s *Server) listBucketAccessGrants(rec metadata.BucketRecord) ([]bucketAcce
 	}
 	out := make([]bucketAccessGrantView, 0, len(grants))
 	for _, g := range grants {
-		item := bucketAccessGrantView{UserID: g.UserID, CanRead: g.CanRead, CanWrite: g.CanWrite}
+		item := bucketAccessGrantView{UserID: g.UserID, CanRead: g.CanRead, CanWrite: g.CanWrite, Level: g.Level}
 		if u, uerr := s.meta.GetUser(g.UserID); uerr == nil {
 			item.Username = u.Username
 		}

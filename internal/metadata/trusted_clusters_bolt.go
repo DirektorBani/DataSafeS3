@@ -161,7 +161,7 @@ func (s *Store) ListClusterCertificates(clusterID string) ([]ClusterCertificate,
 			if err := json.Unmarshal(v, &rec); err != nil {
 				return err
 			}
-			if rec.ClusterID == clusterID {
+			if clusterID == "" || rec.ClusterID == clusterID {
 				out = append(out, rec)
 			}
 			return nil

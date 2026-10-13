@@ -203,8 +203,12 @@ func (s *Server) handleClusterRotate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "failed to sign CSR"})
 		return
 	}
+	peerID := clusterPeerID(r)
+	if peerID == "" {
+		peerID = id
+	}
 	_ = s.meta.PutClusterCertificate(metadata.ClusterCertificate{
-		Serial: serial, ClusterID: id, Role: metadata.ClusterCertRoleClient,
+		Serial: serial, ClusterID: peerID, Role: metadata.ClusterCertRoleClient,
 		NotBefore: nb, NotAfter: na,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -225,6 +229,7 @@ func (s *Server) notifyPeerClusterRevoke(ctx context.Context, rec metadata.Trust
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	s.signClusterPeerRequest(req, rec.ID, payload)
 	resp, err := s.clusterPeerHTTPClient(ctx, rec.ID, rec.Endpoint).Do(req)
 	if err != nil {
 		return
@@ -244,6 +249,7 @@ func (s *Server) requestPeerClusterCertRotation(ctx context.Context, rec metadat
 		return nil, "", time.Time{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	s.signClusterPeerRequest(req, rec.ID, payload)
 	resp, err := s.clusterPeerHTTPClient(ctx, rec.ID, rec.Endpoint).Do(req)
 	if err != nil {
 		return nil, "", time.Time{}, err

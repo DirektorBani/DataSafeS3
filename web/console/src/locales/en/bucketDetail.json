@@ -50,7 +50,8 @@
     "share": "Share",
     "access": "Access",
     "lifecycle": "Lifecycle",
-    "trash": "Trash"
+    "trash": "Trash",
+    "sharing": "File sharing"
   },
   "pin": {
     "pinned": "Pinned",
@@ -125,6 +126,7 @@
     "save": "Save access",
     "read": "Read",
     "write": "Write",
+    "admin": "Administrator",
     "loadError": "Unable to load access rules.",
     "folderTitle": "Folder sharing",
     "folderDescription": "Grant access to a folder prefix inside this bucket (e.g. reports/).",
@@ -167,6 +169,7 @@
     "expiration": "Expiration",
     "customSeconds": "Custom (seconds)",
     "maxDownloads": "Max downloads (0 = unlimited)",
+    "password": "Password (optional)",
     "downloadsRemaining": "{{remaining}} of {{max}} downloads remaining",
     "url": "URL",
     "createLink": "Create link"

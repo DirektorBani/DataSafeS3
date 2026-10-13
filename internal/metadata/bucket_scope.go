@@ -18,12 +18,39 @@ type BucketScope struct {
 	OwnerID  string
 }
 
+const (
+	GrantLevelRead  = "read"
+	GrantLevelWrite = "write"
+	GrantLevelAdmin = "admin"
+)
+
 // BucketAccessGrant is an explicit per-user permission on a tenant bucket.
+// Level is the 1.6 authority (read, write, admin). can_read and can_write stay
+// populated so a 1.5.0 rollback still sees the same flags.
 type BucketAccessGrant struct {
 	BucketKey string `json:"bucket_key"`
 	UserID    string `json:"user_id"`
 	CanRead   bool   `json:"can_read"`
 	CanWrite  bool   `json:"can_write"`
+	Level     string `json:"level,omitempty"`
+}
+
+// NormalizeGrantLevel fills Level from flags and flags from Level.
+func NormalizeGrantLevel(g *BucketAccessGrant) {
+	switch g.Level {
+	case GrantLevelAdmin:
+		g.CanRead, g.CanWrite = true, true
+	case GrantLevelWrite:
+		g.CanRead, g.CanWrite = true, true
+	case GrantLevelRead:
+		g.CanRead, g.CanWrite = true, false
+	default:
+		if g.CanWrite {
+			g.Level = GrantLevelWrite
+		} else if g.CanRead {
+			g.Level = GrantLevelRead
+		}
+	}
 }
 
 // BucketPrefixAccessGrant limits access to objects under a prefix within a bucket.

@@ -116,6 +116,7 @@ func (s *Store) init() error {
 			"config", "trash", "api_tokens", "webhooks", "favorites", "webhook_deliveries",
 			"user_notifications", "recent_items",
 			"event_outbox", "event_outbox_due",
+			"sharing_policies",
 		} {
 			if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
 				return err

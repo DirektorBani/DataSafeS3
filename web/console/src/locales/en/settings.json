@@ -127,5 +127,43 @@
       "nats": "NATS",
       "webhook": "Webhooks"
     }
+  },
+  "sharing": {
+    "title": "Access security",
+    "description": "Public access, share links, and presigned URLs. A lower level can only make these rules stricter.",
+    "loading": "Loading sharing policy…",
+    "loadError": "Could not load the sharing policy.",
+    "publicAccess": "Block public access",
+    "publicAccessHint": "Anonymous downloads and public-read buckets stop working. Existing flags stay, but files are not served.",
+    "shareLinks": "Allow share links",
+    "shareLinksHint": "People with a link can download a file. Turning this off blocks existing links until you turn it back on.",
+    "presign": "Allow presigned links",
+    "presignHint": "A signed URL lets someone upload or download without logging in, until it expires.",
+    "passwordRequired": "Require a password on share links",
+    "passwordHint": "A new link cannot be created without a password.",
+    "maxShareTtl": "Maximum share link lifetime (seconds)",
+    "maxPresignTtl": "Maximum presigned URL lifetime (seconds)",
+    "ttlPlaceholder": "empty = inherit, -1 = no share limit",
+    "ttlHint": "Leave empty to inherit. -1 removes the share limit only when an administrator above has not set one. Default is 7 days.",
+    "presignTtlHint": "Cannot be longer than 7 days.",
+    "save": "Save sharing policy",
+    "saved": "Sharing policy saved",
+    "revokeAll": "Revoke all links",
+    "revoked": "Revoked {{count}} links",
+    "disableTitle": "Turn off file sharing?",
+    "disableBody": "Existing links will stop working while sharing is off. To delete them, use “Revoke all links”.",
+    "disableConfirm": "Turn off",
+    "cancel": "Cancel",
+    "on": "on",
+    "off": "off",
+    "unlimited": "no limit",
+    "effective": "Effective now: public access blocked {{publicAccess}}, share links {{links}}, max share lifetime {{ttl}}.",
+    "limitedBy": "Set by the {{scope}} policy.",
+    "scope": {
+      "global": "global",
+      "tenant": "tenant",
+      "bucket": "bucket"
+    },
+    "operatorBanner": "Legacy operator write mode is enabled (STORAGE_OPERATOR_WRITE_ALL). It will be removed in 1.7.0."
   }
 }

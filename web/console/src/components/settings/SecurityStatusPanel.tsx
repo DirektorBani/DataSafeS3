@@ -26,6 +26,12 @@ export function SecurityStatusPanel() {
         {isError && <p className="text-sm text-destructive">{t("security.loadError")}</p>}
         {!isLoading && !isError && data && (
           <>
+            {data.operator_write_all && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <p>{t("sharing.operatorBanner")}</p>
+              </div>
+            )}
             {hasWeak ? (
               <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />

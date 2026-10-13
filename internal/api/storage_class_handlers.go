@@ -15,7 +15,7 @@ func (s *Server) handleTransitionStorageClass(w http.ResponseWriter, r *http.Req
 	}
 	bucket := r.PathValue("bucket")
 	info, _ := authFrom(r)
-	if !s.canAccessBucket(info, bucket) {
+	if !s.canWriteBucket(info, bucket) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}

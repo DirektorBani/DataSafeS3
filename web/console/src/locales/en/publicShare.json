@@ -3,7 +3,10 @@
     "notFound": "Link not found",
     "expired": "Link expired",
     "limitReached": "Download limit reached",
-    "generic": "Could not open share link"
+    "generic": "Could not open share link",
+    "blocked": "File sharing for this bucket is disabled by an administrator",
+    "passwordRequired": "This link is protected by a password",
+    "invalidPassword": "Wrong password"
   },
   "brand": "DataSafeS3",
   "title": {
@@ -15,7 +18,9 @@
     "limitReached": "The link owner has limited the number of downloads.",
     "expired": "Request a new link from the sender.",
     "notFound": "Check the address or contact the sender.",
-    "generic": "Try again later or contact the sender."
+    "generic": "Try again later or contact the sender.",
+    "blocked": "Ask the bucket administrator to turn sharing back on.",
+    "password": "Enter the password to download the file."
   },
   "fields": {
     "size": "Size",

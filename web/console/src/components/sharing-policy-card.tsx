@@ -1,0 +1,238 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { api, type SharingPolicy } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+type Scope = "global" | "tenant" | "bucket";
+
+function numOrEmpty(v: number | null | undefined): string {
+  if (v === undefined || v === null) return "";
+  return String(v);
+}
+
+export function SharingPolicyCard({
+  scope,
+  scopeId = "",
+  canEdit,
+}: {
+  scope: Scope;
+  scopeId?: string;
+  canEdit: boolean;
+}) {
+  const { t } = useTranslation("settings");
+  const queryClient = useQueryClient();
+  const queryKey = ["sharing", scope, scopeId];
+  const sharing = useQuery({
+    queryKey,
+    queryFn: () => {
+      if (scope === "global") return api.getGlobalSharing();
+      if (scope === "tenant") return api.getTenantSharing(scopeId);
+      return api.getBucketSharing(scopeId);
+    },
+  });
+  const policy = sharing.data?.policy;
+  const effective = sharing.data?.effective;
+  const locked = new Set(sharing.data?.locked ?? []);
+
+  const [draft, setDraft] = useState<SharingPolicy | null>(null);
+  const [confirmOff, setConfirmOff] = useState(false);
+  const current = draft ?? policy ?? {};
+
+  const save = useMutation({
+    mutationFn: (body: SharingPolicy) => {
+      if (scope === "global") return api.putGlobalSharing(body);
+      if (scope === "tenant") return api.putTenantSharing(scopeId, body);
+      return api.putBucketSharing(scopeId, body);
+    },
+    onSuccess: () => {
+      setDraft(null);
+      queryClient.invalidateQueries({ queryKey });
+      toast.success(t("sharing.saved"));
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const revokeAll = useMutation({
+    mutationFn: () => api.revokeAllShares(scopeId),
+    onSuccess: (res) => toast.success(t("sharing.revoked", { count: res.revoked })),
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const setBool = (key: keyof SharingPolicy, value: boolean) => {
+    if (key === "share_links_allowed" && value === false && current.share_links_allowed !== false) {
+      setConfirmOff(true);
+      return;
+    }
+    setDraft({ ...current, [key]: value });
+  };
+
+  const by = (field: string | undefined) =>
+    field ? t("sharing.limitedBy", { scope: t(`sharing.scope.${field}`, field) }) : "";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t("sharing.title")}</CardTitle>
+        <CardDescription>{t("sharing.description")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {sharing.isLoading && <p className="text-sm text-muted-foreground">{t("sharing.loading")}</p>}
+        {sharing.isError && <p className="text-sm text-destructive">{t("sharing.loadError")}</p>}
+        {effective && (
+          <p className="text-sm text-muted-foreground">
+            {t("sharing.effective", {
+              publicAccess: effective.public_access_blocked ? t("sharing.on") : t("sharing.off"),
+              links: effective.share_links_allowed ? t("sharing.on") : t("sharing.off"),
+              ttl: effective.max_share_ttl_sec > 0 ? effective.max_share_ttl_sec : t("sharing.unlimited"),
+            })}
+          </p>
+        )}
+        <Toggle
+          label={t("sharing.publicAccess")}
+          hint={t("sharing.publicAccessHint")}
+          extra={by(effective?.public_access_blocked_by)}
+          checked={!!current.public_access_blocked}
+          disabled={!canEdit || locked.has("public_access_blocked")}
+          onChange={(v) => setBool("public_access_blocked", v)}
+        />
+        <Toggle
+          label={t("sharing.shareLinks")}
+          hint={t("sharing.shareLinksHint")}
+          extra={by(effective?.share_links_blocked_by)}
+          checked={current.share_links_allowed !== false}
+          disabled={!canEdit || locked.has("share_links_allowed")}
+          onChange={(v) => setBool("share_links_allowed", v)}
+        />
+        <Toggle
+          label={t("sharing.presign")}
+          hint={t("sharing.presignHint")}
+          extra={by(effective?.presign_blocked_by)}
+          checked={current.presign_allowed !== false}
+          disabled={!canEdit || locked.has("presign_allowed")}
+          onChange={(v) => setBool("presign_allowed", v)}
+        />
+        <Toggle
+          label={t("sharing.passwordRequired")}
+          hint={t("sharing.passwordHint")}
+          extra={by(effective?.password_required_by)}
+          checked={!!current.share_password_required}
+          disabled={!canEdit || locked.has("share_password_required")}
+          onChange={(v) => setBool("share_password_required", v)}
+        />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label>{t("sharing.maxShareTtl")}</Label>
+            <Input
+              type="number"
+              disabled={!canEdit}
+              value={numOrEmpty(current.max_share_ttl_sec)}
+              placeholder={t("sharing.ttlPlaceholder")}
+              onChange={(e) =>
+                setDraft({
+                  ...current,
+                  max_share_ttl_sec: e.target.value === "" ? null : Number(e.target.value),
+                })
+              }
+            />
+            <p className="text-xs text-muted-foreground">{t("sharing.ttlHint")}</p>
+          </div>
+          <div className="space-y-1">
+            <Label>{t("sharing.maxPresignTtl")}</Label>
+            <Input
+              type="number"
+              disabled={!canEdit}
+              value={numOrEmpty(current.max_presign_ttl_sec)}
+              placeholder={t("sharing.ttlPlaceholder")}
+              onChange={(e) =>
+                setDraft({
+                  ...current,
+                  max_presign_ttl_sec: e.target.value === "" ? null : Number(e.target.value),
+                })
+              }
+            />
+            <p className="text-xs text-muted-foreground">{t("sharing.presignTtlHint")}</p>
+          </div>
+        </div>
+        {canEdit && (
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" disabled={!draft || save.isPending} onClick={() => draft && save.mutate(draft)}>
+              {t("sharing.save")}
+            </Button>
+            {scope === "bucket" && (
+              <Button size="sm" variant="outline" disabled={revokeAll.isPending} onClick={() => revokeAll.mutate()}>
+                {t("sharing.revokeAll")}
+              </Button>
+            )}
+          </div>
+        )}
+      </CardContent>
+      <Dialog open={confirmOff} onOpenChange={setConfirmOff}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("sharing.disableTitle")}</DialogTitle>
+            <DialogDescription>{t("sharing.disableBody")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOff(false)}>
+              {t("sharing.cancel")}
+            </Button>
+            <Button
+              onClick={() => {
+                setDraft({ ...current, share_links_allowed: false });
+                setConfirmOff(false);
+              }}
+            >
+              {t("sharing.disableConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
+
+function Toggle({
+  label,
+  hint,
+  extra,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  extra?: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex items-start gap-3 text-sm">
+      <input
+        type="checkbox"
+        className="mt-1"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span>
+        <span className="font-medium">{label}</span>
+        <span className="block text-xs text-muted-foreground">{hint}</span>
+        {extra ? <span className="block text-xs text-muted-foreground">{extra}</span> : null}
+      </span>
+    </label>
+  );
+}

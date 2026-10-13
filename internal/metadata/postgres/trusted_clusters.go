@@ -123,9 +123,17 @@ func (s *Store) PutClusterCertificate(rec metadata.ClusterCertificate) error {
 }
 
 func (s *Store) ListClusterCertificates(clusterID string) ([]metadata.ClusterCertificate, error) {
-	rows, err := s.pool.Query(context.Background(), `
+	q := `
 		SELECT serial, cluster_id, role, not_before, not_after, revoked_at
-		FROM cluster_certificates WHERE cluster_id=$1 ORDER BY not_before DESC`, clusterID)
+		FROM cluster_certificates ORDER BY not_before DESC`
+	args := []any{}
+	if clusterID != "" {
+		q = `
+		SELECT serial, cluster_id, role, not_before, not_after, revoked_at
+		FROM cluster_certificates WHERE cluster_id=$1 ORDER BY not_before DESC`
+		args = append(args, clusterID)
+	}
+	rows, err := s.pool.Query(context.Background(), q, args...)
 	if err != nil {
 		return nil, err
 	}
