@@ -72,7 +72,7 @@ export function AdministratorSettingsPage() {
             disabled={saveSystemMutation.isPending}
           >
             <Save className="h-4 w-4" />
-            Save
+            {t("system.save")}
           </Button>
         }
       />

@@ -249,6 +249,10 @@ type MetadataStore interface {
 	PutSharingPolicy(rec SharingPolicy) error
 	GetSharingPolicy(scope, scopeID string) (SharingPolicy, error)
 	TouchSharePasswordFailure(id string, failures int, at *time.Time) error
+	// ClaimShareTerminalEvent marks a share link so ShareExpired or
+	// ShareLimitReached is emitted once. kind is "expired" or "limit".
+	// The bool is true only for the caller that won the claim.
+	ClaimShareTerminalEvent(id, kind string, at time.Time) (bool, error)
 
 	// Field encryption KEK registry
 	ListEncryptionKeys(ctx context.Context) ([]EncryptionKeyRecord, error)

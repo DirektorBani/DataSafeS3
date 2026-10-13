@@ -19,6 +19,17 @@ STS `AssumeRole` rejects a non-empty `RoleArn`. The session inherits the caller'
 
 `POST /api/v1/clusters/{id}/rotate` and `/revoke-notify` require a client certificate this cluster issued to an active trusted peer (TLS client certificate, or `X-DataSafe-Cluster-Cert` plus `X-DataSafe-Cluster-Sig` on plain HTTP). A request without that proof is `401`.
 
+## Cluster writes
+
+Sharing and security changes are ordinary writes. With `STORAGE_HA_ENABLED=true` and Postgres metadata, a follower returns **503** `not cluster leader` and `Retry-After: 30`, the same rule as since v1.1. Send the write to the leader or to a load balancer that routes writes to the leader. This covers:
+
+- `PUT /api/v1/settings/sharing`, `PUT /api/v1/tenants/{id}/sharing`, `PUT /api/v1/buckets/{bucket}/sharing`
+- `POST /api/v1/buckets/{bucket}/shares` and `POST .../shares/revoke-all`
+- `DELETE /api/v1/shares/{id}`
+- presign, which creates a temporary access key
+
+`GET /api/v1/public/share/{token}` and its download stay available on a follower. The first rejected request after the link expires, or after `max_downloads` is used up, emits `ShareExpired` or `ShareLimitReached` once (one Activity row, `share.expired` or `share.limit_reached`, and one outbox row). Later rejects of that link do not emit again. `ShareBlocked` is emitted on every download attempted while sharing is off. A follower still writes that outbox row when a webhook matches, even if this process has not registered the sink; the leader delivers it.
+
 <!-- access-matrix:begin -->
 | Action | Global admin | Operator | Tenant admin | Bucket admin | Write | Read | Anonymous |
 | --- | --- | --- | --- | --- | --- | --- | --- |

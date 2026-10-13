@@ -10,6 +10,8 @@ The lab layout and ports are in the [2-node reference](reference-deployment-2nod
 
 With `STORAGE_HA_ENABLED=true` and the Postgres metadata backend, a follower rejects writes with **503** and body `not cluster leader` (`Retry-After: 30`). `GET`, `HEAD`, and `OPTIONS` still succeed, as do `/healthz`, `/metrics`, and `/api/v1/health`.
 
+The same 503 applies to v1.6 sharing and access-security writes: global, tenant, and bucket sharing policy, creating and revoking share links, and presign. Public share GET and download stay on followers. See [Access model](access-model.md).
+
 `GET /healthz` includes `ha_enabled`, `is_leader`, `node_id`, `version`, and `commit`.
 
 The event dispatcher runs only on the leader. Followers update the pending gauge and leave rows alone.

@@ -23,6 +23,14 @@ function numOrEmpty(v: number | null | undefined): string {
   return String(v);
 }
 
+function formatPolicyTTL(seconds: number, t: (key: string, opts?: { count: number }) => string): string {
+  if (!seconds || seconds <= 0) return t("sharing.unlimited");
+  if (seconds % 86400 === 0) return t("sharing.ttlDays", { count: seconds / 86400 });
+  if (seconds % 3600 === 0) return t("sharing.ttlHours", { count: seconds / 3600 });
+  if (seconds % 60 === 0) return t("sharing.ttlMinutes", { count: seconds / 60 });
+  return t("sharing.ttlSeconds", { count: seconds });
+}
+
 export function SharingPolicyCard({
   scope,
   scopeId = "",
@@ -94,9 +102,9 @@ export function SharingPolicyCard({
         {effective && (
           <p className="text-sm text-muted-foreground">
             {t("sharing.effective", {
-              publicAccess: effective.public_access_blocked ? t("sharing.on") : t("sharing.off"),
-              links: effective.share_links_allowed ? t("sharing.on") : t("sharing.off"),
-              ttl: effective.max_share_ttl_sec > 0 ? effective.max_share_ttl_sec : t("sharing.unlimited"),
+              publicAccess: effective.public_access_blocked ? t("sharing.publicBlocked") : t("sharing.publicAllowed"),
+              links: effective.share_links_allowed ? t("sharing.linksOn") : t("sharing.linksOff"),
+              ttl: formatPolicyTTL(effective.max_share_ttl_sec, t),
             })}
           </p>
         )}

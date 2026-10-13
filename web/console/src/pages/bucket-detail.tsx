@@ -744,7 +744,7 @@ export function BucketDetailPage() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2"><Info className="h-4 w-4" /> Metadata</CardTitle>
+                <CardTitle className="text-sm flex items-center gap-2"><Info className="h-4 w-4" /> {t("bucketDetail:metadata.title")}</CardTitle>
               </CardHeader>
               <CardContent className="text-sm space-y-2">
                 {detailObject && metaDraft ? (

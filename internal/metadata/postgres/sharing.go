@@ -52,3 +52,21 @@ func (s *Store) TouchSharePasswordFailure(id string, failures int, at *time.Time
 	}
 	return nil
 }
+
+func (s *Store) ClaimShareTerminalEvent(id, kind string, at time.Time) (bool, error) {
+	column := ""
+	switch kind {
+	case "limit":
+		column = "limit_event_at"
+	case "expired":
+		column = "expired_event_at"
+	default:
+		return false, errors.New("unknown share terminal event")
+	}
+	tag, err := s.pool.Exec(context.Background(), `
+		UPDATE shared_links SET `+column+` = $2 WHERE id = $1 AND `+column+` IS NULL`, id, at)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}

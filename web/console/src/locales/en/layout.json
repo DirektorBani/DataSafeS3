@@ -1,6 +1,7 @@
 {
   "securityBanner": {
     "message": "Default secrets detected ({{vars}}). Rotate before production use.",
+    "operatorWriteAll": "Legacy operator write mode is enabled and will be removed in 1.7.0.",
     "learnMore": "Security hardening guide"
   },
   "mfaSetupBanner": {

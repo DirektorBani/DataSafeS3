@@ -243,23 +243,22 @@ func (s *Server) handlePublicShareDownload(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, status, errBody)
 		return
 	}
-	brec, _ := s.bucketByStoredName(link.Bucket)
 	if _, err := s.meta.IncrementSharedLinkDownload(link.ID); err != nil {
-		if errors.Is(err, metadata.ErrShareExpired) {
-			s.logActivityAs("public", clientIP(r), metadata.ActionShareExpired, "share", link.Key)
-			s.publishShareEvent(r, "ShareExpired", brec, link, "anonymous")
-			writeJSON(w, http.StatusGone, map[string]any{"error": "link expired"})
-			return
-		}
-		if errors.Is(err, metadata.ErrShareLimitReached) {
-			s.logActivityAs("public", clientIP(r), metadata.ActionShareLimitReached, "share", link.Key)
-			s.publishShareEvent(r, "ShareLimitReached", brec, link, "anonymous")
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "download limit reached"})
+		if errors.Is(err, metadata.ErrShareExpired) || errors.Is(err, metadata.ErrShareLimitReached) {
+			s.noteShareTerminal(r, link, err)
+			status := http.StatusForbidden
+			msg := "download limit reached"
+			if errors.Is(err, metadata.ErrShareExpired) {
+				status = http.StatusGone
+				msg = "link expired"
+			}
+			writeJSON(w, status, map[string]any{"error": msg})
 			return
 		}
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	brec, _ := s.bucketByStoredName(link.Bucket)
 	rc, rec, err := s.svc.GetObject(r.Context(), link.Bucket, link.Key, "")
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "object not found"})
@@ -294,6 +293,9 @@ func (s *Server) resolveActivePublicShare(r *http.Request, token string, require
 		}
 	}
 	if err := link.Active(time.Now().UTC()); err != nil {
+		// Active fails before IncrementSharedLinkDownload, so the event has
+		// to be claimed here. The first rejection emits once; later ones do not.
+		s.noteShareTerminal(r, link, err)
 		if errors.Is(err, metadata.ErrShareExpired) {
 			return link, http.StatusGone, map[string]any{"error": "link expired"}
 		}
@@ -303,6 +305,27 @@ func (s *Server) resolveActivePublicShare(r *http.Request, token string, require
 		return link, http.StatusUnauthorized, map[string]any{"error": "password_required"}
 	}
 	return link, 0, nil
+}
+
+// noteShareTerminal emits ShareExpired or ShareLimitReached and the matching
+// Activity row once per link. A repeated reject does not write another row.
+func (s *Server) noteShareTerminal(r *http.Request, link metadata.SharedLinkRecord, cause error) {
+	kind, action, eventType := "", "", ""
+	switch {
+	case errors.Is(cause, metadata.ErrShareExpired):
+		kind, action, eventType = "expired", metadata.ActionShareExpired, "ShareExpired"
+	case errors.Is(cause, metadata.ErrShareLimitReached):
+		kind, action, eventType = "limit", metadata.ActionShareLimitReached, "ShareLimitReached"
+	default:
+		return
+	}
+	claimed, err := s.meta.ClaimShareTerminalEvent(link.ID, kind, time.Now().UTC())
+	if err != nil || !claimed {
+		return
+	}
+	brec, _ := s.bucketByStoredName(link.Bucket)
+	s.logActivityAs("public", clientIP(r), action, "share", link.ID)
+	s.publishShareEvent(r, eventType, brec, link, "anonymous")
 }
 
 func (s *Server) sharePasswordOK(r *http.Request, link *metadata.SharedLinkRecord) bool {

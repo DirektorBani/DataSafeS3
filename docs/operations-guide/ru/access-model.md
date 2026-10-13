@@ -19,6 +19,17 @@ STS `AssumeRole` отклоняет непустой `RoleArn`. Сессия н�
 
 `POST /api/v1/clusters/{id}/rotate` и `/revoke-notify` требуют клиентский сертификат, который этот кластер выдал активному доверенному пиру (TLS-сертификат клиента или заголовки `X-DataSafe-Cluster-Cert` и `X-DataSafe-Cluster-Sig` на обычном HTTP). Запрос без этого доказательства — `401`.
 
+## Запись в кластере
+
+Изменения обмена и настроек безопасности — обычные записи. При `STORAGE_HA_ENABLED=true` и метаданных в Postgres follower отвечает **503** `not cluster leader` и `Retry-After: 30`, как с v1.1. Запись нужно отправлять на лидера или на балансировщик, который ведёт запись на лидера. Это относится к:
+
+- `PUT /api/v1/settings/sharing`, `PUT /api/v1/tenants/{id}/sharing`, `PUT /api/v1/buckets/{bucket}/sharing`
+- `POST /api/v1/buckets/{bucket}/shares` и `POST .../shares/revoke-all`
+- `DELETE /api/v1/shares/{id}`
+- presign, потому что он создаёт временный ключ доступа
+
+`GET /api/v1/public/share/{token}` и скачивание по ссылке на follower разрешены. Первый отказ после истечения ссылки или после исчерпания `max_downloads` порождает `ShareExpired` или `ShareLimitReached` ровно один раз (одна строка Activity `share.expired` или `share.limit_reached` и одна строка outbox). Следующие отказы той же ссылки событие не создают. `ShareBlocked` пишется на каждую попытку скачивания, пока обмен выключен. Follower кладёт эту строку в outbox, даже если локально sink webhook ещё не зарегистрирован; доставляет её лидер.
+
 <!-- access-matrix:begin -->
 | Action | Global admin | Operator | Tenant admin | Bucket admin | Write | Read | Anonymous |
 | --- | --- | --- | --- | --- | --- | --- | --- |

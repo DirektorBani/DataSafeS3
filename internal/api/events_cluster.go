@@ -96,6 +96,43 @@ func (s *Server) anyEnabledWebhook() bool {
 	return false
 }
 
+// eventSinksFor lists sinks that should receive this event.
+// A public share GET is allowed on a follower, which may not have registered
+// the webhook sink yet. The row is still written so the leader can deliver it.
+func (s *Server) eventSinksFor(eventType string) []string {
+	if s == nil || s.eventDisp == nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var names []string
+	add := func(name string) {
+		if name == "" || name == bucketWebhookSinkName {
+			return
+		}
+		if name == "webhook" && !s.webhookMatchesConfigured(eventType) {
+			return
+		}
+		if _, ok := seen[name]; ok {
+			return
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	for _, name := range s.eventDisp.SinkNames() {
+		add(name)
+	}
+	if s.webhookMatchesConfigured(eventType) {
+		add("webhook")
+	}
+	if natsURLConfigured() {
+		add("nats")
+	}
+	if kafkaBrokersConfigured() {
+		add("kafka")
+	}
+	return names
+}
+
 func (s *Server) webhookMatchesConfigured(eventType string) bool {
 	if s == nil || s.meta == nil {
 		return false
@@ -159,15 +196,7 @@ func (s *Server) outboxRecords(eventType, bucket, key, versionID, tenantID strin
 	}
 	now := time.Now().UTC()
 	attempts := map[string]events.SinkAttempt{}
-	for _, name := range s.eventDisp.SinkNames() {
-		// Per-bucket notification rows name this sink themselves. Copying it
-		// onto every event would deliver UserCreated to a bucket URL.
-		if name == bucketWebhookSinkName {
-			continue
-		}
-		if name == "webhook" && !s.webhookMatchesConfigured(eventType) {
-			continue
-		}
+	for _, name := range s.eventSinksFor(eventType) {
 		attempts[name] = events.SinkAttempt{Status: events.StatusPending, NextAttemptAt: now}
 	}
 	if len(attempts) == 0 {

@@ -32,6 +32,11 @@ type SharedLinkRecord struct {
 	BlockedReason     string     `json:"blocked_reason,omitempty"`
 	PasswordFailures  int        `json:"password_failures,omitempty"`
 	PasswordFailureAt *time.Time `json:"password_failure_at,omitempty"`
+	// LimitEventAt and ExpiredEventAt record that the terminal share event
+	// was already emitted. The first rejected public request claims the
+	// timestamp; later rejects of the same link do not emit again.
+	LimitEventAt   *time.Time `json:"limit_event_at,omitempty"`
+	ExpiredEventAt *time.Time `json:"expired_event_at,omitempty"`
 }
 
 func HashShareToken(token string) string {
@@ -204,4 +209,42 @@ func (s *Store) IncrementSharedLinkDownload(id string) (SharedLinkRecord, error)
 		return b.Put([]byte(id), updated)
 	})
 	return rec, err
+}
+
+// ClaimShareTerminalEvent sets limit_event_at or expired_event_at once.
+// A second claim for the same kind returns false.
+func (s *Store) ClaimShareTerminalEvent(id, kind string, at time.Time) (bool, error) {
+	claimed := false
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("shared_links"))
+		data := b.Get([]byte(id))
+		if data == nil {
+			return ErrNotFound
+		}
+		var rec SharedLinkRecord
+		if err := json.Unmarshal(data, &rec); err != nil {
+			return err
+		}
+		switch kind {
+		case "limit":
+			if rec.LimitEventAt != nil {
+				return nil
+			}
+			rec.LimitEventAt = &at
+		case "expired":
+			if rec.ExpiredEventAt != nil {
+				return nil
+			}
+			rec.ExpiredEventAt = &at
+		default:
+			return errors.New("unknown share terminal event")
+		}
+		claimed = true
+		updated, err := json.Marshal(rec)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(id), updated)
+	})
+	return claimed, err
 }

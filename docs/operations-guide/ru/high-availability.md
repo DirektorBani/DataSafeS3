@@ -10,6 +10,8 @@ Community Edition запускает несколько процессов stora
 
 При `STORAGE_HA_ENABLED=true` и метаданных в Postgres follower отвергает запись с **503** и телом `not cluster leader` (`Retry-After: 30`). `GET`, `HEAD` и `OPTIONS` проходят, как и `/healthz`, `/metrics` и `/api/v1/health`.
 
+Тот же 503 относится к записи обмена и безопасности доступа в 1.6: политика обмена (глобально, тенант, бакет), создание и отзыв ссылок, presign. Публичный GET ссылки и скачивание на follower остаются. См. [Модель доступа](access-model.md).
+
 `GET /healthz` содержит `ha_enabled`, `is_leader`, `node_id`, `version` и `commit`.
 
 Диспетчер событий работает только на лидере. Followers обновляют gauge очереди и строки не трогают.
