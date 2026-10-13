@@ -254,6 +254,17 @@ type MetadataStore interface {
 	// The bool is true only for the caller that won the claim.
 	ClaimShareTerminalEvent(id, kind string, at time.Time) (bool, error)
 
+	// MFA step-up tokens and replay guards. Shared by every cluster node.
+	PutMFAActionToken(rec MFAActionToken) error
+	ConsumeMFAActionToken(hash string, match MFATokenMatch, now time.Time) (MFAActionToken, error)
+	PurgeMFAActionTokens(now time.Time) error
+	ClaimTOTPStep(userID string, step int64) (bool, error)
+	ClaimMFADeniedSlot(userID, action string, now time.Time) (bool, error)
+	NoteMFAStepUpFailure(userID string, now time.Time) (MFAStepUpState, error)
+	MFAStepUpLocked(userID string, now time.Time) (MFAStepUpState, error)
+	ClearMFAStepUpFailures(userID string) error
+	ResetTOTPStep(userID string) error
+
 	// Field encryption KEK registry
 	ListEncryptionKeys(ctx context.Context) ([]EncryptionKeyRecord, error)
 	GetEncryptionKey(ctx context.Context, kekID string) (EncryptionKeyRecord, error)

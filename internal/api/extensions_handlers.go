@@ -53,6 +53,7 @@ func (s *Server) handlePutSystemConfig(w http.ResponseWriter, r *http.Request) {
 		cfg.InitialSetupCompleted = existing.InitialSetupCompleted
 		cfg.AdminFirstLoginCompleted = existing.AdminFirstLoginCompleted
 		cfg.AdminPasswordChanged = existing.AdminPasswordChanged
+		cfg.MFA = metadata.NormalizeMFA(cfg.MFA, existing.MFA)
 		if cfg.ExternalS3.Endpoint == "" && cfg.ExternalS3.Bucket == "" {
 			cfg.ExternalS3 = existing.ExternalS3
 		}
@@ -120,6 +121,9 @@ func (s *Server) handlePurgeTrash(w http.ResponseWriter, r *http.Request) {
 	brec, berr := s.bucketByStoredName(tr.OriginalBucket)
 	if berr != nil || !s.isBucketAdmin(info, brec) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+		return
+	}
+	if !s.allowDangerous(w, r, auth.ActionTrashPurge, tr.OriginalBucket) {
 		return
 	}
 	if err := s.svc.PurgeTrashItem(r.Context(), id); err != nil {

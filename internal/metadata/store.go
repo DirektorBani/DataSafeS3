@@ -51,6 +51,8 @@ type BucketRecord struct {
 	StorageClass        string            `json:"storage_class,omitempty"`
 	TenantID            string            `json:"tenant_id,omitempty"`
 	Visibility          string            `json:"visibility,omitempty"` // private, public-read
+	DefaultEncryption   string            `json:"default_encryption,omitempty"`
+	KMSMasterKeyID      string            `json:"kms_master_key_id,omitempty"`
 	MaxSizeBytes        int64             `json:"max_size_bytes,omitempty"`
 	MaxObjects          int64             `json:"max_objects,omitempty"`
 	Tags                map[string]string `json:"tags,omitempty"`
@@ -82,14 +84,15 @@ type MultipartRecord struct {
 }
 
 type AccessKeyRecord struct {
-	AccessKey    string     `json:"access_key"`
-	SecretKey    string     `json:"secret_key"`
-	SessionToken string     `json:"session_token,omitempty"`
-	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
-	Label        string     `json:"label"`
-	OwnerID      string     `json:"owner_id,omitempty"`
-	Owner        string     `json:"owner,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
+	AccessKey      string     `json:"access_key"`
+	SecretKey      string     `json:"secret_key"`
+	SessionToken   string     `json:"session_token,omitempty"`
+	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
+	Label          string     `json:"label"`
+	OwnerID        string     `json:"owner_id,omitempty"`
+	Owner          string     `json:"owner,omitempty"`
+	CreatedWithMFA bool       `json:"created_with_mfa,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 type Store struct {
@@ -117,6 +120,7 @@ func (s *Store) init() error {
 			"user_notifications", "recent_items",
 			"event_outbox", "event_outbox_due",
 			"sharing_policies",
+			"mfa_action_tokens", "mfa_denied_events", "mfa_stepup_failures",
 		} {
 			if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
 				return err

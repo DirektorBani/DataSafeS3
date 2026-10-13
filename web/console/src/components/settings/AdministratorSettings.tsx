@@ -234,8 +234,17 @@ export function AdministratorSettings({
               <input
                 type="checkbox"
                 className="h-4 w-4"
-                checked={draft.mfa?.require_admin_mfa ?? false}
-                onChange={(e) => onDraftChange({ ...draft, mfa: { require_admin_mfa: e.target.checked } })}
+                checked={Boolean(draft.mfa?.require_admin_mfa || draft.mfa?.apply_to_global_admins)}
+                onChange={(e) =>
+                  onDraftChange({
+                    ...draft,
+                    mfa: {
+                      ...draft.mfa,
+                      require_admin_mfa: e.target.checked,
+                      apply_to_global_admins: e.target.checked,
+                    },
+                  })
+                }
               />
               {t("adminSettings:mfa.requireAdmin")}
             </label>

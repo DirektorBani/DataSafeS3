@@ -175,6 +175,16 @@ func (s *Server) handleUpdateBucketSettings(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
 		return
 	}
+	compliance := req.RetentionMode != nil && strings.EqualFold(*req.RetentionMode, "COMPLIANCE")
+	if compliance || (req.RetentionDays != nil && strings.EqualFold(rec.RetentionMode, "COMPLIANCE")) {
+		if !s.allowDangerous(w, r, auth.ActionComplianceRetention, name) {
+			return
+		}
+	} else if req.ObjectLock != nil {
+		if !s.allowDangerous(w, r, auth.ActionObjectLockConfig, name) {
+			return
+		}
+	}
 	rec.Description = req.Description
 	lockChanged := false
 	versioningChanged := false

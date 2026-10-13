@@ -5,6 +5,8 @@ import { NotificationBell } from "@/components/notification-bell";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { SecurityBanner } from "@/components/security-banner";
 import { MfaSetupBanner } from "@/components/mfa-setup-banner";
+import { MfaPolicyBanner } from "@/components/mfa-policy-banner";
+import { StepUpDialog } from "@/components/step-up-dialog";
 
 export function AppLayout() {
   return (
@@ -13,6 +15,8 @@ export function AppLayout() {
       <main className="flex-1 overflow-y-auto">
         <SecurityBanner />
         <MfaSetupBanner />
+        <MfaPolicyBanner />
+        <StepUpDialog />
         <div className="flex items-center justify-between gap-4 border-b px-6 py-3 lg:px-8">
           <GlobalSearch />
           <div className="flex items-center gap-2">

@@ -128,8 +128,20 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		resp["passkey_count"] = len(wa.ParseCredentials(rec.WebAuthnCredentials))
 	}
 	cfg, _ := s.meta.GetSystemConfig()
-	if cfg.MFA.RequireAdminMFA && rec.Role == metadata.RoleAdministrator && !rec.MFAEnabled && rec.WebAuthnCredentials == "" {
+	if cfg.MFA.RequireAdminMFA && rec.Role == metadata.RoleAdministrator && !rec.MFAEnabled && !userHasWebAuthn(rec) {
 		resp["mfa_setup_required"] = true
+	}
+	if rec.MFAResetRequired && !rec.MFAEnabled && !userHasWebAuthn(rec) {
+		resp["mfa_setup_required"] = true
+	}
+	d := s.mfaDecision(rec, false)
+	resp["mfa_policy"] = map[string]any{
+		"applies":          d.Subject,
+		"in_grace":         d.InGrace,
+		"grace_until":      d.GraceUntil,
+		"has_factor":       d.HasFactor,
+		"has_local_factor": d.HasLocalFactor,
+		"banner":           d.Subject && !d.HasLocalFactor,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

@@ -39,6 +39,12 @@ const (
 	ActionPresignIssued         = "presign_issued"
 	ActionSharingPolicyChanged  = "sharing_policy_changed"
 	ActionOperatorWriteAll      = "operator_write_all_enabled"
+	ActionMFAPolicyChanged      = "mfa_policy_changed"
+	ActionMFARequiredDenied     = "mfa_required_denied"
+	ActionMFAStepUpRequired     = "mfa_step_up_required"
+	ActionMFAStepUpVerified     = "mfa_step_up_verified"
+	ActionMFAReset              = "mfa_reset"
+	ActionMFAStepUpLocked       = "mfa_step_up_locked"
 	// Governance Evidence Pack (v1.4)
 	ActionObjectLockChanged   = "object_lock_changed"
 	ActionObjectRetentionSet  = "object_retention_set"

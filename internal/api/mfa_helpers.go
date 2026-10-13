@@ -1,9 +1,11 @@
 package api
 
 import (
+	"os"
+	"time"
+
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/metadata"
-	"os"
 )
 
 func (s *Server) jwtSecret() string {
@@ -30,8 +32,15 @@ func (s *Server) validateUserMFACode(user *metadata.UserRecord, code string) boo
 		return false
 	}
 	secret, err := s.userTOTPSecret(*user)
-	if err == nil && secret != "" && auth.ValidateTOTP(secret, code) {
-		return true
+	if err == nil && secret != "" {
+		if step, ok := auth.TOTPStep(secret, code, time.Now()); ok {
+			claimed, cerr := s.meta.ClaimTOTPStep(user.ID, step)
+			if cerr != nil || !claimed {
+				return false
+			}
+			user.TOTPLastStep = step
+			return true
+		}
 	}
 	if updated, ok := auth.ConsumeRecoveryCode(user.RecoveryCodes, code); ok {
 		user.RecoveryCodes = updated

@@ -27,8 +27,40 @@ Sharing and security changes are ordinary writes. With `STORAGE_HA_ENABLED=true`
 - `POST /api/v1/buckets/{bucket}/shares` and `POST .../shares/revoke-all`
 - `DELETE /api/v1/shares/{id}`
 - presign, which creates a temporary access key
+- `PUT /api/v1/settings/mfa-policy`, `POST /api/v1/auth/step-up`, `POST /api/v1/users/{id}/mfa/reset`, and `POST /api/v1/keys`
 
 `GET /api/v1/public/share/{token}` and its download stay available on a follower. The first rejected request after the link expires, or after `max_downloads` is used up, emits `ShareExpired` or `ShareLimitReached` once (one Activity row, `share.expired` or `share.limit_reached`, and one outbox row). Later rejects of that link do not emit again. `ShareBlocked` is emitted on every download attempted while sharing is off. A follower still writes that outbox row when a webhook matches, even if this process has not registered the sink; the leader delivers it.
+
+## Bucket-admin 2FA
+
+`PUT /api/v1/settings/mfa-policy` (global administrator) stores the policy in `SystemConfig.MFA`. Every node reads it on the next request. `require_admin_mfa` remains and is the same switch as `apply_to_global_admins`.
+
+Who is covered when `require_bucket_admin_mfa` is on: a user with grant level `admin` on at least one bucket, including the owner, plus tenant administrators when `apply_to_tenant_admins` is on, plus global administrators when `apply_to_global_admins` is on. TOTP or a security key counts. An OIDC login counts as having 2FA when the ID token `amr` contains one of `mfa`, `otp`, `hwk`, `swk`, `fpt` (or `oidc_accepted_amr`) or `acr` is in `oidc_accepted_acr`. LDAP users need a local factor. An IdP factor does not confirm a dangerous action; that still needs a DataSafe TOTP code or security key.
+
+Grace (`grace_period_days`, 0–90, default 7) starts at policy enable or when the user later becomes a bucket administrator, whichever is later. During grace the console shows a banner and the actions below are allowed for a user who has not enrolled. After grace, those actions return `403 {"error":"mfa_required","message":"требуется 2FA"}`. The user can still read and write objects.
+
+When the policy is off, confirmation matches 1.5.0. When it is on, every dangerous action by a covered user who already has a local factor needs a fresh code, including during grace. `POST /api/v1/auth/step-up` with `{action,target,totp_code}` returns a one-time token (`STORAGE_MFA_ACTION_TOKEN_TTL`, 30–300 seconds, default 60) bound to the user, session, action, and target. Send it as `X-DataSafe-MFA-Token`. Reuse, expiry, or a different user, action, or target is `401 {"error":"mfa_token_invalid"}`. A missing token is `401 {"error":"step_up_required","action":...}`. The same TOTP time step is accepted once for login or confirmation. Five failed confirmations in five minutes lock the user for five minutes.
+
+S3 does not accept `X-DataSafe-MFA-Token`. An access key or STS session for a covered user can be created only from a confirmed session and is stored with `created_with_mfa=true`. `PutBucketEncryption`, `DeleteBucketEncryption`, `PutBucketPolicy`, `DeleteBucketPolicy`, `PutObjectLockConfiguration`, `PutObjectRetention` (COMPLIANCE or a shorter retain-until), `PutBucketVersioning` suspend, and `DeleteBucket` with a key that lacks the flag return `403 AccessDenied` «ключ создан без 2FA; создайте новый ключ после входа с 2FA». `PutObject` still succeeds. The bootstrap root key has no owner and is not subject to this flag.
+
+`MfaRequiredDenied` is emitted at most once a minute per user and action. `MfaPolicyChanged`, `MfaStepUpRequired`, `MfaStepUpVerified`, and `MfaReset` go to the outbox and Activity.
+
+<!-- dangerous-actions:begin -->
+| action | meaning |
+| --- | --- |
+| crypto_shred | destroy a KMS key (crypto-shred) |
+| key_rotate | rotate a KMS key |
+| trash_purge | purge trash |
+| sharing_policy_change | any sharing-policy change, including turning sharing off |
+| grants_change | change bucket grants |
+| encryption_disable | turn bucket encryption off |
+| object_lock_config | Object Lock configuration |
+| compliance_retention | COMPLIANCE retention, including extend or shorten |
+| bucket_delete | delete a bucket |
+| mfa_reset | reset a user's MFA |
+| revoke_all_shares | revoke every share link on a bucket |
+| access_key_create | create an access key or STS session for a covered user |
+<!-- dangerous-actions:end -->
 
 <!-- access-matrix:begin -->
 | Action | Global admin | Operator | Tenant admin | Bucket admin | Write | Read | Anonymous |

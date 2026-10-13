@@ -1,3 +1,5 @@
+import { requestStepUp } from "@/lib/step-up";
+
 const API_BASE = "/api/v1";
 const TOKEN_KEY = "datasafe_admin_token";
 const ROLE_KEY = "datasafe_admin_role";
@@ -64,7 +66,13 @@ export type QuotaInfo = {
   remaining_size?: number;
   remaining_objects?: number;
 };
-export type AccessKey = { access_key: string; label: string; created_at: string; owner?: string };
+export type AccessKey = {
+  access_key: string;
+  label: string;
+  created_at: string;
+  owner?: string;
+  created_with_mfa?: boolean;
+};
 export type CreatedKey = AccessKey & { secret_key: string };
 
 export type ActivityEvent = {
@@ -367,6 +375,33 @@ export type OIDCConfig = {
 
 export type MFASettings = {
   require_admin_mfa?: boolean;
+  require_bucket_admin_mfa?: boolean;
+  grace_period_days?: number;
+  apply_to_tenant_admins?: boolean;
+  apply_to_global_admins?: boolean;
+  enabled_at?: string;
+  oidc_accepted_amr?: string[];
+  oidc_accepted_acr?: string[];
+};
+
+export type MFAPolicyView = {
+  policy: MFASettings;
+  dangerous_actions: string[];
+  users_without_mfa: {
+    user_id: string;
+    username: string;
+    grace_until?: string;
+    in_grace: boolean;
+  }[];
+};
+
+export type MeMFAPolicy = {
+  applies: boolean;
+  in_grace: boolean;
+  grace_until?: string;
+  has_factor: boolean;
+  has_local_factor: boolean;
+  banner: boolean;
 };
 
 export type ClusterNode = {
@@ -736,29 +771,55 @@ export class ApiError extends Error {
   }
 }
 
-async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
+async function readAPIError(res: Response): Promise<{ message: string; body?: Record<string, unknown> }> {
+  const text = await res.text();
+  let message = text || res.statusText;
+  let body: Record<string, unknown> | undefined;
+  try {
+    const json = JSON.parse(text) as Record<string, unknown>;
+    body = json;
+    if (typeof json.error === "string") message = json.error;
+  } catch {
+    /* use raw text */
+  }
+  return { message, body };
+}
+
+function keepsSession(error: string): boolean {
+  return error === "step_up_required" || error === "mfa_token_invalid" || error === "invalid code";
+}
+
+async function fetchJSON<T>(path: string, init?: RequestInit, stepUpRetried = false): Promise<T> {
   const headers = new Headers(init?.headers);
   const token = getToken();
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
+  if (!headers.has("X-DataSafe-Channel")) {
+    headers.set("X-DataSafe-Channel", "console");
+  }
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (res.status === 401) {
+    const { message, body } = await readAPIError(res);
+    const code = typeof body?.error === "string" ? body.error : "";
+    if (code === "step_up_required" && !stepUpRetried) {
+      const mfa = await requestStepUp({
+        action: String(body?.action ?? ""),
+        target: String(body?.target ?? ""),
+      });
+      const retryHeaders = new Headers(init?.headers);
+      retryHeaders.set("X-DataSafe-MFA-Token", mfa);
+      return fetchJSON<T>(path, { ...init, headers: retryHeaders }, true);
+    }
+    if (keepsSession(code)) {
+      throw new ApiError(message, 401, body);
+    }
     clearToken();
     window.dispatchEvent(new Event("datasafe:unauthorized"));
-    throw new ApiError("Session expired. Please sign in again.", 401);
+    throw new ApiError("Session expired. Please sign in again.", 401, body);
   }
   if (!res.ok) {
-    const text = await res.text();
-    let message = text || res.statusText;
-    let body: Record<string, unknown> | undefined;
-    try {
-      const json = JSON.parse(text) as Record<string, unknown>;
-      body = json;
-      if (typeof json.error === "string") message = json.error;
-    } catch {
-      /* use raw text */
-    }
+    const { message, body } = await readAPIError(res);
     throw new ApiError(message, res.status, body);
   }
   if (res.status === 204) return {} as T;
@@ -800,7 +861,13 @@ async function downloadAuthenticated(path: string, fallbackName: string): Promis
   URL.revokeObjectURL(url);
 }
 
-export async function login(username: string, password: string): Promise<{ mfa_required?: boolean; mfa_token?: string; mfa_setup_required?: boolean }> {
+export async function login(username: string, password: string): Promise<{
+  mfa_required?: boolean;
+  mfa_token?: string;
+  mfa_setup_required?: boolean;
+  webauthn_required?: boolean;
+  webauthn_available?: boolean;
+}> {
   const res = await fetch(`${API_BASE}/admin/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -817,7 +884,12 @@ export async function login(username: string, password: string): Promise<{ mfa_r
     throw new ApiError((data.error as string) || text || "Login failed", res.status);
   }
   if (data.mfa_required) {
-    return { mfa_required: true, mfa_token: data.mfa_token as string };
+    return {
+      mfa_required: true,
+      mfa_token: data.mfa_token as string,
+      webauthn_required: data.webauthn_required === true,
+      webauthn_available: data.webauthn_available === true,
+    };
   }
   setSession(data.token as string, (data.role as UserRole) ?? "administrator", data.username as string);
   if (data.mfa_setup_required) {
@@ -871,6 +943,52 @@ export async function loginMFA(mfaToken: string, code: string): Promise<void> {
   }
   const data = await res.json();
   setSession(data.token, data.role ?? "administrator", data.username);
+  try {
+    await refreshSessionFromMe();
+  } catch {
+    /* profile enrichment optional */
+  }
+}
+
+export async function loginWebAuthnBegin(mfaToken: string): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/auth/mfa/webauthn/begin`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mfa_token: mfaToken }),
+  });
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    /* */
+  }
+  if (!res.ok) {
+    throw new ApiError((data.error as string) || text || "WebAuthn login failed", res.status, data);
+  }
+  return data;
+}
+
+export async function loginWebAuthnFinish(mfaToken: string, credential: unknown): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/mfa/webauthn/finish`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-DataSafe-MFA-Token": mfaToken,
+    },
+    body: JSON.stringify(credential),
+  });
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    /* */
+  }
+  if (!res.ok) {
+    throw new ApiError((data.error as string) || text || "WebAuthn login failed", res.status, data);
+  }
+  setSession(data.token as string, (data.role as UserRole) ?? "administrator", data.username as string);
   try {
     await refreshSessionFromMe();
   } catch {
@@ -1247,6 +1365,40 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password }),
     }),
+  resetMFA: (id: string, reason: string) =>
+    fetchJSON<{ ok: boolean }>(`/users/${encodeURIComponent(id)}/mfa/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    }),
+  getMFAPolicy: () => fetchJSON<MFAPolicyView>("/settings/mfa-policy"),
+  putMFAPolicy: (policy: MFASettings) =>
+    fetchJSON<{ policy: MFASettings }>("/settings/mfa-policy", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(policy),
+    }),
+  stepUp: (action: string, target: string, code: string) =>
+    fetchJSON<{ token: string; expires_at: string; action: string; target: string }>("/auth/step-up", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, target, totp_code: code }),
+    }),
+  stepUpWebAuthnBegin: (action: string, target: string) =>
+    fetchJSON<Record<string, unknown>>("/auth/step-up/webauthn/begin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, target }),
+    }),
+  stepUpWebAuthnFinish: (credential: unknown) =>
+    fetchJSON<{ token: string; expires_at: string; action: string; target: string }>(
+      "/auth/step-up/webauthn/finish",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credential),
+      },
+    ),
 
   listBucketSettings: () => fetchJSON<{ buckets: BucketSettings[] }>("/settings/buckets"),
   updateBucketSettings: (name: string, body: Partial<BucketSettings>) =>
@@ -1842,6 +1994,7 @@ export const api = {
       locale?: string;
       mfa_enabled?: boolean;
       mfa_setup_required?: boolean;
+      mfa_policy?: MeMFAPolicy;
       webauthn_enabled?: boolean;
       passkey_count?: number;
       auth_source?: string;

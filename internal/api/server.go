@@ -269,6 +269,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 	go s.runTrustedClusterWorker(ctx)
 	go s.runClusterCertRotator(ctx)
 	go s.runLDAPSyncWorker(ctx)
+	go s.runMFATokenPurge(ctx)
 	if eb, ok := s.backend.(*erasure.Backend); ok {
 		go erasure.RunHealWorker(ctx, eb, storage.ObjectBackendFromEnv(s.cfg.DataDir, s.cfg.ReadOnly).HealEvery)
 	}
@@ -659,6 +660,12 @@ func (s *Server) routes() {
 	mux.HandleFunc("POST /api/v1/mfa/verify-enroll", authn(s.handleMFAVerifyEnroll))
 	mux.HandleFunc("POST /api/v1/mfa/verify", authn(s.handleMFAVerifyEnroll))
 	mux.HandleFunc("POST /api/v1/mfa/disable", authn(s.handleMFADisable))
+	mux.HandleFunc("GET /api/v1/settings/mfa-policy", adminOnly(s.handleMFAPolicyGet))
+	mux.HandleFunc("PUT /api/v1/settings/mfa-policy", adminOnly(s.handleMFAPolicyPut))
+	mux.HandleFunc("POST /api/v1/auth/step-up", authn(s.handleStepUp))
+	mux.HandleFunc("POST /api/v1/auth/step-up/webauthn/begin", authn(s.handleStepUpWebAuthnBegin))
+	mux.HandleFunc("POST /api/v1/auth/step-up/webauthn/finish", authn(s.handleStepUpWebAuthnFinish))
+	mux.HandleFunc("POST /api/v1/users/{id}/mfa/reset", adminOnly(s.handleMFAReset))
 	mux.HandleFunc("POST /api/v1/me/mfa/webauthn/register/begin", authn(s.handleWebAuthnRegisterBegin))
 	mux.HandleFunc("POST /api/v1/me/mfa/webauthn/register/finish", authn(s.handleWebAuthnRegisterFinish))
 	mux.HandleFunc("POST /api/v1/auth/mfa/webauthn/begin", s.handleWebAuthnLoginBegin)
@@ -802,26 +809,34 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sysCfg, _ := s.meta.GetSystemConfig()
-	needMFA := user.MFAEnabled
+	hasWebAuthn := userHasWebAuthn(user)
+	needMFA := user.MFAEnabled || hasWebAuthn
 	adminNeedsMFASetup := false
 	if sysCfg.MFA.RequireAdminMFA && user.Role == metadata.RoleAdministrator {
-		hasMFA := user.MFAEnabled || user.WebAuthnCredentials != ""
+		hasMFA := user.MFAEnabled || hasWebAuthn
 		if !hasMFA {
 			adminNeedsMFASetup = true
 		} else {
 			needMFA = true
 		}
 	}
-	if needMFA && user.MFAEnabled && !adminNeedsMFASetup {
+	if needMFA && !adminNeedsMFASetup {
 		mfaToken, err := s.jwt.IssueMFAToken(user.ID)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "mfa token issue failed"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		resp := map[string]any{
 			"mfa_required": true,
 			"mfa_token":    mfaToken,
-		})
+		}
+		if hasWebAuthn {
+			resp["webauthn_available"] = true
+		}
+		if !user.MFAEnabled && hasWebAuthn {
+			resp["webauthn_required"] = true
+		}
+		writeJSON(w, http.StatusOK, resp)
 		return
 	}
 	now := time.Now().UTC()
@@ -909,6 +924,9 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
+	if ownerUser, oerr := s.meta.GetUserByUsername(owner); oerr == nil {
+		s.noteBucketAdmin(ownerUser.ID)
+	}
 	s.logActivity(r, metadata.ActionBucketCreated, "bucket", bucket)
 	writeJSON(w, http.StatusCreated, map[string]any{"bucket": bucket, "visibility": vis})
 }
@@ -923,6 +941,9 @@ func (s *Server) handleDeleteBucketJSON(w http.ResponseWriter, r *http.Request) 
 	}
 	if !s.isBucketAdmin(info, brec) && !auth.CanWriteAllBuckets(info.Role) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+		return
+	}
+	if !s.allowDangerous(w, r, auth.ActionBucketDelete, bucket) {
 		return
 	}
 	sk, _, err := s.bucketStorageKey(info, bucket)
@@ -1261,10 +1282,11 @@ func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type safe struct {
-		AccessKey string    `json:"access_key"`
-		Label     string    `json:"label"`
-		Owner     string    `json:"owner,omitempty"`
-		CreatedAt time.Time `json:"created_at"`
+		AccessKey      string    `json:"access_key"`
+		Label          string    `json:"label"`
+		Owner          string    `json:"owner,omitempty"`
+		CreatedAt      time.Time `json:"created_at"`
+		CreatedWithMFA bool      `json:"created_with_mfa"`
 	}
 	var out []safe
 	for _, k := range keys {
@@ -1276,13 +1298,16 @@ func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		out = append(out, safe{AccessKey: k.AccessKey, Label: k.Label, Owner: k.Owner, CreatedAt: k.CreatedAt})
+		out = append(out, safe{AccessKey: k.AccessKey, Label: k.Label, Owner: k.Owner, CreatedAt: k.CreatedAt, CreatedWithMFA: k.CreatedWithMFA})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"keys": out})
 }
 
 func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 	info, _ := authFrom(r)
+	if !s.allowDangerous(w, r, auth.ActionAccessKeyCreate, info.UserID) {
+		return
+	}
 	var req struct {
 		Label string `json:"label"`
 	}
@@ -1290,12 +1315,13 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 	accessKey := "AKIA" + randomHex(8)
 	secretKey := randomHex(16)
 	rec := metadata.AccessKeyRecord{
-		AccessKey: accessKey,
-		SecretKey: secretKey,
-		Label:     req.Label,
-		OwnerID:   info.UserID,
-		Owner:     info.Username,
-		CreatedAt: time.Now().UTC(),
+		AccessKey:      accessKey,
+		SecretKey:      secretKey,
+		Label:          req.Label,
+		OwnerID:        info.UserID,
+		Owner:          info.Username,
+		CreatedWithMFA: s.accessKeyMFAFlag(info.UserID),
+		CreatedAt:      time.Now().UTC(),
 	}
 	if err := s.meta.PutAccessKey(rec); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})

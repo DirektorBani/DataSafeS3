@@ -17,12 +17,12 @@ func (s *Store) PutAccessKey(rec metadata.AccessKeyRecord) error {
 		return err
 	}
 	_, err = s.pool.Exec(context.Background(), `
-		INSERT INTO access_keys (access_key, secret_key, label, owner_id, owner, created_at, session_token, expires_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		INSERT INTO access_keys (access_key, secret_key, label, owner_id, owner, created_at, session_token, expires_at, created_with_mfa)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT (access_key) DO UPDATE SET secret_key=$2, label=$3, owner_id=$4, owner=$5,
-			session_token=$7, expires_at=$8`,
+			session_token=$7, expires_at=$8, created_with_mfa=$9`,
 		rec.AccessKey, rec.SecretKey, rec.Label, rec.OwnerID, rec.Owner, rec.CreatedAt,
-		nullString(rec.SessionToken), timestamptzPtr(rec.ExpiresAt))
+		nullString(rec.SessionToken), timestamptzPtr(rec.ExpiresAt), rec.CreatedWithMFA)
 	return err
 }
 
@@ -32,9 +32,9 @@ func (s *Store) GetAccessKey(accessKey string) (metadata.AccessKeyRecord, error)
 	var exp pgtype.Timestamptz
 	err := s.pool.QueryRow(context.Background(), `
 		SELECT access_key, secret_key, COALESCE(label,''), COALESCE(owner_id,''), COALESCE(owner,''), created_at,
-			session_token, expires_at
+			session_token, expires_at, created_with_mfa
 		FROM access_keys WHERE access_key=$1`, accessKey).Scan(
-		&rec.AccessKey, &rec.SecretKey, &rec.Label, &rec.OwnerID, &rec.Owner, &rec.CreatedAt, &sess, &exp)
+		&rec.AccessKey, &rec.SecretKey, &rec.Label, &rec.OwnerID, &rec.Owner, &rec.CreatedAt, &sess, &exp, &rec.CreatedWithMFA)
 	if err != nil {
 		return rec, metadata.ErrNotFound
 	}
@@ -53,7 +53,7 @@ func (s *Store) GetAccessKey(accessKey string) (metadata.AccessKeyRecord, error)
 
 func (s *Store) ListAccessKeys() ([]metadata.AccessKeyRecord, error) {
 	rows, err := s.pool.Query(context.Background(), `
-		SELECT access_key, secret_key, COALESCE(label,''), COALESCE(owner_id,''), COALESCE(owner,''), created_at
+		SELECT access_key, secret_key, COALESCE(label,''), COALESCE(owner_id,''), COALESCE(owner,''), created_at, created_with_mfa
 		FROM access_keys ORDER BY created_at`)
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func (s *Store) ListAccessKeys() ([]metadata.AccessKeyRecord, error) {
 	var out []metadata.AccessKeyRecord
 	for rows.Next() {
 		var rec metadata.AccessKeyRecord
-		if err := rows.Scan(&rec.AccessKey, &rec.SecretKey, &rec.Label, &rec.OwnerID, &rec.Owner, &rec.CreatedAt); err != nil {
+		if err := rows.Scan(&rec.AccessKey, &rec.SecretKey, &rec.Label, &rec.OwnerID, &rec.Owner, &rec.CreatedAt, &rec.CreatedWithMFA); err != nil {
 			return nil, err
 		}
 		if rec.SecretKey, err = s.fieldDecrypt(fieldenc.PathAccessKeySecretKey, rec.SecretKey); err != nil {

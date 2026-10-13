@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"image/png"
@@ -71,11 +72,27 @@ func GenerateTOTPSecret(issuer, account string) (secret string, qrURL string, er
 }
 
 func ValidateTOTP(secret, code string) bool {
+	_, ok := TOTPStep(secret, code, time.Now())
+	return ok
+}
+
+// TOTPStep returns the 30-second step that matches code, checking the current
+// step and one step on either side. The caller must claim the step so the same
+// code cannot be reused for login or step-up.
+func TOTPStep(secret, code string, at time.Time) (int64, bool) {
 	code = strings.TrimSpace(code)
 	if secret == "" || code == "" {
-		return false
+		return 0, false
 	}
-	return totp.Validate(code, secret)
+	for _, delta := range []int64{0, -1, 1} {
+		t := at.Add(time.Duration(delta) * 30 * time.Second)
+		got, err := totp.GenerateCode(secret, t)
+		if err != nil || subtle.ConstantTimeCompare([]byte(got), []byte(code)) != 1 {
+			continue
+		}
+		return t.Unix() / 30, true
+	}
+	return 0, false
 }
 
 func GenerateTOTPCode(secret string, at time.Time) (string, error) {

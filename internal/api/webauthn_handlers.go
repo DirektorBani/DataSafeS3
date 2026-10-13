@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
@@ -14,6 +15,7 @@ import (
 type webauthnSessionStore struct {
 	mu       sync.Mutex
 	sessions map[string]webauthn.SessionData
+	pending  map[string]stepUpPending
 }
 
 func newWebAuthnSessionStore() *webauthnSessionStore {
@@ -101,6 +103,7 @@ func (s *Server) handleWebAuthnRegisterFinish(w http.ResponseWriter, r *http.Req
 	}
 	user.WebAuthnCredentials = encoded
 	user.MFAEnabled = true
+	user.MFAResetRequired = false
 	if err := s.meta.UpdateUser(user); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -145,16 +148,19 @@ func (s *Server) handleWebAuthnLoginBegin(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleWebAuthnLoginFinish(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		MFAToken string `json:"mfa_token"`
+	// The body is the WebAuthn assertion. The MFA token stays in the header so
+	// FinishLogin can read the body once.
+	token := strings.TrimSpace(r.Header.Get("X-DataSafe-MFA-Token"))
+	if token == "" {
+		token = strings.TrimSpace(r.URL.Query().Get("mfa_token"))
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
-	userID := ""
-	if req.MFAToken != "" {
-		userID, _ = s.jwt.ValidateMFAToken(req.MFAToken)
-	}
-	if userID == "" {
+	if token == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "mfa_token required"})
+		return
+	}
+	userID, err := s.jwt.ValidateMFAToken(token)
+	if err != nil || userID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid mfa token"})
 		return
 	}
 	user, err := s.meta.GetUser(userID)
@@ -176,7 +182,7 @@ func (s *Server) handleWebAuthnLoginFinish(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	token, err := s.jwt.Issue(auth.TokenInfo{
+	sessionToken, err := s.jwt.Issue(auth.TokenInfo{
 		Username: user.Username,
 		UserID:   user.ID,
 		Role:     user.Role,
@@ -187,7 +193,7 @@ func (s *Server) handleWebAuthnLoginFinish(w http.ResponseWriter, r *http.Reques
 	}
 	s.logActivityAs(user.Username, clientIP(r), metadata.ActionLogin, "session", user.Username)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"token":      token,
+		"token":      sessionToken,
 		"expires_in": 86400,
 		"username":   user.Username,
 		"role":       user.Role,

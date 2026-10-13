@@ -512,6 +512,9 @@ func (s *Server) handleAddTenantMember(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	if role == metadata.TenantRoleAdmin {
+		s.noteTenantAdmin(req.UserID)
+	}
 	s.logActivity(r, metadata.ActionSettingsChanged, "tenant_member", tenantID)
 	if err := s.assignMemberGroups(tenantID, req.UserID, req.GroupIDs); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
@@ -542,6 +545,9 @@ func (s *Server) handleUpdateTenantMember(w http.ResponseWriter, r *http.Request
 	if !auth.CanAssignTenantRole(info.Role, req.Role) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden role"})
 		return
+	}
+	if req.Role == metadata.TenantRoleAdmin {
+		s.noteTenantAdmin(userID)
 	}
 	if err := s.meta.UpdateTenantMemberRole(tenantID, userID, req.Role); err != nil {
 		if errors.Is(err, metadata.ErrNotFound) {

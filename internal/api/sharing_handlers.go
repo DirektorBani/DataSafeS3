@@ -148,6 +148,9 @@ func (s *Server) handlePutBucketSharing(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) putSharing(w http.ResponseWriter, r *http.Request, scope, scopeID string, bucket metadata.BucketRecord, topLevel bool, actor string) {
+	if !s.allowDangerous(w, r, auth.ActionSharingPolicyChange, sharingTarget(scope, scopeID, bucket)) {
+		return
+	}
 	var proposed metadata.SharingPolicy
 	if err := json.NewDecoder(r.Body).Decode(&proposed); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
@@ -189,6 +192,20 @@ func (s *Server) canReadTenantSharing(info auth.TokenInfo, tenantID string) bool
 	return false
 }
 
+func sharingTarget(scope, scopeID string, bucket metadata.BucketRecord) string {
+	switch scope {
+	case metadata.SharingScopeGlobal:
+		return "global"
+	case metadata.SharingScopeTenant:
+		return "tenant:" + scopeID
+	default:
+		if bucket.Name != "" {
+			return bucket.Name
+		}
+		return scopeID
+	}
+}
+
 func (s *Server) handleRevokeAllSharedLinks(w http.ResponseWriter, r *http.Request) {
 	bucket := r.PathValue("bucket")
 	info, _ := authFrom(r)
@@ -199,6 +216,9 @@ func (s *Server) handleRevokeAllSharedLinks(w http.ResponseWriter, r *http.Reque
 	}
 	if !s.isBucketAdmin(info, rec) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+		return
+	}
+	if !s.allowDangerous(w, r, auth.ActionRevokeAllShares, bucket) {
 		return
 	}
 	links, err := s.linksForBucket(rec)

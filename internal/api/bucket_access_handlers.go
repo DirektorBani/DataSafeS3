@@ -79,6 +79,9 @@ func (s *Server) servePutBucketAccess(w http.ResponseWriter, r *http.Request, lo
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}
+	if !s.allowDangerous(w, r, auth.ActionGrantsChange, logicalBucket) {
+		return
+	}
 	var req struct {
 		Grants []struct {
 			UserID   string `json:"user_id"`
@@ -143,6 +146,11 @@ func (s *Server) servePutBucketAccess(w http.ResponseWriter, r *http.Request, lo
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	for _, g := range grants {
+		if g.Level == metadata.GrantLevelAdmin {
+			s.noteBucketAdmin(g.UserID)
+		}
+	}
 	s.notifyBucketSharedDiff(info, logicalBucket, oldGrants, oldPrefixGrants, grants, prefixGrants)
 	s.logActivity(r, metadata.ActionSettingsChanged, "bucket_access", logicalBucket)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "grants": len(grants), "prefix_grants": len(prefixGrants)})
@@ -174,6 +182,9 @@ func (s *Server) serveDeleteBucketAccess(w http.ResponseWriter, r *http.Request,
 	}
 	if !s.canWriteBucket(info, logicalBucket) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+		return
+	}
+	if !s.allowDangerous(w, r, auth.ActionGrantsChange, logicalBucket) {
 		return
 	}
 	_ = s.meta.DeleteBucketAccessGrant(rec.EffectiveStorageKey(), userID)

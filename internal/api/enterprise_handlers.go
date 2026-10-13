@@ -289,6 +289,8 @@ func (s *Server) completeOIDCLogin(cfg metadata.SystemConfig, token *oauth2.Toke
 		}
 	}
 	s.syncUserTenantGroupsFromExternal(user.ID, oidcGroups)
+	amr, acr := auth.TokenFactors(token)
+	user.IdPMFA = auth.IdPFactorAccepted(amr, acr, cfg.MFA.AcceptedAMR, cfg.MFA.AcceptedACR)
 	now := time.Now().UTC()
 	user.LastLogin = &now
 	_ = s.meta.UpdateUser(user)
@@ -406,6 +408,7 @@ func (s *Server) handleMFAVerifyEnroll(w http.ResponseWriter, r *http.Request) {
 		hashed[i] = h
 	}
 	user.MFAEnabled = true
+	user.MFAResetRequired = false
 	user.RecoveryCodes = hashed
 	if err := s.meta.UpdateUser(user); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})

@@ -42,6 +42,11 @@ type UserRecord struct {
 	LastLogin           *time.Time `json:"last_login,omitempty"`
 	Locale              string     `json:"locale,omitempty"`
 	WebAuthnCredentials string     `json:"webauthn_credentials,omitempty"`
+	MFAPolicySince      *time.Time `json:"mfa_policy_since,omitempty"`
+	BucketAdminSince    *time.Time `json:"bucket_admin_since,omitempty"`
+	TOTPLastStep        int64      `json:"totp_last_step,omitempty"`
+	IdPMFA              bool       `json:"idp_mfa,omitempty"`
+	MFAResetRequired    bool       `json:"mfa_reset_required,omitempty"`
 	CreatedAt           time.Time  `json:"created_at"`
 }
 
@@ -118,8 +123,14 @@ func (s *Store) GetUserByUsername(username string) (UserRecord, error) {
 func (s *Store) UpdateUser(rec UserRecord) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("users"))
-		if b.Get([]byte(rec.ID)) == nil {
+		prevRaw := b.Get([]byte(rec.ID))
+		if prevRaw == nil {
 			return ErrUserNotFound
+		}
+		var prev UserRecord
+		_ = json.Unmarshal(prevRaw, &prev)
+		if prev.TOTPLastStep > rec.TOTPLastStep {
+			rec.TOTPLastStep = prev.TOTPLastStep
 		}
 		data, err := json.Marshal(rec)
 		if err != nil {

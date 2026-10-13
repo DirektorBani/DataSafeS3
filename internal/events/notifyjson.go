@@ -118,6 +118,16 @@ func notificationEventName(eventType string) string {
 		return "datasafe:Share:Blocked"
 	case "PresignIssued":
 		return "datasafe:Presign:Issued"
+	case "MfaPolicyChanged":
+		return "datasafe:Mfa:PolicyChanged"
+	case "MfaRequiredDenied":
+		return "datasafe:Mfa:RequiredDenied"
+	case "MfaStepUpRequired":
+		return "datasafe:Mfa:StepUpRequired"
+	case "MfaStepUpVerified":
+		return "datasafe:Mfa:StepUpVerified"
+	case "MfaReset":
+		return "datasafe:Mfa:Reset"
 	case "SharingPolicyChanged":
 		return "datasafe:Sharing:PolicyChanged"
 	case "TestEvent":

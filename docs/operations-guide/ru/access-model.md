@@ -27,8 +27,40 @@ STS `AssumeRole` отклоняет непустой `RoleArn`. Сессия н�
 - `POST /api/v1/buckets/{bucket}/shares` и `POST .../shares/revoke-all`
 - `DELETE /api/v1/shares/{id}`
 - presign, потому что он создаёт временный ключ доступа
+- `PUT /api/v1/settings/mfa-policy`, `POST /api/v1/auth/step-up`, `POST /api/v1/users/{id}/mfa/reset` и `POST /api/v1/keys`
 
 `GET /api/v1/public/share/{token}` и скачивание по ссылке на follower разрешены. Первый отказ после истечения ссылки или после исчерпания `max_downloads` порождает `ShareExpired` или `ShareLimitReached` ровно один раз (одна строка Activity `share.expired` или `share.limit_reached` и одна строка outbox). Следующие отказы той же ссылки событие не создают. `ShareBlocked` пишется на каждую попытку скачивания, пока обмен выключен. Follower кладёт эту строку в outbox, даже если локально sink webhook ещё не зарегистрирован; доставляет её лидер.
+
+## Обязательная 2FA для администраторов бакетов
+
+`PUT /api/v1/settings/mfa-policy` (только глобальный администратор) пишет политику в `SystemConfig.MFA`. Каждый узел читает её на следующем запросе. `require_admin_mfa` остаётся и совпадает с `apply_to_global_admins`.
+
+Кого касается при `require_bucket_admin_mfa`: пользователь с грантом `admin` хотя бы на одном бакете, включая владельца; администраторы тенантов, если включён `apply_to_tenant_admins`; глобальные администраторы, если включён `apply_to_global_admins`. Достаточно TOTP или ключа безопасности. Вход OIDC засчитывается как 2FA, если `amr` ID-токена содержит `mfa`, `otp`, `hwk`, `swk`, `fpt` (или значение из `oidc_accepted_amr`), либо `acr` есть в `oidc_accepted_acr`. Для LDAP — только локальный фактор. Фактор IdP не подтверждает опасное действие: для этого нужен код TOTP или ключ безопасности DataSafe.
+
+Льготный период (`grace_period_days`, 0–90, по умолчанию 7) считается от включения политики или от получения прав администратора бакета — что позже. В этот срок консоль показывает баннер, а действия ниже разрешены, если фактор ещё не зарегистрирован. После срока они отвечают `403 {"error":"mfa_required","message":"требуется 2FA"}`. Читать и писать объекты по-прежнему можно.
+
+При выключенной политике подтверждение как в 1.5.0. При включённой каждое опасное действие пользователя с локальным фактором требует нового кода, в том числе в льготный период. `POST /api/v1/auth/step-up` с `{action,target,totp_code}` выдаёт одноразовый токен (`STORAGE_MFA_ACTION_TOKEN_TTL`, 30–300 с, по умолчанию 60), привязанный к пользователю, сессии, действию и цели. Его передают в `X-DataSafe-MFA-Token`. Повтор, истечение, другой пользователь, действие или цель — `401 {"error":"mfa_token_invalid"}`. Нет заголовка — `401 {"error":"step_up_required","action":...}`. Один и тот же шаг TOTP принимается один раз: либо вход, либо подтверждение. Пять неудачных подтверждений за пять минут блокируют пользователя на пять минут.
+
+S3 не принимает `X-DataSafe-MFA-Token`. Ключ доступа и STS-сессию пользователя, на которого действует политика, можно создать только из подтверждённой сессии; у ключа `created_with_mfa=true`. `PutBucketEncryption`, `DeleteBucketEncryption`, `PutBucketPolicy`, `DeleteBucketPolicy`, `PutObjectLockConfiguration`, `PutObjectRetention` (COMPLIANCE или более ранний срок), приостановка `PutBucketVersioning` и `DeleteBucket` ключом без флага — `403 AccessDenied` «ключ создан без 2FA; создайте новый ключ после входа с 2FA». `PutObject` выполняется. Корневой ключ сервера без владельца под это правило не попадает.
+
+`MfaRequiredDenied` — не чаще одного события в минуту на пару пользователь и действие. `MfaPolicyChanged`, `MfaStepUpRequired`, `MfaStepUpVerified` и `MfaReset` пишутся в outbox и Activity.
+
+<!-- dangerous-actions:begin -->
+| action | meaning |
+| --- | --- |
+| crypto_shred | destroy a KMS key (crypto-shred) |
+| key_rotate | rotate a KMS key |
+| trash_purge | purge trash |
+| sharing_policy_change | any sharing-policy change, including turning sharing off |
+| grants_change | change bucket grants |
+| encryption_disable | turn bucket encryption off |
+| object_lock_config | Object Lock configuration |
+| compliance_retention | COMPLIANCE retention, including extend or shorten |
+| bucket_delete | delete a bucket |
+| mfa_reset | reset a user's MFA |
+| revoke_all_shares | revoke every share link on a bucket |
+| access_key_create | create an access key or STS session for a covered user |
+<!-- dangerous-actions:end -->
 
 <!-- access-matrix:begin -->
 | Action | Global admin | Operator | Tenant admin | Bucket admin | Write | Read | Anonymous |

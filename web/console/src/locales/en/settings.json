@@ -178,5 +178,40 @@
       "bucket": "bucket"
     },
     "operatorBanner": "Legacy operator write mode is enabled (STORAGE_OPERATOR_WRITE_ALL). It will be removed in 1.7.0."
+  },
+  "mfaPolicy": {
+    "title": "Bucket-admin 2FA",
+    "description": "Require a second factor for bucket administrators and confirm each dangerous action. The change applies on the next request.",
+    "loading": "Loading 2FA policy…",
+    "loadError": "Could not load the 2FA policy.",
+    "saved": "2FA policy saved",
+    "requireBucketAdmin": "Require 2FA for bucket administrators",
+    "requireBucketAdminHint": "Owners and users with admin grant on at least one bucket. After the grace period, dangerous actions return 403 until they enroll.",
+    "graceDays": "Grace period (days)",
+    "graceHint": "0 to 90. A missing value is 7 days. During grace the banner is shown and actions stay allowed until a local factor exists.",
+    "tenantAdmins": "Apply to tenant administrators",
+    "tenantAdminsHint": "Tenant administrators follow the same rule even without a bucket-admin grant.",
+    "globalAdmins": "Apply to global administrators",
+    "globalAdminsHint": "Same switch as “Require MFA for administrators” in system settings. Global administrators must enroll before using the console.",
+    "actionsTitle": "Actions that need a fresh code",
+    "actionsHint": "Each action asks for a code again. There is no time window.",
+    "missingTitle": "People without 2FA",
+    "missingEmpty": "Everyone covered by the policy has a factor.",
+    "inGrace": "grace until {{until}}",
+    "graceOver": "grace ended",
+    "actions": {
+      "crypto_shred": "Destroy a KMS key",
+      "key_rotate": "Rotate a KMS key",
+      "trash_purge": "Purge trash",
+      "sharing_policy_change": "Change the sharing policy",
+      "grants_change": "Change bucket grants",
+      "encryption_disable": "Turn bucket encryption off",
+      "object_lock_config": "Change Object Lock",
+      "compliance_retention": "Change COMPLIANCE retention",
+      "bucket_delete": "Delete a bucket",
+      "mfa_reset": "Reset a user's 2FA",
+      "revoke_all_shares": "Revoke every share link",
+      "access_key_create": "Create an access key"
+    }
   }
 }

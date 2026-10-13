@@ -43,6 +43,9 @@ func (h *Handler) putBucketObjectLock(w http.ResponseWriter, r *http.Request, bu
 		writeError(w, r, http.StatusForbidden, "AccessDenied", "bucket admin required")
 		return
 	}
+	if h.denyAdminS3WithoutMFA(w, r, creds.AccessKey) {
+		return
+	}
 	var cfg ObjectLockConfiguration
 	if err := xml.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		writeError(w, r, http.StatusBadRequest, "MalformedXML", "invalid xml")
@@ -95,6 +98,16 @@ func (h *Handler) putObjectRetention(w http.ResponseWriter, r *http.Request, buc
 	}
 	if strings.EqualFold(body.Mode, "COMPLIANCE") && !h.Svc.CallerIsBucketAdmin(creds.AccessKey, bucket) {
 		writeError(w, r, http.StatusForbidden, "AccessDenied", "bucket admin required")
+		return
+	}
+	until, _ := time.Parse(time.RFC3339, body.RetainUntilDate)
+	var existing *time.Time
+	if preview, _, err := h.Svc.ResolveBucketKey(creds.AccessKey, bucket); err == nil {
+		if obj, err := h.Svc.Meta.GetObject(preview, key); err == nil {
+			existing = obj.RetentionUntil
+		}
+	}
+	if complianceOrShorten(body.Mode, existing, until) && h.denyAdminS3WithoutMFA(w, r, creds.AccessKey) {
 		return
 	}
 	sk, ok := h.storageBucket(w, r, creds, bucket)

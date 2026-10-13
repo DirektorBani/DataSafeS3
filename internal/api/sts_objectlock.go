@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/observability"
 )
@@ -39,6 +40,9 @@ func (s *Server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if !s.allowDangerous(w, r, auth.ActionAccessKeyCreate, info.UserID) {
+		return
+	}
 	sessionName := strings.TrimSpace(req.RoleSessionName)
 	if sessionName == "" {
 		sessionName = info.Username
@@ -48,14 +52,15 @@ func (s *Server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 	sessionToken := "FQoD" + randomHexSTS(16)
 	expiration := time.Now().UTC().Add(time.Duration(req.DurationSeconds) * time.Second)
 	_ = s.meta.PutAccessKey(metadata.AccessKeyRecord{
-		AccessKey:    accessKey,
-		SecretKey:    secretKey,
-		SessionToken: sessionToken,
-		ExpiresAt:    &expiration,
-		Label:        "sts:" + sessionName,
-		Owner:        info.Username,
-		OwnerID:      info.UserID,
-		CreatedAt:    time.Now().UTC(),
+		AccessKey:      accessKey,
+		SecretKey:      secretKey,
+		SessionToken:   sessionToken,
+		ExpiresAt:      &expiration,
+		Label:          "sts:" + sessionName,
+		Owner:          info.Username,
+		OwnerID:        info.UserID,
+		CreatedWithMFA: s.accessKeyMFAFlag(info.UserID),
+		CreatedAt:      time.Now().UTC(),
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"credentials": map[string]any{
@@ -103,6 +108,9 @@ func (s *Server) handlePutObjectRetention(w http.ResponseWriter, r *http.Request
 		brec, berr := s.resolveBucketForUser(info, bucket)
 		if berr != nil || !s.isBucketAdmin(info, brec) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+			return
+		}
+		if !s.allowDangerous(w, r, auth.ActionComplianceRetention, bucket) {
 			return
 		}
 	}

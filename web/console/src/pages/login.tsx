@@ -6,7 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Database, Loader2, ShieldCheck } from "lucide-react";
-import { api, getToken, login, loginMFA, setSessionProfile } from "@/lib/api";
+import { api, getToken, login, loginMFA, loginWebAuthnBegin, loginWebAuthnFinish, setSessionProfile } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,8 @@ export function LoginPage() {
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState("");
   const [mfaSubmitting, setMfaSubmitting] = useState(false);
+  const [webauthnRequired, setWebauthnRequired] = useState(false);
+  const [webauthnAvailable, setWebauthnAvailable] = useState(false);
   const totpRemaining = useTotpCountdown();
   const oidc = useQueryOIDC();
   const loginOptions = useQuery({
@@ -108,6 +110,8 @@ export function LoginPage() {
       if (result.mfa_required && result.mfa_token) {
         setMfaStep(true);
         setMfaToken(result.mfa_token);
+        setWebauthnRequired(Boolean(result.webauthn_required));
+        setWebauthnAvailable(Boolean(result.webauthn_available || result.webauthn_required));
         setMfaCode("");
         setRecoveryCode("");
         setRecoveryMode(false);
@@ -134,12 +138,37 @@ export function LoginPage() {
     }
   }, [mfaSubmitting, mfaToken, onLogin, recoveryMode, t]);
 
+  async function submitWebAuthn() {
+    if (!window.PublicKeyCredential || mfaSubmitting) return;
+    setError("");
+    setMfaSubmitting(true);
+    try {
+      const options = await loginWebAuthnBegin(mfaToken);
+      const publicKey = PublicKeyCredential.parseRequestOptionsFromJSON(
+        options as unknown as PublicKeyCredentialRequestOptionsJSON,
+      );
+      const cred = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null;
+      if (!cred) {
+        throw new Error(t("error.invalidCode"));
+      }
+      const body = typeof cred.toJSON === "function" ? cred.toJSON() : { id: cred.id, type: cred.type };
+      await loginWebAuthnFinish(mfaToken, body);
+      onLogin();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("error.invalidCode"));
+    } finally {
+      setMfaSubmitting(false);
+    }
+  }
+
   function backToLogin() {
     setMfaStep(false);
     setMfaToken("");
     setMfaCode("");
     setRecoveryCode("");
     setRecoveryMode(false);
+    setWebauthnRequired(false);
+    setWebauthnAvailable(false);
     setError("");
   }
 
@@ -162,14 +191,16 @@ export function LoginPage() {
             {mfaStep
               ? recoveryMode
                 ? t("description.mfaRecovery")
-                : t("description.mfa")
+                : webauthnRequired
+                  ? t("description.mfaKey")
+                  : t("description.mfa")
               : t("description.signIn")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {mfaStep ? (
             <div className="space-y-4">
-              {!recoveryMode ? (
+              {webauthnRequired && !recoveryMode ? null : !recoveryMode ? (
                 <>
                   <OtpInput
                     value={mfaCode}
@@ -198,6 +229,12 @@ export function LoginPage() {
 
               {error && <p className="text-sm text-destructive text-center">{error}</p>}
 
+              {(webauthnAvailable || webauthnRequired) && !recoveryMode && (
+                <Button className="w-full" variant={webauthnRequired ? "default" : "outline"} onClick={() => void submitWebAuthn()} disabled={mfaSubmitting}>
+                  {t("actions.useSecurityKey")}
+                </Button>
+              )}
+
               {recoveryMode ? (
                 <Button
                   className="w-full"
@@ -213,7 +250,7 @@ export function LoginPage() {
                     t("actions.verifyRecovery")
                   )}
                 </Button>
-              ) : (
+              ) : webauthnRequired ? null : (
                 <Button
                   className="w-full"
                   onClick={() => submitMFA(mfaCode)}

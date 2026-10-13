@@ -55,6 +55,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if key == "" {
 		switch r.Method {
 		case http.MethodPut:
+			if q.Has("encryption") {
+				h.putBucketEncryption(w, r, bucket)
+				return
+			}
+			if q.Has("policy") {
+				h.putBucketPolicy(w, r, bucket)
+				return
+			}
 			if q.Has("versioning") {
 				h.putBucketVersioning(w, r, bucket)
 				return
@@ -73,12 +81,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			h.createBucket(w, r, bucket)
 		case http.MethodDelete:
+			if q.Has("encryption") {
+				h.deleteBucketEncryption(w, r, bucket)
+				return
+			}
+			if q.Has("policy") {
+				h.deleteBucketPolicy(w, r, bucket)
+				return
+			}
 			if q.Has("notification") {
 				h.deleteBucketNotification(w, r, bucket)
 				return
 			}
 			h.deleteBucket(w, r, bucket)
 		case http.MethodGet:
+			if q.Has("encryption") {
+				h.getBucketEncryption(w, r, bucket)
+				return
+			}
 			if q.Has("versioning") {
 				h.getBucketVersioning(w, r, bucket)
 				return
@@ -237,6 +257,9 @@ func (h *Handler) putBucketVersioning(w http.ResponseWriter, r *http.Request, bu
 	}
 	enabled := strings.EqualFold(cfg.Status, "Enabled")
 	suspended := strings.EqualFold(cfg.Status, "Suspended")
+	if suspended && h.denyAdminS3WithoutMFA(w, r, creds.AccessKey) {
+		return
+	}
 	status := "Suspended"
 	if enabled {
 		status = "Enabled"
@@ -375,6 +398,9 @@ func (h *Handler) deleteBucket(w http.ResponseWriter, r *http.Request, bucket st
 		return
 	}
 	if !h.authorize(w, r, creds, bucket, "", "s3:DeleteBucket") {
+		return
+	}
+	if h.denyAdminS3WithoutMFA(w, r, creds.AccessKey) {
 		return
 	}
 	sk, ok := h.storageBucket(w, r, creds, bucket)
