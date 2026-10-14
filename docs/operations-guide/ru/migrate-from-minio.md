@@ -6,7 +6,35 @@ Runbook для переноса объектов с **MinIO-совместимо
 
 > **Честно:** это не drop-in замена бинарника и не заявление о 100% совместимости API MinIO. Байты объектов переносятся стандартными S3 sync-инструментами. Пользователи IAM MinIO, группы и server-side policies **не** импортируются автоматически — перенесите их в пользователей, teams, tenants и bucket policies DataSafe.
 
-Архитектура: [ADR 0001](../../architecture/adr/0001-migration-kit.md) · Чеклист: `internal/migrate`.
+Архитектура: [ADR 0001](../../architecture/adr/0001-migration-kit.md) · [ADR 0007](../../architecture/adr/0007-minio-s3-copier.md) · Чеклист: `internal/migrate`.
+
+## Встроенное копирование
+
+`storage-cli migrate from-minio` копирует бакеты по S3 API. rclone и чеклист ниже остаются ручным путём. Пользователи и группы IAM не импортируются.
+
+Порядок: бакет, versioning, конфигурация Object Lock, lifecycle (expiration по префиксу в днях; transition и noncurrent expiration попадают в предупреждение и не сохраняются), bucket policy. Условие кроме `aws:SourceIp` и `aws:SecureTransport` отбрасывается и называется в отчёте. Версии объектов копируются от старых к новым, затем delete marker, теги, user metadata, content-type, retention и legal hold. Текущая версия записывается последней.
+
+Состояние — JSONL в `--state` (по умолчанию `./.minio-migrate-state`), сброс после каждого объекта. Повтор пропускает версию, если она есть в файле, если метаданные цели `x-amz-meta-datasafe-source-version` совпадают с version id источника, или, без `--sse`, если совпали ETag и размер. Ctrl+C безопасен. Та же команда продолжает копирование. Одна версия источника не пишется дважды.
+
+Ответ цели HTTP 503 `not cluster leader` повторяется с паузой. Несколько `--target` проверяются через `GET /healthz`; берётся узел с `is_leader: true`.
+
+`--sse AES256` или `--sse aws:kms --kms-key …` уходит в PUT на цель. Исходный SSE-KMS читается через S3 API. Каталог отчёта (`--report`, по умолчанию `./minio-migrate-report`) содержит `summary.md`, `evidence.json` (`verdicts`: PASS или FAIL) и `evidence.zip`. Проверки: число объектов, байты, delete marker, ETag (multipart ETag пересчитывается с `--part-size`), retention Object Lock и выборка SHA-256 (`--verify-sample`, `--verify-full`).
+
+DataSafe отдаёт одну страницу `ListObjectVersions`. Копир запрашивает 100000 ключей. Страницы MinIO по 1000 читаются дальше.
+
+```bash
+storage-cli migrate from-minio \
+  --source http://minio.example:9000 \
+  --source-key "$SOURCE_ACCESS_KEY" \
+  --source-secret "$SOURCE_SECRET_KEY" \
+  --target http://datasafe.example:9000 \
+  --target-key "$TARGET_ACCESS_KEY" \
+  --target-secret "$TARGET_SECRET_KEY" \
+  --buckets my-bucket \
+  --verify-sample 10
+```
+
+**Настройки → Миграция** в консоли печатает эту команду и открывает локальный `evidence.json`. Учётные данные источника туда не отправляются и не сохраняются.
 
 ---
 

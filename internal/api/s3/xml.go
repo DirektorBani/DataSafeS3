@@ -76,14 +76,26 @@ type ObjectInfo struct {
 }
 
 type ListObjectVersionsResult struct {
-	XMLName     xml.Name     `xml:"ListVersionsResult"`
-	Xmlns       string       `xml:"xmlns,attr"`
-	Name        string       `xml:"Name"`
-	Prefix      string       `xml:"Prefix"`
-	KeyCount    int          `xml:"KeyCount"`
-	MaxKeys     int          `xml:"MaxKeys"`
-	IsTruncated bool         `xml:"IsTruncated"`
-	Versions    []ObjectInfo `xml:"Version"`
+	XMLName       xml.Name       `xml:"ListVersionsResult"`
+	Xmlns         string         `xml:"xmlns,attr"`
+	Name          string         `xml:"Name"`
+	Prefix        string         `xml:"Prefix"`
+	KeyCount      int            `xml:"KeyCount"`
+	MaxKeys       int            `xml:"MaxKeys"`
+	IsTruncated   bool           `xml:"IsTruncated"`
+	Versions      []VersionEntry `xml:"Version"`
+	DeleteMarkers []VersionEntry `xml:"DeleteMarker"`
+}
+
+// VersionEntry is one object version or delete marker in ListObjectVersions.
+type VersionEntry struct {
+	Key          string `xml:"Key"`
+	LastModified string `xml:"LastModified"`
+	ETag         string `xml:"ETag,omitempty"`
+	Size         int64  `xml:"Size,omitempty"`
+	StorageClass string `xml:"StorageClass,omitempty"`
+	VersionID    string `xml:"VersionId,omitempty"`
+	IsLatest     bool   `xml:"IsLatest"`
 }
 
 type VersioningConfiguration struct {

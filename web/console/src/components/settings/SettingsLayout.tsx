@@ -14,7 +14,9 @@ export function SettingsLayout() {
         ? "events"
         : pathname.includes("/kms")
           ? "kms"
-          : "buckets";
+          : pathname.includes("/migrate")
+            ? "migrate"
+            : "buckets";
 
   return (
     <div className="space-y-4">
@@ -29,6 +31,8 @@ export function SettingsLayout() {
             navigate("/admin/settings/events");
           } else if (value === "kms") {
             navigate("/admin/settings/kms");
+          } else if (value === "migrate") {
+            navigate("/admin/settings/migrate");
           } else {
             navigate("/admin/settings/buckets");
           }
@@ -41,6 +45,9 @@ export function SettingsLayout() {
           <TabsTrigger value="events">{t("tabs.events")}</TabsTrigger>
           <TabsTrigger value="kms" data-testid="settings-tab-kms">
             {t("tabs.kms")}
+          </TabsTrigger>
+          <TabsTrigger value="migrate" data-testid="settings-tab-migrate">
+            {t("tabs.migrate")}
           </TabsTrigger>
         </TabsList>
       </Tabs>

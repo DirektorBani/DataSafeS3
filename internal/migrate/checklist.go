@@ -10,7 +10,7 @@ func ChecklistMarkdown() string {
 		"- [ ] Target buckets created (same names as source recommended)\n" +
 		"- [ ] DataSafe S3 access keys issued (least privilege)\n" +
 		"- [ ] Operator host can reach source MinIO and DataSafe endpoints\n" +
-		"- [ ] rclone or AWS CLI installed\n" +
+		"- [ ] rclone or AWS CLI installed, or use storage-cli migrate from-minio\n" +
 		"\n" +
 		"## Initial sync\n" +
 		"- [ ] Configure remotes (see migrate-from-minio guide)\n" +

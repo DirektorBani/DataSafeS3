@@ -4,7 +4,8 @@
     "system": "Administrator settings",
     "security": "Security posture",
     "events": "Event delivery",
-    "kms": "Vault (KMS)"
+    "kms": "Vault (KMS)",
+    "migrate": "Migrate"
   },
   "buckets": {
     "confirmDiscard": "Discard unsaved changes?",

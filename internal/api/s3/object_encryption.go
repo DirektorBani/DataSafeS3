@@ -731,7 +731,7 @@ func (s *Service) completeEncryptedMultipart(ctx context.Context, bucket, key, u
 			return closingReader{Reader: plain, c: rc}, nil
 		},
 	}
-	rec, dropped, err := s.putObject(withForcedEncryption(ctx, mp.Encryption), bucket, key, seq, -1, "", nil, build)
+	rec, dropped, err := s.putObject(withForcedEncryption(ctx, mp.Encryption), bucket, key, seq, -1, mp.ContentType, mp.Metadata, build)
 	_ = s.Backend.AbortMultipartUpload(ctx, bucket, key, uploadID)
 	if err != nil {
 		return rec, dropped, err

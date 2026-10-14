@@ -115,6 +115,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				h.getBucketNotification(w, r, bucket)
 				return
 			}
+			if q.Has("policy") {
+				h.getBucketPolicy(w, r, bucket)
+				return
+			}
 			if q.Has("versions") {
 				h.listObjectVersions(w, r, bucket, q)
 				return
@@ -530,16 +534,41 @@ func (h *Handler) listObjectVersions(w http.ResponseWriter, r *http.Request, buc
 		MaxKeys:     maxKeys,
 		IsTruncated: false,
 	}
+	head := map[string]string{}
+	gone := map[string]bool{}
 	for _, o := range objs {
-		sc := metadata.S3StorageClassDisplay(o.StorageClass)
-		resp.Versions = append(resp.Versions, ObjectInfo{
+		if _, ok := head[o.Key]; ok || gone[o.Key] {
+			continue
+		}
+		cur, err := h.Svc.Meta.GetObject(sk, o.Key)
+		if err == nil && cur.VersionID != "" {
+			head[o.Key] = cur.VersionID
+			continue
+		}
+		gone[o.Key] = true
+	}
+	markerLatest := map[string]bool{}
+	for _, o := range objs {
+		entry := VersionEntry{
 			Key:          o.Key,
-			LastModified: formatTime(o.LastModified),
+			LastModified: o.LastModified.UTC().Format(time.RFC3339Nano),
 			ETag:         o.ETag,
 			Size:         o.Size,
-			StorageClass: sc,
+			StorageClass: metadata.S3StorageClassDisplay(o.StorageClass),
 			VersionID:    o.VersionID,
-		})
+		}
+		if id := head[o.Key]; id != "" && o.VersionID == id && !o.IsDeleteMarker {
+			entry.IsLatest = true
+		}
+		if gone[o.Key] && o.IsDeleteMarker && !markerLatest[o.Key] {
+			entry.IsLatest = true
+			markerLatest[o.Key] = true
+		}
+		if o.IsDeleteMarker {
+			resp.DeleteMarkers = append(resp.DeleteMarkers, entry)
+		} else {
+			resp.Versions = append(resp.Versions, entry)
+		}
 	}
 	writeXML(w, http.StatusOK, resp)
 }
@@ -684,6 +713,7 @@ func (h *Handler) serveObject(w http.ResponseWriter, r *http.Request, storageBuc
 	}
 	defer rc.Close()
 	applySSEHeaders(w, rec)
+	writeObjectMeta(w, rec)
 	w.Header().Set("ETag", rec.ETag)
 	if rec.VersionID != "" {
 		w.Header().Set("x-amz-version-id", rec.VersionID)
@@ -760,6 +790,7 @@ func (h *Handler) serveHeadObject(w http.ResponseWriter, r *http.Request, storag
 		return
 	}
 	applySSEHeaders(w, rec)
+	writeObjectMeta(w, rec)
 	w.Header().Set("ETag", rec.ETag)
 	if rec.VersionID != "" {
 		w.Header().Set("x-amz-version-id", rec.VersionID)
@@ -791,7 +822,8 @@ func (h *Handler) deleteObject(w http.ResponseWriter, r *http.Request, bucket, k
 	if !ok {
 		return
 	}
-	if err := h.Svc.DeleteObject(WithObjectEvents(r.Context()), sk, key, r.URL.Query().Get("versionId")); err != nil {
+	ctx := WithUserMetadata(WithObjectEvents(r.Context()), userMetadata(r.Header))
+	if err := h.Svc.DeleteObject(ctx, sk, key, r.URL.Query().Get("versionId")); err != nil {
 		if err == metadata.ErrRetentionLocked || err == metadata.ErrLegalHold {
 			h.emitActivity(r, creds.AccessKey, metadata.ActionObjectDeleteBlocked, "object", bucket+"/"+key)
 		}
@@ -880,6 +912,10 @@ func (h *Handler) createMultipart(w http.ResponseWriter, r *http.Request, bucket
 	if sseErr != nil {
 		writeError(w, r, http.StatusBadRequest, "InvalidArgument", "SSEAlgorithm must be AES256 or aws:kms")
 		return
+	}
+	ctx = WithUserMetadata(ctx, userMetadata(r.Header))
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		ctx = WithContentType(ctx, ct)
 	}
 	uploadID, err := h.Svc.CreateMultipartUpload(ctx, sk, key)
 	if err != nil {
@@ -1018,6 +1054,17 @@ func (h *Handler) putObjectTagging(w http.ResponseWriter, r *http.Request, bucke
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+func writeObjectMeta(w http.ResponseWriter, rec metadata.ObjectRecord) {
+	if rec.IsDeleteMarker {
+		w.Header().Set("x-amz-delete-marker", "true")
+	}
+	for k, v := range rec.Metadata {
+		if strings.HasPrefix(strings.ToLower(k), "x-amz-meta-") {
+			w.Header().Set(k, v)
+		}
+	}
 }
 
 func userMetadata(h http.Header) map[string]string {

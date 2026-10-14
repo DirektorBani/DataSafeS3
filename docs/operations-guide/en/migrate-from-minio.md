@@ -6,7 +6,35 @@ Operator runbook for moving object data from a **MinIO-compatible** S3 endpoint 
 
 > **Honesty:** This is not a drop-in binary replacement and not a claim of 100% MinIO API parity. Object bytes move with standard S3 sync tools. MinIO IAM users, groups, and server-side policies are **not** imported automatically — remap them to DataSafe users, teams, tenants, and bucket policies.
 
-Architecture: [ADR 0001](../../architecture/adr/0001-migration-kit.md) · Checklist source: `internal/migrate`.
+Architecture: [ADR 0001](../../architecture/adr/0001-migration-kit.md) · [ADR 0007](../../architecture/adr/0007-minio-s3-copier.md) · Checklist source: `internal/migrate`.
+
+## Embedded copier
+
+`storage-cli migrate from-minio` copies buckets over the S3 API. rclone and the checklist below remain the DIY path. IAM users and groups are not imported.
+
+The copier writes, in order: bucket, versioning, Object Lock configuration, lifecycle (prefix expiration in days; transitions and noncurrent expiration are warned and not stored), and bucket policy. A policy condition other than `aws:SourceIp` or `aws:SecureTransport` is omitted and named in the report. Object versions are copied oldest first, then delete markers, tags, user metadata, content-type, retention, and legal hold. The current version is written last.
+
+Resume state is JSONL in `--state` (default `./.minio-migrate-state`), flushed after each object. A later run skips a version when that file records it, when the target metadata `x-amz-meta-datasafe-source-version` equals the source version id, or, when `--sse` is not set, when ETag and size already match. Ctrl+C is safe. Repeat the same command to continue. The same source version is not written twice.
+
+A target that answers HTTP 503 `not cluster leader` is retried with backoff. Repeat `--target` for each node; `GET /healthz` selects the one with `is_leader: true`.
+
+`--sse AES256` or `--sse aws:kms --kms-key …` is sent on the target PUT. Source SSE-KMS is read through the S3 API. The report directory (`--report`, default `./minio-migrate-report`) contains `summary.md`, `evidence.json` (`verdicts` are PASS or FAIL), and `evidence.zip`. Verdicts are object count, bytes, delete markers, ETag (a multipart ETag is recomputed at `--part-size`), Object Lock retention, and a SHA-256 sample (`--verify-sample`, `--verify-full`).
+
+DataSafe returns one `ListObjectVersions` page. The copier asks for 100000 keys. MinIO pages of 1000 are followed.
+
+```bash
+storage-cli migrate from-minio \
+  --source http://minio.example:9000 \
+  --source-key "$SOURCE_ACCESS_KEY" \
+  --source-secret "$SOURCE_SECRET_KEY" \
+  --target http://datasafe.example:9000 \
+  --target-key "$TARGET_ACCESS_KEY" \
+  --target-secret "$TARGET_SECRET_KEY" \
+  --buckets my-bucket \
+  --verify-sample 10
+```
+
+**Settings → Migrate** in the console prints this command and can open a local `evidence.json`. It does not send or store source credentials.
 
 ---
 

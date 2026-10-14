@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -742,6 +743,7 @@ func (s *Service) deleteObject(ctx context.Context, bucket, key, versionID strin
 			VersionID:      markerID,
 			IsDeleteMarker: true,
 			LastModified:   time.Now().UTC(),
+			Metadata:       userMetadataFrom(ctx),
 		}
 		evs = s.appendObjectOutbox(ctx, bucketRec, rec, "delete", evs)
 		dropped, err := s.commitObjectRecord(rec, true, evs)
@@ -866,11 +868,13 @@ func (s *Service) CreateMultipartUpload(ctx context.Context, bucket, key string)
 		return "", err
 	}
 	rec := metadata.MultipartRecord{
-		UploadID:   uploadID,
-		Bucket:     bucket,
-		Key:        key,
-		Initiated:  time.Now().UTC(),
-		Encryption: encMeta,
+		UploadID:    uploadID,
+		Bucket:      bucket,
+		Key:         key,
+		Initiated:   time.Now().UTC(),
+		ContentType: contentTypeFrom(ctx),
+		Metadata:    userMetadataFrom(ctx),
+		Encryption:  encMeta,
 	}
 	if err := s.Meta.PutMultipart(rec); err != nil {
 		return "", err
@@ -946,22 +950,47 @@ func (s *Service) completeMultipart(ctx context.Context, bucket, key, uploadID s
 		Key:          key,
 		Size:         info.Size,
 		ETag:         etag,
+		ContentType:  mp.ContentType,
 		VersionID:    versionID,
 		LastModified: info.LastModified,
+		Metadata:     mp.Metadata,
 	}
 	versioned := bucketRec.Versioning
 	if versioned {
-		// Move completed object into versioned path.
+		// The completed object is a file at the key path. A version lives at
+		// key/versions/<id>, so the file has to move aside before that directory exists.
 		rc, _, err := s.Backend.GetObject(ctx, bucket, key)
 		if err != nil {
 			return metadata.ObjectRecord{}, 0, err
 		}
-		_, err = s.Backend.PutObjectVersion(ctx, bucket, key, versionID, rc, info.Size, "")
+		tmp, err := os.CreateTemp("", "datasafe-mpu-*")
+		if err != nil {
+			rc.Close()
+			return metadata.ObjectRecord{}, 0, err
+		}
+		_, copyErr := io.Copy(tmp, rc)
 		rc.Close()
+		if copyErr != nil {
+			tmp.Close()
+			os.Remove(tmp.Name())
+			return metadata.ObjectRecord{}, 0, copyErr
+		}
+		if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+			tmp.Close()
+			os.Remove(tmp.Name())
+			return metadata.ObjectRecord{}, 0, err
+		}
+		if err := s.Backend.DeleteObject(ctx, bucket, key); err != nil && err != storage.ErrNotFound {
+			tmp.Close()
+			os.Remove(tmp.Name())
+			return metadata.ObjectRecord{}, 0, err
+		}
+		_, err = s.Backend.PutObjectVersion(ctx, bucket, key, versionID, tmp, info.Size, "")
+		tmp.Close()
+		os.Remove(tmp.Name())
 		if err != nil {
 			return metadata.ObjectRecord{}, 0, err
 		}
-		_ = s.Backend.DeleteObject(ctx, bucket, key)
 		info, _ = s.Backend.StatObjectVersion(ctx, bucket, key, versionID)
 		rec.LastModified = info.LastModified
 	} else {

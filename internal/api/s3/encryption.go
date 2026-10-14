@@ -192,6 +192,32 @@ func (h *Handler) rejectKMSPresign(w http.ResponseWriter, r *http.Request, creds
 	return false
 }
 
+func (h *Handler) getBucketPolicy(w http.ResponseWriter, r *http.Request, bucket string) {
+	creds, ok := h.authenticate(w, r)
+	if !ok {
+		return
+	}
+	if !h.authorize(w, r, creds, bucket, "", "s3:GetBucketPolicy") {
+		return
+	}
+	sk, ok := h.storageBucket(w, r, creds, bucket)
+	if !ok {
+		return
+	}
+	rec, err := h.Svc.Meta.GetBucketByKey(sk)
+	if err != nil {
+		mapErr(w, r, err)
+		return
+	}
+	if strings.TrimSpace(rec.Policy) == "" {
+		writeError(w, r, http.StatusNotFound, "NoSuchBucketPolicy", "The bucket policy does not exist")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(rec.Policy))
+}
+
 func (h *Handler) putBucketPolicy(w http.ResponseWriter, r *http.Request, bucket string) {
 	creds, ok := h.authenticate(w, r)
 	if !ok {

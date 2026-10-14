@@ -4,7 +4,8 @@
     "system": "Настройки администратора",
     "security": "Безопасность",
     "events": "Доставка событий",
-    "kms": "Vault (KMS)"
+    "kms": "Vault (KMS)",
+    "migrate": "Миграция"
   },
   "buckets": {
     "confirmDiscard": "Отменить несохранённые изменения?",

@@ -107,11 +107,13 @@ func (e *ObjectEncryption) KMS() bool {
 }
 
 type MultipartRecord struct {
-	UploadID   string            `json:"upload_id"`
-	Bucket     string            `json:"bucket"`
-	Key        string            `json:"key"`
-	Initiated  time.Time         `json:"initiated"`
-	Encryption *ObjectEncryption `json:"encryption,omitempty"`
+	UploadID    string            `json:"upload_id"`
+	Bucket      string            `json:"bucket"`
+	Key         string            `json:"key"`
+	Initiated   time.Time         `json:"initiated"`
+	ContentType string            `json:"content_type,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	Encryption  *ObjectEncryption `json:"encryption,omitempty"`
 }
 
 type AccessKeyRecord struct {

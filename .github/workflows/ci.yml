@@ -279,6 +279,7 @@ jobs:
           e2e/mfa-stepup.spec.ts
           e2e/encryption-toggle.spec.ts
           e2e/kms-settings.spec.ts
+          e2e/migrate-from-minio.spec.ts
           e2e/teams.spec.ts
           e2e/gateway.spec.ts
       - name: Tear down
@@ -377,6 +378,36 @@ jobs:
           VAULT_ADDR: http://127.0.0.1:8200
           VAULT_TOKEN: root
         run: go test -count=1 -timeout 5m ./internal/kms/vaulttransit/ -run TestVaultDevTransit
+
+  # Optional MinIO-compatible source. The default test job skips TestFromMinIOLive.
+  minio-migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+      - name: Start MinIO-compatible source
+        run: |
+          docker run -d --name datasafe-minio \
+            -p 19090:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:19090/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs datasafe-minio || true
+          exit 1
+      - name: Copy one object
+        env:
+          MINIO_ENDPOINT: http://127.0.0.1:19090
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+        run: go test -count=1 -timeout 10m ./internal/migrate/ -run TestFromMinIOLive
 
   # Postgres primary + replica, two storage-server nodes, webhook traffic
   # across a scripted promote. Ports stay off :9000 and :9001.
