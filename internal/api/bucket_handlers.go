@@ -143,6 +143,10 @@ func (s *Server) handleDownloadObjectJSON(w http.ResponseWriter, r *http.Request
 	versionID := r.URL.Query().Get("versionId")
 	rc, rec, err := s.svc.GetObject(r.Context(), sk, key, versionID)
 	if err != nil {
+		if errors.Is(err, s3.ErrKeyDestroyed) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": s3.MsgKeyDestroyed})
+			return
+		}
 		if errors.Is(err, s3.ErrKMSUnavailable) {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 				"error":   "KMS unavailable",

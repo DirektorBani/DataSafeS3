@@ -61,6 +61,8 @@ const (
 	// Retries of the same failure do not write another row.
 	ActionEventsSinkDegraded  = "events_sink_degraded"
 	ActionEventsSinkRecovered = "events_sink_recovered"
+	ActionKMSKeyRotated       = "kms_key_rotated"
+	ActionKMSKeyDestroyed     = "kms_key_destroyed"
 )
 
 type ActivityRecord struct {

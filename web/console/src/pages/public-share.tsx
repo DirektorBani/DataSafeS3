@@ -25,7 +25,15 @@ type ShareInfo = {
   password_required?: boolean;
 };
 
-type ShareErrorKind = "not_found" | "expired" | "limit_reached" | "blocked" | "invalid_password" | "unavailable" | "generic";
+type ShareErrorKind =
+  | "not_found"
+  | "expired"
+  | "limit_reached"
+  | "blocked"
+  | "invalid_password"
+  | "unavailable"
+  | "destroyed"
+  | "generic";
 
 type ShareError = {
   kind: ShareErrorKind;
@@ -58,6 +66,9 @@ function classifyShareError(
   }
   if (status === 503 || lower.includes("kms unavailable") || lower.includes("временно недоступен")) {
     return { kind: "unavailable", message: t("error.unavailable") };
+  }
+  if (message.includes("Ключ шифрования уничтожен")) {
+    return { kind: "destroyed", message };
   }
   return {
     kind: "generic",

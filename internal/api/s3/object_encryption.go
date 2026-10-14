@@ -228,6 +228,11 @@ func HeartbeatVersion(build string) string {
 	return build
 }
 
+// EncryptionChangesBlocked is true while a 1.5.0 peer is still in the cluster.
+func (s *Service) EncryptionChangesBlocked() bool {
+	return s.clusterUpgradeInProgress()
+}
+
 func (s *Service) clusterUpgradeInProgress() bool {
 	fresh := map[string]struct{}{}
 	beats, err := s.Meta.ListNodeHeartbeats(time.Now().Add(-2 * time.Minute))
@@ -318,6 +323,23 @@ func (s *Service) legacySSE() bool {
 	}
 	st, err := s.Meta.GetKMSState()
 	return err == nil && st.LegacySSEObjects
+}
+
+// bucketKeyDestroyed is true after crypto-shred. Every object in the bucket
+// is refused, including plaintext that was never wrapped.
+func (s *Service) bucketKeyDestroyed(bucket string) bool {
+	rec, err := s.Meta.GetBucketByKey(bucket)
+	if err != nil {
+		return false
+	}
+	if rec.KMSKeyStatus == "destroyed" {
+		return true
+	}
+	if rec.KMSMasterKeyID == "" {
+		return false
+	}
+	key, err := s.Meta.GetKMSKey(rec.KMSMasterKeyID)
+	return err == nil && key.Status == "destroyed"
 }
 
 func (s *Service) ensureKMSKey(id, tenant, bucketKey, provider string) (metadata.KMSKeyRecord, error) {

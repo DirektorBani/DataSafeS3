@@ -32,5 +32,27 @@
     "vault": "Vault: {{name}}",
     "vaultKey": "key",
     "destroyed": "Key destroyed"
-  }
+  },
+  "rotate": "Rotate key",
+  "rotateTitle": "Rotate key?",
+  "rotateBody": "New files will be encrypted with the new key version. Existing files stay readable. To move them to the new version, run “Encrypt existing objects”.",
+  "rotateConfirm": "Rotate key",
+  "rotated": "Key rotated",
+  "encryptExisting": "Encrypt existing objects",
+  "encryptExistingHint": "Files without encryption are encrypted. Files on an older key version move to the current version. The file bytes of an already encrypted file are not read.",
+  "jobProgress": "{{done}} / {{total}}",
+  "jobErrors": "Errors: {{count}}",
+  "jobEta": "About {{seconds}} s left",
+  "jobDone": "Finished",
+  "jobReport": "Download report",
+  "destroy": "Destroy key",
+  "destroyTitle": "Destroy the key?",
+  "destroyBody": "Every file in this bucket will be unreadable forever. They cannot be restored, even by an administrator.",
+  "destroyNext": "Continue",
+  "destroyNameTitle": "Type the bucket name",
+  "destroyNameHint": "Type {{bucket}} to confirm. This cannot be undone.",
+  "destroyConfirm": "Destroy key",
+  "destroyMismatch": "The name does not match this bucket.",
+  "destroyed": "Key destroyed",
+  "dangerZone": "Danger zone"
 }

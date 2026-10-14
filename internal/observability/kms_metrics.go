@@ -41,8 +41,27 @@ var (
 
 func ensureKMSMetrics() {
 	kmsRegOnce.Do(func() {
-		prometheus.MustRegister(kmsRequestsTotal, kmsRequestDuration, kmsAvailable, kmsCacheHits, kmsCacheMisses, kmsJobs)
+		prometheus.MustRegister(kmsRequestsTotal, kmsRequestDuration, kmsAvailable, kmsCacheHits, kmsCacheMisses)
 	})
+}
+
+var jobRegOnce sync.Once
+
+// ObserveKMSJob counts one object finished by a leader job.
+// Registration is separate from Vault metrics, so an idle node that never
+// runs a job does not publish datasafe_kms_*.
+func ObserveKMSJob(job, result string) {
+	jobRegOnce.Do(func() {
+		prometheus.MustRegister(kmsJobs)
+	})
+	kmsJobs.WithLabelValues(job, result).Inc()
+}
+
+// ResetKMSJobMetricsForTest removes the job counter from the default registry.
+// Package tests share that registry, and an idle /metrics check must not see it.
+func ResetKMSJobMetricsForTest() {
+	prometheus.Unregister(kmsJobs)
+	jobRegOnce = sync.Once{}
 }
 
 // ObserveKMS records one KMS call. The first call registers the KMS metrics.

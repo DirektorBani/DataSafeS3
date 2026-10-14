@@ -273,6 +273,19 @@ func (s *Server) handlePublicShareDownload(w http.ResponseWriter, r *http.Reques
 	rc, rec, err := s.svc.GetObject(r.Context(), link.Bucket, link.Key, "")
 	if err != nil {
 		if errors.Is(err, s3.ErrKeyDestroyed) {
+			resource := link.ID + " result=key_destroyed"
+			payload := map[string]any{
+				"link_id": link.ID, "actor": "anonymous", "client_ip": clientIP(r),
+				"user_agent": r.UserAgent(), "bucket": brec.Name, "key": link.Key,
+				"result": "key_destroyed",
+			}
+			if rec.Encryption != nil && rec.Encryption.KeyID != "" {
+				resource = link.ID + " key_id=" + rec.Encryption.KeyID + " key_version=" + strconv.Itoa(rec.Encryption.KeyVersion) + " result=key_destroyed"
+				payload["key_id"] = rec.Encryption.KeyID
+				payload["key_version"] = rec.Encryption.KeyVersion
+			}
+			s.logActivityAs("public", clientIP(r), metadata.ActionShareDownloaded, "share", resource)
+			s.publishEvent(r.Context(), "ShareDownloaded", brec.Name, link.Key, "", brec.EffectiveTenantID(), payload)
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": s3.MsgKeyDestroyed})
 			return
 		}
@@ -287,7 +300,11 @@ func (s *Server) handlePublicShareDownload(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	defer rc.Close()
-	s.logActivityAs("public", clientIP(r), metadata.ActionShareDownloaded, "share", link.ID)
+	shareResource := link.ID
+	if rec.Encryption != nil && rec.Encryption.Sealed() {
+		shareResource = link.ID + " key_id=" + rec.Encryption.KeyID + " key_version=" + strconv.Itoa(rec.Encryption.KeyVersion)
+	}
+	s.logActivityAs("public", clientIP(r), metadata.ActionShareDownloaded, "share", shareResource)
 	payload := map[string]any{
 		"link_id": link.ID, "actor": "anonymous", "client_ip": clientIP(r),
 		"user_agent": r.UserAgent(), "size": rec.Size, "bucket": brec.Name, "key": link.Key,

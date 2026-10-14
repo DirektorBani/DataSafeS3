@@ -289,6 +289,7 @@ jobs:
           e2e/sharing-security.spec.ts
           e2e/mfa-stepup.spec.ts
           e2e/encryption-toggle.spec.ts
+          e2e/encryption-jobs.spec.ts
           e2e/kms-settings.spec.ts
           e2e/migrate-from-minio.spec.ts
           e2e/teams.spec.ts

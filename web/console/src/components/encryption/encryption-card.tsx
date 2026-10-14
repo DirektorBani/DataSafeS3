@@ -18,6 +18,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RotateKey } from "@/components/encryption/RotateKey";
+import { EncryptExisting } from "@/components/encryption/EncryptExisting";
+import { DestroyKey } from "@/components/encryption/DestroyKey";
 
 export type EncryptionBadgeBucket = {
   default_encryption?: string;
@@ -230,7 +233,18 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
           </div>
         )}
         {view.enabled && view.key_status === "destroyed" && (
-          <p className="text-sm text-destructive">{t("badge.destroyed")}</p>
+          <p className="text-sm text-destructive" data-testid="encryption-key-destroyed">
+            {t("badge.destroyed")}
+          </p>
+        )}
+        {view.enabled && view.key_status !== "destroyed" && canEdit && (
+          <div className="flex flex-wrap items-start gap-3">
+            <RotateKey bucket={bucket} keyId={view.key_id} disabled={!canEdit} />
+            <EncryptExisting bucket={bucket} disabled={!canEdit} activeJobId={view.active_job_id} />
+          </div>
+        )}
+        {view.enabled && view.key_status !== "destroyed" && canEdit && (
+          <DestroyKey bucket={bucket} disabled={!canEdit} />
         )}
       </CardContent>
       <Dialog open={confirmOn} onOpenChange={setConfirmOn}>

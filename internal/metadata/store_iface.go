@@ -272,6 +272,9 @@ type MetadataStore interface {
 	PutKMSKey(rec KMSKeyRecord) error
 	GetKMSKey(id string) (KMSKeyRecord, error)
 	ListKMSKeys() ([]KMSKeyRecord, error)
+	PutKMSJob(rec KMSJob) error
+	GetKMSJob(id string) (KMSJob, error)
+	ListKMSJobs() ([]KMSJob, error)
 	PutBucketEncryption(storageKey string, enc BucketEncryption) error
 	GetBucketEncryption(storageKey string) (BucketEncryption, error)
 	DeleteBucketEncryption(storageKey string) error

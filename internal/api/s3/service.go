@@ -642,6 +642,15 @@ func (s *Service) purgeObjectData(ctx context.Context, bucket, key string) {
 
 func (s *Service) GetObject(ctx context.Context, bucket, key, versionID string) (io.ReadCloser, metadata.ObjectRecord, error) {
 	bucket = s.normalizeBucketKey(bucket)
+	if s.bucketKeyDestroyed(bucket) {
+		rec, _ := s.Meta.GetObject(bucket, key)
+		if versionID != "" {
+			if v, verr := s.Meta.GetObjectVersion(bucket, key, versionID); verr == nil {
+				rec = v
+			}
+		}
+		return nil, rec, ErrKeyDestroyed
+	}
 	var rec metadata.ObjectRecord
 	var err error
 	if versionID != "" {
@@ -711,6 +720,9 @@ func peerCanRead(peer metadata.FederationCluster) bool {
 
 func (s *Service) HeadObject(ctx context.Context, bucket, key, versionID string) (metadata.ObjectRecord, error) {
 	bucket = s.normalizeBucketKey(bucket)
+	if s.bucketKeyDestroyed(bucket) {
+		return metadata.ObjectRecord{}, ErrKeyDestroyed
+	}
 	var rec metadata.ObjectRecord
 	var err error
 	if versionID != "" {

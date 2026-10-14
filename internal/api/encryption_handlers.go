@@ -27,12 +27,20 @@ func (s *Server) bucketEncryptionView(rec metadata.BucketRecord, canEdit bool) m
 		backend = "postgres"
 	}
 	ha := s.haLeader != nil && s.haLeader.Enabled()
+	keyVersion := 0
+	if rec.KMSMasterKeyID != "" {
+		if key, err := s.meta.GetKMSKey(rec.KMSMasterKeyID); err == nil {
+			keyVersion = key.Version
+		}
+	}
 	return map[string]any{
 		"enabled":               rec.DefaultEncryption != "",
 		"algorithm":             rec.DefaultEncryption,
 		"provider":              rec.EncryptionProvider,
 		"key_id":                rec.KMSMasterKeyID,
+		"key_version":           keyVersion,
 		"key_status":            rec.KMSKeyStatus,
+		"active_job_id":         s.activeKMSJobID(rec.EffectiveStorageKey()),
 		"visibility":            rec.Visibility,
 		"server_key_configured": s.svc.LocalKMSConfigured(),
 		"vault_configured":      s.svc.VaultKMS() != nil,

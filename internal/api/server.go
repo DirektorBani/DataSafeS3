@@ -214,6 +214,7 @@ func NewServer(cfg Config) (*Server, error) {
 	s3h.OnActivity = func(user, ip, action, resourceType, resourceName string) {
 		s.logActivityAs(user, ip, action, resourceType, resourceName)
 	}
+	s3h.OnPresignDecrypt = s.notePresignDecrypt
 	initCORSFromEnv()
 	if err := s.seedAdminUser(); err != nil {
 		meta.Close()
@@ -323,6 +324,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 	if _, ok := s.meta.(*pgmeta.Store); ok {
 		go s.watchVaultConfig(ctx)
 	}
+	go s.runKMSJobs(ctx)
 }
 
 // runEventSinkRefresh reloads webhook and bucket-notification sinks from the
@@ -792,6 +794,12 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /api/v1/buckets/{bucket}/encryption", allRoles(s.handleGetBucketEncryption))
 	mux.HandleFunc("PUT /api/v1/buckets/{bucket}/encryption", allRoles(s.handlePutBucketEncryption))
 	mux.HandleFunc("DELETE /api/v1/buckets/{bucket}/encryption", allRoles(s.handleDeleteBucketEncryption))
+	mux.HandleFunc("POST /api/v1/buckets/{bucket}/encryption/rewrap", allRoles(s.handleRewrapBucket))
+	mux.HandleFunc("POST /api/v1/buckets/{bucket}/encryption/destroy", allRoles(s.handleDestroyBucketKey))
+	mux.HandleFunc("POST /api/v1/kms/keys/{id}/rotate", allRoles(s.handleRotateKMSKey))
+	mux.HandleFunc("GET /api/v1/kms/jobs", allRoles(s.handleListKMSJobs))
+	mux.HandleFunc("GET /api/v1/kms/jobs/{id}/report", allRoles(s.handleKMSJobReport))
+	mux.HandleFunc("GET /api/v1/kms/jobs/{id}", allRoles(s.handleGetKMSJob))
 	mux.HandleFunc("POST /api/v1/buckets/{bucket}/shares/revoke-all", allRoles(s.handleRevokeAllSharedLinks))
 	mux.HandleFunc("POST /api/v1/sts/assume-role", allRoles(s.handleAssumeRole))
 	mux.HandleFunc("POST /api/v1/buckets/{bucket}/objects/transition-storage-class", allRoles(s.handleTransitionStorageClass))

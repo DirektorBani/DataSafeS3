@@ -798,12 +798,16 @@ export function BucketDetailPage() {
                           toast.error(e instanceof Error ? e.message : t("bucketDetail:toast.invalidJson"));
                         }
                       }}>{t("bucketDetail:metadata.save")}</Button>
-                      <Button size="sm" variant="outline" onClick={async () => {
-                        const blob = await api.downloadObject(bucket, detailObject.key, detailObject.version_id);
-                        const a = document.createElement("a");
-                        a.href = URL.createObjectURL(blob);
-                        a.download = detailObject.key.split("/").pop() ?? "download";
-                        a.click();
+                      <Button size="sm" variant="outline" data-testid="object-download" onClick={async () => {
+                        try {
+                          const blob = await api.downloadObject(bucket, detailObject.key, detailObject.version_id);
+                          const a = document.createElement("a");
+                          a.href = URL.createObjectURL(blob);
+                          a.download = detailObject.key.split("/").pop() ?? "download";
+                          a.click();
+                        } catch (e) {
+                          toast.error(e instanceof Error ? e.message : t("bucketDetail:toast.invalidJson"));
+                        }
                       }}>{t("bucketDetail:metadata.download")}</Button>
                       <Button size="sm" variant="outline" onClick={() => { setRenameTarget(detailObject); setRenameDest(detailObject.key.replace(prefix, "")); }}><Pencil className="h-3.5 w-3.5" /> {t("bucketDetail:metadata.rename")}</Button>
                       <Button size="sm" variant="outline" onClick={() => { setMoveTarget(detailObject); setMoveDest(""); setMoveDestBucket(bucket); }}>{t("bucketDetail:metadata.move")}</Button>
@@ -846,11 +850,15 @@ export function BucketDetailPage() {
                       <td className="p-3">
                         <div className="flex gap-1">
                           <Button size="sm" variant="ghost" disabled={!v.version_id} onClick={async () => {
-                            const blob = await api.downloadObject(bucket, v.key, v.version_id);
-                            const a = document.createElement("a");
-                            a.href = URL.createObjectURL(blob);
-                            a.download = v.key.split("/").pop() ?? "download";
-                            a.click();
+                            try {
+                              const blob = await api.downloadObject(bucket, v.key, v.version_id);
+                              const a = document.createElement("a");
+                              a.href = URL.createObjectURL(blob);
+                              a.download = v.key.split("/").pop() ?? "download";
+                              a.click();
+                            } catch (e) {
+                              toast.error(e instanceof Error ? e.message : t("bucketDetail:toast.invalidJson"));
+                            }
                           }}>{t("bucketDetail:metadata.download")}</Button>
                           <Button size="sm" variant="ghost" disabled={!v.version_id} onClick={() => api.objectAction(bucket, { action: "restore", key: v.key, version_id: v.version_id }).then(() => { invalidateObjects(); toast.success(t("bucketDetail:toast.versionRestored")); })}>
                             <RotateCcw className="h-3.5 w-3.5" />

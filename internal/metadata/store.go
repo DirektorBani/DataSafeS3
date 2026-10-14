@@ -156,6 +156,7 @@ func (s *Store) init() error {
 			"event_outbox", "event_outbox_due",
 			"sharing_policies",
 			"mfa_action_tokens", "mfa_denied_events", "mfa_stepup_failures",
+			"kms_jobs",
 		} {
 			if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
 				return err

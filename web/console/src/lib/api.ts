@@ -126,12 +126,28 @@ export type ConsoleUser = {
   created_at: string;
 };
 
+export type KMSJob = {
+  id: string;
+  type: string;
+  bucket: string;
+  key_id: string;
+  target_version: number;
+  status: string;
+  total: number;
+  done: number;
+  errors: number;
+  eta_seconds: number;
+  samples?: string[];
+};
+
 export type BucketEncryption = {
   enabled: boolean;
   algorithm: string;
   provider: string;
   key_id: string;
+  key_version?: number;
   key_status: string;
+  active_job_id?: string;
   visibility: string;
   server_key_configured: boolean;
   vault_configured: boolean;
@@ -1184,7 +1200,17 @@ export const api = {
       `${API_BASE}/buckets/${encodeURIComponent(bucket)}/objects/${encodeURIComponent(key)}${q}`,
       { headers: token ? { Authorization: `Bearer ${token}` } : {} }
     );
-    if (!res.ok) throw new ApiError(await res.text(), res.status);
+    if (!res.ok) {
+      const text = await res.text();
+      let message = text || res.statusText;
+      try {
+        const json = JSON.parse(text) as { error?: string };
+        if (json.error) message = json.error;
+      } catch {
+        /* raw body */
+      }
+      throw new ApiError(message, res.status);
+    }
     return res.blob();
   },
 
@@ -1767,6 +1793,21 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+  rotateKMSKey: (id: string) =>
+    fetchJSON<{ id: string; key_version: number; generation: number; status: string }>(
+      `/kms/keys/${encodeURIComponent(id)}/rotate`,
+      { method: "POST" }
+    ),
+  startEncryptExisting: (bucket: string) =>
+    fetchJSON<KMSJob>(`/buckets/${encodeURIComponent(bucket)}/encryption/rewrap`, { method: "POST" }),
+  destroyBucketKey: (bucket: string, confirm: string) =>
+    fetchJSON<KMSJob>(`/buckets/${encodeURIComponent(bucket)}/encryption/destroy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm }),
+    }),
+  getKMSJob: (id: string) => fetchJSON<KMSJob>(`/kms/jobs/${encodeURIComponent(id)}`),
+  getKMSJobReport: (id: string) => fetchJSON<KMSJob>(`/kms/jobs/${encodeURIComponent(id)}/report`),
   getBucketSharing: (bucket: string) =>
     fetchJSON<SharingView>(`/buckets/${encodeURIComponent(bucket)}/sharing`),
   putBucketSharing: (bucket: string, body: SharingPolicy) =>

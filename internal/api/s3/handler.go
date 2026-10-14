@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"context"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -19,9 +20,14 @@ import (
 // user is a display name (access-key owner username when known).
 type ActivityHook func(user, ip, action, resourceType, resourceName string)
 
+// PresignDecryptHook records a presigned GET that decrypted or refused a sealed object.
+// result is "ok" or "key_destroyed".
+type PresignDecryptHook func(ctx context.Context, user, ip, bucket, key, keyID, tenant, result string, keyVersion int)
+
 type Handler struct {
-	Svc        *Service
-	OnActivity ActivityHook
+	Svc              *Service
+	OnActivity       ActivityHook
+	OnPresignDecrypt PresignDecryptHook
 }
 
 func NewHandler(svc *Service) *Handler {
@@ -838,10 +844,16 @@ func (h *Handler) serveObject(w http.ResponseWriter, r *http.Request, storageBuc
 	versionID := r.URL.Query().Get("versionId")
 	rc, rec, err := h.Svc.GetObject(r.Context(), storageBucket, key, versionID)
 	if err != nil {
+		if errors.Is(err, ErrKeyDestroyed) {
+			h.notePresignDecrypt(r, storageBucket, key, rec, "key_destroyed")
+		}
 		mapErr(w, r, err)
 		return
 	}
 	defer rc.Close()
+	if rec.Encryption != nil && rec.Encryption.Sealed() {
+		h.notePresignDecrypt(r, storageBucket, key, rec, "ok")
+	}
 	applySSEHeaders(w, rec)
 	writeObjectMeta(w, rec)
 	w.Header().Set("ETag", rec.ETag)
@@ -963,6 +975,38 @@ func (h *Handler) deleteObject(w http.ResponseWriter, r *http.Request, bucket, k
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) notePresignDecrypt(r *http.Request, storageBucket, key string, rec metadata.ObjectRecord, result string) {
+	if h.OnPresignDecrypt == nil || r.URL.Query().Get("X-Amz-Algorithm") == "" {
+		return
+	}
+	logical := storageBucket
+	tenant := ""
+	if b, err := h.Svc.Meta.GetBucketByKey(storageBucket); err == nil {
+		if b.Name != "" {
+			logical = b.Name
+		}
+		tenant = b.EffectiveTenantID()
+	}
+	keyID, ver := "", 0
+	if rec.Encryption != nil {
+		keyID = rec.Encryption.KeyID
+		ver = rec.Encryption.KeyVersion
+	}
+	objectKey := rec.Key
+	if objectKey == "" {
+		objectKey = key
+	}
+	user := ""
+	if creds, err := h.Svc.Signer.Authenticate(r); err == nil {
+		user = creds.AccessKey
+	}
+	ip := r.RemoteAddr
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		ip = strings.TrimSpace(strings.Split(fwd, ",")[0])
+	}
+	h.OnPresignDecrypt(r.Context(), user, ip, logical, objectKey, keyID, tenant, result, ver)
 }
 
 func (h *Handler) emitActivity(r *http.Request, accessKey, action, resourceType, resourceName string) {
