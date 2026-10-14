@@ -4,7 +4,7 @@
 
 CI job `single-node-gate` checks that a pull request still runs as one production container: embedded Bolt, `STORAGE_DEV=false`, no Postgres, NATS, or Kafka process, and an empty notification outbox when nothing is configured to receive events.
 
-Shipped in **v1.5.0**. The job does not publish an image and does not push a tag. The resource budget still compares with the published **v1.4.1** image. The installer retag matches the current pin, **v1.5.0**, which is not on GHCR until the release tag is pushed.
+Shipped in **v1.5.0**. The job does not publish an image and does not push a tag. From 1.6.0 the resource budget compares this build with the published **v1.5.0** image, Bolt against Bolt and Postgres against Postgres. The installer retag still uses the pin **v1.5.0** and happens after that measurement.
 
 ## What it guarantees
 
@@ -14,8 +14,8 @@ On every pull request into `main`, and on a push to `main`:
 2. Smoke, with the AWS CLI (path-style): `/healthz`, admin login, the first-run password change and `POST /api/v1/setup/complete`, S3 create-bucket / put / get / list, Activity has at least one entry, inventory job create and list, inventory CSV download, activity CSV and JSON export. Those files are zipped the same way as `scripts/collect-evidence-pack.ps1`.
 3. With no sinks, `datasafe_events_outbox_pending` is 0 and the delivered, dropped, and dead counters are absent or zero. Server logs must not show a broker dial (`nats://`, `kafka`, `amqp://`, `dial tcp`, `lookup postgres`, `no such host`, `connection refused`). `/proc/net/tcp` and `tcp6` inside the container must not show an outbound socket except loopback (the image healthcheck) and connections whose local port is 9000 (inbound smoke).
 4. The same smoke runs again after `./install.sh --yes --profiles core`. That path starts `storage-server` and Caddy only. Admin calls go through Caddy on port 8080. S3 stays on port 9000.
-5. Idle RSS and startup-to-healthy are compared with `ghcr.io/direktorbani/datasafe-storage-server:v1.4.1` on the same runner. The job fails when the PR startup median is more than 1 second above the baseline median, or the PR idle RSS median is more than 10% above the baseline median. The table is in the GitHub step summary. That Bolt limit is not raised.
-6. After the Bolt measurement, the same image is started with `STORAGE_METADATA_BACKEND=postgres` against a Postgres 16 container. Its idle RSS median is compared with the Bolt v1.4.1 median from this job and fails above that baseline + 10%. Startup of the Postgres process is printed and is not a failure.
+5. Bolt idle RSS and startup-to-healthy are compared with `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0` on the same runner, both on Bolt. The job fails when the PR startup median is more than 1 second above the baseline median, or the PR idle RSS median is more than 10% above the baseline median. The table is in the GitHub step summary. That +10% limit is not raised.
+6. Postgres is a separate measurement of the same two images, both with `STORAGE_METADATA_BACKEND=postgres`, against one Postgres 16 container. Runs are interleaved. Each run starts from a new `datasafe` database, so the v1.5.0 image does not open a database this build has already migrated. The same +10% RSS and +1s startup limits apply. The Bolt numbers are not the Postgres baseline.
 
 `install.ps1 -Yes -Profiles core` is the Windows equivalent. CI parses that script on `windows-latest`. It does not boot Docker there.
 
@@ -33,9 +33,9 @@ Docker, curl, and python3. The AWS CLI is used for S3; the script installs it wi
 python3 scripts/single-node-gate.py self-test
 
 docker build -t datasafe-storage-server:gate -f deploy/docker/Dockerfile .
-docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
+docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
 
-BASE_IMAGE=ghcr.io/direktorbani/datasafe-storage-server:v1.4.1 \
+BASE_IMAGE=ghcr.io/direktorbani/datasafe-storage-server:v1.5.0 \
 PR_IMAGE=datasafe-storage-server:gate \
 bash scripts/single-node-gate.sh all
 ```
@@ -54,7 +54,7 @@ docker compose -p datasafe-gate -f docker-compose.yml down -v
 
 CI also unpacks `git archive HEAD` (no `web/console/dist`) and runs the same core install on `PUBLIC_HTTP_PORT=18080`. `GET /` must be 200 and contain `id="root"`.
 
-Do not point `measure` at that retagged name. The script refuses to compare two images with the same id. Pull `v1.4.1` again first.
+Do not point `measure` at that retagged name. The script refuses to compare two images with the same id. Pull `v1.5.0` again first. `measure-postgres` is the same pair of images with Postgres, and it also refuses a retagged baseline.
 
 Windows, from the repo root (Docker Desktop running):
 
@@ -70,7 +70,7 @@ Windows, from the repo root (Docker Desktop running):
 - The TCP check does not see UDP, including DNS. A name lookup that fails before a TCP connect has to show up in the log patterns above.
 - Inbound clients (the smoke, Caddy, the healthcheck) are allowed. Any other non-loopback socket fails the job, including a broker port.
 - The evidence zip is built by `scripts/single-node-gate.sh` from the Admin API. Linux CI does not run `collect-evidence-pack.ps1`.
-- The installer step retags the PR image as `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0` **locally** so `./install.sh` (default tag `v1.5.0`) runs the PR bits. The job does not push that tag. A normal install without that retag pulls the published image, which does not exist until the release tag is pushed. The budget baseline remains the published `v1.4.1` image.
-- Login to `ghcr.io` before the baseline pull is optional. Fork pull requests skip it, and a failed login does not fail the job. The `v1.4.1` image is public.
+- The installer step retags the PR image as `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0` **locally** so `./install.sh` (default tag `v1.5.0`) runs the PR bits. The job does not push that tag. That retag is after the budget measurement. A normal install without that retag pulls the published v1.5.0 image. The budget baseline is that published image, for Bolt and for Postgres separately.
+- Login to `ghcr.io` before the baseline pull is optional. Fork pull requests skip it, and a failed login does not fail the job. The `v1.5.0` image is public.
 - The Windows CI job only checks that `install.ps1` parses and documents `-Yes -Profiles core`.
 - Startup includes Docker create time. It is the same procedure for both images; the limit applies to the difference of medians.

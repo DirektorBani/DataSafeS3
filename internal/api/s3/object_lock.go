@@ -274,6 +274,10 @@ func (s *Service) PutObjectLockConfiguration(bucket string, cfg ObjectLockConfig
 		return err
 	}
 	rec.ObjectLock = strings.EqualFold(cfg.ObjectLockEnabled, "Enabled")
+	if rec.ObjectLock {
+		rec.Versioning = true
+		rec.VersioningSuspended = false
+	}
 	if cfg.Rule != nil && cfg.Rule.DefaultRetention != nil {
 		dr := cfg.Rule.DefaultRetention
 		if dr.Days > 0 {

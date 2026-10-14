@@ -109,8 +109,8 @@ jobs:
           retention-days: 1
           path: datasafe-storage-server-ci.tar.gz
 
-  # Prod bolt container, resource budget vs the published v1.4.1 image, and
-  # install.sh --yes --profiles core. PRs into main and pushes to main.
+  # Prod bolt container, resource budget vs the published v1.5.0 image
+  # (Bolt and Postgres separately), and install.sh --yes --profiles core.
   single-node-gate:
     if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
     runs-on: ubuntu-latest
@@ -122,13 +122,13 @@ jobs:
       - name: Gate assertions self-test
         run: python3 scripts/single-node-gate.py self-test
       - name: Log in to GHCR
-        # The v1.4.1 package is public. Fork PRs do not receive secrets, and a
+        # The v1.5.0 package is public. Fork PRs do not receive secrets, and a
         # failed login must not fail the gate.
         if: github.token != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
         continue-on-error: true
         run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-      - name: Pull v1.4.1 baseline
-        run: docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
+      - name: Pull v1.5.0 baseline
+        run: docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
       - name: Build PR storage-server image
         run: |
           docker build -t datasafe-storage-server:gate -f deploy/docker/Dockerfile \
@@ -139,9 +139,7 @@ jobs:
         env:
           GATE_SAMPLES_OUT: ${{ runner.temp }}/bolt-samples.json
         run: bash scripts/single-node-gate.sh all
-      - name: Postgres idle RSS versus the Bolt baseline
-        env:
-          GATE_BOLT_SAMPLES: ${{ runner.temp }}/bolt-samples.json
+      - name: Postgres resource budget versus v1.5.0
         run: bash scripts/single-node-gate.sh measure-postgres
       - name: Build console image for the installer pin
         run: docker build -t ghcr.io/direktorbani/datasafe-console:v1.5.0 -f deploy/docker/Dockerfile.console .

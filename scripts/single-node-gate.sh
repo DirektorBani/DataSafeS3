@@ -4,12 +4,12 @@
 #
 #   python3 scripts/single-node-gate.py self-test
 #   docker build -t datasafe-storage-server:gate -f deploy/docker/Dockerfile .
-#   docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
+#   docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
 #   bash scripts/single-node-gate.sh all
 #
 # Core installer (after the PR image is tagged as the pin the installer writes).
-# The resource baseline stays the published v1.4.1 image. The installer default
-# tag is the VERSION pin (v1.5.0), which is not published until the release tag.
+# The resource baseline is the published v1.5.0 image, compared per backend.
+# Pull it before the installer retag below. The installer default tag is v1.5.0.
 #   docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
 #   ./install.sh --yes --profiles core --project datasafe-gate --data-root /tmp/datasafe-gate
 #   bash scripts/single-node-gate.sh smoke-installed
@@ -21,7 +21,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 PY="$ROOT/scripts/single-node-gate.py"
 
-BASE_IMAGE="${BASE_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.4.1}"
+BASE_IMAGE="${BASE_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.5.0}"
 PR_IMAGE="${PR_IMAGE:-datasafe-storage-server:gate}"
 RUNS="${GATE_RUNS:-5}"
 WARMUP="${GATE_WARMUP_SEC:-5}"
@@ -149,7 +149,7 @@ cmd_measure() {
   pr_id="$(docker image inspect -f '{{.Id}}' "$PR_IMAGE")"
   if [ "$base_id" = "$pr_id" ]; then
     echo "baseline and PR images have the same id ($base_id)." >&2
-    echo "Refusing to compare a retagged image. docker pull the v1.4.1 baseline again." >&2
+    echo "Refusing to compare a retagged image. docker pull the v1.5.0 baseline again." >&2
     return 1
   fi
   local tsv work i
@@ -166,6 +166,7 @@ cmd_measure() {
 import json, sys
 tsv, out, base_image, pr_image, base_id, pr_id = sys.argv[1:]
 samples = {
+    "title": "Bolt resource budget",
     "baseline_image": base_image,
     "pr_image": pr_image,
     "baseline_id": base_id,
@@ -187,25 +188,30 @@ PY
   fi
 }
 
-# measure-postgres compares this image on Postgres with the Bolt v1.4.1
-# samples written by measure (GATE_BOLT_SAMPLES). RSS uses the same +10%
-# limit. Startup is printed and is not a failure. The Bolt gate is unchanged.
+# measure-postgres compares v1.5.0 and this image, both on Postgres, on this
+# runner. Each run gets a fresh database so the older image does not start
+# against migrations this image already applied. RSS and startup use the same
+# limits as the Bolt measurement (+10% RSS, +1s startup). Medians of GATE_RUNS.
 cmd_measure_postgres() {
-  local bolt="${GATE_BOLT_SAMPLES:-}"
-  if [ ! -f "$bolt" ]; then
-    echo "GATE_BOLT_SAMPLES must be the JSON written by measure" >&2
+  docker image inspect "$BASE_IMAGE" >/dev/null
+  docker image inspect "$PR_IMAGE" >/dev/null
+  local base_id pr_id
+  base_id="$(docker image inspect -f '{{.Id}}' "$BASE_IMAGE")"
+  pr_id="$(docker image inspect -f '{{.Id}}' "$PR_IMAGE")"
+  if [ "$base_id" = "$pr_id" ]; then
+    echo "baseline and PR images have the same id ($base_id)." >&2
+    echo "Refusing to compare a retagged image. docker pull the v1.5.0 baseline again." >&2
     return 1
   fi
-  docker image inspect "$PR_IMAGE" >/dev/null
   docker network create gate-pg >/dev/null 2>&1 || true
   docker rm -f -v gate-postgres >/dev/null 2>&1 || true
   docker run -d --name gate-postgres --network gate-pg \
     -e POSTGRES_USER=datasafe \
     -e POSTGRES_PASSWORD=datasafe \
-    -e POSTGRES_DB=datasafe \
+    -e POSTGRES_DB=postgres \
     postgres:16 >/dev/null
   local deadline=$((SECONDS + 90))
-  until docker exec gate-postgres pg_isready -U datasafe >/dev/null 2>&1; do
+  until docker exec gate-postgres pg_isready -U datasafe -d postgres >/dev/null 2>&1; do
     if [ "$SECONDS" -ge "$deadline" ]; then
       echo "postgres did not become ready" >&2
       docker logs gate-postgres >&2 || true
@@ -219,27 +225,26 @@ cmd_measure_postgres() {
   : >"$tsv"
   i=1
   while [ "$i" -le "$RUNS" ]; do
+    one_run_pg baseline "$BASE_IMAGE" >>"$tsv"
     one_run_pg pr "$PR_IMAGE" >>"$tsv"
     i=$((i + 1))
   done
-  python3 - "$tsv" "$bolt" "$work/samples.json" "$PR_IMAGE" <<'PY'
+  python3 - "$tsv" "$work/samples.json" "$BASE_IMAGE" "$PR_IMAGE" "$base_id" "$pr_id" <<'PY'
 import json, sys
-tsv, bolt_path, out, pr_image = sys.argv[1:]
-bolt = json.load(open(bolt_path, encoding="utf-8"))
+tsv, out, base_image, pr_image, base_id, pr_id = sys.argv[1:]
 samples = {
-    "title": "Postgres metadata RSS",
-    "rss_only": True,
-    "baseline_image": bolt.get("baseline_image", "v1.4.1") + " bolt",
+    "title": "Postgres resource budget",
+    "baseline_image": base_image + " postgres",
     "pr_image": pr_image + " postgres",
-    "baseline_id": bolt.get("baseline_id", ""),
-    "pr_id": bolt.get("pr_id", ""),
-    "baseline": bolt["baseline"],
+    "baseline_id": base_id,
+    "pr_id": pr_id,
+    "baseline": {"startup_ms": [], "rss_kib": []},
     "pr": {"startup_ms": [], "rss_kib": []},
 }
 for line in open(tsv, encoding="utf-8"):
     label, startup, rss = line.split()
-    samples["pr"]["startup_ms"].append(int(startup))
-    samples["pr"]["rss_kib"].append(int(rss))
+    samples[label]["startup_ms"].append(int(startup))
+    samples[label]["rss_kib"].append(int(rss))
 with open(out, "w", encoding="utf-8") as fh:
     json.dump(samples, fh)
 PY
@@ -247,10 +252,18 @@ PY
   python3 "$PY" budget "$work/samples.json" --summary "$summary"
 }
 
+reset_pg_db() {
+  docker exec gate-postgres psql -U datasafe -d postgres -v ON_ERROR_STOP=1 \
+    -c "DROP DATABASE IF EXISTS datasafe WITH (FORCE);"
+  docker exec gate-postgres psql -U datasafe -d postgres -v ON_ERROR_STOP=1 \
+    -c "CREATE DATABASE datasafe OWNER datasafe;"
+}
+
 one_run_pg() {
   local label="$1" image="$2"
   local name="gate-measure"
   docker rm -f -v "$name" >/dev/null 2>&1 || true
+  reset_pg_db
   local start_ns end_ns startup_ms
   start_ns="$(now_ns)"
   core_docker_run "$name" "$MEASURE_PORT" "$image" postgres gate-postgres gate-pg
@@ -452,13 +465,13 @@ usage() {
   cat <<EOF
 Usage: bash scripts/single-node-gate.sh <measure|measure-postgres|smoke|all|smoke-installed>
 
-  measure           interleaved idle RSS and startup vs \$BASE_IMAGE (default $BASE_IMAGE)
-  measure-postgres  this image on Postgres vs the Bolt baseline in \$GATE_BOLT_SAMPLES
+  measure           interleaved Bolt idle RSS and startup vs \$BASE_IMAGE (default $BASE_IMAGE)
+  measure-postgres  interleaved Postgres idle RSS and startup, same images, fresh DB each run
   smoke             run only \$PR_IMAGE (default $PR_IMAGE) and smoke it
   all               measure, then smoke
   smoke-installed   smoke the core compose project (default datasafe-gate) using .env
 
-Env: GATE_RUNS ($RUNS), GATE_WARMUP_SEC ($WARMUP), GITHUB_STEP_SUMMARY, GATE_SAMPLES_OUT, GATE_BOLT_SAMPLES
+Env: GATE_RUNS ($RUNS), GATE_WARMUP_SEC ($WARMUP), GITHUB_STEP_SUMMARY, GATE_SAMPLES_OUT
 EOF
 }
 

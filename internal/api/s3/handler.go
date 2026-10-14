@@ -127,6 +127,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				h.getBucketLocation(w, r, bucket)
 				return
 			}
+			if q.Has("uploads") {
+				h.listMultipartUploads(w, r, bucket, q)
+				return
+			}
 			h.listObjects(w, r, bucket, q)
 		case http.MethodHead:
 			h.headBucket(w, r, bucket)
@@ -1024,6 +1028,72 @@ func (h *Handler) copyObject(w http.ResponseWriter, r *http.Request, dstBucket, 
 	w.WriteHeader(http.StatusOK)
 }
 
+func (h *Handler) listMultipartUploads(w http.ResponseWriter, r *http.Request, bucket string, q map[string][]string) {
+	creds, ok := h.authenticate(w, r)
+	if !ok {
+		return
+	}
+	if !h.authorize(w, r, creds, bucket, "", "s3:ListBucketMultipartUploads") {
+		return
+	}
+	sk, ok := h.storageBucket(w, r, creds, bucket)
+	if !ok {
+		return
+	}
+	rows, err := h.Svc.ListMultipartUploads(sk)
+	if err != nil {
+		mapErr(w, r, err)
+		return
+	}
+	prefix := first(q["prefix"])
+	keyMarker := first(q["key-marker"])
+	idMarker := first(q["upload-id-marker"])
+	maxUploads := parseMaxKeys(first(q["max-uploads"]))
+	var matched []metadata.MultipartRecord
+	for _, rec := range rows {
+		if prefix != "" && !strings.HasPrefix(rec.Key, prefix) {
+			continue
+		}
+		if keyMarker != "" {
+			if rec.Key < keyMarker {
+				continue
+			}
+			if rec.Key == keyMarker && (idMarker == "" || rec.UploadID <= idMarker) {
+				continue
+			}
+		}
+		matched = append(matched, rec)
+	}
+	truncated := false
+	if maxUploads >= 0 && len(matched) > maxUploads {
+		truncated = true
+		matched = matched[:maxUploads]
+	}
+	resp := ListMultipartUploadsResult{
+		Xmlns:          xmlNS,
+		Bucket:         bucket,
+		Prefix:         prefix,
+		KeyMarker:      keyMarker,
+		UploadIDMarker: idMarker,
+		MaxUploads:     maxUploads,
+		IsTruncated:    truncated,
+	}
+	for _, rec := range matched {
+		resp.Upload = append(resp.Upload, MultipartUploadEntry{
+			Key:          rec.Key,
+			UploadID:     rec.UploadID,
+			StorageClass: "STANDARD",
+			Initiated:    formatTime(rec.Initiated),
+		})
+	}
+	if truncated && len(matched) > 0 {
+		last := matched[len(matched)-1]
+		resp.NextKeyMarker = last.Key
+		resp.NextUploadIDMarker = last.UploadID
+	}
+	writeXML(w, http.StatusOK, resp)
+}
+
 func (h *Handler) createMultipart(w http.ResponseWriter, r *http.Request, bucket, key string) {
 	creds, ok := h.authenticate(w, r)
 	if !ok {
@@ -1271,6 +1341,8 @@ func mapErr(w http.ResponseWriter, r *http.Request, err error) {
 		writeError(w, r, http.StatusForbidden, "AccessDenied", MsgKeyDestroyed)
 	case ErrKMSUnavailable:
 		writeError(w, r, http.StatusServiceUnavailable, "ServiceUnavailable", "KMS unavailable")
+	case errObjectLockVersioning:
+		writeError(w, r, http.StatusConflict, "InvalidBucketState", errObjectLockVersioning.Error())
 	case metadata.ErrLegalHold:
 		writeError(w, r, http.StatusForbidden, "AccessDenied", "object is under legal hold")
 	case metadata.ErrRetentionLocked:

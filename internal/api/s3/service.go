@@ -10,6 +10,7 @@ import (
 	"hash/fnv"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -479,7 +480,17 @@ func (s *Service) bucketVersioningSuspended(bucket string) bool {
 }
 
 func (s *Service) versioningActive(bucket string) bool {
-	return s.bucketVersioning(bucket) && !s.bucketVersioningSuspended(bucket)
+	bucket = s.normalizeBucketKey(bucket)
+	rec, err := s.Meta.GetBucketByKey(bucket)
+	if err != nil {
+		return false
+	}
+	// Object Lock requires versioning to stay enabled. A stored Suspended
+	// flag does not turn it off.
+	if rec.ObjectLock {
+		return true
+	}
+	return rec.Versioning && !rec.VersioningSuspended
 }
 
 func (s *Service) PutObject(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string, userMeta map[string]string) (metadata.ObjectRecord, error) {
@@ -774,9 +785,8 @@ func (s *Service) deleteObject(ctx context.Context, bucket, key, versionID strin
 	if rec, err := s.Meta.GetBucketByKey(bucket); err == nil {
 		bucketRec = rec
 	}
-	versioning := s.bucketVersioning(bucket)
-	suspended := s.bucketVersioningSuspended(bucket)
-	if versioning && !suspended && versionID == "" {
+	versioning := s.versioningActive(bucket)
+	if versioning && versionID == "" {
 		markerID := newVersionID()
 		rec := metadata.ObjectRecord{
 			Bucket:         bucket,
@@ -997,7 +1007,7 @@ func (s *Service) completeMultipart(ctx context.Context, bucket, key, uploadID s
 		LastModified: time.Now().UTC(),
 		Metadata:     mp.Metadata,
 	}
-	versioned := bucketRec.Versioning
+	versioned := bucketRec.ObjectLock || (bucketRec.Versioning && !bucketRec.VersioningSuspended)
 	if versioned {
 		// The completed object is a file at the key path. A version lives at
 		// key/versions/<id>, so the file has to move aside before that directory exists.
@@ -1134,7 +1144,7 @@ func (s *Service) pruneExpired(ctx context.Context) {
 					continue
 				}
 				cutoff := now.Add(-time.Duration(rule.ExpirationDays) * 24 * time.Hour)
-				mps, err := s.Meta.ListMultipart(b.Name)
+				mps, err := s.Meta.ListMultipart(b.EffectiveStorageKey())
 				if err != nil {
 					continue
 				}
@@ -1186,13 +1196,17 @@ func (s *Service) pruneExpired(ctx context.Context) {
 	}
 }
 
+// errObjectLockVersioning is PutBucketVersioning on a bucket that has Object Lock.
+// AWS keeps that versioning state at Enabled.
+var errObjectLockVersioning = errors.New("object lock configuration is present, so versioning cannot be suspended")
+
 func (s *Service) GetBucketVersioning(bucket string) (string, error) {
 	bucket = s.normalizeBucketKey(bucket)
 	rec, err := s.Meta.GetBucketByKey(bucket)
 	if err != nil {
 		return "", err
 	}
-	if rec.Versioning && !rec.VersioningSuspended {
+	if rec.ObjectLock || (rec.Versioning && !rec.VersioningSuspended) {
 		return "Enabled", nil
 	}
 	if rec.Versioning {
@@ -1207,6 +1221,9 @@ func (s *Service) SetBucketVersioning(bucket string, status string) error {
 	if err != nil {
 		return err
 	}
+	if rec.ObjectLock && !strings.EqualFold(status, "enabled") {
+		return errObjectLockVersioning
+	}
 	switch strings.ToLower(status) {
 	case "enabled":
 		rec.Versioning = true
@@ -1219,6 +1236,43 @@ func (s *Service) SetBucketVersioning(bucket string, status string) error {
 		rec.VersioningSuspended = false
 	}
 	return s.Meta.UpdateBucket(rec)
+}
+
+// ListMultipartUploads returns in-progress uploads for a bucket storage key.
+// Rows stored under the logical name are included, so a scoped bucket
+// (storage key o__… / t__…) still lists an upload that was written either way.
+func (s *Service) ListMultipartUploads(bucket string) ([]metadata.MultipartRecord, error) {
+	bucket = s.normalizeBucketKey(bucket)
+	rows, err := s.Meta.ListMultipart(bucket)
+	if err != nil {
+		return nil, err
+	}
+	if rec, gerr := s.Meta.GetBucketByKey(bucket); gerr == nil && rec.Name != "" && rec.Name != bucket {
+		more, merr := s.Meta.ListMultipart(rec.Name)
+		if merr != nil {
+			return nil, merr
+		}
+		rows = append(rows, more...)
+	}
+	seen := make(map[string]struct{}, len(rows))
+	out := make([]metadata.MultipartRecord, 0, len(rows))
+	for _, rec := range rows {
+		if rec.UploadID == "" {
+			continue
+		}
+		if _, ok := seen[rec.UploadID]; ok {
+			continue
+		}
+		seen[rec.UploadID] = struct{}{}
+		out = append(out, rec)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Key == out[j].Key {
+			return out[i].UploadID < out[j].UploadID
+		}
+		return out[i].Key < out[j].Key
+	})
+	return out, nil
 }
 
 func (s *Service) GetBucketLifecycle(bucket string) ([]metadata.LifecycleRule, error) {

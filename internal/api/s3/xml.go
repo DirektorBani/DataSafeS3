@@ -135,6 +135,27 @@ type LifecycleExpiration struct {
 	Days int `xml:"Days"`
 }
 
+type ListMultipartUploadsResult struct {
+	XMLName            xml.Name               `xml:"ListMultipartUploadsResult"`
+	Xmlns              string                 `xml:"xmlns,attr"`
+	Bucket             string                 `xml:"Bucket"`
+	Prefix             string                 `xml:"Prefix"`
+	KeyMarker          string                 `xml:"KeyMarker"`
+	UploadIDMarker     string                 `xml:"UploadIdMarker"`
+	NextKeyMarker      string                 `xml:"NextKeyMarker,omitempty"`
+	NextUploadIDMarker string                 `xml:"NextUploadIdMarker,omitempty"`
+	MaxUploads         int                    `xml:"MaxUploads"`
+	IsTruncated        bool                   `xml:"IsTruncated"`
+	Upload             []MultipartUploadEntry `xml:"Upload,omitempty"`
+}
+
+type MultipartUploadEntry struct {
+	Key          string `xml:"Key"`
+	UploadID     string `xml:"UploadId"`
+	StorageClass string `xml:"StorageClass"`
+	Initiated    string `xml:"Initiated"`
+}
+
 type InitiateMultipartUploadResult struct {
 	XMLName  xml.Name `xml:"InitiateMultipartUploadResult"`
 	Xmlns    string   `xml:"xmlns,attr"`
