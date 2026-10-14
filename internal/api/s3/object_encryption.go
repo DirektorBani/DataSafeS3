@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"path"
 	"strconv"
@@ -106,7 +108,7 @@ func EnsureLocalKEK(meta metadata.MetadataStore, master string) error {
 			return err
 		}
 		if st.Fingerprint != "" {
-			return errors.New("SSE master key fingerprint mismatch")
+			return errors.New("SSE master key is missing; set STORAGE_SSE_MASTER_KEY to the original key and restart")
 		}
 		return nil
 	}
@@ -222,16 +224,81 @@ func HeartbeatVersion(build string) string {
 }
 
 func (s *Service) clusterUpgradeInProgress() bool {
+	fresh := map[string]struct{}{}
 	beats, err := s.Meta.ListNodeHeartbeats(time.Now().Add(-2 * time.Minute))
+	if err == nil {
+		for _, b := range beats {
+			if versionBelow160(b.Version) {
+				return true
+			}
+			fresh[b.NodeID] = struct{}{}
+		}
+	}
+	// 1.5.0 does not write cluster_node_heartbeats. A live leader still renews
+	// ha_leader_lock (lock_id storage-server, holder_id, acquired_at, expires_at).
+	if holder, ok, err := s.Meta.LiveLeader(); err == nil && ok && holder != "" {
+		if _, seen := fresh[holder]; !seen {
+			return true
+		}
+	}
+	return s.peerPre160()
+}
+
+// peerPre160 reads version from GET /healthz of nodes in the cluster registry
+// (system_config cluster.nodes, the list 1.5.0 E07 node status probes).
+// A healthy 1.5.0 answer is {"status":"ok","version":"1.5.0",...}. An unreachable
+// node is not live and does not block.
+func (s *Service) peerPre160() bool {
+	cfg, err := s.Meta.GetSystemConfig()
 	if err != nil {
 		return false
 	}
-	for _, b := range beats {
-		if versionBelow160(b.Version) {
+	for _, n := range cfg.Cluster.Nodes {
+		ver, alive := fetchPeerVersion(n.Address)
+		if !alive {
+			continue
+		}
+		if ver == "" || versionBelow160(ver) {
 			return true
 		}
 	}
 	return false
+}
+
+func fetchPeerVersion(address string) (string, bool) {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return "", false
+	}
+	if !strings.Contains(address, "://") {
+		address = "http://" + address
+	}
+	endpoint := strings.TrimRight(address, "/") + "/healthz"
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", false
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", false
+	}
+	var body struct {
+		Status  string `json:"status"`
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
+		return "", true
+	}
+	if body.Status != "" && body.Status != "ok" {
+		return "", false
+	}
+	return body.Version, true
 }
 
 func (s *Service) legacySSE() bool {

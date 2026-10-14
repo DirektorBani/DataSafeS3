@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -653,7 +654,7 @@ func TestE01EmptyKeySkipsKMSStateAndRejectsClearedKey(t *testing.T) {
 	if srv != nil {
 		_ = srv.Close()
 	}
-	if err == nil || !strings.Contains(err.Error(), "SSE master key fingerprint mismatch") {
+	if err == nil || !strings.Contains(err.Error(), "SSE master key is missing") || !strings.Contains(err.Error(), "STORAGE_SSE_MASTER_KEY") || !strings.Contains(err.Error(), "original") {
 		t.Fatalf("cleared key %v", err)
 	}
 }
@@ -700,6 +701,128 @@ func TestE01KeyAddedLaterStaysPlaintext(t *testing.T) {
 	got := s3Call(t, s, http.MethodGet, "/later/a.txt", nil, nil)
 	if got.Code != http.StatusOK || got.Body.String() != "still-plain" {
 		t.Fatalf("get %d %q", got.Code, got.Body.String())
+	}
+}
+
+func TestE01ClusterRegistry15HealthzBlocks(t *testing.T) {
+	var version atomic.Value
+	version.Store("1.5.0")
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/healthz" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "ok", "version": version.Load().(string), "commit": "v15", "read_only_mode": false,
+		})
+	}))
+	t.Cleanup(peer.Close)
+
+	s := testServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+	createBucket(t, s, tok, "regbox", nil)
+	cfg, err := s.Meta().GetSystemConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Cluster.Nodes = []metadata.ClusterNode{{
+		ID: "node-15", Address: peer.URL, Role: "primary", Status: "healthy",
+	}}
+	if err := s.Meta().PutSystemConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Meta().UpsertNodeHeartbeat("node-16", "1.6.0", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	rec := doJSON(t, s.Handler(), http.MethodPut, "/api/v1/buckets/regbox/encryption", tok, []byte(`{"enabled":true}`), "")
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), s3.MsgClusterUpgrade) {
+		t.Fatalf("registry 1.5 %d %s", rec.Code, rec.Body.String())
+	}
+	version.Store("1.6.0")
+	rec = doJSON(t, s.Handler(), http.MethodPut, "/api/v1/buckets/regbox/encryption", tok, []byte(`{"enabled":true}`), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("after peers 1.6 %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestE01Live15LeaderLeaseBlocksEncryption(t *testing.T) {
+	dsn := os.Getenv("TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_DSN not set — skipping postgres integration test")
+	}
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	if err := admin.Ping(ctx); err != nil {
+		admin.Close()
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	name := fmt.Sprintf("ds_e01_lease_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+		admin.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec(context.Background(), "DROP DATABASE "+name+" WITH (FORCE)")
+		admin.Close()
+	})
+	fresh, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh.Path = "/" + name
+	dir := t.TempDir()
+	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
+	t.Setenv("STORAGE_KAFKA_BROKERS", "")
+	t.Setenv("STORAGE_NATS_URL", "")
+	s, err := api.NewServer(api.Config{
+		DataDir: dir, AdminUser: "admin", AdminPassword: "admin", JWTSecret: "test",
+		SSEMasterKey: "lease-key",
+		Metadata: metadata.Config{
+			Backend: metadata.BackendPostgres, PostgresDSN: fresh.String(), DataDir: dir,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	cfg, err := s.Meta().GetSystemConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.InitialSetupCompleted = true
+	cfg.AdminFirstLoginCompleted = true
+	if err := s.Meta().PutSystemConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := pgxpool.New(ctx, fresh.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	// Exact 1.5.0 leader-lease shape from TryAcquireLeader / migration 015.
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO ha_leader_lock (lock_id, holder_id, acquired_at, expires_at)
+		VALUES ('storage-server', 'node-15', NOW(), NOW() + INTERVAL '30 seconds')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Meta().UpsertNodeHeartbeat("node-16", "1.6.0", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	tok := loginToken(t, s, "admin", "admin")
+	createBucket(t, s, tok, "leasebox", nil)
+	rec := doJSON(t, s.Handler(), http.MethodPut, "/api/v1/buckets/leasebox/encryption", tok, []byte(`{"enabled":true}`), "")
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), s3.MsgClusterUpgrade) {
+		t.Fatalf("live 1.5 lease %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := pool.Exec(ctx, `UPDATE ha_leader_lock SET expires_at = NOW() - INTERVAL '1 second' WHERE lock_id = 'storage-server'`); err != nil {
+		t.Fatal(err)
+	}
+	rec = doJSON(t, s.Handler(), http.MethodPut, "/api/v1/buckets/leasebox/encryption", tok, []byte(`{"enabled":true}`), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expired lease %d %s", rec.Code, rec.Body.String())
 	}
 }
 

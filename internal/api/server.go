@@ -280,7 +280,11 @@ func (s *Server) StartBackground(ctx context.Context) {
 	go s.runClusterCertRotator(ctx)
 	go s.runLDAPSyncWorker(ctx)
 	go s.runMFATokenPurge(ctx)
-	if strings.TrimSpace(s.cfg.SSEMasterKey) != "" {
+	// Bolt with no master key stays quiet (single-node RSS budget). A Postgres
+	// or HA node still advertises 1.6.0 so a 1.5.0 leader lease is not mistaken
+	// for this process.
+	if s.advertiseClusterVersion() {
+		s.writeClusterHeartbeat()
 		go s.runKMSHeartbeat(ctx)
 	}
 	if eb, ok := s.backend.(*erasure.Backend); ok {
@@ -544,7 +548,7 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":  "ok",
-			"version": buildinfo.Version,
+			"version": s3.HeartbeatVersion(buildinfo.Version),
 			"commit":  buildinfo.Commit,
 		})
 	})

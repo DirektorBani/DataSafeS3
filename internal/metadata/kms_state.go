@@ -169,6 +169,11 @@ func (s *Store) DeleteBucketEncryption(storageKey string) error {
 	return s.PutBucketEncryption(storageKey, BucketEncryption{StorageKey: storageKey})
 }
 
+// LiveLeader is unused on Bolt. 1.5.0 writes the HA lease only in Postgres.
+func (s *Store) LiveLeader() (string, bool, error) {
+	return "", false, nil
+}
+
 func (s *Store) UpsertNodeHeartbeat(nodeID, version string, at time.Time) error {
 	rec := NodeHeartbeat{NodeID: nodeID, Version: version, SeenAt: at.UTC()}
 	return s.db.Update(func(tx *bolt.Tx) error {

@@ -45,6 +45,12 @@ func (s *Store) ReleaseLeader(ctx context.Context, holderID string) error {
 	return err
 }
 
+// LiveLeader is the unexpired ha_leader_lock row 1.5.0 renews.
+func (s *Store) LiveLeader() (string, bool, error) {
+	holder, _, ok, err := s.CurrentLeader(context.Background())
+	return holder, ok, err
+}
+
 func (s *Store) CurrentLeader(ctx context.Context) (string, time.Time, bool, error) {
 	var holder string
 	var exp time.Time

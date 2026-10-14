@@ -276,6 +276,10 @@ type MetadataStore interface {
 	DeleteBucketEncryption(storageKey string) error
 	UpsertNodeHeartbeat(nodeID, version string, at time.Time) error
 	ListNodeHeartbeats(since time.Time) ([]NodeHeartbeat, error)
+	// LiveLeader is the unexpired HA lease in ha_leader_lock (1.5.0 E07).
+	// holder is holder_id. ok is false when the row is missing, expired, or
+	// this store has no lease table (Bolt).
+	LiveLeader() (holder string, ok bool, err error)
 
 	// Field encryption KEK registry
 	ListEncryptionKeys(ctx context.Context) ([]EncryptionKeyRecord, error)

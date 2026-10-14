@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/api"
+	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/buildinfo"
 	"github.com/DirektorBani/datasafe/internal/observability"
@@ -540,7 +541,7 @@ func TestHealthReportsVersionAndCommit(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatal(err)
 		}
-		if body.Status != "ok" || body.Version != buildinfo.Version || body.Commit != buildinfo.Commit {
+		if body.Status != "ok" || body.Version != s3.HeartbeatVersion(buildinfo.Version) || body.Commit != buildinfo.Commit {
 			t.Fatalf("%s %+v", path, body)
 		}
 		if body.Version == "" || body.Commit == "" {

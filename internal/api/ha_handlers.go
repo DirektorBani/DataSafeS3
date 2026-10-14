@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/buildinfo"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/observability"
@@ -70,7 +71,7 @@ func isReadOnlyExempt(method, path string) bool {
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{
 		"status":         "ok",
-		"version":        buildinfo.Version,
+		"version":        s3.HeartbeatVersion(buildinfo.Version),
 		"commit":         buildinfo.Commit,
 		"read_only_mode": s.isReadOnly(),
 	}

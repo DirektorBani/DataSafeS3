@@ -13,6 +13,7 @@ import (
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/buildinfo"
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	pgmeta "github.com/DirektorBani/datasafe/internal/metadata/postgres"
 )
 
 func (s *Server) bucketEncryptionView(rec metadata.BucketRecord, canEdit bool) map[string]any {
@@ -143,17 +144,38 @@ func (s *Server) finishEncryptionDisable(w http.ResponseWriter, r *http.Request,
 	writeJSON(w, http.StatusOK, s.bucketEncryptionView(updated, true))
 }
 
-func (s *Server) runKMSHeartbeat(ctx context.Context) {
+// advertiseClusterVersion is true when this process must be visible to the
+// mixed-version guard. An empty key on Bolt does not qualify.
+func (s *Server) advertiseClusterVersion() bool {
+	if strings.TrimSpace(s.cfg.SSEMasterKey) != "" {
+		return true
+	}
+	if _, ok := s.meta.(*pgmeta.Store); ok {
+		return true
+	}
+	return s.haLeader != nil && s.haLeader.Enabled()
+}
+
+func (s *Server) clusterNodeID() string {
+	if s.haLeader != nil && s.haLeader.Enabled() && strings.TrimSpace(s.haLeader.NodeID()) != "" {
+		return s.haLeader.NodeID()
+	}
 	node := strings.TrimSpace(s.cfg.NodeID)
 	if node == "" {
 		node = strings.TrimSpace(os.Getenv("STORAGE_NODE_ID"))
 	}
 	if node == "" {
-		node = "local"
+		return "local"
 	}
-	beat := func() {
-		_ = s.meta.UpsertNodeHeartbeat(node, s3.HeartbeatVersion(buildinfo.Version), time.Now().UTC())
-	}
+	return node
+}
+
+func (s *Server) writeClusterHeartbeat() {
+	_ = s.meta.UpsertNodeHeartbeat(s.clusterNodeID(), s3.HeartbeatVersion(buildinfo.Version), time.Now().UTC())
+}
+
+func (s *Server) runKMSHeartbeat(ctx context.Context) {
+	beat := func() { s.writeClusterHeartbeat() }
 	beat()
 	tick := time.NewTicker(30 * time.Second)
 	defer tick.Stop()
