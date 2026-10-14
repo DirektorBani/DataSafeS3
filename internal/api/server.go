@@ -165,14 +165,18 @@ func NewServer(cfg Config) (*Server, error) {
 		Label:     "bootstrap",
 		CreatedAt: time.Now().UTC(),
 	})
+	cfg.SSEMasterKey = strings.TrimSpace(cfg.SSEMasterKey)
 	if err := s3.EnsureLocalKEK(meta, cfg.SSEMasterKey); err != nil {
 		meta.Close()
 		return nil, err
 	}
-	localKMS, err := kms.NewLocal(cfg.SSEMasterKey)
-	if err != nil {
-		meta.Close()
-		return nil, err
+	var localKMS *kms.Local
+	if cfg.SSEMasterKey != "" {
+		localKMS, err = kms.NewLocal(cfg.SSEMasterKey)
+		if err != nil {
+			meta.Close()
+			return nil, err
+		}
 	}
 	svc := s3.NewService(backend, meta, signer, cfg.Region, cfg.AccessKey)
 	svc.FederationPeers = func() ([]metadata.FederationCluster, error) {
@@ -276,7 +280,9 @@ func (s *Server) StartBackground(ctx context.Context) {
 	go s.runClusterCertRotator(ctx)
 	go s.runLDAPSyncWorker(ctx)
 	go s.runMFATokenPurge(ctx)
-	go s.runKMSHeartbeat(ctx)
+	if strings.TrimSpace(s.cfg.SSEMasterKey) != "" {
+		go s.runKMSHeartbeat(ctx)
+	}
 	if eb, ok := s.backend.(*erasure.Backend); ok {
 		go erasure.RunHealWorker(ctx, eb, storage.ObjectBackendFromEnv(s.cfg.DataDir, s.cfg.ReadOnly).HealEvery)
 	}

@@ -268,7 +268,7 @@ jobs:
       - name: E2E regression
         working-directory: web/console
         run: >
-          npx playwright test
+          npx playwright test --workers=1
           e2e/smoke.spec.ts
           e2e/buckets.spec.ts
           e2e/settings.spec.ts

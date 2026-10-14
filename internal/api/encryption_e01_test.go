@@ -610,6 +610,78 @@ func TestE01LegacyFormat0AndFingerprint(t *testing.T) {
 	}
 }
 
+func TestE01EmptyKeySkipsKMSStateAndRejectsClearedKey(t *testing.T) {
+	dir := t.TempDir()
+	s := newKeyedServer(t, dir, "")
+	st, err := s.Meta().GetKMSState()
+	if err != nil || st.Fingerprint != "" || st.Initialized || st.LegacySSEObjects {
+		t.Fatalf("idle state %+v %v", st, err)
+	}
+	if s.Svc().LocalKMSConfigured() {
+		t.Fatal("local kms configured without a master key")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.StartBackground(ctx)
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		beats, err := s.Meta().ListNodeHeartbeats(time.Now().Add(-time.Minute))
+		if err != nil {
+			cancel()
+			t.Fatal(err)
+		}
+		if len(beats) != 0 {
+			cancel()
+			t.Fatalf("idle heartbeats %+v", beats)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	cancel()
+	_ = s.Close()
+
+	meta, err := metadata.Open(metadata.Config{Backend: metadata.BackendBolt, DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := meta.PutKMSState(metadata.KMSState{Fingerprint: kms.Fingerprint("kept")}); err != nil {
+		_ = meta.Close()
+		t.Fatal(err)
+	}
+	_ = meta.Close()
+	srv, err := api.NewServer(api.Config{
+		DataDir: dir, AdminUser: "admin", AdminPassword: "admin", JWTSecret: "test",
+	})
+	if srv != nil {
+		_ = srv.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "SSE master key fingerprint mismatch") {
+		t.Fatalf("cleared key %v", err)
+	}
+}
+
+func TestE01HeartbeatAdvertisesAtLeast160(t *testing.T) {
+	dir := t.TempDir()
+	s := newKeyedServer(t, dir, "hb-key")
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.StartBackground(ctx)
+	deadline := time.Now().Add(2 * time.Second)
+	var beats []metadata.NodeHeartbeat
+	for {
+		var err error
+		beats, err = s.Meta().ListNodeHeartbeats(time.Now().Add(-time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(beats) > 0 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(beats) != 1 || beats[0].Version != "1.6.0" {
+		t.Fatalf("beats %+v", beats)
+	}
+}
+
 func TestE01KeyAddedLaterStaysPlaintext(t *testing.T) {
 	dir := t.TempDir()
 	s := newKeyedServer(t, dir, "")

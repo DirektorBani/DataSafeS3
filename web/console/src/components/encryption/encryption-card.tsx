@@ -103,7 +103,7 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
   }
 
   const canEdit = view.can_edit;
-  const keyReady = view.server_key_configured || view.vault_configured;
+  const serverKeyMissing = !view.server_key_configured && !view.vault_configured;
   const vaultSelected = provider === "vault";
   const publicRead = view.visibility === "public-read";
 
@@ -114,7 +114,11 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
         <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!keyReady && <p className="text-sm text-muted-foreground">{t("serverKeyMissing")}</p>}
+        {serverKeyMissing && (
+          <p className="text-sm text-muted-foreground" data-testid="encryption-key-missing">
+            {t("serverKeyMissing")}
+          </p>
+        )}
         {!canEdit && <p className="text-sm text-muted-foreground">{t("readOnly")}</p>}
         <label className="flex items-start gap-3 text-sm">
           <input
@@ -122,7 +126,7 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
             className="mt-1"
             data-testid="encryption-toggle"
             checked={enabled}
-            disabled={!canEdit || !keyReady || save.isPending}
+            disabled={!canEdit || serverKeyMissing || save.isPending}
             onChange={(e) => {
               if (!e.target.checked && view.enabled) {
                 setConfirmOff(true);

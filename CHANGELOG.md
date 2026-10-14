@@ -7,6 +7,7 @@ All notable changes to DataSafeS3 are documented in this file.
 ### Fixed
 
 - **Plaintext objects survive adding `STORAGE_SSE_MASTER_KEY`.** 1.6.0 no longer marks every existing object as SSE-S3 format 0 just because a master key is set and the bucket is not empty. Unmarked objects are returned as stored. A format-0 reading of those bytes is opt-in (`STORAGE_SSE_LEGACY_FORMAT0=true`). A legacy flag written by the first 1.6.0 builds, which inferred it from the object count, is cleared on the next start unless that variable is set. The key fingerprint is unchanged: a different key still refuses to start.
+- **Idle process does not start KMS.** With no `STORAGE_SSE_MASTER_KEY`, startup does not create `kms_state` and does not run the cluster heartbeat. A key that was set earlier and then cleared still refuses to start (`SSE master key fingerprint mismatch`). The heartbeat a node does write is at least 1.6.0, so an image stamped from the 1.5.0 `VERSION` file does not treat itself as a mixed-cluster peer.
 
 ## [1.5.0] - 2026-10-12
 

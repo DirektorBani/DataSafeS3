@@ -94,7 +94,22 @@ func legacyFormat0OptIn() bool {
 // The error text is part of the startup contract.
 // LegacySSEObjects follows STORAGE_SSE_LEGACY_FORMAT0 only. A flag stored by an
 // earlier build that inferred it from the object count is cleared on this start.
+// An empty master key does not create kms_state: the single-node gate runs
+// without encryption, and a bolt write plus the heartbeat goroutine is enough
+// to push idle RSS over the budget. A fingerprint already stored still refuses
+// to start, so clearing the key cannot read objects wrapped by the old one.
 func EnsureLocalKEK(meta metadata.MetadataStore, master string) error {
+	master = strings.TrimSpace(master)
+	if master == "" {
+		st, err := meta.GetKMSState()
+		if err != nil {
+			return err
+		}
+		if st.Fingerprint != "" {
+			return errors.New("SSE master key fingerprint mismatch")
+		}
+		return nil
+	}
 	fp := kms.Fingerprint(master)
 	wantLegacy := legacyFormat0OptIn()
 	st, err := meta.InitKMSState(metadata.KMSState{
@@ -192,6 +207,18 @@ func versionBelow160(v string) bool {
 		return nums[0] < 1
 	}
 	return nums[1] < 6
+}
+
+// HeartbeatVersion is the version this process writes for the upgrade gate.
+// The encryption code in this binary is 1.6.0. The image build still stamps
+// buildinfo.Version from the VERSION file (1.5.0) when the Docker arg is dev,
+// and that stamp must not make the node refuse its own bucket-encryption change.
+func HeartbeatVersion(build string) string {
+	build = strings.TrimSpace(build)
+	if build == "" || strings.EqualFold(build, "dev") || versionBelow160(build) {
+		return "1.6.0"
+	}
+	return build
 }
 
 func (s *Service) clusterUpgradeInProgress() bool {

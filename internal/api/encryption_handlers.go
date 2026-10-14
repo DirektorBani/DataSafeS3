@@ -152,7 +152,7 @@ func (s *Server) runKMSHeartbeat(ctx context.Context) {
 		node = "local"
 	}
 	beat := func() {
-		_ = s.meta.UpsertNodeHeartbeat(node, buildinfo.Version, time.Now().UTC())
+		_ = s.meta.UpsertNodeHeartbeat(node, s3.HeartbeatVersion(buildinfo.Version), time.Now().UTC())
 	}
 	beat()
 	tick := time.NewTicker(30 * time.Second)

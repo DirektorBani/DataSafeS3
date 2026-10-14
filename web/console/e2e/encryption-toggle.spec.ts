@@ -6,17 +6,27 @@ test("bucket encryption card toggles and list shows a badge", async ({ page, req
   const tok = await adminToken(request, baseURL!);
   await createBucket(request, baseURL!, tok, bucket);
 
+  const viewRes = await request.get(`${baseURL}/api/v1/buckets/${encodeURIComponent(bucket)}/encryption`, {
+    headers: { Authorization: `Bearer ${tok}` },
+  });
+  expect(viewRes.ok()).toBeTruthy();
+  const view = (await viewRes.json()) as { server_key_configured?: boolean };
+
   await loginAsAdmin(page);
   await page.goto(`/buckets/${encodeURIComponent(bucket)}?tab=settings`);
   const card = page.getByTestId("encryption-card");
   await expect(card).toBeVisible({ timeout: 15_000 });
 
   const toggle = page.getByTestId("encryption-toggle");
-  if (await toggle.isDisabled()) {
-    await expect(card.getByText(/STORAGE_SSE_MASTER_KEY/)).toBeVisible();
+  if (!view.server_key_configured) {
+    await expect(toggle).toBeDisabled();
+    const hint = page.getByTestId("encryption-key-missing");
+    await expect(hint).toBeVisible();
+    await expect(hint).toContainText("STORAGE_SSE_MASTER_KEY");
     return;
   }
 
+  await expect(toggle).toBeEnabled();
   await toggle.check();
   await page.getByTestId("encryption-save").click();
   await expect(page.getByText(/encryption saved|шифрование сохранено/i)).toBeVisible({ timeout: 10_000 });
