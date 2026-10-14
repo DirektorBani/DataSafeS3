@@ -263,13 +263,12 @@ func (c *Client) login(ctx context.Context) error {
 			return c.fail("login", 0, "token is empty")
 		}
 		c.remember(tok)
-		c.mu.Lock()
-		c.token = tok
-		c.exp = time.Now().Add(30 * time.Minute)
-		c.mu.Unlock()
 		if err := c.renew(ctx, tok); err != nil {
-			var se *StatusError
-			if errors.As(err, &se) && (se.Status == http.StatusForbidden || se.Status == http.StatusBadRequest) {
+			if !keepStaticToken(err) {
+				c.mu.Lock()
+				c.token = ""
+				c.exp = time.Time{}
+				c.mu.Unlock()
 				return err
 			}
 			c.mu.Lock()
@@ -321,6 +320,27 @@ func (c *Client) login(ctx context.Context) error {
 	c.exp = time.Now().Add(time.Duration(lease) * time.Second)
 	c.mu.Unlock()
 	return nil
+}
+
+// keepStaticToken reports whether a renew failure still leaves a configured token usable.
+// Dev-mode root tokens, and other tokens with no TTL, answer 400 "token not renewable".
+// HTTP 403 and any other 400 (expired, unknown) reject the token.
+func keepStaticToken(err error) bool {
+	var se *StatusError
+	if !errors.As(err, &se) {
+		return true
+	}
+	if se.Status == http.StatusForbidden {
+		return false
+	}
+	low := strings.ToLower(se.Detail)
+	if strings.Contains(low, "not renewable") {
+		return true
+	}
+	if se.Status == http.StatusBadRequest {
+		return false
+	}
+	return true
 }
 
 func (c *Client) renew(ctx context.Context, tok string) error {

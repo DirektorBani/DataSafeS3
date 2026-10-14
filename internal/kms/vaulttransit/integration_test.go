@@ -35,7 +35,8 @@ func TestVaultDevTransit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := p.Test(ctx); err != nil {
-		t.Fatal(err)
+		raw := p.client.TestLoginEncrypt(ctx)
+		t.Fatalf("test: %v raw: %v", err, raw)
 	}
 	wrapped, ver, err := p.Wrap(ctx, "datasafe-ci-vault", []byte("0123456789abcdef0123456789abcdef"))
 	if err != nil {

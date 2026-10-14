@@ -217,6 +217,53 @@ func TestTransitBadSecretPermissionAndTimeout(t *testing.T) {
 	}
 }
 
+func TestStaticTokenKeptWhenNotRenewable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/auth/token/renew-self":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"errors":["token not renewable"]}`))
+		case strings.Contains(r.URL.Path, "/keys/"):
+			w.WriteHeader(http.StatusNoContent)
+		case strings.Contains(r.URL.Path, "/encrypt/"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"ciphertext": "vault:v1:YQ==", "key_version": 1}})
+		case strings.Contains(r.URL.Path, "/decrypt/"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"plaintext": base64.StdEncoding.EncodeToString([]byte("datasafe"))}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	p, err := Open(Config{Provider: kms.ProviderVault, Addr: srv.URL, Token: "root", Timeout: time.Second})
+	if err != nil || p == nil {
+		t.Fatal(err)
+	}
+	if err := p.Test(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	var calls int
+	expired := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/v1/auth/token/renew-self" {
+			t.Errorf("expired token was used for %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"errors":["token is expired"]}`))
+	}))
+	t.Cleanup(expired.Close)
+	bad, err := Open(Config{Provider: kms.ProviderVault, Addr: expired.URL, Token: "dead", Timeout: time.Second})
+	if err != nil || bad == nil {
+		t.Fatal(err)
+	}
+	if err := bad.Test(t.Context()); err == nil {
+		t.Fatal("expired token was accepted")
+	}
+	if calls != 1 {
+		t.Fatalf("renew calls %d", calls)
+	}
+}
+
 func TestDisabledConfigDoesNotOpen(t *testing.T) {
 	p, err := Open(Config{})
 	if err != nil || p != nil {

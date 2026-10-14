@@ -21,7 +21,7 @@ Both of these must be set. Either source is enough for each field. An environmen
 | `STORAGE_KMS_VAULT_CACERT` | empty | PEM text, or a path to a PEM file on that node. |
 | `STORAGE_KMS_VAULT_ROLE_ID` | empty | AppRole role id for this node. |
 | `STORAGE_KMS_VAULT_SECRET_ID` or `_SECRET_ID_FILE` | empty | AppRole secret. A per-node value overrides the secret saved in shared metadata. |
-| `STORAGE_KMS_VAULT_TOKEN_FILE` | empty | Token file. Alternative to AppRole. The console can store a token; the environment form is a file. |
+| `STORAGE_KMS_VAULT_TOKEN_FILE` | empty | Token file. Alternative to AppRole. The console can store a token; the environment form is a file. A token Vault will not renew (a dev-mode root token answers 400 `token not renewable`) is still used. HTTP 403, or 400 for any other reason, rejects it. |
 | `STORAGE_KMS_VAULT_ADMIN_ROLE_ID` / `_SECRET_ID` / `_SECRET_ID_FILE` | empty | Separate AppRole for rotate and delete. |
 | `STORAGE_KMS_DEFAULT_KEY` | `datasafe-<tenant>-<bucket>` | Default key name. |
 | `STORAGE_KMS_KEY_ALLOWLIST` | `datasafe-*` | Names a caller may request. |

@@ -21,7 +21,7 @@ SSE-S3 (`AES256`) всегда использует `STORAGE_SSE_MASTER_KEY` и 
 | `STORAGE_KMS_VAULT_CACERT` | пусто | PEM или путь к PEM-файлу на этом узле. |
 | `STORAGE_KMS_VAULT_ROLE_ID` | пусто | Role ID AppRole этого узла. |
 | `STORAGE_KMS_VAULT_SECRET_ID` или `_SECRET_ID_FILE` | пусто | Secret ID. Значение узла перекрывает секрет из общих метаданных. |
-| `STORAGE_KMS_VAULT_TOKEN_FILE` | пусто | Файл токена вместо AppRole. Консоль может хранить токен; из окружения читается файл. |
+| `STORAGE_KMS_VAULT_TOKEN_FILE` | пусто | Файл токена вместо AppRole. Консоль может хранить токен; из окружения читается файл. Токен, который Vault не продлевает (корневой токен dev-режима отвечает 400 `token not renewable`), всё равно используется. HTTP 403 и любой другой 400 токен отклоняют. |
 | `STORAGE_KMS_VAULT_ADMIN_ROLE_ID` / `_SECRET_ID` / `_SECRET_ID_FILE` | пусто | Отдельный AppRole для rotate и delete. |
 | `STORAGE_KMS_DEFAULT_KEY` | `datasafe-<tenant>-<bucket>` | Имя ключа по умолчанию. |
 | `STORAGE_KMS_KEY_ALLOWLIST` | `datasafe-*` | Имена, которые может запросить клиент. |
