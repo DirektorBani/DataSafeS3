@@ -1,11 +1,13 @@
 package s3_test
 
 import (
+	"encoding/xml"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
 )
@@ -83,6 +85,72 @@ func TestListObjectVersionsPages(t *testing.T) {
 	if !strings.Contains(body, "<IsTruncated>true</IsTruncated>") || !strings.Contains(body, "<NextKeyMarker>") || !strings.Contains(body, "<NextVersionIdMarker>") {
 		t.Fatalf("versions page: %s", body)
 	}
+}
+
+func TestLatestDeleteMarkerIsLatest(t *testing.T) {
+	srv, creds := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	put(t, ts.URL, creds, "/marks", "")
+	put(t, ts.URL, creds, "/marks?versioning", `<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Status>Enabled</Status></VersioningConfiguration>`)
+	put(t, ts.URL, creds, "/marks?object-lock", `<ObjectLockConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><ObjectLockEnabled>Enabled</ObjectLockEnabled></ObjectLockConfiguration>`)
+	resp := signedDo(t, ts.URL, creds, http.MethodPut, "/marks/k", "one")
+	vid := resp.Header.Get("x-amz-version-id")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || vid == "" {
+		t.Fatalf("put %d version %q", resp.StatusCode, vid)
+	}
+	time.Sleep(2 * time.Millisecond)
+	del := signedDo(t, ts.URL, creds, http.MethodDelete, "/marks/k", "")
+	del.Body.Close()
+	if del.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete %d", del.StatusCode)
+	}
+	assertLatestMarker(t, ts.URL, creds)
+	ret := `<Retention xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Mode>COMPLIANCE</Mode><RetainUntilDate>2030-01-02T03:04:05Z</RetainUntilDate></Retention>`
+	put(t, ts.URL, creds, "/marks/k?retention&versionId="+vid, ret)
+	assertLatestMarker(t, ts.URL, creds)
+}
+
+func assertLatestMarker(t *testing.T, base string, creds auth.Credentials) {
+	t.Helper()
+	raw := getRaw(t, base, creds, "/marks?versions")
+	var doc struct {
+		Markers []struct {
+			IsLatest bool `xml:"IsLatest"`
+		} `xml:"DeleteMarker"`
+		Versions []struct {
+			IsLatest bool `xml:"IsLatest"`
+		} `xml:"Version"`
+	}
+	if err := xml.Unmarshal([]byte(raw), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Markers) != 1 || !doc.Markers[0].IsLatest {
+		t.Fatalf("delete marker latest: %s", raw)
+	}
+	if len(doc.Versions) != 1 || doc.Versions[0].IsLatest {
+		t.Fatalf("older version is latest: %s", raw)
+	}
+}
+
+func signedDo(t *testing.T, base string, creds auth.Credentials, method, path, body string) *http.Response {
+	t.Helper()
+	var rdr io.Reader
+	if body != "" || method == http.MethodPut || method == http.MethodPost {
+		rdr = strings.NewReader(body)
+	}
+	req, err := http.NewRequest(method, base+path, rdr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = req.URL.Host
+	signRequest(t, req, creds, "us-east-1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
 }
 
 func TestLifecycleFilterRoundTripAndReject(t *testing.T) {

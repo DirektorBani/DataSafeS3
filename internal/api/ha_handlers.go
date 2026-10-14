@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/buildinfo"
@@ -75,11 +76,21 @@ func (s *Server) forwardToLeader(w http.ResponseWriter, r *http.Request) bool {
 	if err != nil {
 		return false
 	}
-	var addr string
-	for _, n := range cfg.Cluster.Nodes {
-		if n.ID == holder {
-			addr = strings.TrimSpace(n.Address)
-			break
+	addr := ""
+	if beats, err := s.meta.ListNodeHeartbeats(time.Now().Add(-2 * time.Minute)); err == nil {
+		for _, b := range beats {
+			if b.NodeID == holder && strings.TrimSpace(b.Address) != "" {
+				addr = strings.TrimSpace(b.Address)
+				break
+			}
+		}
+	}
+	if addr == "" {
+		for _, n := range cfg.Cluster.Nodes {
+			if n.ID == holder {
+				addr = strings.TrimSpace(n.Address)
+				break
+			}
 		}
 	}
 	if addr == "" {

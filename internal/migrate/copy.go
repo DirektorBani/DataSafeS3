@@ -335,6 +335,10 @@ func (r *runner) copyBucketConfig(ctx context.Context, bucket string) ([]string,
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusConflict {
 		return warnings, fmt.Errorf("create bucket %d", resp.StatusCode)
 	}
+	// Source encryption is not copied. An empty source configuration must not
+	// delete encryption the target already has. Snapshot it and put it back
+	// if a later config write cleared it.
+	savedEnc, _ := r.getBody(ctx, r.current(), http.MethodGet, "/"+url.PathEscape(bucket), url.Values{"encryption": {""}})
 	if status, err := r.getVersioning(ctx, r.opt.Source, bucket); err == nil && status != "" {
 		body := "<VersioningConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Status>" + xmlEscape(status) + "</Status></VersioningConfiguration>"
 		if err := r.putXML(ctx, bucket, url.Values{"versioning": {""}}, body); err != nil {
@@ -348,9 +352,11 @@ func (r *runner) copyBucketConfig(ctx context.Context, bucket string) ([]string,
 	}
 	if xmlBody, err := r.getBody(ctx, r.opt.Source, http.MethodGet, "/"+url.PathEscape(bucket), url.Values{"lifecycle": {""}}); err == nil && strings.TrimSpace(xmlBody) != "" {
 		if err := LifecycleUnsupported(xmlBody); err != nil {
+			warnings = append(warnings, r.restoreTargetEncryption(ctx, bucket, savedEnc)...)
 			return warnings, configRefusal{"lifecycle: " + err.Error()}
 		}
 		if err := r.putXML(ctx, bucket, url.Values{"lifecycle": {""}}, xmlBody); err != nil {
+			warnings = append(warnings, r.restoreTargetEncryption(ctx, bucket, savedEnc)...)
 			return warnings, configRefusal{"lifecycle: " + err.Error()}
 		}
 	}
@@ -375,7 +381,22 @@ func (r *runner) copyBucketConfig(ctx context.Context, bucket string) ([]string,
 			}
 		}
 	}
+	warnings = append(warnings, r.restoreTargetEncryption(ctx, bucket, savedEnc)...)
 	return warnings, nil
+}
+
+func (r *runner) restoreTargetEncryption(ctx context.Context, bucket, savedEnc string) []string {
+	if !strings.Contains(savedEnc, "<SSEAlgorithm>") {
+		return nil
+	}
+	now, err := r.getBody(ctx, r.current(), http.MethodGet, "/"+url.PathEscape(bucket), url.Values{"encryption": {""}})
+	if err == nil && strings.Contains(now, "<SSEAlgorithm>") {
+		return nil
+	}
+	if putErr := r.putXML(ctx, bucket, url.Values{"encryption": {""}}, savedEnc); putErr != nil {
+		return []string{bucket + " encryption restore: " + putErr.Error()}
+	}
+	return nil
 }
 
 func xmlEscape(s string) string {
@@ -1118,17 +1139,18 @@ func (r *runner) indexTarget(ctx context.Context, bucket string, vers []ObjectVe
 }
 
 func (r *runner) etagOK(ctx context.Context, src ObjectVersion, match ObjectVersion) bool {
-	if r.opt.SSEActive() || src.ETag == "" || trimETag(src.ETag) == trimETag(match.ETag) {
+	if src.ETag == "" || trimETag(src.ETag) == trimETag(match.ETag) {
 		return true
 	}
 	srcE, dstE := trimETag(src.ETag), trimETag(match.ETag)
-	if !strings.Contains(srcE, "-") && !strings.Contains(dstE, "-") {
-		return false
+	if strings.Contains(srcE, "-") || strings.Contains(dstE, "-") {
+		body, err := r.objectBytes(ctx, r.current(), src.Bucket, src.Key, match.VersionID)
+		if err == nil && ETagsAgree(src.ETag, match.ETag, body, r.opt.PartSize) {
+			return true
+		}
 	}
-	body, err := r.objectBytes(ctx, r.current(), src.Bucket, src.Key, match.VersionID)
-	if err == nil && ETagsAgree(src.ETag, match.ETag, body, r.opt.PartSize) {
-		return true
-	}
+	// SSE-KMS and SSE-S3 store an ETag that is not the plaintext MD5.
+	// The bytes are still the object. Compare them.
 	a, errA := r.objectSHA(ctx, r.opt.Source, src.Bucket, src.Key, src.VersionID)
 	b, errB := r.objectSHA(ctx, r.current(), src.Bucket, src.Key, match.VersionID)
 	return errA == nil && errB == nil && a == b

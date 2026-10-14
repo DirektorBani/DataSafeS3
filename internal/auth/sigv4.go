@@ -129,9 +129,10 @@ func (s *Signer) verifyPresigned(r *http.Request) (Credentials, error) {
 	return creds, nil
 }
 
-// requireSignedHeaders rejects x-amz-* and Content-Type when they are not in
-// the signature. AWS and MinIO return 400 for that request. The signature is
-// already checked, so an attacker cannot add x-amz-meta-* after signing.
+// requireSignedHeaders rejects an x-amz-* header that was not signed, and
+// requires host in SignedHeaders. Content-Type may be unsigned: minio-go and
+// a browser presigned PUT send it that way, and AWS accepts it. The signature
+// is already checked, so an attacker cannot add x-amz-meta-* after signing.
 func requireSignedHeaders(r *http.Request, signed []string) error {
 	have := make(map[string]struct{}, len(signed))
 	for _, h := range signed {
@@ -140,9 +141,12 @@ func requireSignedHeaders(r *http.Request, signed []string) error {
 			have[name] = struct{}{}
 		}
 	}
+	if _, ok := have["host"]; !ok {
+		return ErrUnsignedHeaders
+	}
 	for name := range r.Header {
 		ln := strings.ToLower(name)
-		if ln != "content-type" && !strings.HasPrefix(ln, "x-amz-") {
+		if !strings.HasPrefix(ln, "x-amz-") {
 			continue
 		}
 		if _, ok := have[ln]; !ok {

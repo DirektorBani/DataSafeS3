@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -197,7 +198,35 @@ func (s *Server) clusterNodeID() string {
 }
 
 func (s *Server) writeClusterHeartbeat() {
-	_ = s.meta.UpsertNodeHeartbeat(s.clusterNodeID(), s3.HeartbeatVersion(buildinfo.Version), time.Now().UTC())
+	id := s.clusterNodeID()
+	_ = s.meta.UpsertNodeHeartbeat(id, s3.HeartbeatVersion(buildinfo.Version), time.Now().UTC())
+	if s.haLeader != nil && s.haLeader.Enabled() {
+		if addr := advertiseURL(); addr != "" {
+			_ = s.meta.RegisterNodeAddress(id, addr)
+		}
+	}
+}
+
+// advertiseURL is the address peers dial for this process. STORAGE_ADVERTISE_URL
+// wins. Otherwise the hostname and STORAGE_ADDR port are registered so a
+// follower can forward writes without a hand-written cluster.nodes list.
+func advertiseURL() string {
+	if v := strings.TrimSpace(os.Getenv("STORAGE_ADVERTISE_URL")); v != "" {
+		return v
+	}
+	port := "9000"
+	if addr := strings.TrimSpace(os.Getenv("STORAGE_ADDR")); addr != "" {
+		if _, p, err := net.SplitHostPort(addr); err == nil && p != "" {
+			port = p
+		} else if strings.HasPrefix(addr, ":") && len(addr) > 1 {
+			port = addr[1:]
+		}
+	}
+	host, err := os.Hostname()
+	if err != nil || strings.TrimSpace(host) == "" {
+		return ""
+	}
+	return "http://" + host + ":" + port
 }
 
 func (s *Server) runKMSHeartbeat(ctx context.Context) {

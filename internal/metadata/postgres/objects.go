@@ -91,19 +91,25 @@ type pgExec interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-const retentionModeMeta = "\x00retention_mode"
+// retentionModeMeta is stored inside the metadata jsonb document. PostgreSQL
+// rejects U+0000 in json text (22P05), so the private key is U+0001.
+const retentionModeMeta = "\x01retention_mode"
 
 func objectMetaArg(rec metadata.ObjectRecord) []byte {
-	meta := rec.Metadata
-	if rec.RetentionMode != "" {
-		meta = make(map[string]string, len(rec.Metadata)+1)
-		for k, v := range rec.Metadata {
-			if k == retentionModeMeta {
-				continue
-			}
-			meta[k] = v
+	meta := map[string]string{}
+	for k, v := range rec.Metadata {
+		k = strings.ReplaceAll(k, "\x00", "")
+		v = strings.ReplaceAll(v, "\x00", "")
+		if k == "" || k == retentionModeMeta {
+			continue
 		}
+		meta[k] = v
+	}
+	if rec.RetentionMode != "" {
 		meta[retentionModeMeta] = rec.RetentionMode
+	}
+	if len(meta) == 0 {
+		return []byte("null")
 	}
 	raw, _ := marshalJSON(meta)
 	return raw
@@ -116,13 +122,19 @@ func (s *Store) putObjectQ(ctx context.Context, q pgExec, rec metadata.ObjectRec
 		if rec.VersionID == "" {
 			return metadata.ErrNotFound
 		}
-		_, err := q.Exec(ctx, `
-			UPDATE objects SET is_latest=FALSE WHERE bucket=$1 AND key=$2`,
-			rec.Bucket, rec.Key)
-		if err != nil {
+		var exists bool
+		if err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM objects WHERE bucket=$1 AND key=$2 AND version_id=$3)`,
+			rec.Bucket, rec.Key, rec.VersionID).Scan(&exists); err != nil {
 			return err
 		}
-		_, err = q.Exec(ctx, `
+		// A new version becomes latest. Rewriting an older version for
+		// retention or legal hold keeps the current latest row.
+		if !exists {
+			if _, err := q.Exec(ctx, `UPDATE objects SET is_latest=FALSE WHERE bucket=$1 AND key=$2`, rec.Bucket, rec.Key); err != nil {
+				return err
+			}
+		}
+		_, err := q.Exec(ctx, `
 			INSERT INTO objects (bucket, key, version_id, size, etag, content_type, last_modified,
 				scheduled_delete_at, is_delete_marker, legal_hold, retention_until, storage_class,
 				metadata, tags, created_at, is_latest, encryption)
@@ -130,7 +142,7 @@ func (s *Store) putObjectQ(ctx context.Context, q pgExec, rec metadata.ObjectRec
 			ON CONFLICT (bucket, key, version_id) DO UPDATE SET
 				size=$4, etag=$5, content_type=$6, last_modified=$7, scheduled_delete_at=$8,
 				is_delete_marker=$9, legal_hold=$10, retention_until=$11, storage_class=$12,
-				metadata=$13, tags=$14, is_latest=TRUE, encryption=$16`,
+				metadata=$13, tags=$14, is_latest=objects.is_latest, encryption=$16`,
 			rec.Bucket, rec.Key, rec.VersionID, rec.Size, rec.ETag, rec.ContentType, rec.LastModified,
 			timestamptzPtr(rec.ScheduledDeleteAt), rec.IsDeleteMarker, rec.LegalHold,
 			timestamptzPtr(rec.RetentionUntil), rec.StorageClass, meta, tags, rec.CreatedAt, encryptionArg(rec.Encryption))

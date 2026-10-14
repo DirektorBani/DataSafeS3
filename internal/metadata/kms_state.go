@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
@@ -41,6 +42,7 @@ type NodeHeartbeat struct {
 	NodeID       string    `json:"node_id"`
 	Version      string    `json:"version"`
 	SeenAt       time.Time `json:"seen_at"`
+	Address      string    `json:"address,omitempty"`
 	KMSProvider  string    `json:"kms_provider,omitempty"`
 	KMSAvailable *bool     `json:"kms_available,omitempty"`
 	KMSError     string    `json:"kms_error,omitempty"`
@@ -216,6 +218,7 @@ func (s *Store) UpsertNodeHeartbeat(nodeID, version string, at time.Time) error 
 		if cur := b.Get([]byte(nodeID)); cur != nil {
 			var prev NodeHeartbeat
 			if json.Unmarshal(cur, &prev) == nil {
+				rec.Address = prev.Address
 				rec.KMSProvider = prev.KMSProvider
 				rec.KMSAvailable = prev.KMSAvailable
 				rec.KMSError = prev.KMSError
@@ -246,6 +249,29 @@ func (s *Store) UpdateNodeKMSStatus(nodeID string, st NodeKMSStatus) error {
 		rec.KMSAvailable = &avail
 		rec.KMSError = st.Error
 		rec.KMSCheckedAt = st.CheckedAt.UTC()
+		data, err := json.Marshal(rec)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(nodeID), data)
+	})
+}
+
+func (s *Store) RegisterNodeAddress(nodeID, address string) error {
+	address = strings.TrimSpace(address)
+	if nodeID == "" || address == "" {
+		return nil
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b, err := s.kmsBucket(tx, "cluster_node_heartbeats")
+		if err != nil {
+			return err
+		}
+		rec := NodeHeartbeat{NodeID: nodeID, SeenAt: time.Now().UTC(), Address: address}
+		if cur := b.Get([]byte(nodeID)); cur != nil {
+			_ = json.Unmarshal(cur, &rec)
+			rec.Address = address
+		}
 		data, err := json.Marshal(rec)
 		if err != nil {
 			return err

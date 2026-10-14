@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/metadata"
@@ -161,12 +162,25 @@ func (s *Store) UpdateNodeKMSStatus(nodeID string, st metadata.NodeKMSStatus) er
 	return err
 }
 
+func (s *Store) RegisterNodeAddress(nodeID, address string) error {
+	address = strings.TrimSpace(address)
+	if nodeID == "" || address == "" {
+		return nil
+	}
+	_, err := s.pool.Exec(context.Background(), `
+		INSERT INTO cluster_node_heartbeats (node_id, version, seen_at, address)
+		VALUES ($1, '', NOW(), $2)
+		ON CONFLICT (node_id) DO UPDATE SET address = EXCLUDED.address`,
+		nodeID, address)
+	return err
+}
+
 func (s *Store) ListNodeHeartbeats(since time.Time) ([]metadata.NodeHeartbeat, error) {
 	if since.IsZero() {
 		since = time.Unix(0, 0).UTC()
 	}
 	rows, err := s.pool.Query(context.Background(), `
-		SELECT node_id, version, seen_at,
+		SELECT node_id, version, seen_at, COALESCE(address, ''),
 			COALESCE(kms_provider, ''), kms_available, COALESCE(kms_error, ''), kms_checked_at
 		FROM cluster_node_heartbeats
 		WHERE seen_at >= $1`, since)
@@ -178,7 +192,7 @@ func (s *Store) ListNodeHeartbeats(since time.Time) ([]metadata.NodeHeartbeat, e
 	for rows.Next() {
 		var rec metadata.NodeHeartbeat
 		var checked *time.Time
-		if err := rows.Scan(&rec.NodeID, &rec.Version, &rec.SeenAt, &rec.KMSProvider, &rec.KMSAvailable, &rec.KMSError, &checked); err != nil {
+		if err := rows.Scan(&rec.NodeID, &rec.Version, &rec.SeenAt, &rec.Address, &rec.KMSProvider, &rec.KMSAvailable, &rec.KMSError, &checked); err != nil {
 			return nil, err
 		}
 		if checked != nil {

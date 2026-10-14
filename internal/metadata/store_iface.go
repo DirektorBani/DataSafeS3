@@ -276,6 +276,9 @@ type MetadataStore interface {
 	GetBucketEncryption(storageKey string) (BucketEncryption, error)
 	DeleteBucketEncryption(storageKey string) error
 	UpsertNodeHeartbeat(nodeID, version string, at time.Time) error
+	// RegisterNodeAddress records the URL other nodes use to reach nodeID.
+	// Follower write forwarding reads it from this registry.
+	RegisterNodeAddress(nodeID, address string) error
 	UpdateNodeKMSStatus(nodeID string, st NodeKMSStatus) error
 	ListNodeHeartbeats(since time.Time) ([]NodeHeartbeat, error)
 	// LiveLeader is the unexpired HA lease in ha_leader_lock (1.5.0 E07).

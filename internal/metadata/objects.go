@@ -79,8 +79,15 @@ func (s *Store) putObjectTx(tx *bolt.Tx, rec ObjectRecord, versioned bool) error
 		if rec.VersionID == "" {
 			return ErrNotFound
 		}
-		if err := objects.Put(versionObjectKey(rec.Bucket, rec.Key, rec.VersionID), data); err != nil {
+		vk := versionObjectKey(rec.Bucket, rec.Key, rec.VersionID)
+		existed := objects.Get(vk) != nil
+		if err := objects.Put(vk, data); err != nil {
 			return err
+		}
+		// A retention or legal-hold rewrite of an older version must not
+		// become the latest and hide a newer delete marker.
+		if existed {
+			return nil
 		}
 		return latest.Put(latestIndexKey(rec.Bucket, rec.Key), []byte(rec.VersionID))
 	}

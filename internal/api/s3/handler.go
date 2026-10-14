@@ -123,6 +123,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				h.listObjectVersions(w, r, bucket, q)
 				return
 			}
+			if q.Has("location") {
+				h.getBucketLocation(w, r, bucket)
+				return
+			}
 			h.listObjects(w, r, bucket, q)
 		case http.MethodHead:
 			h.headBucket(w, r, bucket)
@@ -424,6 +428,34 @@ func (h *Handler) deleteBucket(w http.ResponseWriter, r *http.Request, bucket st
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// getBucketLocation answers ?location. An object listing is not a region:
+// minio-go reads this before PUT and would put that XML into Authorization.
+func (h *Handler) getBucketLocation(w http.ResponseWriter, r *http.Request, bucket string) {
+	creds, ok := h.authenticate(w, r)
+	if !ok {
+		return
+	}
+	if !h.authorize(w, r, creds, bucket, "", "s3:GetBucketLocation") {
+		return
+	}
+	if _, ok := h.storageBucket(w, r, creds, bucket); !ok {
+		return
+	}
+	region := h.Svc.Region
+	// us-east-1 is the empty constraint. Any other region is the element text.
+	text := region
+	if region == "" || region == "us-east-1" {
+		text = ""
+	}
+	writeXML(w, http.StatusOK, locationConstraint{Xmlns: xmlNS, Region: text})
+}
+
+type locationConstraint struct {
+	XMLName xml.Name `xml:"LocationConstraint"`
+	Xmlns   string   `xml:"xmlns,attr"`
+	Region  string   `xml:",chardata"`
+}
+
 func (h *Handler) headBucket(w http.ResponseWriter, r *http.Request, bucket string) {
 	creds, ok := h.authenticate(w, r)
 	if !ok {
@@ -585,26 +617,19 @@ func (h *Handler) listObjectVersions(w http.ResponseWriter, r *http.Request, buc
 		return
 	}
 	objs = h.Svc.FilterObjectsForAccessKey(creds.AccessKey, sk, objs)
-	head := map[string]string{}
-	gone := map[string]bool{}
-	for _, o := range objs {
-		if _, ok := head[o.Key]; ok || gone[o.Key] {
-			continue
-		}
-		cur, err := h.Svc.Meta.GetObject(sk, o.Key)
-		if err == nil && cur.VersionID != "" {
-			head[o.Key] = cur.VersionID
-			continue
-		}
-		gone[o.Key] = true
+	// The list is newest-first within a key. That first row is IsLatest,
+	// including when it is a delete marker. GetObject hides delete markers,
+	// so it cannot answer this.
+	type latestMark struct {
+		id     string
+		marker bool
 	}
-	markerLatest := map[string]string{}
+	latest := map[string]latestMark{}
 	for _, o := range objs {
-		if gone[o.Key] && o.IsDeleteMarker {
-			if _, ok := markerLatest[o.Key]; !ok {
-				markerLatest[o.Key] = o.VersionID
-			}
+		if _, ok := latest[o.Key]; ok {
+			continue
 		}
+		latest[o.Key] = latestMark{id: o.VersionID, marker: o.IsDeleteMarker}
 	}
 	page, truncated, nextKey, nextVid := pageVersions(objs, first(q["key-marker"]), first(q["version-id-marker"]), maxKeys)
 	resp := ListObjectVersionsResult{
@@ -628,10 +653,7 @@ func (h *Handler) listObjectVersions(w http.ResponseWriter, r *http.Request, buc
 			StorageClass: metadata.S3StorageClassDisplay(o.StorageClass),
 			VersionID:    o.VersionID,
 		}
-		if id := head[o.Key]; id != "" && o.VersionID == id && !o.IsDeleteMarker {
-			entry.IsLatest = true
-		}
-		if id := markerLatest[o.Key]; id != "" && o.VersionID == id && o.IsDeleteMarker {
+		if mark, ok := latest[o.Key]; ok && mark.id == o.VersionID && mark.marker == o.IsDeleteMarker {
 			entry.IsLatest = true
 		}
 		resp.Items = append(resp.Items, orderedEntry{DeleteMarker: o.IsDeleteMarker, Entry: entry})
@@ -703,13 +725,17 @@ func (h *Handler) putObject(w http.ResponseWriter, r *http.Request, bucket, key 
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
-	size := r.ContentLength
+	body, size, chunkErr := auth.UnwrapAWSChunked(r, creds.SecretKey)
+	if chunkErr != nil {
+		mapErr(w, r, chunkErr)
+		return
+	}
 	ctx, sseErr := ctxWithSSE(WithObjectEvents(r.Context()), r)
 	if sseErr != nil {
 		writeError(w, r, http.StatusBadRequest, "InvalidArgument", "SSEAlgorithm must be AES256 or aws:kms")
 		return
 	}
-	rec, err := h.Svc.PutObject(ctx, sk, key, r.Body, size, contentType, userMetadata(r.Header))
+	rec, err := h.Svc.PutObject(ctx, sk, key, body, size, contentType, userMetadata(r.Header))
 	if err != nil {
 		mapErr(w, r, err)
 		return
@@ -1050,7 +1076,12 @@ func (h *Handler) uploadPart(w http.ResponseWriter, r *http.Request, bucket, key
 		writeError(w, r, http.StatusBadRequest, "InvalidArgument", "invalid part number")
 		return
 	}
-	etag, err := h.Svc.UploadPart(r.Context(), sk, key, uploadID, partNum, r.Body, r.ContentLength)
+	body, size, chunkErr := auth.UnwrapAWSChunked(r, creds.SecretKey)
+	if chunkErr != nil {
+		mapErr(w, r, chunkErr)
+		return
+	}
+	etag, err := h.Svc.UploadPart(r.Context(), sk, key, uploadID, partNum, body, size)
 	if err != nil {
 		mapErr(w, r, err)
 		return
@@ -1244,6 +1275,12 @@ func mapErr(w http.ResponseWriter, r *http.Request, err error) {
 		writeError(w, r, http.StatusForbidden, "AccessDenied", "object is under legal hold")
 	case metadata.ErrRetentionLocked:
 		writeError(w, r, http.StatusForbidden, "AccessDenied", "object retention period has not expired")
+	case auth.ErrChunkSignature:
+		writeError(w, r, http.StatusForbidden, "SignatureDoesNotMatch", "The request signature we calculated does not match the signature you provided")
+	case auth.ErrBadDigest:
+		writeError(w, r, http.StatusBadRequest, "BadDigest", "The checksum you specified did not match")
+	case auth.ErrMalformedChunk, auth.ErrDecodedLength:
+		writeError(w, r, http.StatusBadRequest, "IncompleteBody", err.Error())
 	default:
 		writeError(w, r, http.StatusInternalServerError, "InternalError", err.Error())
 	}

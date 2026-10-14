@@ -208,6 +208,70 @@ func TestFromMinIORetriesNotLeader(t *testing.T) {
 	}
 }
 
+func TestFromMinIOKeepsTargetKMSAndSHA(t *testing.T) {
+	srcURL, srcCreds, _ := startNode(t)
+	dstURL, dstCreds, _ := startEncryptedNode(t)
+	bucket := "kmsb"
+	mustStatus(t, srcURL, srcCreds, http.MethodPut, "/"+bucket, "", nil, http.StatusOK)
+	for i, body := range []string{"alpha", "bravo", "charlie"} {
+		mustStatus(t, srcURL, srcCreds, http.MethodPut, "/"+bucket+"/f"+string(rune('0'+i))+".txt", body, nil, http.StatusOK)
+	}
+	enc := `<ServerSideEncryptionConfiguration><Rule><ApplyServerSideEncryptionByDefault><SSEAlgorithm>aws:kms</SSEAlgorithm></ApplyServerSideEncryptionByDefault></Rule></ServerSideEncryptionConfiguration>`
+	mustStatus(t, dstURL, dstCreds, http.MethodPut, "/"+bucket, "", nil, http.StatusOK)
+	mustStatus(t, dstURL, dstCreds, http.MethodPut, "/"+bucket+"?encryption", enc, nil, http.StatusOK)
+
+	opt := options(t, srcURL, srcCreds, dstURL, dstCreds, bucket)
+	opt.VerifyFull = true
+	ev, err := migrate.Run(context.Background(), opt)
+	if err != nil || !ev.OK() {
+		t.Fatalf("run: %v %#v warnings %v errors %v", err, ev.Verdicts, ev.Warnings, ev.Errors)
+	}
+	if ev.Verdicts["etag"] != "PASS" {
+		t.Fatalf("etag %s", ev.Verdicts["etag"])
+	}
+	gotEnc := getBody(t, dstURL, dstCreds, "/"+bucket+"?encryption")
+	if !strings.Contains(gotEnc, "aws:kms") {
+		t.Fatalf("target encryption cleared: %s", gotEnc)
+	}
+	if got := getBody(t, dstURL, dstCreds, "/"+bucket+"/f0.txt"); got != "alpha" {
+		t.Fatalf("body %q", got)
+	}
+	srcETag := strings.Trim(headHeaders(t, srcURL, srcCreds, "/"+bucket+"/f0.txt").Get("ETag"), `"`)
+	dstETag := strings.Trim(headHeaders(t, dstURL, dstCreds, "/"+bucket+"/f0.txt").Get("ETag"), `"`)
+	if srcETag == "" || srcETag == dstETag {
+		t.Fatalf("expected a KMS etag distinct from the plaintext MD5 %q %q", srcETag, dstETag)
+	}
+}
+
+func startEncryptedNode(t *testing.T) (string, auth.Credentials, *api.Server) {
+	t.Helper()
+	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
+	t.Setenv("STORAGE_KMS_PROVIDER", "")
+	t.Setenv("STORAGE_KMS_ADDR", "")
+	t.Setenv("STORAGE_VAULT_ADDR", "")
+	t.Setenv("STORAGE_SSE_MASTER_KEY", "test-sse-master-key")
+	dir := t.TempDir()
+	creds := auth.Credentials{AccessKey: "datasafe", SecretKey: "datasafesecret"}
+	srv, err := api.NewServer(api.Config{
+		DataDir:       dir,
+		Region:        "us-east-1",
+		AccessKey:     creds.AccessKey,
+		SecretKey:     creds.SecretKey,
+		AdminUser:     "admin",
+		AdminPassword: "admin",
+		JWTSecret:     "test",
+		SSEMasterKey:  "test-sse-master-key",
+		Metadata:      metadata.Config{Backend: metadata.BackendBolt, DataDir: dir},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	return ts.URL, creds, srv
+}
+
 func TestFromMinIOLive(t *testing.T) {
 	ep := os.Getenv("MINIO_ENDPOINT")
 	if ep == "" {

@@ -39,7 +39,7 @@ func TestUnsignedMetadataRejected(t *testing.T) {
 	}
 }
 
-func TestUnsignedContentTypeRejected(t *testing.T) {
+func TestUnsignedContentTypeAllowed(t *testing.T) {
 	signer := testSigner()
 	creds := Credentials{AccessKey: "testkey", SecretKey: "testsecret"}
 	req, err := http.NewRequest(http.MethodPut, "http://s3.example/bucket/key", strings.NewReader("body"))
@@ -51,9 +51,26 @@ func TestUnsignedContentTypeRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "text/plain")
-	_, err = signer.Authenticate(req)
-	if !errors.Is(err, ErrUnsignedHeaders) {
-		t.Fatalf("got %v", err)
+	if _, err := signer.Authenticate(req); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPresignedContentTypeAllowed(t *testing.T) {
+	signer := testSigner()
+	creds := Credentials{AccessKey: "testkey", SecretKey: "testsecret"}
+	raw, err := signer.PresignURL(http.MethodPut, "http://s3.example", "bucket", "key", creds, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodPut, raw, strings.NewReader("body"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "s3.example"
+	req.Header.Set("Content-Type", "text/plain")
+	if _, err := signer.Authenticate(req); err != nil {
+		t.Fatal(err)
 	}
 }
 
