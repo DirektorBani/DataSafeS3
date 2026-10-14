@@ -129,6 +129,7 @@ type AccessKeyRecord struct {
 type Store struct {
 	db               *bolt.DB
 	fieldenc         *fieldenc.Service
+	kmsSealKey       []byte
 	outboxMaxPending int
 	outboxMaxSet     bool
 }

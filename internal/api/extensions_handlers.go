@@ -23,6 +23,8 @@ func (s *Server) handleGetSystemConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	cfg.KMS.SecretID = ""
+	cfg.KMS.Token = ""
 	writeJSON(w, http.StatusOK, cfg)
 }
 
@@ -57,6 +59,8 @@ func (s *Server) handlePutSystemConfig(w http.ResponseWriter, r *http.Request) {
 		if cfg.ExternalS3.Endpoint == "" && cfg.ExternalS3.Bucket == "" {
 			cfg.ExternalS3 = existing.ExternalS3
 		}
+		// Vault credentials are saved only by PUT /api/v1/kms/settings.
+		cfg.KMS = existing.KMS
 	}
 	if err := s.meta.PutSystemConfig(cfg); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})

@@ -26,14 +26,18 @@ SSE-S3 (`AES256`) всегда использует `STORAGE_SSE_MASTER_KEY` и 
 | `STORAGE_KMS_DEFAULT_KEY` | `datasafe-<tenant>-<bucket>` | Имя ключа по умолчанию. |
 | `STORAGE_KMS_KEY_ALLOWLIST` | `datasafe-*` | Имена, которые может запросить клиент. |
 | `STORAGE_KMS_DEK_CACHE_TTL` | `5m` | Сколько развёрнутый ключ данных живёт в памяти. |
-| `STORAGE_KMS_POLL_INTERVAL` | `2s` | Как часто узел читает `kms_keys.generation` и сбрасывает устаревший кэш. |
+| `STORAGE_KMS_POLL_INTERVAL` | `2s` | Как часто узел читает `kms_keys.generation`, опрашивает Vault и перечитывает общие настройки. Последователь на Postgres видит сохранение из консоли не позже чем через 2 секунды. |
 | `STORAGE_KMS_TIMEOUT` | `5s` | Один запрос к Vault. |
 
-Клиент — `net/http`. SDK Vault в сервер не входит. Узел звонит в Vault только когда заданы и провайдер, и адрес. Общие настройки лежат в метаданных (`system_config.kms`). Secret ID и токен шифруются как поля. `GET /api/v1/kms/settings`, `/healthz`, Activity и журналы эти секреты не возвращают. Сохранённый секрет показан как заданный; поле принимает только замену.
+Клиент — `net/http`. SDK Vault в сервер не входит. Узел звонит в Vault только когда заданы и провайдер, и адрес. Общие настройки лежат в метаданных (`system_config.kms`). Secret ID и токен запечатаны на диске даже если `STORAGE_FIELD_ENCRYPTION_ENABLED` выключен: AES-GCM с префиксом `kse:v1`, ключ выводится из `STORAGE_SSE_MASTER_KEY`, а если он пуст — из `STORAGE_JWT_SECRET`. Когда шифрование полей включено, эти два поля хранятся как `enc:v1`. `GET /api/v1/settings/system`, `GET /api/v1/kms/settings`, выгрузка Activity, `/healthz` и журналы их не возвращают. Копия `metadata.db` или строки Postgres `system_config` не содержит открытый текст. Сохранённый секрет показан как заданный; поле принимает только замену.
+
+`PUT /api/v1/kms/settings` перед записью шифрует и расшифровывает одно значение. Неудачная проверка — HTTP 400, или HTTP 408 если Vault не ответил; прежние настройки остаются. Очистка адреса проверку не вызывает. В консоли **Сохранить** неактивна, пока **Проверить подключение** не прошло для текущей формы. Проверка создаёт ключ Transit `datasafe-connection-test` и удаляет его. `deploy/vault/policies/datasafe-kms.hcl` разрешает delete только для этого ключа; без этого пути проверка завершается ошибкой, и ключ не остаётся.
+
+Узел Postgres перечитывает общие настройки Vault на двухсекундном опросе (или чаще, если `STORAGE_KMS_POLL_INTERVAL` короче). Один узел на Bolt применяет сохранение сразу и этот опрос не запускает.
 
 У каждого узла может быть свой AppRole в окружении. Этот секрет обратно в общую конфигурацию не пишется.
 
-Лабораторный оверлей (dev-режим, корневой токен, не для production): `deploy/compose/docker-compose.vault-kms.yml`. Политики: `deploy/vault/policies/datasafe-kms.hcl` (encrypt, decrypt, rewrap, создание и чтение `datasafe-*`) и `datasafe-kms-admin.hcl` (rotate, delete и флаг удаления).
+Лабораторный оверлей (dev-режим, корневой токен, не для production): `deploy/compose/docker-compose.vault-kms.yml`. Политики: `deploy/vault/policies/datasafe-kms.hcl` (encrypt, decrypt, rewrap, создание и чтение `datasafe-*`, delete только для `datasafe-connection-test`) и `datasafe-kms-admin.hcl` (rotate, delete и флаг удаления).
 
 ## Когда Vault недоступен
 
@@ -41,7 +45,7 @@ SSE-S3 (`AES256`) всегда использует `STORAGE_SSE_MASTER_KEY` и 
 
 Ссылка общего доступа на объект SSE-KMS отвечает HTTP 503 с текстом `Файл временно недоступен, попробуйте позже`. Ссылка на открытый объект не меняется.
 
-`/healthz` добавляет `kms.provider` и `kms.available`. Этот запрос сам Vault не опрашивает. Gauge `datasafe_kms_available` публикуется только пока Vault включён. Алерт `DataSafeKMSUnavailable` в `deploy/docker/prometheus/alerts.yml` срабатывает, если gauge равен 0 дольше 1 минуты.
+`/healthz` добавляет `kms.provider` и `kms.available`. Он показывает последнюю проверку и сам Vault в этом запросе не вызывает. Проверка, которая завершилась после более новой, отбрасывается, поэтому узел после восстановления не остаётся с `available: false`. Скачивание объекта из консоли при недоступном Vault отвечает тем же HTTP 503 `KMS unavailable`, что и S3. Gauge `datasafe_kms_available` публикуется только пока Vault включён. Алерт `DataSafeKMSUnavailable` в `deploy/docker/prometheus/alerts.yml` срабатывает, если gauge равен 0 дольше 1 минуты.
 
 Activity пишет `kms_unavailable` и `kms_recovered` только при смене состояния. Ресурс — id узла. Секрета в строке нет.
 

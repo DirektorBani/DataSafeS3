@@ -68,6 +68,32 @@ func (s *Server) stopVaultLoop() {
 	})
 }
 
+// WatchVaultConfig reloads the shared Vault config. Followers use this so a
+// save on another node is visible in under two seconds.
+func (s *Server) WatchVaultConfig(ctx context.Context, interval time.Duration) {
+	if interval <= 0 || interval > 2*time.Second {
+		interval = 2 * time.Second
+	}
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			s.refreshVaultFromMeta()
+		}
+	}
+}
+
+func (s *Server) watchVaultConfig(ctx context.Context) {
+	interval := 2 * time.Second
+	if p, _ := vaulttransit.LoadEnv(); p.PollInterval > 0 && p.PollInterval < interval {
+		interval = p.PollInterval
+	}
+	s.WatchVaultConfig(ctx, interval)
+}
+
 func (s *Server) vaultLoop(stop <-chan struct{}) {
 	interval := 2 * time.Second
 	if p := s.svc.VaultKMS(); p != nil && p.PollInterval() > 0 {
@@ -95,9 +121,19 @@ func (s *Server) probeVault() {
 	if p == nil {
 		return
 	}
+	s.vaultMu.Lock()
+	s.vaultProbeSeq++
+	seq := s.vaultProbeSeq
+	s.vaultMu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), p.Timeout())
-	defer cancel()
 	err := p.Health(ctx)
+	cancel()
+	s.vaultMu.Lock()
+	stale := seq != s.vaultProbeSeq
+	s.vaultMu.Unlock()
+	if stale || s.svc.VaultKMS() != p {
+		return
+	}
 	code := ""
 	if err != nil {
 		code, _ = kmsErrorText(vaulttransit.Classify(err), p.Timeout())

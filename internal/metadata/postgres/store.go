@@ -48,6 +48,7 @@ type Store struct {
 	pool             *pgxpool.Pool
 	readPool         *pgxpool.Pool
 	fieldenc         *fieldenc.Service
+	kmsSealKey       []byte
 	outboxMaxPending int
 	outboxMaxSet     bool
 }
@@ -87,6 +88,21 @@ func Open(dsn string, readReplicaDSN string) (*Store, error) {
 // SetFieldEncryption attaches the field encryption service (injected at startup).
 func (s *Store) SetFieldEncryption(fe *fieldenc.Service) {
 	s.fieldenc = fe
+}
+
+// SetKMSSealMaterial seals Vault secrets when field encryption is off.
+func (s *Store) SetKMSSealMaterial(material string) {
+	if s == nil {
+		return
+	}
+	s.kmsSealKey = metadata.DeriveKMSSealKey(material)
+}
+
+func (s *Store) kmsKey() []byte {
+	if s != nil && len(s.kmsSealKey) == 32 {
+		return s.kmsSealKey
+	}
+	return metadata.DeriveKMSSealKey("")
 }
 
 func (s *Store) readQueryPool() *pgxpool.Pool {

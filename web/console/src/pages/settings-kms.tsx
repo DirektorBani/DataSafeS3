@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -60,9 +60,12 @@ export function KMSSettingsPage() {
   const [namespace, setNamespace] = useState("");
   const [ca, setCa] = useState("");
   const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [proven, setProven] = useState("");
+  const hydrated = useRef(false);
 
   useEffect(() => {
-    if (!view) return;
+    if (!view || hydrated.current) return;
+    hydrated.current = true;
     setAddr(view.addr ?? "");
     setAuth(view.auth === "token" ? "token" : "approle");
     setRoleID(view.role_id ?? "");
@@ -85,13 +88,22 @@ export function KMSSettingsPage() {
     token,
   });
 
+  const formKey = JSON.stringify(body());
+  const canSave = addr.trim() === "" || proven === formKey;
   const save = useMutation({
     mutationFn: () => api.putKMSSettings(body()),
     onSuccess: (data) => {
       queryClient.setQueryData(["kms-settings"], data);
       toast.success(t("saved"));
+      setAddr(data.addr ?? "");
+      setAuth(data.auth === "token" ? "token" : "approle");
+      setRoleID(data.role_id ?? "");
+      setMount(data.transit_mount || "transit");
+      setNamespace(data.namespace ?? "");
+      setCa(data.ca_cert ?? "");
       setSecretID("");
       setToken("");
+      setProven("");
     },
     onError: (err: unknown) => toast.error(errorText(t, err)),
   });
@@ -99,12 +111,13 @@ export function KMSSettingsPage() {
     mutationFn: () => api.testKMS(body()),
     onSuccess: (data) => {
       setTestResult(data);
-      void queryClient.invalidateQueries({ queryKey: ["kms-settings"] });
+      setProven(JSON.stringify(body()));
     },
     onError: (err: unknown) => {
       const message = errorText(t, err);
       const code = err instanceof ApiError && typeof err.body?.error === "string" ? err.body.error : "";
       setTestResult({ ok: false, error: code, message });
+      setProven("");
     },
   });
 
@@ -266,6 +279,7 @@ export function KMSSettingsPage() {
               {testResult.ok ? t("connected") : testResult.message}
             </p>
           )}
+          {!canSave && <p className="text-xs text-muted-foreground">{t("saveNeedTest")}</p>}
           <div className="flex gap-2">
             <Button
               type="button"
@@ -276,7 +290,7 @@ export function KMSSettingsPage() {
             >
               {test.isPending ? t("testing") : t("test")}
             </Button>
-            <Button type="button" data-testid="kms-save" disabled={save.isPending} onClick={() => save.mutate()}>
+            <Button type="button" data-testid="kms-save" disabled={!canSave || save.isPending} onClick={() => save.mutate()}>
               {t("save")}
             </Button>
           </div>

@@ -4,19 +4,26 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/api"
 	"github.com/DirektorBani/datasafe/internal/kms"
 	"github.com/DirektorBani/datasafe/internal/kms/vaulttransit"
+	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestE02IdleHasNoVaultClient(t *testing.T) {
+	t.Setenv("STORAGE_METRICS_TOKEN", "")
 	s := testServer(t)
 	if s.Svc().VaultKMS() != nil {
 		t.Fatal("vault client allocated without config")
@@ -48,14 +55,95 @@ func TestE02IdleHasNoVaultClient(t *testing.T) {
 	if body.KMS.Provider != kms.ProviderLocal || !body.KMS.Available {
 		t.Fatalf("kms health %+v", body.KMS)
 	}
+	metrics := httptest.NewRecorder()
+	s.Handler().ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if metrics.Code != http.StatusOK || strings.Contains(metrics.Body.String(), "datasafe_kms") {
+		t.Fatalf("idle metrics %d %s", metrics.Code, metrics.Body.String())
+	}
+}
+
+func TestE02IdlePostgresNoVaultClient(t *testing.T) {
+	dsn := os.Getenv("TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_DSN not set — skipping postgres integration test")
+	}
+	t.Setenv("STORAGE_METRICS_TOKEN", "")
+	t.Setenv("STORAGE_KMS_PROVIDER", "")
+	t.Setenv("STORAGE_KMS_VAULT_ADDR", "")
+	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
+	t.Setenv("STORAGE_KAFKA_BROKERS", "")
+	t.Setenv("STORAGE_NATS_URL", "")
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	if err := admin.Ping(ctx); err != nil {
+		admin.Close()
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	name := fmt.Sprintf("ds_e02_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+		admin.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec(context.Background(), "DROP DATABASE "+name+" WITH (FORCE)")
+		admin.Close()
+	})
+	fresh, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh.Path = "/" + name
+	dir := t.TempDir()
+	s, err := api.NewServer(api.Config{
+		DataDir: dir, AdminUser: "admin", AdminPassword: "admin", JWTSecret: "test",
+		SSEMasterKey: "test-sse-master-key",
+		Metadata: metadata.Config{
+			Backend: metadata.BackendPostgres, PostgresDSN: fresh.String(), DataDir: dir,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	bg, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.StartBackground(bg)
+	if s.Svc().VaultKMS() != nil {
+		t.Fatal("postgres idle allocated a vault client")
+	}
+	time.Sleep(2500 * time.Millisecond)
+	if s.Svc().VaultKMS() != nil {
+		t.Fatal("settings watcher opened a vault client with no provider")
+	}
+	metrics := httptest.NewRecorder()
+	s.Handler().ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if metrics.Code != http.StatusOK || strings.Contains(metrics.Body.String(), "datasafe_kms") {
+		t.Fatalf("idle metrics %d %s", metrics.Code, metrics.Body.String())
+	}
 }
 
 func TestE02SettingsNeverReturnSecrets(t *testing.T) {
-	s := testServer(t)
-	tok := loginToken(t, s, "admin", "admin")
 	secret := "super-secret-id-e02"
 	token := "hvs.should-not-leak"
-	body := []byte(`{"addr":"http://127.0.0.1:1","auth":"approle","role_id":"role-e02","secret_id":"` + secret + `","token":"` + token + `","transit_mount":"transit"}`)
+	fake := &apiFakeVault{secret: secret, token: "hvs.node", plain: map[string][]byte{}}
+	srv := httptest.NewServer(http.HandlerFunc(fake.serve))
+	t.Cleanup(srv.Close)
+	s := testServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+
+	dead := "dead-secret-e02-not-stored"
+	refused := doJSON(t, s.Handler(), http.MethodPut, "/api/v1/kms/settings", tok, []byte(`{"addr":"http://127.0.0.1:1","auth":"approle","role_id":"role-e02","secret_id":"`+dead+`","transit_mount":"transit"}`), "")
+	if refused.Code != http.StatusRequestTimeout || strings.Contains(refused.Body.String(), dead) {
+		t.Fatalf("bogus addr %d %s", refused.Code, refused.Body.String())
+	}
+	if stored, err := s.Meta().GetSystemConfig(); err != nil || stored.KMS.SecretID != "" || stored.KMS.Addr != "" {
+		t.Fatalf("failed probe was stored: %+v %v", stored.KMS, err)
+	}
+
+	body := []byte(`{"addr":"` + srv.URL + `","auth":"approle","role_id":"role-e02","secret_id":"` + secret + `","token":"` + token + `","transit_mount":"transit"}`)
 	rec := doJSON(t, s.Handler(), http.MethodPut, "/api/v1/kms/settings", tok, body, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("put %d %s", rec.Code, rec.Body.String())
@@ -66,19 +154,147 @@ func TestE02SettingsNeverReturnSecrets(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"secret_id_set":true`) {
 		t.Fatalf("secret not marked set: %s", rec.Body.String())
 	}
-	got := doJSON(t, s.Handler(), http.MethodGet, "/api/v1/kms/settings", tok, nil, "")
-	if strings.Contains(got.Body.String(), secret) || strings.Contains(got.Body.String(), token) {
-		t.Fatalf("get leaked: %s", got.Body.String())
+	fake.mu.Lock()
+	deleted := fake.deletes
+	fake.mu.Unlock()
+	if deleted < 1 {
+		t.Fatal("connection test left datasafe-connection-test")
+	}
+	assertNoKMSSecret(t, s, tok, secret, token)
+	stored, err := s.Meta().GetSystemConfig()
+	if err != nil || stored.KMS.SecretID != secret || stored.KMS.Token != token {
+		t.Fatalf("stored secret missing: %+v %v", stored.KMS, err)
 	}
 	hz := httptest.NewRecorder()
 	s.Handler().ServeHTTP(hz, httptest.NewRequest(http.MethodGet, "/healthz", nil))
-	if strings.Contains(hz.Body.String(), secret) || strings.Contains(hz.Body.String(), token) {
-		t.Fatalf("healthz leaked: %s", hz.Body.String())
+	if !strings.Contains(hz.Body.String(), `"available":true`) {
+		t.Fatalf("healthz after a successful probe: %s", hz.Body.String())
 	}
-	stored, err := s.Meta().GetSystemConfig()
+
+	bogus := "nope-secret-e02"
+	bad := doJSON(t, s.Handler(), http.MethodPut, "/api/v1/kms/settings", tok, []byte(`{"addr":"`+srv.URL+`","auth":"approle","role_id":"role-e02","secret_id":"`+bogus+`","transit_mount":"transit"}`), "")
+	if bad.Code != http.StatusBadRequest || !strings.Contains(bad.Body.String(), "Неверный Secret ID") || strings.Contains(bad.Body.String(), bogus) {
+		t.Fatalf("bogus save %d %s", bad.Code, bad.Body.String())
+	}
+	stored, err = s.Meta().GetSystemConfig()
 	if err != nil || stored.KMS.SecretID != secret {
-		t.Fatalf("stored secret missing: %+v %v", stored.KMS, err)
+		t.Fatalf("bogus save replaced the secret: %+v %v", stored.KMS, err)
 	}
+	injected := "injected-system-secret-e02"
+	sys := doJSON(t, s.Handler(), http.MethodPut, "/api/v1/settings/system", tok, []byte(`{"trash_retention_days":30,"kms":{"secret_id":"`+injected+`","token":"`+token+`"}}`), "")
+	if sys.Code != http.StatusOK {
+		t.Fatalf("system put %d %s", sys.Code, sys.Body.String())
+	}
+	assertNoKMSSecret(t, s, tok, secret, token)
+	assertNoKMSSecret(t, s, tok, injected, bogus)
+	stored, err = s.Meta().GetSystemConfig()
+	if err != nil || stored.KMS.SecretID != secret {
+		t.Fatalf("system put changed kms: %+v %v", stored.KMS, err)
+	}
+}
+
+func assertNoKMSSecret(t *testing.T, s *api.Server, tok, secret, token string) {
+	t.Helper()
+	paths := []string{
+		"/api/v1/settings/system",
+		"/api/v1/kms/settings",
+		"/api/v1/kms/nodes",
+		"/api/v1/settings/buckets",
+		"/api/v1/settings/security-status",
+		"/api/v1/settings/mfa-policy",
+		"/api/v1/settings/sharing",
+		"/api/v1/activity",
+		"/api/v1/activity/export?format=json&period=all",
+		"/api/v1/activity/export?format=csv&period=all",
+		"/healthz",
+		"/api/v1/health",
+	}
+	for _, path := range paths {
+		rec := doJSON(t, s.Handler(), http.MethodGet, path, tok, nil, "")
+		if rec.Code >= 500 {
+			t.Fatalf("%s %d %s", path, rec.Code, rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), secret) || (token != "" && strings.Contains(rec.Body.String(), token)) {
+			t.Fatalf("%s leaked: %s", path, rec.Body.String())
+		}
+	}
+}
+
+func TestE02WatchVaultConfig(t *testing.T) {
+	s := testServer(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.StartBackground(ctx)
+	time.Sleep(200 * time.Millisecond)
+	cfg, err := s.Meta().GetSystemConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.KMS = metadata.VaultKMSConfig{
+		Provider: kms.ProviderVault,
+		Addr:     "http://127.0.0.1:1",
+		Auth:     "approle",
+		RoleID:   "role",
+		SecretID: "s",
+	}
+	if err := s.Meta().PutSystemConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if s.Svc().VaultKMS() != nil {
+		t.Fatal("bolt started a follower watcher")
+	}
+	go s.WatchVaultConfig(ctx, 30*time.Millisecond)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if s.Svc().VaultKMS() != nil {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("follower did not load vault settings within 1s")
+}
+
+func TestE02HealthFollowsProbe(t *testing.T) {
+	fake := &apiFakeVault{secret: "s3cret", token: "hvs.node", plain: map[string][]byte{}}
+	srv := httptest.NewServer(http.HandlerFunc(fake.serve))
+	t.Cleanup(srv.Close)
+	s := testServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+	rec := doJSON(t, s.Handler(), http.MethodPut, "/api/v1/kms/settings", tok, []byte(`{"addr":"`+srv.URL+`","auth":"approle","role_id":"role","secret_id":"s3cret","transit_mount":"transit"}`), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put %d %s", rec.Code, rec.Body.String())
+	}
+	waitKMSAvailable(t, s, true)
+	fake.mu.Lock()
+	fake.down = true
+	fake.mu.Unlock()
+	waitKMSAvailable(t, s, false)
+	fake.mu.Lock()
+	fake.down = false
+	fake.mu.Unlock()
+	waitKMSAvailable(t, s, true)
+}
+
+func waitKMSAvailable(t *testing.T, s *api.Server, want bool) {
+	t.Helper()
+	deadline := time.Now().Add(7 * time.Second)
+	var last string
+	for time.Now().Before(deadline) {
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+		last = rec.Body.String()
+		var body struct {
+			KMS struct {
+				Available bool `json:"available"`
+			} `json:"kms"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err == nil && body.KMS.Available == want {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("kms.available want %v last %s", want, last)
 }
 
 func TestE02VaultSSEKMSFailClosed(t *testing.T) {
@@ -165,15 +381,25 @@ func TestE02VaultSSEKMSFailClosed(t *testing.T) {
 	if miss.Code != http.StatusServiceUnavailable || !strings.Contains(miss.Body.String(), "KMS unavailable") {
 		t.Fatalf("get after ttl %d %s", miss.Code, miss.Body.String())
 	}
+	console := doJSON(t, s.Handler(), http.MethodGet, "/api/v1/buckets/kmsbox/objects/a.txt", tok, nil, "")
+	if console.Code != http.StatusServiceUnavailable || !strings.Contains(console.Body.String(), "KMS unavailable") {
+		t.Fatalf("console get %d %s", console.Code, console.Body.String())
+	}
+	fake.mu.Lock()
+	if fake.deletes != 0 {
+		t.Fatalf("failed connection test deleted a key: %d", fake.deletes)
+	}
+	fake.mu.Unlock()
 }
 
 type apiFakeVault struct {
-	mu     sync.Mutex
-	secret string
-	token  string
-	down   bool
-	plain  map[string][]byte
-	calls  int
+	mu      sync.Mutex
+	secret  string
+	token   string
+	down    bool
+	plain   map[string][]byte
+	calls   int
+	deletes int
 }
 
 func (f *apiFakeVault) serve(w http.ResponseWriter, r *http.Request) {
@@ -222,6 +448,11 @@ func (f *apiFakeVault) serve(w http.ResponseWriter, r *http.Request) {
 		raw := append([]byte(nil), f.plain[req.Ciphertext]...)
 		f.mu.Unlock()
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"plaintext": base64.StdEncoding.EncodeToString(raw)}})
+	case r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "datasafe-connection-test"):
+		f.mu.Lock()
+		f.deletes++
+		f.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}

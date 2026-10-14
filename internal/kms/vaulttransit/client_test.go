@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -218,11 +219,15 @@ func TestTransitBadSecretPermissionAndTimeout(t *testing.T) {
 }
 
 func TestStaticTokenKeptWhenNotRenewable(t *testing.T) {
+	var deletes int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/v1/auth/token/renew-self":
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"errors":["token not renewable"]}`))
+		case r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "datasafe-connection-test"):
+			deletes++
+			w.WriteHeader(http.StatusNoContent)
 		case strings.Contains(r.URL.Path, "/keys/"):
 			w.WriteHeader(http.StatusNoContent)
 		case strings.Contains(r.URL.Path, "/encrypt/"):
@@ -240,6 +245,9 @@ func TestStaticTokenKeptWhenNotRenewable(t *testing.T) {
 	}
 	if err := p.Test(t.Context()); err != nil {
 		t.Fatal(err)
+	}
+	if deletes != 1 {
+		t.Fatalf("connection-test key deletes %d", deletes)
 	}
 
 	var calls int
@@ -261,6 +269,43 @@ func TestStaticTokenKeptWhenNotRenewable(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("renew calls %d", calls)
+	}
+}
+
+func TestHealthAcceptsStandby(t *testing.T) {
+	for _, code := range []int{http.StatusOK, http.StatusTooManyRequests, 472, 473} {
+		t.Run(strconv.Itoa(code), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/v1/sys/health":
+					w.WriteHeader(code)
+				case "/v1/auth/token/renew-self":
+					w.WriteHeader(http.StatusBadRequest)
+					_, _ = w.Write([]byte(`{"errors":["token not renewable"]}`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			t.Cleanup(srv.Close)
+			p, err := Open(Config{Provider: kms.ProviderVault, Addr: srv.URL, Token: "root", Timeout: time.Second})
+			if err != nil || p == nil {
+				t.Fatal(err)
+			}
+			if err := p.Health(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	sealed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(sealed.Close)
+	p, err := Open(Config{Provider: kms.ProviderVault, Addr: sealed.URL, Token: "root", Timeout: time.Second})
+	if err != nil || p == nil {
+		t.Fatal(err)
+	}
+	if err := p.Health(t.Context()); err == nil {
+		t.Fatal("sealed vault was available")
 	}
 }
 

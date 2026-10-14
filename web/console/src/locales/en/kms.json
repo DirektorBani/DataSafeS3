@@ -29,6 +29,7 @@
   "envLocked": "Set by an environment variable",
   "test": "Test connection",
   "save": "Save",
+  "saveNeedTest": "Test the connection before saving. A failed test is not stored.",
   "saved": "Vault settings saved",
   "testing": "Testing…",
   "connected": "Connected, Transit works",

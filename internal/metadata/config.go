@@ -62,7 +62,8 @@ type SystemConfig struct {
 	// KafkaBrokers is the last STORAGE_KAFKA_BROKERS value this process recorded.
 	// It is compared at startup so a broker-list change is written to Activity.
 	KafkaBrokers string `json:"kafka_brokers,omitempty"`
-	// KMS is the console-saved Vault Transit config. Secrets are field-encrypted.
+	// KMS is the console-saved Vault Transit config. SecretID and Token are sealed
+	// at rest even when field encryption is off.
 	// Per-node environment variables override these values and are not written here.
 	KMS VaultKMSConfig `json:"kms,omitempty"`
 }
@@ -125,12 +126,12 @@ func (s *Store) GetSystemConfig() (SystemConfig, error) {
 	if err != nil {
 		return cfg, err
 	}
-	return DecryptSystemConfigPaths(s.fieldenc, cfg)
+	return DecryptSystemConfigWithKey(s.fieldenc, s.kmsKey(), cfg)
 }
 
 func (s *Store) PutSystemConfig(cfg SystemConfig) error {
 	var err error
-	cfg, err = EncryptSystemConfigPaths(s.fieldenc, cfg)
+	cfg, err = EncryptSystemConfigWithKey(s.fieldenc, s.kmsKey(), cfg)
 	if err != nil {
 		return err
 	}

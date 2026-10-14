@@ -76,6 +76,7 @@ type Server struct {
 	vaultStopOnce         sync.Once
 	vaultMu               sync.Mutex
 	vaultFP               string
+	vaultProbeSeq         uint64
 }
 
 var corsAllowedOrigins []string
@@ -121,6 +122,11 @@ func NewServer(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	sealWith := strings.TrimSpace(cfg.SSEMasterKey)
+	if sealWith == "" {
+		sealWith = cfg.JWTSecret
+	}
+	metadata.SetKMSSealMaterial(meta, sealWith)
 	if cfg.FieldEncryption != nil {
 		if err := metadata.BootstrapFieldEncryption(context.Background(), cfg.FieldEncryption, meta); err != nil {
 			meta.Close()
@@ -311,8 +317,12 @@ func (s *Server) StartBackground(ctx context.Context) {
 		go s.eventDisp.Run(ctx)
 	}
 	// Vault stays off unless provider and address are set. This read does not
-	// start a goroutine when they are empty.
+	// open a client when they are empty. A shared metadata node polls for a
+	// console save from another node; a single Bolt node does not.
 	s.refreshVaultFromMeta()
+	if _, ok := s.meta.(*pgmeta.Store); ok {
+		go s.watchVaultConfig(ctx)
+	}
 }
 
 // runEventSinkRefresh reloads webhook and bucket-notification sinks from the

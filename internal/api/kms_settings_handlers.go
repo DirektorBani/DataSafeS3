@@ -170,14 +170,43 @@ func (s *Server) handlePutKMSSettings(w http.ResponseWriter, r *http.Request) {
 	} else if !locks.Provider {
 		next.Provider = kms.ProviderVault
 	}
+	if strings.TrimSpace(next.Addr) != "" || locks.Addr {
+		env, _ := vaulttransit.LoadEnv()
+		eff := vaulttransit.Merge(env, locks, next)
+		if err := probeVaultConfig(r.Context(), eff); err != nil {
+			code, msg := kmsErrorText(err, eff.Timeout)
+			status := http.StatusBadRequest
+			if code == "timeout" {
+				status = http.StatusRequestTimeout
+			}
+			writeJSON(w, status, map[string]any{"ok": false, "error": code, "message": msg})
+			return
+		}
+	}
 	cfg.KMS = next
 	if err := s.meta.PutSystemConfig(cfg); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "config"})
 		return
 	}
 	s.refreshVaultFromMeta()
+	if p := s.svc.VaultKMS(); p != nil {
+		p.Mark(true, "")
+	}
 	s.logActivity(r, "kms_settings_changed", "kms", "vault")
 	writeJSON(w, http.StatusOK, s.kmsSettingsView())
+}
+
+func probeVaultConfig(ctx context.Context, eff vaulttransit.Config) error {
+	p, err := vaulttransit.Open(eff)
+	if err != nil || p == nil {
+		if err == nil {
+			err = kms.ErrUnavailable
+		}
+		return err
+	}
+	tctx, cancel := context.WithTimeout(ctx, p.Timeout())
+	defer cancel()
+	return p.Test(tctx)
 }
 
 func (s *Server) handleTestKMS(w http.ResponseWriter, r *http.Request) {
@@ -244,9 +273,6 @@ func (s *Server) handleTestKMS(w http.ResponseWriter, r *http.Request) {
 		code, msg := kmsErrorText(err, p.Timeout())
 		writeJSON(w, http.StatusBadGateway, map[string]any{"ok": false, "error": code, "message": msg})
 		return
-	}
-	if live := s.svc.VaultKMS(); live != nil {
-		live.Mark(true, "")
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": "Подключено, Transit работает"})
 }

@@ -76,9 +76,22 @@ func TestEncryptSystemConfigPaths_disabledPassthrough(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := SystemConfig{LDAP: LDAPConfig{BindPassword: "plain"}}
+	cfg := SystemConfig{
+		LDAP: LDAPConfig{BindPassword: "plain"},
+		KMS:  VaultKMSConfig{SecretID: "vault-secret-id", Token: "vault-token"},
+	}
 	out, err := EncryptSystemConfigPaths(svc, cfg)
 	if err != nil || out.LDAP.BindPassword != "plain" {
 		t.Fatalf("disabled: %+v err=%v", out, err)
+	}
+	if !strings.HasPrefix(out.KMS.SecretID, "kse:v1:") || !strings.HasPrefix(out.KMS.Token, "kse:v1:") {
+		t.Fatalf("kms secrets must be sealed when field encryption is off: %+v", out.KMS)
+	}
+	if strings.Contains(out.KMS.SecretID, "vault-secret-id") || strings.Contains(out.KMS.Token, "vault-token") {
+		t.Fatalf("plaintext kms secret: %+v", out.KMS)
+	}
+	dec, err := DecryptSystemConfigPaths(svc, out)
+	if err != nil || dec.KMS.SecretID != cfg.KMS.SecretID || dec.KMS.Token != cfg.KMS.Token || dec.LDAP.BindPassword != "plain" {
+		t.Fatalf("roundtrip %+v err=%v", dec, err)
 	}
 }

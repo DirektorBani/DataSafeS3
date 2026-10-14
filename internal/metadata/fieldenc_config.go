@@ -12,53 +12,84 @@ type FieldEncrypter interface {
 }
 
 // EncryptSystemConfigPaths encrypts or rewraps secret leaves before persistence.
+// Vault secret_id and token are sealed even when field encryption is off.
 func EncryptSystemConfigPaths(svc FieldEncrypter, cfg SystemConfig) (SystemConfig, error) {
-	if svc == nil || !svc.Enabled() {
-		return cfg, nil
+	return encryptSystemConfigPaths(svc, deriveKMSSealKey(defaultKMSSealMaterial()), cfg)
+}
+
+// EncryptSystemConfigWithKey is EncryptSystemConfigPaths with an explicit seal key.
+func EncryptSystemConfigWithKey(svc FieldEncrypter, key []byte, cfg SystemConfig) (SystemConfig, error) {
+	return encryptSystemConfigPaths(svc, key, cfg)
+}
+
+// DecryptSystemConfigWithKey is DecryptSystemConfigPaths with an explicit seal key.
+func DecryptSystemConfigWithKey(svc FieldEncrypter, key []byte, cfg SystemConfig) (SystemConfig, error) {
+	return decryptSystemConfigPaths(svc, key, cfg)
+}
+
+func encryptSystemConfigPaths(svc FieldEncrypter, key []byte, cfg SystemConfig) (SystemConfig, error) {
+	if svc != nil && svc.Enabled() {
+		var err error
+		if cfg.LDAP.BindPassword, err = rewrap(svc, fieldenc.PathLDAPBindPassword, cfg.LDAP.BindPassword); err != nil {
+			return cfg, err
+		}
+		if cfg.OIDC.ClientSecret, err = rewrap(svc, fieldenc.PathOIDCClientSecret, cfg.OIDC.ClientSecret); err != nil {
+			return cfg, err
+		}
+		if cfg.ExternalS3.SecretAccessKey, err = rewrap(svc, fieldenc.PathExternalS3Secret, cfg.ExternalS3.SecretAccessKey); err != nil {
+			return cfg, err
+		}
+		if cfg.KMS.SecretID, err = rewrap(svc, fieldenc.PathKMSVaultSecretID, cfg.KMS.SecretID); err != nil {
+			return cfg, err
+		}
+		if cfg.KMS.Token, err = rewrap(svc, fieldenc.PathKMSVaultToken, cfg.KMS.Token); err != nil {
+			return cfg, err
+		}
+		if cfg.Logging, err = encryptLoggingConfig(svc, cfg.Logging); err != nil {
+			return cfg, err
+		}
 	}
-	var err error
-	if cfg.LDAP.BindPassword, err = rewrap(svc, fieldenc.PathLDAPBindPassword, cfg.LDAP.BindPassword); err != nil {
+	sealed, err := sealKMSConfig(key, cfg.KMS)
+	if err != nil {
 		return cfg, err
 	}
-	if cfg.OIDC.ClientSecret, err = rewrap(svc, fieldenc.PathOIDCClientSecret, cfg.OIDC.ClientSecret); err != nil {
-		return cfg, err
-	}
-	if cfg.ExternalS3.SecretAccessKey, err = rewrap(svc, fieldenc.PathExternalS3Secret, cfg.ExternalS3.SecretAccessKey); err != nil {
-		return cfg, err
-	}
-	if cfg.KMS.SecretID, err = rewrap(svc, fieldenc.PathKMSVaultSecretID, cfg.KMS.SecretID); err != nil {
-		return cfg, err
-	}
-	if cfg.KMS.Token, err = rewrap(svc, fieldenc.PathKMSVaultToken, cfg.KMS.Token); err != nil {
-		return cfg, err
-	}
-	cfg.Logging, err = encryptLoggingConfig(svc, cfg.Logging)
-	return cfg, err
+	cfg.KMS = sealed
+	return cfg, nil
 }
 
 // DecryptSystemConfigPaths decrypts secret leaves after load.
 func DecryptSystemConfigPaths(svc FieldEncrypter, cfg SystemConfig) (SystemConfig, error) {
-	if svc == nil {
-		return cfg, nil
+	return decryptSystemConfigPaths(svc, deriveKMSSealKey(defaultKMSSealMaterial()), cfg)
+}
+
+func decryptSystemConfigPaths(svc FieldEncrypter, key []byte, cfg SystemConfig) (SystemConfig, error) {
+	if svc != nil {
+		var err error
+		if cfg.LDAP.BindPassword, err = svc.Decrypt(fieldenc.PathLDAPBindPassword, cfg.LDAP.BindPassword); err != nil {
+			return cfg, err
+		}
+		if cfg.OIDC.ClientSecret, err = svc.Decrypt(fieldenc.PathOIDCClientSecret, cfg.OIDC.ClientSecret); err != nil {
+			return cfg, err
+		}
+		if cfg.ExternalS3.SecretAccessKey, err = svc.Decrypt(fieldenc.PathExternalS3Secret, cfg.ExternalS3.SecretAccessKey); err != nil {
+			return cfg, err
+		}
+		if cfg.KMS.SecretID, err = svc.Decrypt(fieldenc.PathKMSVaultSecretID, cfg.KMS.SecretID); err != nil {
+			return cfg, err
+		}
+		if cfg.KMS.Token, err = svc.Decrypt(fieldenc.PathKMSVaultToken, cfg.KMS.Token); err != nil {
+			return cfg, err
+		}
+		if cfg.Logging, err = decryptLoggingConfig(svc, cfg.Logging); err != nil {
+			return cfg, err
+		}
 	}
-	var err error
-	if cfg.LDAP.BindPassword, err = svc.Decrypt(fieldenc.PathLDAPBindPassword, cfg.LDAP.BindPassword); err != nil {
+	opened, err := openKMSConfig(key, cfg.KMS)
+	if err != nil {
 		return cfg, err
 	}
-	if cfg.OIDC.ClientSecret, err = svc.Decrypt(fieldenc.PathOIDCClientSecret, cfg.OIDC.ClientSecret); err != nil {
-		return cfg, err
-	}
-	if cfg.ExternalS3.SecretAccessKey, err = svc.Decrypt(fieldenc.PathExternalS3Secret, cfg.ExternalS3.SecretAccessKey); err != nil {
-		return cfg, err
-	}
-	if cfg.KMS.SecretID, err = svc.Decrypt(fieldenc.PathKMSVaultSecretID, cfg.KMS.SecretID); err != nil {
-		return cfg, err
-	}
-	if cfg.KMS.Token, err = svc.Decrypt(fieldenc.PathKMSVaultToken, cfg.KMS.Token); err != nil {
-		return cfg, err
-	}
-	cfg.Logging, err = decryptLoggingConfig(svc, cfg.Logging)
-	return cfg, err
+	cfg.KMS = opened
+	return cfg, nil
 }
 
 func rewrap(svc FieldEncrypter, path, val string) (string, error) {

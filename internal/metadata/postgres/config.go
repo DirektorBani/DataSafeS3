@@ -21,12 +21,12 @@ func (s *Store) GetSystemConfig() (metadata.SystemConfig, error) {
 	if cfg.TrashRetentionDays == 0 {
 		cfg.TrashRetentionDays = 30
 	}
-	return metadata.DecryptSystemConfigPaths(s.fieldenc, cfg)
+	return metadata.DecryptSystemConfigWithKey(s.fieldenc, s.kmsKey(), cfg)
 }
 
 func (s *Store) PutSystemConfig(cfg metadata.SystemConfig) error {
 	var err error
-	cfg, err = metadata.EncryptSystemConfigPaths(s.fieldenc, cfg)
+	cfg, err = metadata.EncryptSystemConfigWithKey(s.fieldenc, s.kmsKey(), cfg)
 	if err != nil {
 		return err
 	}

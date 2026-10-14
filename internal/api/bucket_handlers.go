@@ -2,11 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"sort"
 	"strings"
 
+	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 )
 
@@ -141,6 +143,13 @@ func (s *Server) handleDownloadObjectJSON(w http.ResponseWriter, r *http.Request
 	versionID := r.URL.Query().Get("versionId")
 	rc, rec, err := s.svc.GetObject(r.Context(), sk, key, versionID)
 	if err != nil {
+		if errors.Is(err, s3.ErrKMSUnavailable) {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"error":   "KMS unavailable",
+				"message": s3.MsgKMSDown,
+			})
+			return
+		}
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 		return
 	}

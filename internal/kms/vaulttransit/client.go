@@ -393,7 +393,11 @@ func (c *Client) Health(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != 472 {
+	// 200 active, 429 standby, 472 DR secondary, 473 performance standby.
+	// A sealed or uninitialized server is not available.
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusTooManyRequests, 472, 473:
+	default:
 		return c.fail("health", resp.StatusCode, "vault unavailable")
 	}
 	_, err = c.ensureToken(ctx)
@@ -547,18 +551,24 @@ func (c *Client) privilegedToken(ctx context.Context) (string, error) {
 	return resp.Auth.ClientToken, nil
 }
 
-// TestLoginEncrypt checks login plus encrypt and decrypt of a fixed string.
-func (c *Client) TestLoginEncrypt(ctx context.Context) error {
-	if err := c.EnsureKey(ctx, connectionTestKey); err != nil {
+// TestLoginEncrypt checks login plus encrypt and decrypt, then deletes the
+// temporary Transit key so a connection test does not leave datasafe-connection-test.
+func (c *Client) TestLoginEncrypt(ctx context.Context) (err error) {
+	if err = c.EnsureKey(ctx, connectionTestKey); err != nil {
 		return err
 	}
-	ct, _, err := c.Encrypt(ctx, connectionTestKey, []byte("datasafe"))
-	if err != nil {
-		return err
+	defer func() {
+		if delErr := c.DeleteKey(ctx, connectionTestKey); delErr != nil && err == nil {
+			err = delErr
+		}
+	}()
+	ct, _, encErr := c.Encrypt(ctx, connectionTestKey, []byte("datasafe"))
+	if encErr != nil {
+		return encErr
 	}
-	plain, err := c.Decrypt(ctx, connectionTestKey, ct)
-	if err != nil {
-		return err
+	plain, decErr := c.Decrypt(ctx, connectionTestKey, ct)
+	if decErr != nil {
+		return decErr
 	}
 	if string(plain) != "datasafe" {
 		return c.fail("decrypt", 200, "transit decrypt mismatch")
