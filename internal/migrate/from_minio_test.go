@@ -170,7 +170,9 @@ func TestFromMinIOLive(t *testing.T) {
 	}
 	bucket := "live-mig"
 	mustStatus(t, ep, srcCreds, http.MethodPut, "/"+bucket, "", nil, http.StatusOK)
-	mustStatus(t, ep, srcCreds, http.MethodPut, "/"+bucket+"/hello.txt", "from-minio", map[string]string{"Content-Type": "text/plain", "x-amz-meta-origin": "minio"}, http.StatusOK)
+	// MinIO rejects x-amz-* and Content-Type unless they are in the signature.
+	// This seed is a plain object; the two-server test covers metadata.
+	mustStatus(t, ep, srcCreds, http.MethodPut, "/"+bucket+"/hello.txt", "from-minio", nil, http.StatusOK)
 
 	dstURL, dstCreds, _ := startNode(t)
 	opt := options(t, ep, srcCreds, dstURL, dstCreds, bucket)
