@@ -21,6 +21,11 @@ func (s *Server) bucketEncryptionView(rec metadata.BucketRecord, canEdit bool) m
 	if allow == "" {
 		allow = "datasafe-*"
 	}
+	backend := "bolt"
+	if _, ok := s.meta.(*pgmeta.Store); ok {
+		backend = "postgres"
+	}
+	ha := s.haLeader != nil && s.haLeader.Enabled()
 	return map[string]any{
 		"enabled":               rec.DefaultEncryption != "",
 		"algorithm":             rec.DefaultEncryption,
@@ -33,6 +38,8 @@ func (s *Server) bucketEncryptionView(rec metadata.BucketRecord, canEdit bool) m
 		"allowlist":             allow,
 		"can_edit":              canEdit,
 		"default_key_id":        s3DefaultKey(rec),
+		"metadata_backend":      backend,
+		"ha_enabled":            ha,
 	}
 }
 

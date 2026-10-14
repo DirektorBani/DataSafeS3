@@ -366,16 +366,21 @@ Pull the `v1.5.0` server and console images. Do not `docker compose build` for t
 
 ## Upgrading to v1.6.0
 
-Finish the rolling upgrade of every storage node before you turn bucket encryption on. A 1.5.0 process cannot read a format-1 object (`DSSE`). It also does not write `cluster_node_heartbeats`, so that table alone does not show it is still up.
+Finish the rolling upgrade of every storage node before you turn bucket encryption on. A 1.5.0 process cannot read a format-1 object (`DSSE`). Upgrade every node first. Upgrading the leader last is not enough: a 1.5.0 leader runs 1.5.0 code and accepts `PutBucketEncryption` itself. That process has no 409 gate.
 
-While a 1.5.0 node is live, `PUT` bucket encryption returns HTTP 409 `cluster_upgrade` (`cluster upgrade in progress`). The server sees that node from the rows and answers 1.5.0 already produces:
+HTTP 409 `cluster_upgrade` (`cluster upgrade in progress`) is guaranteed only for these live 1.5.0 peers, and only when the call reaches a 1.6.0 node:
 
-| What 1.5.0 writes | How 1.6.0 reads it |
+| What is visible | 409 |
 |---|---|
-| HA leader lease `ha_leader_lock` (`lock_id=storage-server`, `holder_id`, `acquired_at`, `expires_at`), renewed by the leader | An unexpired lease whose `holder_id` has no 1.6.0 heartbeat blocks encryption |
-| Cluster registry `system_config` → `cluster.nodes` (the list E07 node status probes) | `GET /healthz` on that address. `"version":"1.5.0"` with `"status":"ok"` blocks encryption. An unreachable node does not |
+| Unexpired HA leader lease `ha_leader_lock` (`lock_id=storage-server`, `holder_id`, `acquired_at`, `expires_at`) whose `holder_id` has no 1.6.0 heartbeat | Yes. This is the 1.5.0 leader. |
+| Cluster registry `system_config` → `cluster.nodes` (the list E07 node status probes) whose `GET /healthz` is `"status":"ok"` and `"version":"1.5.0"` | Yes. A registered follower or leader. An unreachable registry entry does not block. |
+| A 1.5.0 follower that is not in `cluster.nodes` | No. Normal HA on one Postgres does not list followers there. |
 
-`GET /healthz` on a 1.6.0 process reports at least `1.6.0`, including when the image stamp still says 1.5.0. After every node is 1.6.0, enable encryption. A stopped 1.5.0 node drops its lease within about 30 seconds and does not answer `/healthz`, so it no longer blocks.
+That follower calls the same lease `INSERT` as the leader (`TryAcquireLeader`). While the lease is held the `WHERE` clause does not match, so the row stays the leader's and the follower's id is not stored. There is no lease-history table. The migration advisory lock is released after startup. `pg_stat_activity` shows the retry with an empty `application_name` and a query that has no version, which is the same shape as any other client. 1.6.0 does not treat that session as a 1.5.0 node.
+
+On Postgres or HA, the console asks you to check **All nodes are upgraded to 1.6.0** before it sends the admin `PUT`. S3 `PutBucketEncryption` has no such checkbox. It uses the same 409 rules as the table above and does not see an unregistered follower. Do not enable encryption through the S3 API until every node is 1.6.0.
+
+`GET /healthz` on a 1.6.0 process reports at least `1.6.0`, including when the image stamp still says 1.5.0. A stopped 1.5.0 leader drops its lease within about 30 seconds.
 
 If `STORAGE_SSE_MASTER_KEY` was set and a later start clears it, the process refuses to start. The error says the key is missing and to set `STORAGE_SSE_MASTER_KEY` to the original key. A different value still reports `SSE master key fingerprint mismatch`.
 
@@ -391,4 +396,4 @@ If `STORAGE_SSE_MASTER_KEY` was set and a later start clears it, the process ref
 - [ ] v1.1.0: remove `STORAGE_OUTBOUND_HTTP_ALLOW`; configure `STORAGE_METRICS_TOKEN` + Prometheus bearer if used
 - [ ] v1.4.1: `STORAGE_DEV` is false unless you opted in; installer or `.env` has `STORAGE_METRICS_TOKEN`; Prometheus scrape still works
 - [ ] v1.5.0: `docker compose pull` the `v1.5.0` server and console images (do not build them); delete old `.env.erasure` / `.env.site-a` if those labs should use the new ports; leave `STORAGE_KAFKA_BROKERS` empty unless you want the external feed
-- [ ] v1.6.0: finish the rolling upgrade of every node before enabling bucket encryption; a live 1.5.0 leader lease or `/healthz` version blocks it with HTTP 409
+- [ ] v1.6.0: upgrade every node before enabling encryption. 409 covers a 1.5.0 leader or a registered node only. A 1.5.0 leader accepts its own `PutBucketEncryption`. On Postgres or HA, check “All nodes are upgraded to 1.6.0” in the console. S3 `PutBucketEncryption` has no checkbox.

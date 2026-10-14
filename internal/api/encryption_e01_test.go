@@ -826,6 +826,130 @@ func TestE01Live15LeaderLeaseBlocksEncryption(t *testing.T) {
 	}
 }
 
+func TestE01FollowerLeaseAttemptDoesNotBlock(t *testing.T) {
+	dsn := os.Getenv("TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_DSN not set — skipping postgres integration test")
+	}
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	if err := admin.Ping(ctx); err != nil {
+		admin.Close()
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	name := fmt.Sprintf("ds_e01_fol_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+		admin.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec(context.Background(), "DROP DATABASE "+name+" WITH (FORCE)")
+		admin.Close()
+	})
+	fresh, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh.Path = "/" + name
+	dir := t.TempDir()
+	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
+	t.Setenv("STORAGE_KAFKA_BROKERS", "")
+	t.Setenv("STORAGE_NATS_URL", "")
+	s, err := api.NewServer(api.Config{
+		DataDir: dir, AdminUser: "admin", AdminPassword: "admin", JWTSecret: "test",
+		SSEMasterKey: "lease-key",
+		Metadata: metadata.Config{
+			Backend: metadata.BackendPostgres, PostgresDSN: fresh.String(), DataDir: dir,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	cfg, err := s.Meta().GetSystemConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.InitialSetupCompleted = true
+	cfg.AdminFirstLoginCompleted = true
+	if err := s.Meta().PutSystemConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Meta().UpsertNodeHeartbeat("node-16", "1.6.0", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := pgxpool.New(ctx, fresh.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO ha_leader_lock (lock_id, holder_id, acquired_at, expires_at)
+		VALUES ('storage-server', 'node-16', NOW(), NOW() + INTERVAL '30 seconds')`); err != nil {
+		t.Fatal(err)
+	}
+	// Exact 1.5.0 follower retry: TryAcquireLeader while another holder is live.
+	// The conflict WHERE fails, so holder_id stays node-16.
+	follower, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer follower.Release()
+	var pid int
+	if err := follower.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&pid); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	tag, err := follower.Exec(ctx, `
+		INSERT INTO ha_leader_lock (lock_id, holder_id, acquired_at, expires_at)
+		VALUES ('storage-server', $1, $2, $3)
+		ON CONFLICT (lock_id) DO UPDATE SET
+			holder_id = EXCLUDED.holder_id,
+			acquired_at = EXCLUDED.acquired_at,
+			expires_at = EXCLUDED.expires_at
+		WHERE ha_leader_lock.expires_at < $2 OR ha_leader_lock.holder_id = $1`,
+		"node-15", now, now.Add(30*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tag.RowsAffected() != 0 {
+		t.Fatalf("follower retry changed the lease (%d rows)", tag.RowsAffected())
+	}
+	var appName, query string
+	var advisory int
+	if err := pool.QueryRow(ctx, `
+		SELECT application_name, query FROM pg_stat_activity WHERE pid = $1`, pid).Scan(&appName, &query); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM pg_locks WHERE pid = $1 AND locktype = 'advisory'`, pid).Scan(&advisory); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(appName, "1.5") || strings.Contains(query, "1.5.0") || advisory != 0 || !strings.Contains(query, "ha_leader_lock") {
+		t.Fatalf("session app=%q advisory=%d query=%s", appName, advisory, query)
+	}
+	var holder string
+	if err := pool.QueryRow(ctx, `SELECT holder_id FROM ha_leader_lock WHERE lock_id='storage-server'`).Scan(&holder); err != nil {
+		t.Fatal(err)
+	}
+	if holder != "node-16" {
+		t.Fatalf("holder %q", holder)
+	}
+	tok := loginToken(t, s, "admin", "admin")
+	createBucket(t, s, tok, "folbox", nil)
+	view := doJSON(t, s.Handler(), http.MethodGet, "/api/v1/buckets/folbox/encryption", tok, nil, "")
+	if view.Code != http.StatusOK || !strings.Contains(view.Body.String(), `"metadata_backend":"postgres"`) || !strings.Contains(view.Body.String(), `"ha_enabled":false`) {
+		t.Fatalf("view %d %s", view.Code, view.Body.String())
+	}
+	rec := doJSON(t, s.Handler(), http.MethodPut, "/api/v1/buckets/folbox/encryption", tok, []byte(`{"enabled":true}`), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unregistered follower %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestE01ClusterUpgradeGate(t *testing.T) {
 	s := testServer(t)
 	tok := loginToken(t, s, "admin", "admin")

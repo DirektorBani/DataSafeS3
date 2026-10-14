@@ -10,7 +10,11 @@ test("bucket encryption card toggles and list shows a badge", async ({ page, req
     headers: { Authorization: `Bearer ${tok}` },
   });
   expect(viewRes.ok()).toBeTruthy();
-  const view = (await viewRes.json()) as { server_key_configured?: boolean };
+  const view = (await viewRes.json()) as {
+    server_key_configured?: boolean;
+    metadata_backend?: string;
+    ha_enabled?: boolean;
+  };
 
   await loginAsAdmin(page);
   await page.goto(`/buckets/${encodeURIComponent(bucket)}?tab=settings`);
@@ -29,6 +33,13 @@ test("bucket encryption card toggles and list shows a badge", async ({ page, req
   await expect(toggle).toBeEnabled();
   await toggle.check();
   await page.getByTestId("encryption-save").click();
+  if (view.metadata_backend === "postgres" || view.ha_enabled) {
+    const ack = page.getByTestId("encryption-upgrade-ack");
+    await expect(ack).toBeVisible();
+    await expect(page.getByTestId("encryption-upgrade-confirm")).toBeDisabled();
+    await ack.check();
+    await page.getByTestId("encryption-upgrade-confirm").click();
+  }
   await expect(page.getByText(/encryption saved|шифрование сохранено/i)).toBeVisible({ timeout: 10_000 });
 
   const listed = await request.get(`${baseURL}/api/v1/buckets/${encodeURIComponent(bucket)}/encryption`, {

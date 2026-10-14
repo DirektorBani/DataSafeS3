@@ -236,6 +236,12 @@ func (s *Service) clusterUpgradeInProgress() bool {
 	}
 	// 1.5.0 does not write cluster_node_heartbeats. A live leader still renews
 	// ha_leader_lock (lock_id storage-server, holder_id, acquired_at, expires_at).
+	// A follower only retries that same INSERT. The WHERE clause does not match
+	// while the lease is held, so the row is unchanged and the follower's
+	// holder_id is not stored. There is no lease history. The migration advisory
+	// lock is released after startup. pg_stat_activity shows the retry with an
+	// empty application_name, the same as any other client, and the query text
+	// has no version. That session is not a reliable 1.5.0 signal.
 	if holder, ok, err := s.Meta.LiveLeader(); err == nil && ok && holder != "" {
 		if _, seen := fresh[holder]; !seen {
 			return true

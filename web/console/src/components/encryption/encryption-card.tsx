@@ -75,6 +75,8 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
   const [provider, setProvider] = useState<"local" | "vault">("local");
   const [keyID, setKeyID] = useState("");
   const [confirmOff, setConfirmOff] = useState(false);
+  const [confirmOn, setConfirmOn] = useState(false);
+  const [upgradeAck, setUpgradeAck] = useState(false);
 
   useEffect(() => {
     if (!view) return;
@@ -91,6 +93,7 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
       queryClient.invalidateQueries({ queryKey: ["buckets"] });
       toast.success(t("saved"));
       setConfirmOff(false);
+      setConfirmOn(false);
     },
     onError: (err: Error) => toast.error(errorText(err)),
   });
@@ -104,6 +107,7 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
 
   const canEdit = view.can_edit;
   const serverKeyMissing = !view.server_key_configured && !view.vault_configured;
+  const needsUpgradeAck = view.metadata_backend === "postgres" || view.ha_enabled === true;
   const vaultSelected = provider === "vault";
   const publicRead = view.visibility === "public-read";
 
@@ -196,13 +200,18 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
                 size="sm"
                 data-testid="encryption-save"
                 disabled={save.isPending}
-                onClick={() =>
+                onClick={() => {
+                  if (needsUpgradeAck) {
+                    setUpgradeAck(false);
+                    setConfirmOn(true);
+                    return;
+                  }
                   save.mutate({
                     enabled: true,
                     provider: "local",
                     key_id: keyID.trim(),
-                  })
-                }
+                  });
+                }}
               >
                 {t("save")}
               </Button>
@@ -213,6 +222,42 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
           <p className="text-sm text-destructive">{t("badge.destroyed")}</p>
         )}
       </CardContent>
+      <Dialog open={confirmOn} onOpenChange={setConfirmOn}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("upgradeTitle")}</DialogTitle>
+            <DialogDescription>{t("upgradeBody")}</DialogDescription>
+          </DialogHeader>
+          <label className="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              data-testid="encryption-upgrade-ack"
+              checked={upgradeAck}
+              onChange={(e) => setUpgradeAck(e.target.checked)}
+            />
+            <span>{t("upgradeAck")}</span>
+          </label>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOn(false)}>
+              {t("cancel")}
+            </Button>
+            <Button
+              data-testid="encryption-upgrade-confirm"
+              disabled={!upgradeAck || save.isPending}
+              onClick={() =>
+                save.mutate({
+                  enabled: true,
+                  provider: "local",
+                  key_id: keyID.trim(),
+                })
+              }
+            >
+              {t("upgradeConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={confirmOff} onOpenChange={setConfirmOff}>
         <DialogContent>
           <DialogHeader>

@@ -138,6 +138,8 @@ export type BucketEncryption = {
   allowlist: string;
   can_edit: boolean;
   default_key_id: string;
+  metadata_backend?: string;
+  ha_enabled?: boolean;
 };
 
 export type BucketSettings = {
