@@ -164,7 +164,7 @@ func (h *Handler) rejectKMSPresign(w http.ResponseWriter, r *http.Request, creds
 		return false
 	}
 	rec, err := h.Svc.Meta.GetObject(bucket, key)
-	if err != nil || rec.Encryption == nil || !rec.Encryption.KMS() {
+	if err != nil || rec.Encryption == nil || !rec.Encryption.Sealed() {
 		return false
 	}
 	if creds.AccessKey == "" || creds.AccessKey == h.Svc.OwnerKey {

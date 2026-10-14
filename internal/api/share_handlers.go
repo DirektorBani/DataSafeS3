@@ -249,7 +249,7 @@ func (s *Server) handlePublicShareDownload(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	brec, _ := s.bucketByStoredName(link.Bucket)
-	if obj, oerr := s.meta.GetObject(link.Bucket, link.Key); oerr == nil && obj.Encryption.KMS() {
+	if obj, oerr := s.meta.GetObject(link.Bucket, link.Key); oerr == nil && obj.Encryption.Sealed() {
 		if !s.shareCreatorCanRead(link, brec) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": "signer is not allowed to read this encrypted object"})
 			return

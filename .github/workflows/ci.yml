@@ -236,6 +236,8 @@ jobs:
           DATASAFE_DATA_ROOT: ${{ github.workspace }}/.datasafe-data-ci
           # Dev stack: login rate limit is 200 (production default is 10) and outbound HTTP stays open for the lab.
           STORAGE_DEV: "true"
+          # The encryption-toggle spec enables the card only when this key is set.
+          STORAGE_SSE_MASTER_KEY: ci-e2e-sse-master-key
         run: |
           mkdir -p "$DATASAFE_DATA_ROOT/storage" "$DATASAFE_DATA_ROOT/postgres"
           docker compose -p datasafe-ci \
@@ -273,6 +275,9 @@ jobs:
           e2e/files.spec.ts
           e2e/share.spec.ts
           e2e/security-mfa.spec.ts
+          e2e/sharing-security.spec.ts
+          e2e/mfa-stepup.spec.ts
+          e2e/encryption-toggle.spec.ts
           e2e/teams.spec.ts
           e2e/gateway.spec.ts
       - name: Tear down

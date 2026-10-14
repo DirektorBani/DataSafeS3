@@ -14,19 +14,21 @@ nonce (12 bytes) || ciphertext || GCM tag (16 bytes)
 
 There is no magic, no version byte, and no per-object field. `ObjectRecord` does not say whether the bytes are encrypted. `BucketRecord.DefaultEncryption` is stored in Bolt JSON and is **not** a Postgres column, and `putObject` does not read it. If the process has a cipher, every successful write is ciphertext and every read is decrypted. If it does not, every object is plaintext.
 
-That layout is **format 0**. It cannot be detected by sniffing: plaintext can start with any bytes, including a future magic. A data directory that was written both with and without the master key cannot be split after the fact.
+That layout is **format 0**. It cannot be detected by sniffing: plaintext can start with any bytes, including a future magic.
 
-1.6.0 must read those objects with no operator step (`key_provider=local`, `key_version=0`) and must write a versioned envelope (format 1) that can hold a per-object DEK.
+1.5.0 does not persist those blobs. `PutObject` passes the caller’s plaintext `Content-Length` into the backend, and the backend rejects the write when the sealed body is longer (`internal/storage/fs.go` size check, and the same check in the erasure backend). A 1.5.0 data directory written with `STORAGE_SSE_MASTER_KEY` set has no successful SSE objects. A directory written without the key is plaintext and has no per-object flag.
+
+1.6.0 writes a versioned envelope (format 1) for new encrypted objects. It reads a format-0 blob only when the operator opts in.
 
 ## Decision
 
 ### Marking objects written by 1.5.0
 
-1.6.0 does **not** sniff payload bytes.
+1.6.0 does **not** guess format 0 from payload bytes. The only header it recognizes is its own format-1 magic.
 2. On the first start, the node records a KEK fingerprint (SHA-256 of the derived AES key, hex). The fingerprint is not the key. A later start with a different `STORAGE_SSE_MASTER_KEY`, or with the variable cleared after a fingerprint was stored, refuses to start. The error text contains `SSE master key fingerprint mismatch`.
-3. If that first start already has a fingerprint **and** at least one object, `kms_state.legacy_sse_objects` is set. Every object whose encryption metadata is absent is then **format 0**: `key_provider=local`, `key_version=0`, `enc_format_version=0`, empty `wrapped_dek` (the KEK is the data key). Objects written after that are marked explicitly, including plaintext (`plaintext: true`), so they are not decrypted as format 0.
-4. If the first start has no master key, `legacy_sse_objects` stays false. Adding the key later records the fingerprint and does **not** flip the legacy flag: those older objects stay plaintext.
-5. Operators who mixed encrypted and plaintext objects in one data directory under 1.5.0 cannot be repaired automatically. 1.5.0 stored no flag. The upgrade assumes the deployment invariant: the master key was either always set or always unset for that data directory.
+3. `kms_state.legacy_sse_objects` is **not** derived from the object count. An unmarked object (no encryption metadata) is plaintext. The reader peeks at the first bytes: a format-1 header (`DSSE` and version 1) without a wrapped DEK is an error, not a format-0 decrypt. Any other unmarked body is returned as stored. GCM is not attempted on that path, so a plaintext object cannot fail authentication and become HTTP 500.
+4. Format 0 is an explicit opt-in: `STORAGE_SSE_LEGACY_FORMAT0=true`. That is the only way the flag is set. A flag stored by an earlier 1.6.0 build that turned it on because objects already existed is cleared on the next start unless the variable is set. The fingerprint is kept, so starting with a different key, or with the key cleared, still refuses to start.
+5. Objects written after the first 1.6.0 start are marked explicitly, including plaintext (`plaintext: true`). A format-0 body that 1.6.0 itself writes during a mixed-cluster upgrade carries that metadata and does not need the legacy flag.
 
 ### Format 1 (what 1.6.0 writes)
 
@@ -70,7 +72,7 @@ Encryption is no longer “the process has a key, so encrypt everything”. A ne
 
 `public-read` together with bucket default `aws:kms` is rejected with HTTP 409. An anonymous GET or HEAD of an object whose `sse_algorithm` is `aws:kms` is HTTP 403 `объект зашифрован ключом KMS, публичный доступ невозможен`. SSE-S3 (`AES256`) stays anonymously readable when Block Public Access is off, as in 1.5.0.
 
-A share link or presigned URL for an `aws:kms` object is decrypted only after the server checks again that the link creator or the signing key’s owner still exists, is active, and can read the object. Destroyed keys return HTTP 403 `Ключ шифрования уничтожен, файл недоступен навсегда`.
+A share link or presigned URL for any sealed object (`AES256` and `aws:kms`) is decrypted only after the server checks again that the link creator or the signing key’s owner still exists, is active, and can read the object. A plaintext object is not checked again; that link works until it expires or reaches its download limit. Destroyed keys return HTTP 403 `Ключ шифрования уничтожен, файл недоступен навсегда`.
 
 ### Cluster
 
@@ -82,7 +84,7 @@ Turning bucket encryption off is the dangerous action `encryption_disable` and n
 
 ## Consequences
 
-- Format 0 objects stay readable without a rewrite.
+- A format-0 blob stays readable without a rewrite when `STORAGE_SSE_LEGACY_FORMAT0=true`, or when the object row already carries format-0 metadata. Unmarked 1.5.0 objects stay plaintext.
 - New encrypted objects are larger than the plaintext by the header and per-chunk overhead. `Content-Length` is the plaintext size.
 - Vault Transit, DEK cache invalidation, rewrap, and crypto-shred jobs are E02 and E03. The `kms.Provider` methods exist; E01 implements `local`.
 - Postgres migration `025_object_encryption` is additive (`bucket_encryption`, `kms_keys`, `kms_state`, heartbeat rows, `objects.encryption`, `multipart_uploads.encryption`).

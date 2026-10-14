@@ -362,6 +362,8 @@ docker compose --profile postgres up -d
 
 Pull the `v1.5.0` server and console images. Do not `docker compose build` for this upgrade. Confirm `GET /healthz` returns `"version":"1.5.0"` and a `commit`, and `GET /` on the console port returns the SPA (`id="root"`). On a 3-node lab, delete `.env.erasure` and `.env.site-a` before recreating those stands.
 
+**Known issue, fixed in 1.6.0.** On 1.5.x, `STORAGE_SSE_MASTER_KEY` breaks object writes. The backend compares the plaintext `Content-Length` with the longer ciphertext and returns a size mismatch, so no SSE object is stored. Do not set the variable on 1.5.x. 1.6.0 writes a format-1 envelope and reports the plaintext size. Objects created on 1.5.x without the key stay plaintext when 1.6.0 starts with a key; they are not decrypted as format 0 unless `STORAGE_SSE_LEGACY_FORMAT0=true`.
+
 ## Checklist
 
 - [ ] Backup metadata and objects

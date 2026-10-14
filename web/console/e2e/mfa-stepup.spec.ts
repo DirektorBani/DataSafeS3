@@ -91,7 +91,7 @@ test("bucket admin banner, TOTP wizard, and two step-up dialogs", async ({ page,
   await login(page, owner, password);
   await expect(page.getByTestId("mfa-policy-banner")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("mfa-policy-banner")).toContainText(/two-factor authentication to administer|двухфакторную аутентификацию/i);
-  await page.screenshot({ path: "/opt/cursor/artifacts/e00b/01-banner.png", fullPage: true });
+  await page.screenshot({ path: "test-results/e00b/01-banner.png", fullPage: true });
 
   await page.goto("/profile");
   await page.getByRole("button", { name: /enable mfa|включить mfa/i }).click();
@@ -105,7 +105,7 @@ test("bucket admin banner, TOTP wizard, and two step-up dialogs", async ({ page,
   await expect(page.getByText(/recovery codes|коды восстановления/i)).toBeVisible({ timeout: 15_000 });
   const recovery = (await page.locator("ul.font-mono li").allTextContents()).map((c) => c.trim()).filter(Boolean);
   expect(recovery.length).toBeGreaterThan(1);
-  await page.screenshot({ path: "/opt/cursor/artifacts/e00b/02-totp-enrolled.png", fullPage: true });
+  await page.screenshot({ path: "test-results/e00b/02-totp-enrolled.png", fullPage: true });
   await expect(page.getByTestId("mfa-policy-banner")).toHaveCount(0);
 
   await page.goto(`/buckets/${encodeURIComponent(bucket)}?tab=access`);
@@ -120,7 +120,7 @@ test("bucket admin banner, TOTP wizard, and two step-up dialogs", async ({ page,
   await page.getByRole("button", { name: /revoke all links|отозвать все ссылки/i }).click();
   await confirmStepUp(page, recovery[1], /revoke every share link|отозвать все ссылки/i);
   await expect(page.getByText(/revoked|отозвано/i).first()).toBeVisible({ timeout: 10_000 });
-  await page.screenshot({ path: "/opt/cursor/artifacts/e00b/03-step-up-done.png", fullPage: true });
+  await page.screenshot({ path: "test-results/e00b/03-step-up-done.png", fullPage: true });
 });
 
 test("global admin resets 2FA with a reason", async ({ page, request, baseURL }) => {
@@ -151,15 +151,15 @@ test("global admin resets 2FA with a reason", async ({ page, request, baseURL })
   await expect(row).toBeVisible({ timeout: 15_000 });
   await row.getByRole("button", { name: /reset 2fa|сбросить 2fa/i }).click();
   await page.getByTestId("mfa-reset-reason").fill("lost device");
-  await page.screenshot({ path: "/opt/cursor/artifacts/e00b/04-mfa-reset.png", fullPage: true });
+  await page.screenshot({ path: "test-results/e00b/04-mfa-reset.png", fullPage: true });
   await page.getByRole("dialog").getByRole("button", { name: /reset 2fa|сбросить 2fa/i }).click();
   await expect(page.getByText(/2fa reset|2fa сброшена/i)).toBeVisible({ timeout: 10_000 });
   await page.goto("/admin/settings/security");
   await expect(page.getByTestId("mfa-policy-card")).toBeVisible({ timeout: 15_000 });
-  await page.screenshot({ path: "/opt/cursor/artifacts/e00b/05-mfa-policy.png", fullPage: true });
+  await page.screenshot({ path: "test-results/e00b/05-mfa-policy.png", fullPage: true });
   await page.goto("/keys");
   await expect(page.getByTestId("access-key-without-mfa").first()).toBeVisible({ timeout: 15_000 });
-  await page.screenshot({ path: "/opt/cursor/artifacts/e00b/06-key-without-mfa.png", fullPage: true });
+  await page.screenshot({ path: "test-results/e00b/06-key-without-mfa.png", fullPage: true });
 
   const denied = await request.get(`${baseURL}/api/v1/buckets`, {
     headers: { Authorization: `Bearer ${userTok}` },

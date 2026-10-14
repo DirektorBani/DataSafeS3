@@ -76,24 +76,48 @@ func (b *byteCounter) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// legacyFormat0OptIn is the only way to treat unmarked objects as 1.5.0 SSE-S3.
+// 1.5.0 rejected those writes (plaintext Content-Length versus ciphertext size),
+// so a real directory does not contain them. Counting objects must not turn the
+// flag on: that made every pre-existing plaintext GET fail, and the stored
+// fingerprint then blocks starting again without the key.
+func legacyFormat0OptIn() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("STORAGE_SSE_LEGACY_FORMAT0"))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
 // EnsureLocalKEK records the KEK fingerprint once and refuses a different key.
 // The error text is part of the startup contract.
+// LegacySSEObjects follows STORAGE_SSE_LEGACY_FORMAT0 only. A flag stored by an
+// earlier build that inferred it from the object count is cleared on this start.
 func EnsureLocalKEK(meta metadata.MetadataStore, master string) error {
 	fp := kms.Fingerprint(master)
-	n, _ := meta.CountObjects()
+	wantLegacy := legacyFormat0OptIn()
 	st, err := meta.InitKMSState(metadata.KMSState{
 		Fingerprint:      fp,
-		LegacySSEObjects: fp != "" && n > 0,
+		LegacySSEObjects: wantLegacy,
 	})
 	if err != nil {
 		return err
 	}
-	if st.Fingerprint == "" && fp != "" {
-		st.Fingerprint = fp
-		return meta.PutKMSState(st)
-	}
 	if st.Fingerprint != "" && fp != st.Fingerprint {
 		return errors.New("SSE master key fingerprint mismatch")
+	}
+	changed := false
+	if st.Fingerprint == "" && fp != "" {
+		st.Fingerprint = fp
+		changed = true
+	}
+	if st.LegacySSEObjects != wantLegacy {
+		st.LegacySSEObjects = wantLegacy
+		changed = true
+	}
+	if changed {
+		return meta.PutKMSState(st)
 	}
 	return nil
 }
@@ -391,10 +415,13 @@ func (s *Service) prepareObjectEncryption(ctx context.Context, bucket metadata.B
 func (s *Service) openDecrypted(rc io.ReadCloser, rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {
 	enc := rec.Encryption
 	if enc == nil || !enc.Sealed() {
-		if enc == nil && s.legacySSE() {
+		if enc != nil && enc.Plaintext {
+			return rc, rec, nil
+		}
+		if s.legacySSE() {
 			return s.openFormat0(rc, rec)
 		}
-		return rc, rec, nil
+		return s.openUnmarked(rc, rec)
 	}
 	if enc.KeyID != "" {
 		key, err := s.Meta.GetKMSKey(enc.KeyID)
@@ -427,6 +454,30 @@ func (s *Service) openDecrypted(rc io.ReadCloser, rec metadata.ObjectRecord) (io
 		io.Reader
 		io.Closer
 	}{Reader: plain, Closer: rc}, rec, nil
+}
+
+// openUnmarked serves an object that 1.5.0 stored with no encryption metadata.
+// A format-1 body (DSSE, version 1) is not format 0 and is not returned as
+// plaintext. Anything else is the original bytes: GCM is not attempted, because
+// a failed authentication used to become HTTP 500 for every plaintext object.
+func (s *Service) openUnmarked(rc io.ReadCloser, rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {
+	var hdr [5]byte
+	n, err := io.ReadFull(rc, hdr[:])
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		return io.NopCloser(bytes.NewReader(hdr[:n])), rec, nil
+	}
+	if err != nil {
+		rc.Close()
+		return nil, rec, err
+	}
+	if bytes.Equal(hdr[:4], []byte{'D', 'S', 'S', 'E'}) && hdr[4] == 1 {
+		rc.Close()
+		return nil, rec, errors.New("object envelope is missing encryption metadata")
+	}
+	return struct {
+		io.Reader
+		io.Closer
+	}{Reader: io.MultiReader(bytes.NewReader(hdr[:n]), rc), Closer: rc}, rec, nil
 }
 
 func (s *Service) openFormat0(rc io.ReadCloser, rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {

@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,8 +18,10 @@ import (
 	"github.com/DirektorBani/datasafe/internal/api"
 	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/kms"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/storage"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func rootCreds() auth.Credentials {
@@ -266,6 +270,50 @@ func TestE01ShareRevokedAndDestroyed(t *testing.T) {
 	if err := s.Meta().UpdateUser(user); err != nil {
 		t.Fatal(err)
 	}
+	aes := s3Call(t, s, http.MethodPut, "/sharekms/aes.txt", []byte("aes-secret"), map[string]string{
+		"x-amz-server-side-encryption": "AES256",
+	})
+	if aes.Code != http.StatusOK {
+		t.Fatalf("aes put %d %s", aes.Code, aes.Body.String())
+	}
+	plain := s3Call(t, s, http.MethodPut, "/sharekms/plain.txt", []byte("plain-secret"), nil)
+	if plain.Code != http.StatusOK {
+		t.Fatalf("plain put %d %s", plain.Code, plain.Body.String())
+	}
+	aesBody, _ := json.Marshal(map[string]any{"key": "aes.txt", "expires_in_sec": 3600})
+	plainBody, _ := json.Marshal(map[string]any{"key": "plain.txt", "expires_in_sec": 3600})
+	aesRec := doJSON(t, s.Handler(), http.MethodPost, "/api/v1/buckets/sharekms/shares", tok, aesBody, "")
+	plainRec := doJSON(t, s.Handler(), http.MethodPost, "/api/v1/buckets/sharekms/shares", tok, plainBody, "")
+	if aesRec.Code != http.StatusCreated || plainRec.Code != http.StatusCreated {
+		t.Fatalf("shares aes %d plain %d", aesRec.Code, plainRec.Code)
+	}
+	var aesCreated, plainCreated struct {
+		Share struct {
+			Token string `json:"token"`
+		} `json:"share"`
+	}
+	_ = json.Unmarshal(aesRec.Body.Bytes(), &aesCreated)
+	_ = json.Unmarshal(plainRec.Body.Bytes(), &plainCreated)
+	user.Status = metadata.StatusSuspended
+	if err := s.Meta().UpdateUser(user); err != nil {
+		t.Fatal(err)
+	}
+	aesDL := httptest.NewRequest(http.MethodGet, "/api/v1/public/share/"+aesCreated.Share.Token+"/download", nil)
+	aesDRec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(aesDRec, aesDL)
+	if aesDRec.Code != http.StatusForbidden {
+		t.Fatalf("aes revoked %d %s", aesDRec.Code, aesDRec.Body.String())
+	}
+	plainDL := httptest.NewRequest(http.MethodGet, "/api/v1/public/share/"+plainCreated.Share.Token+"/download", nil)
+	plainDRec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(plainDRec, plainDL)
+	if plainDRec.Code != http.StatusOK || plainDRec.Body.String() != "plain-secret" {
+		t.Fatalf("plain link %d %q", plainDRec.Code, plainDRec.Body.String())
+	}
+	user.Status = metadata.StatusActive
+	if err := s.Meta().UpdateUser(user); err != nil {
+		t.Fatal(err)
+	}
 	sk := storageKeyOf(t, s, "sharekms")
 	meta, err := s.Meta().GetObject(sk, "file.txt")
 	if err != nil || meta.Encryption == nil {
@@ -372,19 +420,157 @@ func TestE01MultipartAndCopy(t *testing.T) {
 	}
 }
 
-func TestE01LegacyFormat0AndFingerprint(t *testing.T) {
-	dir := t.TempDir()
-	meta, err := metadata.Open(metadata.Config{Backend: metadata.BackendBolt, DataDir: dir})
-	if err != nil {
-		t.Fatal(err)
-	}
+func plantUnmarkedObject(t *testing.T, meta metadata.MetadataStore, dir, bucket, key string, body []byte) {
+	t.Helper()
 	fs, err := storage.NewFSBackend(filepath.Join(dir, "objects"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := meta.PutBucket(metadata.BucketRecord{
-		Name: "legbox", StorageKey: "legbox", Owner: "admin", Visibility: "private", CreatedAt: time.Now().UTC(),
+		Name: bucket, StorageKey: bucket, Owner: "admin", Visibility: "private", CreatedAt: time.Now().UTC(),
 	}); err != nil {
+		t.Fatal(err)
+	}
+	etag, err := fs.PutObject(context.Background(), bucket, key, bytes.NewReader(body), int64(len(body)), "application/octet-stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := meta.PutObject(metadata.ObjectRecord{
+		Bucket: bucket, Key: key, Size: int64(len(body)), ETag: etag,
+		ContentType: "application/octet-stream", LastModified: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertUpgradePlaintext(t *testing.T, s *api.Server, bucket, key, want string) {
+	t.Helper()
+	st, err := s.Meta().GetKMSState()
+	if err != nil || st.LegacySSEObjects || st.Fingerprint == "" {
+		t.Fatalf("state %+v %v", st, err)
+	}
+	got := s3Call(t, s, http.MethodGet, "/"+bucket+"/"+key, nil, nil)
+	if got.Code != http.StatusOK || got.Body.String() != want {
+		t.Fatalf("upgrade get %d %q", got.Code, got.Body.String())
+	}
+}
+
+func TestE01PlaintextUpgradeFrom15Bolt(t *testing.T) {
+	t.Setenv("STORAGE_SSE_LEGACY_FORMAT0", "")
+	dir := t.TempDir()
+	meta, err := metadata.Open(metadata.Config{Backend: metadata.BackendBolt, DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plantUnmarkedObject(t, meta, dir, "upbox", "old.txt", []byte("from-plaintext"))
+	_ = meta.Close()
+
+	s := newKeyedServer(t, dir, "upgrade-key")
+	assertUpgradePlaintext(t, s, "upbox", "old.txt", "from-plaintext")
+}
+
+func TestE01PoisonedLegacyFlagCleared(t *testing.T) {
+	t.Setenv("STORAGE_SSE_LEGACY_FORMAT0", "")
+	const key = "upgrade-key"
+	dir := t.TempDir()
+	meta, err := metadata.Open(metadata.Config{Backend: metadata.BackendBolt, DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plantUnmarkedObject(t, meta, dir, "poison", "old.txt", []byte("still-plain"))
+	if err := meta.PutKMSState(metadata.KMSState{
+		Fingerprint: kms.Fingerprint(key), LegacySSEObjects: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_ = meta.Close()
+
+	s := newKeyedServer(t, dir, key)
+	assertUpgradePlaintext(t, s, "poison", "old.txt", "still-plain")
+}
+
+func TestE01PlaintextUpgradeFrom15Postgres(t *testing.T) {
+	t.Setenv("STORAGE_SSE_LEGACY_FORMAT0", "")
+	dsn := os.Getenv("TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_DSN not set — skipping postgres integration test")
+	}
+	ctx := context.Background()
+	admin, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	if err := admin.Ping(ctx); err != nil {
+		admin.Close()
+		t.Skipf("postgres unavailable: %v", err)
+	}
+	name := fmt.Sprintf("ds_e01_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+		admin.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec(context.Background(), "DROP DATABASE "+name+" WITH (FORCE)")
+		admin.Close()
+	})
+	fresh, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh.Path = "/" + name
+	dir := t.TempDir()
+	meta, err := metadata.Open(metadata.Config{
+		Backend: metadata.BackendPostgres, PostgresDSN: fresh.String(), DataDir: dir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plantUnmarkedObject(t, meta, dir, "pgup", "old.txt", []byte("pg-plain"))
+	_ = meta.Close()
+
+	start := func() *api.Server {
+		t.Helper()
+		srv, err := api.NewServer(api.Config{
+			DataDir: dir, AdminUser: "admin", AdminPassword: "admin", JWTSecret: "test",
+			SSEMasterKey: "upgrade-key",
+			Metadata: metadata.Config{
+				Backend: metadata.BackendPostgres, PostgresDSN: fresh.String(), DataDir: dir,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return srv
+	}
+	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
+	t.Setenv("STORAGE_KAFKA_BROKERS", "")
+	t.Setenv("STORAGE_NATS_URL", "")
+	s := start()
+	assertUpgradePlaintext(t, s, "pgup", "old.txt", "pg-plain")
+	_ = s.Close()
+
+	meta, err = metadata.Open(metadata.Config{
+		Backend: metadata.BackendPostgres, PostgresDSN: fresh.String(), DataDir: dir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := meta.PutKMSState(metadata.KMSState{
+		Fingerprint: kms.Fingerprint("upgrade-key"), LegacySSEObjects: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_ = meta.Close()
+	s = start()
+	t.Cleanup(func() { _ = s.Close() })
+	assertUpgradePlaintext(t, s, "pgup", "old.txt", "pg-plain")
+}
+
+func TestE01LegacyFormat0AndFingerprint(t *testing.T) {
+	t.Setenv("STORAGE_SSE_LEGACY_FORMAT0", "true")
+	dir := t.TempDir()
+	meta, err := metadata.Open(metadata.Config{Backend: metadata.BackendBolt, DataDir: dir})
+	if err != nil {
 		t.Fatal(err)
 	}
 	cipher, err := storage.NewSSECipher("legacy-key")
@@ -395,16 +581,7 @@ func TestE01LegacyFormat0AndFingerprint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	etag, err := fs.PutObject(context.Background(), "legbox", "old.bin", bytes.NewReader(ct), int64(len(ct)), "application/octet-stream")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := meta.PutObject(metadata.ObjectRecord{
-		Bucket: "legbox", Key: "old.bin", Size: int64(len(ct)), ETag: etag,
-		ContentType: "application/octet-stream", LastModified: time.Now().UTC(),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	plantUnmarkedObject(t, meta, dir, "legbox", "old.bin", ct)
 	_ = meta.Close()
 
 	s := newKeyedServer(t, dir, "legacy-key")

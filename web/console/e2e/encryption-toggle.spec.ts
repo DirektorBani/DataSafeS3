@@ -33,7 +33,9 @@ test("bucket encryption card toggles and list shows a badge", async ({ page, req
   await expect(page.getByTestId("bucket-encryption-badge").first()).toBeVisible({ timeout: 15_000 });
 
   await page.goto(`/buckets/${encodeURIComponent(bucket)}?tab=settings`);
-  await page.getByTestId("encryption-toggle").uncheck();
-  await page.getByTestId("encryption-disable-confirm").click();
+  await page.getByTestId("encryption-toggle").click();
+  const confirm = page.getByTestId("encryption-disable-confirm");
+  await expect(confirm).toBeVisible({ timeout: 10_000 });
+  await confirm.click();
   await expect(page.getByText(/encryption saved|шифрование сохранено/i)).toBeVisible({ timeout: 10_000 });
 });

@@ -2,9 +2,19 @@
 
 All notable changes to DataSafeS3 are documented in this file.
 
+## [1.6.0]
+
+### Fixed
+
+- **Plaintext objects survive adding `STORAGE_SSE_MASTER_KEY`.** 1.6.0 no longer marks every existing object as SSE-S3 format 0 just because a master key is set and the bucket is not empty. Unmarked objects are returned as stored. A format-0 reading of those bytes is opt-in (`STORAGE_SSE_LEGACY_FORMAT0=true`). A legacy flag written by the first 1.6.0 builds, which inferred it from the object count, is cleared on the next start unless that variable is set. The key fingerprint is unchanged: a different key still refuses to start.
+
 ## [1.5.0] - 2026-10-12
 
 Minor release. Durable event delivery, optional Kafka, scripted HA promote, and per-rule gateway sync. `VERSION` is **1.5.0**. This commit does not push the git tag. Images are published when `release.yml` runs on `v1.5.0`.
+
+### Known issues
+
+- **SSE-S3 writes with `STORAGE_SSE_MASTER_KEY` fail.** `PutObject` compares the caller’s plaintext `Content-Length` with the ciphertext the backend just wrote (`internal/storage/fs.go`, and the same check in the erasure backend). The sizes differ by the GCM nonce and tag, so the write is rejected and no format-0 object is stored. Reads of objects written without the key are unaffected. 1.6.0 does not use that size check for a new encrypted object: the stored length is the plaintext length, and the body is the format-1 envelope. Leave the variable unset on 1.5.x unless you are reproducing this bug.
 
 ### Upgrade
 
