@@ -3,6 +3,7 @@ package migrate
 import (
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -80,6 +81,16 @@ func ParseFromMinIO(args []string) (Options, error) {
 				return opt, err
 			}
 			opt.Source.SecretKey = v
+		case "--source-secret-file":
+			v, err := need()
+			if err != nil {
+				return opt, err
+			}
+			secret, err := readSecretFile(v)
+			if err != nil {
+				return opt, err
+			}
+			opt.Source.SecretKey = secret
 		case "--source-region":
 			v, err := need()
 			if err != nil {
@@ -104,6 +115,16 @@ func ParseFromMinIO(args []string) (Options, error) {
 				return opt, err
 			}
 			target.SecretKey = v
+		case "--target-secret-file":
+			v, err := need()
+			if err != nil {
+				return opt, err
+			}
+			secret, err := readSecretFile(v)
+			if err != nil {
+				return opt, err
+			}
+			target.SecretKey = secret
 		case "--target-region":
 			v, err := need()
 			if err != nil {
@@ -192,6 +213,18 @@ func ParseFromMinIO(args []string) (Options, error) {
 			return opt, fmt.Errorf("unknown flag %q", a)
 		}
 	}
+	if opt.Source.AccessKey == "" {
+		opt.Source.AccessKey = os.Getenv("SOURCE_ACCESS_KEY")
+	}
+	if opt.Source.SecretKey == "" {
+		opt.Source.SecretKey = os.Getenv("SOURCE_SECRET_KEY")
+	}
+	if target.AccessKey == "" {
+		target.AccessKey = os.Getenv("TARGET_ACCESS_KEY")
+	}
+	if target.SecretKey == "" {
+		target.SecretKey = os.Getenv("TARGET_SECRET_KEY")
+	}
 	if opt.Source.URL == "" {
 		return opt, fmt.Errorf("--source is required")
 	}
@@ -216,6 +249,18 @@ func ParseFromMinIO(args []string) (Options, error) {
 		opt.Targets = append(opt.Targets, ep)
 	}
 	return opt, nil
+}
+
+func readSecretFile(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read secret file: %w", err)
+	}
+	secret := strings.TrimSpace(string(b))
+	if secret == "" {
+		return "", fmt.Errorf("secret file %s is empty", path)
+	}
+	return secret, nil
 }
 
 func parseRate(v string) (int64, error) {

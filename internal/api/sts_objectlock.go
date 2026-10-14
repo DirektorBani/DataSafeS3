@@ -114,7 +114,7 @@ func (s *Server) handlePutObjectRetention(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	if err := s.meta.SetObjectRetention(bucket, req.Key, req.VersionID, until); err != nil {
+	if err := s.meta.SetObjectRetention(bucket, req.Key, req.VersionID, until, req.Mode); err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 		return
 	}

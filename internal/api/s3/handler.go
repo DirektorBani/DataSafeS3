@@ -197,6 +197,8 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request) (auth.Cre
 	creds, err := h.Svc.Signer.Authenticate(r)
 	if err != nil {
 		switch err {
+		case auth.ErrUnsignedHeaders:
+			writeError(w, r, http.StatusBadRequest, "AccessDenied", "There were headers present in the request which were not signed")
 		case auth.ErrMissingAuth, auth.ErrInvalidAuth, auth.ErrSignatureMismatch:
 			writeError(w, r, http.StatusForbidden, "AccessDenied", "access denied")
 		case auth.ErrExpired:
@@ -309,16 +311,20 @@ func (h *Handler) putBucketLifecycle(w http.ResponseWriter, r *http.Request, buc
 	if !h.authorize(w, r, creds, bucket, "", "s3:PutLifecycleConfiguration") {
 		return
 	}
-	var cfg LifecycleConfiguration
-	if err := xml.NewDecoder(r.Body).Decode(&cfg); err != nil {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
 		writeError(w, r, http.StatusBadRequest, "MalformedXML", "invalid xml")
+		return
+	}
+	rules, err := parseLifecycleXML(raw)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "InvalidArgument", err.Error())
 		return
 	}
 	sk, ok := h.storageBucket(w, r, creds, bucket)
 	if !ok {
 		return
 	}
-	rules := lifecycleRulesFromXML(cfg)
 	if err := h.Svc.SetBucketLifecycle(sk, rules); err != nil {
 		mapErr(w, r, err)
 		return
@@ -456,34 +462,78 @@ func (h *Handler) listObjects(w http.ResponseWriter, r *http.Request, bucket str
 	} else {
 		prefix = eff
 	}
-	maxKeys := 1000
-	if mk := first(q["max-keys"]); mk != "" {
-		if n, err := strconv.Atoi(mk); err == nil && n > 0 {
-			maxKeys = n
+	maxKeys := parseMaxKeys(first(q["max-keys"]))
+	v2 := first(q["list-type"]) == "2"
+	start := first(q["marker"])
+	if v2 {
+		if tok := first(q["continuation-token"]); tok != "" {
+			start = tok
+		} else {
+			start = first(q["start-after"])
 		}
 	}
-	objs, err := h.Svc.ListObjects(r.Context(), sk, prefix, maxKeys)
+	objs, truncated, next, err := h.listObjectPage(sk, prefix, start, maxKeys)
 	if err != nil {
 		mapErr(w, r, err)
 		return
 	}
 	objs = h.Svc.FilterObjectsForAccessKey(creds.AccessKey, sk, objs)
-	resp := ListObjectsV2Result{
+	contents := h.objectInfos(sk, objs)
+	if v2 {
+		resp := ListObjectsV2Result{
+			Xmlns:       xmlNS,
+			Name:        bucket,
+			Prefix:      prefix,
+			KeyCount:    len(contents),
+			MaxKeys:     maxKeys,
+			IsTruncated: truncated,
+			Contents:    contents,
+		}
+		if tok := first(q["continuation-token"]); tok != "" {
+			resp.ContinuationToken = tok
+		}
+		if truncated {
+			resp.NextContinuationToken = next
+		}
+		writeXML(w, http.StatusOK, resp)
+		return
+	}
+	resp := ListBucketResult{
 		Xmlns:       xmlNS,
 		Name:        bucket,
 		Prefix:      prefix,
-		KeyCount:    len(objs),
+		Marker:      first(q["marker"]),
 		MaxKeys:     maxKeys,
-		IsTruncated: false,
+		IsTruncated: truncated,
+		Contents:    contents,
 	}
+	if truncated {
+		resp.NextMarker = next
+	}
+	writeXML(w, http.StatusOK, resp)
+}
+
+func (h *Handler) listObjectPage(bucket, prefix, start string, maxKeys int) ([]metadata.ObjectRecord, bool, string, error) {
+	if maxKeys == 0 {
+		probe, _, _, err := h.Svc.Meta.ListObjectsPage(bucket, prefix, start, 1)
+		if err != nil {
+			return nil, false, "", err
+		}
+		return nil, len(probe) > 0, "", nil
+	}
+	return h.Svc.Meta.ListObjectsPage(bucket, prefix, start, maxKeys)
+}
+
+func (h *Handler) objectInfos(storageKey string, objs []metadata.ObjectRecord) []ObjectInfo {
+	out := make([]ObjectInfo, 0, len(objs))
 	for _, o := range objs {
 		sc := metadata.S3StorageClassDisplay(o.StorageClass)
 		if sc == metadata.StorageClassStandard {
-			if brec, err := h.Svc.Meta.GetBucketByKey(sk); err == nil && brec.StorageClass != "" {
+			if brec, err := h.Svc.Meta.GetBucketByKey(storageKey); err == nil && brec.StorageClass != "" {
 				sc = metadata.S3StorageClassDisplay(brec.StorageClass)
 			}
 		}
-		resp.Contents = append(resp.Contents, ObjectInfo{
+		out = append(out, ObjectInfo{
 			Key:          o.Key,
 			LastModified: formatTime(o.LastModified),
 			ETag:         o.ETag,
@@ -492,7 +542,21 @@ func (h *Handler) listObjects(w http.ResponseWriter, r *http.Request, bucket str
 			VersionID:    o.VersionID,
 		})
 	}
-	writeXML(w, http.StatusOK, resp)
+	return out
+}
+
+func parseMaxKeys(raw string) int {
+	if raw == "" {
+		return 1000
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return 1000
+	}
+	if n > 1000 {
+		return 1000
+	}
+	return n
 }
 
 func (h *Handler) listObjectVersions(w http.ResponseWriter, r *http.Request, bucket string, q map[string][]string) {
@@ -514,26 +578,13 @@ func (h *Handler) listObjectVersions(w http.ResponseWriter, r *http.Request, buc
 	} else {
 		prefix = eff
 	}
-	maxKeys := 1000
-	if mk := first(q["max-keys"]); mk != "" {
-		if n, err := strconv.Atoi(mk); err == nil && n > 0 {
-			maxKeys = n
-		}
-	}
-	objs, err := h.Svc.ListObjectVersions(r.Context(), sk, prefix, maxKeys)
+	maxKeys := parseMaxKeys(first(q["max-keys"]))
+	objs, err := h.Svc.ListObjectVersions(r.Context(), sk, prefix, 0)
 	if err != nil {
 		mapErr(w, r, err)
 		return
 	}
 	objs = h.Svc.FilterObjectsForAccessKey(creds.AccessKey, sk, objs)
-	resp := ListObjectVersionsResult{
-		Xmlns:       xmlNS,
-		Name:        bucket,
-		Prefix:      prefix,
-		KeyCount:    len(objs),
-		MaxKeys:     maxKeys,
-		IsTruncated: false,
-	}
 	head := map[string]string{}
 	gone := map[string]bool{}
 	for _, o := range objs {
@@ -547,8 +598,28 @@ func (h *Handler) listObjectVersions(w http.ResponseWriter, r *http.Request, buc
 		}
 		gone[o.Key] = true
 	}
-	markerLatest := map[string]bool{}
+	markerLatest := map[string]string{}
 	for _, o := range objs {
+		if gone[o.Key] && o.IsDeleteMarker {
+			if _, ok := markerLatest[o.Key]; !ok {
+				markerLatest[o.Key] = o.VersionID
+			}
+		}
+	}
+	page, truncated, nextKey, nextVid := pageVersions(objs, first(q["key-marker"]), first(q["version-id-marker"]), maxKeys)
+	resp := ListObjectVersionsResult{
+		Xmlns:               xmlNS,
+		Name:                bucket,
+		Prefix:              prefix,
+		KeyMarker:           first(q["key-marker"]),
+		VersionIDMarker:     first(q["version-id-marker"]),
+		KeyCount:            len(page),
+		MaxKeys:             maxKeys,
+		IsTruncated:         truncated,
+		NextKeyMarker:       nextKey,
+		NextVersionIDMarker: nextVid,
+	}
+	for _, o := range page {
 		entry := VersionEntry{
 			Key:          o.Key,
 			LastModified: o.LastModified.UTC().Format(time.RFC3339Nano),
@@ -560,17 +631,46 @@ func (h *Handler) listObjectVersions(w http.ResponseWriter, r *http.Request, buc
 		if id := head[o.Key]; id != "" && o.VersionID == id && !o.IsDeleteMarker {
 			entry.IsLatest = true
 		}
-		if gone[o.Key] && o.IsDeleteMarker && !markerLatest[o.Key] {
+		if id := markerLatest[o.Key]; id != "" && o.VersionID == id && o.IsDeleteMarker {
 			entry.IsLatest = true
-			markerLatest[o.Key] = true
 		}
-		if o.IsDeleteMarker {
-			resp.DeleteMarkers = append(resp.DeleteMarkers, entry)
-		} else {
-			resp.Versions = append(resp.Versions, entry)
-		}
+		resp.Items = append(resp.Items, orderedEntry{DeleteMarker: o.IsDeleteMarker, Entry: entry})
 	}
 	writeXML(w, http.StatusOK, resp)
+}
+
+func pageVersions(objs []metadata.ObjectRecord, keyMarker, versionMarker string, maxKeys int) (page []metadata.ObjectRecord, truncated bool, nextKey, nextVid string) {
+	start := 0
+	if keyMarker != "" {
+		start = len(objs)
+		for i, o := range objs {
+			if o.Key < keyMarker {
+				continue
+			}
+			if o.Key > keyMarker {
+				start = i
+				break
+			}
+			if versionMarker == "" {
+				continue
+			}
+			if o.VersionID == versionMarker {
+				start = i + 1
+				break
+			}
+		}
+	}
+	rest := objs[start:]
+	if len(rest) > maxKeys {
+		truncated = true
+		rest = rest[:maxKeys]
+	}
+	if truncated && len(rest) > 0 {
+		last := rest[len(rest)-1]
+		nextKey = last.Key
+		nextVid = last.VersionID
+	}
+	return rest, truncated, nextKey, nextVid
 }
 
 func (h *Handler) validObjectKey(w http.ResponseWriter, r *http.Request, key string) bool {
@@ -747,6 +847,8 @@ func (h *Handler) serveObject(w http.ResponseWriter, r *http.Request, storageBuc
 
 func (h *Handler) writeAuthError(w http.ResponseWriter, r *http.Request, err error) {
 	switch err {
+	case auth.ErrUnsignedHeaders:
+		writeError(w, r, http.StatusBadRequest, "AccessDenied", "There were headers present in the request which were not signed")
 	case auth.ErrMissingAuth, auth.ErrInvalidAuth, auth.ErrSignatureMismatch:
 		writeError(w, r, http.StatusForbidden, "AccessDenied", "access denied")
 	case auth.ErrExpired:
@@ -982,6 +1084,9 @@ func (h *Handler) completeMultipart(w http.ResponseWriter, r *http.Request, buck
 	if err != nil {
 		mapErr(w, r, err)
 		return
+	}
+	if rec.VersionID != "" {
+		w.Header().Set("x-amz-version-id", rec.VersionID)
 	}
 	resp := CompleteMultipartUploadResult{
 		Xmlns:    xmlNS,

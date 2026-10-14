@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/policy"
 )
 
@@ -22,6 +23,9 @@ type ObjectVersion struct {
 	LastModified time.Time
 	IsLatest     bool
 	DeleteMarker bool
+	// Seq is document order from a newest-first listing. Higher Seq is older.
+	// Zero means the caller did not record order; LastModified is used instead.
+	Seq int
 }
 
 func versionIdentity(v ObjectVersion) string {
@@ -41,9 +45,10 @@ func OrderVersions(in []ObjectVersion) []ObjectVersion {
 		if out[i].Key != out[j].Key {
 			return out[i].Key < out[j].Key
 		}
-		// The current version is written last so it stays current on the target.
-		if out[i].IsLatest != out[j].IsLatest {
-			return !out[i].IsLatest
+		// A newest-first listing numbers the oldest entry with the higher Seq,
+		// so that entry is written first and a delete marker stays between versions.
+		if out[i].Seq != 0 && out[j].Seq != 0 && out[i].Seq != out[j].Seq {
+			return out[i].Seq > out[j].Seq
 		}
 		if !out[i].LastModified.Equal(out[j].LastModified) {
 			return out[i].LastModified.Before(out[j].LastModified)
@@ -113,13 +118,15 @@ func PortPolicy(raw string) (string, []string) {
 	return string(out), warnings
 }
 
-// LifecycleWarning reports MinIO lifecycle features this server does not store.
-func LifecycleWarning(raw string) string {
-	low := strings.ToLower(raw)
-	if strings.Contains(low, "transition") || strings.Contains(low, "noncurrentversion") {
-		return "lifecycle transitions and noncurrent expiration are not copied; only prefix expiration days are stored"
+// LifecycleUnsupported is a non-nil error when the document is not a prefix
+// expiration this server can store. The copier records a failure and does not PUT it.
+func LifecycleUnsupported(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
 	}
-	return ""
+	_, err := s3.ParseLifecycleXML([]byte(raw))
+	return err
 }
 
 // S3MultipartETag is the S3 multipart checksum of body split at partSize.

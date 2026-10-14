@@ -1,7 +1,9 @@
 package api
 
 import (
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -49,12 +51,75 @@ func (s *Server) leaderGuard(w http.ResponseWriter, r *http.Request) bool {
 	if s.haLeader.IsLeader(r.Context()) {
 		return false
 	}
+	if r.Header.Get("X-DataSafe-Forwarded") == "" && s.forwardToLeader(w, r) {
+		return true
+	}
 	w.Header().Set("Retry-After", "30")
 	writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 		"error":      "not cluster leader",
 		"ha_enabled": true,
 		"is_leader":  false,
 	})
+	return true
+}
+
+// forwardToLeader proxies a write to the lease holder and keeps the original
+// Host so SigV4 still matches. A missing address or a failed dial leaves the
+// caller to answer 503.
+func (s *Server) forwardToLeader(w http.ResponseWriter, r *http.Request) bool {
+	holder, ok, err := s.meta.LiveLeader()
+	if err != nil || !ok || holder == "" || holder == s.haLeader.NodeID() {
+		return false
+	}
+	cfg, err := s.meta.GetSystemConfig()
+	if err != nil {
+		return false
+	}
+	var addr string
+	for _, n := range cfg.Cluster.Nodes {
+		if n.ID == holder {
+			addr = strings.TrimSpace(n.Address)
+			break
+		}
+	}
+	if addr == "" {
+		return false
+	}
+	return proxyToLeader(w, r, addr)
+}
+
+func proxyToLeader(w http.ResponseWriter, r *http.Request, leaderBase string) bool {
+	leaderBase = strings.TrimSpace(leaderBase)
+	if leaderBase == "" {
+		return false
+	}
+	if !strings.Contains(leaderBase, "://") {
+		leaderBase = "http://" + leaderBase
+	}
+	target, err := url.Parse(strings.TrimRight(leaderBase, "/") + r.URL.RequestURI())
+	if err != nil {
+		return false
+	}
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, target.String(), r.Body)
+	if err != nil {
+		return false
+	}
+	req.Header = r.Header.Clone()
+	req.Header.Set("X-DataSafe-Forwarded", "1")
+	req.Host = r.Host
+	req.ContentLength = r.ContentLength
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	for k, vs := range resp.Header {
+		for _, v := range vs {
+			w.Header().Add(k, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
 	return true
 }
 

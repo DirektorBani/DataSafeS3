@@ -42,12 +42,62 @@ func TestPortPolicyDropsUnsupportedCondition(t *testing.T) {
 	}
 }
 
-func TestLifecycleWarning(t *testing.T) {
-	if LifecycleWarning(`<Expiration><Days>1</Days></Expiration>`) != "" {
-		t.Fatal("plain expiration should not warn")
+func TestOrderVersionsKeepsMarkerBetweenVersions(t *testing.T) {
+	in := []ObjectVersion{
+		{Bucket: "b", Key: "k", VersionID: "new", Seq: 1},
+		{Bucket: "b", Key: "k", VersionID: "mark", Seq: 2, DeleteMarker: true},
+		{Bucket: "b", Key: "k", VersionID: "old", Seq: 3},
 	}
-	if !strings.Contains(LifecycleWarning(`<Transition><Days>1</Days></Transition>`), "not copied") {
-		t.Fatal("transition should warn")
+	out := OrderVersions(in)
+	if out[0].VersionID != "old" || !out[1].DeleteMarker || out[2].VersionID != "new" {
+		t.Fatalf("marker not interleaved: %+v", out)
+	}
+}
+
+func TestLifecycleUnsupported(t *testing.T) {
+	plain := `<LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Rule><ID>keep</ID><Filter><Prefix>logs/</Prefix></Filter><Status>Enabled</Status><Expiration><Days>30</Days></Expiration></Rule></LifecycleConfiguration>`
+	if err := LifecycleUnsupported(plain); err != nil {
+		t.Fatal(err)
+	}
+	if err := LifecycleUnsupported(`<LifecycleConfiguration><Rule><ID>bad</ID><Status>Enabled</Status><NoncurrentVersionExpiration><NoncurrentDays>1</NoncurrentDays></NoncurrentVersionExpiration></Rule></LifecycleConfiguration>`); err == nil {
+		t.Fatal("noncurrent rule should be rejected")
+	}
+	if err := LifecycleUnsupported(`<LifecycleConfiguration><Rule><Status>Enabled</Status><Transition><Days>1</Days></Transition><Expiration><Days>30</Days></Expiration></Rule></LifecycleConfiguration>`); err == nil {
+		t.Fatal("transition should be rejected")
+	}
+}
+
+func TestSampleIndexesAtLeastOne(t *testing.T) {
+	got := SampleIndexes(5, 10, false)
+	if len(got) != 1 {
+		t.Fatalf("10%% of 5 objects: %v", got)
+	}
+	if _, ok := got[0]; !ok {
+		t.Fatalf("first object missing: %v", got)
+	}
+	if len(SampleIndexes(3, 0, true)) != 3 {
+		t.Fatal("verify-full should include every object")
+	}
+}
+
+func TestParseFromMinIOSecretsFromEnv(t *testing.T) {
+	t.Setenv("SOURCE_ACCESS_KEY", "src-key")
+	t.Setenv("SOURCE_SECRET_KEY", "src-secret")
+	t.Setenv("TARGET_ACCESS_KEY", "dst-key")
+	t.Setenv("TARGET_SECRET_KEY", "dst-secret")
+	opt, err := ParseFromMinIO([]string{"--source", "http://minio", "--target", "http://datasafe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opt.Source.AccessKey != "src-key" || opt.Source.SecretKey != "src-secret" || opt.Targets[0].SecretKey != "dst-secret" {
+		t.Fatalf("%+v", opt)
+	}
+	opt, err = ParseFromMinIO([]string{"--source", "http://minio", "--source-key", "flag", "--source-secret", "flag-secret", "--target", "http://datasafe", "--target-key", "flag", "--target-secret", "flag-secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opt.Source.SecretKey != "flag-secret" {
+		t.Fatalf("flag should win: %s", opt.Source.SecretKey)
 	}
 }
 

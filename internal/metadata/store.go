@@ -72,6 +72,7 @@ type ObjectRecord struct {
 	IsDeleteMarker    bool              `json:"is_delete_marker,omitempty"`
 	LegalHold         bool              `json:"legal_hold,omitempty"`
 	RetentionUntil    *time.Time        `json:"retention_until,omitempty"`
+	RetentionMode     string            `json:"retention_mode,omitempty"` // GOVERNANCE | COMPLIANCE
 	StorageClass      string            `json:"storage_class,omitempty"`
 	Metadata          map[string]string `json:"metadata,omitempty"`
 	Tags              map[string]string `json:"tags,omitempty"`

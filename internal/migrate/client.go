@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -58,23 +59,69 @@ func objectPath(bucket, key string) string {
 	return "/" + url.PathEscape(bucket) + "/" + strings.Join(parts, "/")
 }
 
-type listedVersion struct {
-	XMLName      xml.Name
-	Key          string `xml:"Key"`
-	LastModified string `xml:"LastModified"`
-	ETag         string `xml:"ETag"`
-	Size         int64  `xml:"Size"`
-	VersionID    string `xml:"VersionId"`
-	IsLatest     bool   `xml:"IsLatest"`
-}
-
-type listVersionsResult struct {
-	XMLName             xml.Name        `xml:"ListVersionsResult"`
-	IsTruncated         bool            `xml:"IsTruncated"`
-	NextKeyMarker       string          `xml:"NextKeyMarker"`
-	NextVersionIDMarker string          `xml:"NextVersionIdMarker"`
-	Versions            []listedVersion `xml:"Version"`
-	DeleteMarkers       []listedVersion `xml:"DeleteMarker"`
+// decodeVersionPage reads Version and DeleteMarker elements in document order.
+// seq is the last sequence number already assigned; the next page continues it.
+func decodeVersionPage(r io.Reader, bucket string, seq int) (truncated bool, nextKey, nextVid string, items []ObjectVersion, next int, err error) {
+	dec := xml.NewDecoder(r)
+	var cur *ObjectVersion
+	var stack []string
+	next = seq
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			return truncated, nextKey, nextVid, items, next, nil
+		}
+		if err != nil {
+			return false, "", "", nil, seq, err
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			stack = append(stack, t.Name.Local)
+			if t.Name.Local == "Version" || t.Name.Local == "DeleteMarker" {
+				next++
+				cur = &ObjectVersion{Bucket: bucket, DeleteMarker: t.Name.Local == "DeleteMarker", Seq: next}
+			}
+		case xml.EndElement:
+			if (t.Name.Local == "Version" || t.Name.Local == "DeleteMarker") && cur != nil {
+				items = append(items, *cur)
+				cur = nil
+			}
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		case xml.CharData:
+			text := strings.TrimSpace(string(t))
+			if text == "" || len(stack) == 0 {
+				continue
+			}
+			field := stack[len(stack)-1]
+			if cur != nil {
+				switch field {
+				case "Key":
+					cur.Key = text
+				case "VersionId":
+					cur.VersionID = text
+				case "ETag":
+					cur.ETag = trimETag(text)
+				case "Size":
+					cur.Size, _ = strconv.ParseInt(text, 10, 64)
+				case "LastModified":
+					cur.LastModified = parseTime(text)
+				case "IsLatest":
+					cur.IsLatest = strings.EqualFold(text, "true")
+				}
+				continue
+			}
+			switch field {
+			case "IsTruncated":
+				truncated = strings.EqualFold(text, "true")
+			case "NextKeyMarker":
+				nextKey = text
+			case "NextVersionIdMarker":
+				nextVid = text
+			}
+		}
+	}
 }
 
 type listBucketsResult struct {

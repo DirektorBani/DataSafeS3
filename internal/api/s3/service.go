@@ -523,7 +523,7 @@ func (s *Service) putObject(ctx context.Context, bucket, key string, r io.Reader
 		ETag:         etag,
 		ContentType:  contentType,
 		VersionID:    versionID,
-		LastModified: info.LastModified,
+		LastModified: time.Now().UTC(),
 		Metadata:     userMeta,
 		CreatedAt:    info.LastModified,
 		Encryption:   encMeta,
@@ -952,7 +952,7 @@ func (s *Service) completeMultipart(ctx context.Context, bucket, key, uploadID s
 		ETag:         etag,
 		ContentType:  mp.ContentType,
 		VersionID:    versionID,
-		LastModified: info.LastModified,
+		LastModified: time.Now().UTC(),
 		Metadata:     mp.Metadata,
 	}
 	versioned := bucketRec.Versioning
@@ -992,7 +992,7 @@ func (s *Service) completeMultipart(ctx context.Context, bucket, key, uploadID s
 			return metadata.ObjectRecord{}, 0, err
 		}
 		info, _ = s.Backend.StatObjectVersion(ctx, bucket, key, versionID)
-		rec.LastModified = info.LastModified
+		rec.LastModified = time.Now().UTC()
 	} else {
 		rec.VersionID = ""
 	}

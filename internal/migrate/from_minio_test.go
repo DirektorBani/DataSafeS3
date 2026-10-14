@@ -68,8 +68,23 @@ func TestFromMinIOCopiesVersionsLockAndResumes(t *testing.T) {
 		t.Fatalf("supported policy missing: %s", policy)
 	}
 	retention := getBody(t, dstURL, dstCreds, "/"+bucket+"/locked.txt?retention")
-	if !strings.Contains(retention, "RetainUntilDate") {
+	if !strings.Contains(retention, "RetainUntilDate") || !strings.Contains(retention, "COMPLIANCE") {
 		t.Fatalf("retention %s", retention)
+	}
+	gov := `<ObjectLockConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><ObjectLockEnabled>Enabled</ObjectLockEnabled><Rule><DefaultRetention><Mode>GOVERNANCE</Mode><Days>1</Days></DefaultRetention></Rule></ObjectLockConfiguration>`
+	mustStatus(t, dstURL, dstCreds, http.MethodPut, "/"+bucket+"?object-lock", gov, nil, http.StatusOK)
+	retention = getBody(t, dstURL, dstCreds, "/"+bucket+"/locked.txt?retention")
+	if !strings.Contains(retention, "COMPLIANCE") {
+		t.Fatalf("bucket mode overwrote object retention: %s", retention)
+	}
+	life := getBody(t, dstURL, dstCreds, "/"+bucket+"?lifecycle")
+	if !strings.Contains(life, "logs/") {
+		t.Fatalf("lifecycle prefix dropped: %s", life)
+	}
+	versions := getBody(t, dstURL, dstCreds, "/"+bucket+"?versions")
+	mark := strings.Index(versions, "<DeleteMarker>")
+	if mark < 0 || !strings.Contains(versions[mark:], "<Version>") {
+		t.Fatalf("delete marker is not between versions\n%s", versions)
 	}
 	before := statusOf(t, dstURL, dstCreds, http.MethodGet, "/"+bucket+"?versions", "")
 	_ = before
@@ -82,6 +97,40 @@ func TestFromMinIOCopiesVersionsLockAndResumes(t *testing.T) {
 	versionsAfter := getBody(t, dstURL, dstCreds, "/"+bucket+"?versions")
 	if versionsAfter != versionsBefore {
 		t.Fatalf("resume duplicated versions\nbefore %s\nafter %s", versionsBefore, versionsAfter)
+	}
+}
+
+func TestFromMinIORefusesWidenedLifecycle(t *testing.T) {
+	srcURL, srcCreds, src := startNode(t)
+	dstURL, dstCreds, _ := startNode(t)
+	bucket := "wide"
+	mustStatus(t, srcURL, srcCreds, http.MethodPut, "/"+bucket, "", nil, http.StatusOK)
+	mustStatus(t, srcURL, srcCreds, http.MethodPut, "/"+bucket+"/hello.txt", "hi", nil, http.StatusOK)
+	bad := `<LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Rule><ID>nc</ID><Filter><Prefix>logs/</Prefix></Filter><Status>Enabled</Status><NoncurrentVersionExpiration><NoncurrentDays>3</NoncurrentDays></NoncurrentVersionExpiration></Rule></LifecycleConfiguration>`
+	mustStatus(t, srcURL, srcCreds, http.MethodPut, "/"+bucket+"?lifecycle", bad, nil, http.StatusBadRequest)
+	wrapped := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Query().Has("lifecycle") {
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = w.Write([]byte(bad))
+			return
+		}
+		src.Handler().ServeHTTP(w, r)
+	}))
+	t.Cleanup(wrapped.Close)
+	opt := options(t, wrapped.URL, srcCreds, dstURL, dstCreds, bucket)
+	ev, err := migrate.Run(context.Background(), opt)
+	if err == nil || ev.OK() {
+		t.Fatalf("expected lifecycle failure, got %v %#v", err, ev.Verdicts)
+	}
+	if !strings.Contains(strings.Join(ev.Errors, " "), "lifecycle") {
+		t.Fatalf("errors %v", ev.Errors)
+	}
+	if got := getBody(t, dstURL, dstCreds, "/"+bucket+"/hello.txt"); got != "hi" {
+		t.Fatalf("object not copied: %q", got)
+	}
+	stored := getBody(t, dstURL, dstCreds, "/"+bucket+"?lifecycle")
+	if strings.Contains(stored, "<Rule>") || strings.Contains(stored, "<Days>") {
+		t.Fatalf("lifecycle was widened: %s", stored)
 	}
 }
 
@@ -243,6 +292,7 @@ func seedSource(t *testing.T, srv *api.Server, base string, creds auth.Credentia
 	lock := `<ObjectLockConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><ObjectLockEnabled>Enabled</ObjectLockEnabled></ObjectLockConfiguration>`
 	mustStatus(t, base, creds, http.MethodPut, "/"+bucket+"?object-lock", lock, nil, http.StatusOK)
 	mustStatus(t, base, creds, http.MethodPut, "/"+bucket+"/notes.txt", "one", map[string]string{"Content-Type": "text/plain"}, http.StatusOK)
+	mustStatus(t, base, creds, http.MethodDelete, "/"+bucket+"/notes.txt", "", nil, http.StatusNoContent)
 	mustStatus(t, base, creds, http.MethodPut, "/"+bucket+"/notes.txt", "two", map[string]string{"Content-Type": "text/plain"}, http.StatusOK)
 	mustStatus(t, base, creds, http.MethodPut, "/"+bucket+"/gone.txt", "temp", nil, http.StatusOK)
 	mustStatus(t, base, creds, http.MethodDelete, "/"+bucket+"/gone.txt", "", nil, http.StatusNoContent)
@@ -251,7 +301,7 @@ func seedSource(t *testing.T, srv *api.Server, base string, creds auth.Credentia
 		"x-amz-meta-color": "blue",
 	}, http.StatusOK)
 	until := time.Now().UTC().Add(48 * time.Hour).Format(time.RFC3339)
-	ret := `<Retention><Mode>COMPLIANCE</Mode><RetainUntilDate>` + until + `</RetainUntilDate></Retention>`
+	ret := `<Retention xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Mode>COMPLIANCE</Mode><RetainUntilDate>` + until + `</RetainUntilDate></Retention>`
 	mustStatus(t, base, creds, http.MethodPut, "/"+bucket+"/locked.txt?retention", ret, nil, http.StatusOK)
 	hold := `<LegalHold><Status>ON</Status></LegalHold>`
 	mustStatus(t, base, creds, http.MethodPut, "/"+bucket+"/locked.txt?legal-hold", hold, nil, http.StatusOK)
@@ -276,7 +326,7 @@ func seedSource(t *testing.T, srv *api.Server, base string, creds auth.Credentia
 	if err := srv.Meta().SetBucketPolicy(key, policy); err != nil {
 		t.Fatal(err)
 	}
-	life := `<LifecycleConfiguration><Rule><ID>keep</ID><Prefix>logs/</Prefix><Status>Enabled</Status><Expiration><Days>30</Days></Expiration><Transition><Days>7</Days><StorageClass>GLACIER</StorageClass></Transition></Rule></LifecycleConfiguration>`
+	life := `<LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Rule><ID>keep</ID><Filter><Prefix>logs/</Prefix></Filter><Status>Enabled</Status><Expiration><Days>30</Days></Expiration></Rule></LifecycleConfiguration>`
 	mustStatus(t, base, creds, http.MethodPut, "/"+bucket+"?lifecycle", life, nil, http.StatusOK)
 }
 

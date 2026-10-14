@@ -70,6 +70,9 @@ func (s *Signer) Authenticate(r *http.Request) (Credentials, error) {
 	if !hmac.Equal([]byte(parts["Signature"]), []byte(expected)) {
 		return Credentials{}, ErrSignatureMismatch
 	}
+	if err := requireSignedHeaders(r, signedHeaders); err != nil {
+		return Credentials{}, err
+	}
 	if err := validateSessionToken(r, creds); err != nil {
 		return Credentials{}, err
 	}
@@ -117,10 +120,36 @@ func (s *Signer) verifyPresigned(r *http.Request) (Credentials, error) {
 	if !hmac.Equal([]byte(q.Get("X-Amz-Signature")), []byte(expected)) {
 		return Credentials{}, ErrSignatureMismatch
 	}
+	if err := requireSignedHeaders(r, signedHeaders); err != nil {
+		return Credentials{}, err
+	}
 	if err := validateSessionToken(r, creds); err != nil {
 		return Credentials{}, err
 	}
 	return creds, nil
+}
+
+// requireSignedHeaders rejects x-amz-* and Content-Type when they are not in
+// the signature. AWS and MinIO return 400 for that request. The signature is
+// already checked, so an attacker cannot add x-amz-meta-* after signing.
+func requireSignedHeaders(r *http.Request, signed []string) error {
+	have := make(map[string]struct{}, len(signed))
+	for _, h := range signed {
+		name := strings.ToLower(strings.TrimSpace(h))
+		if name != "" {
+			have[name] = struct{}{}
+		}
+	}
+	for name := range r.Header {
+		ln := strings.ToLower(name)
+		if ln != "content-type" && !strings.HasPrefix(ln, "x-amz-") {
+			continue
+		}
+		if _, ok := have[ln]; !ok {
+			return ErrUnsignedHeaders
+		}
+	}
+	return nil
 }
 
 func validateSessionToken(r *http.Request, creds Credentials) error {

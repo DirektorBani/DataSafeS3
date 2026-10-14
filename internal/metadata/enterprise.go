@@ -669,12 +669,15 @@ func (s *Store) SetObjectLegalHold(bucket, key, versionID string, hold bool) err
 	return s.PutObject(rec)
 }
 
-func (s *Store) SetObjectRetention(bucket, key, versionID string, until time.Time) error {
+func (s *Store) SetObjectRetention(bucket, key, versionID string, until time.Time, mode string) error {
 	rec, err := s.GetObjectVersion(bucket, key, versionID)
 	if err != nil {
 		return err
 	}
 	rec.RetentionUntil = &until
+	if mode = strings.ToUpper(strings.TrimSpace(mode)); mode != "" {
+		rec.RetentionMode = mode
+	}
 	if versionID != "" || rec.VersionID != "" {
 		return s.PutObjectVersioned(rec)
 	}

@@ -61,7 +61,7 @@ type MetadataStore interface {
 	SetObjectTags(bucket, key, versionID string, tags map[string]string) error
 	UpdateObjectMeta(bucket, key, versionID string, meta map[string]string, contentType string) error
 	SetObjectLegalHold(bucket, key, versionID string, hold bool) error
-	SetObjectRetention(bucket, key, versionID string, until time.Time) error
+	SetObjectRetention(bucket, key, versionID string, until time.Time, mode string) error
 	TotalObjectBytes() (int64, error)
 	CountObjects() (int, error)
 	BucketObjectCount(bucket string) (int, error)

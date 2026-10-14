@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -25,7 +26,7 @@ func SignRequest(r *http.Request, creds Credentials, region, service string, pay
 	if r.Header.Get("Host") == "" {
 		r.Header.Set("Host", r.Host)
 	}
-	signedHeaders := []string{"host", "x-amz-content-sha256", "x-amz-date"}
+	signedHeaders := signedHeaderNames(r)
 	canonical := canonicalRequest(r, signedHeaders)
 	credentialScope := fmt.Sprintf("%s/%s/%s/aws4_request", dateStamp, region, service)
 	stringToSign := strings.Join([]string{
@@ -41,6 +42,24 @@ func SignRequest(r *http.Request, creds Credentials, region, service string, pay
 	)
 	r.Header.Set("Authorization", authHeader)
 	return nil
+}
+
+// signedHeaderNames is the AWS set: host, every x-amz-* header, and
+// Content-Type and Content-MD5 when the request sends them.
+func signedHeaderNames(r *http.Request) []string {
+	set := map[string]struct{}{"host": {}}
+	for name := range r.Header {
+		ln := strings.ToLower(name)
+		if strings.HasPrefix(ln, "x-amz-") || ln == "content-type" || ln == "content-md5" {
+			set[ln] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for h := range set {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func hashHex(s string) string {

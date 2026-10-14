@@ -27,17 +27,18 @@ type Evidence struct {
 
 // BucketEvidence compares one bucket.
 type BucketEvidence struct {
-	Name             string `json:"name"`
-	SourceObjects    int    `json:"source_objects"`
-	TargetObjects    int    `json:"target_objects"`
-	SourceBytes      int64  `json:"source_bytes"`
-	TargetBytes      int64  `json:"target_bytes"`
-	SourceMarkers    int    `json:"source_delete_markers"`
-	TargetMarkers    int    `json:"target_delete_markers"`
-	ETagMismatches   int    `json:"etag_mismatches"`
-	LockMismatches   int    `json:"lock_mismatches"`
-	SampleChecked    int    `json:"sample_checked"`
-	SampleMismatches int    `json:"sample_mismatches"`
+	Name                string `json:"name"`
+	SourceObjects       int    `json:"source_objects"`
+	TargetObjects       int    `json:"target_objects"`
+	SourceBytes         int64  `json:"source_bytes"`
+	TargetBytes         int64  `json:"target_bytes"`
+	SourceMarkers       int    `json:"source_delete_markers"`
+	TargetMarkers       int    `json:"target_delete_markers"`
+	MarkerChainMismatch int    `json:"marker_chain_mismatch,omitempty"`
+	ETagMismatches      int    `json:"etag_mismatches"`
+	LockMismatches      int    `json:"lock_mismatches"`
+	SampleChecked       int    `json:"sample_checked"`
+	SampleMismatches    int    `json:"sample_mismatches"`
 }
 
 func (e *Evidence) finish() {
@@ -60,7 +61,7 @@ func (e *Evidence) finish() {
 		if b.SourceBytes != b.TargetBytes {
 			bytesOK = false
 		}
-		if b.SourceMarkers != b.TargetMarkers {
+		if b.SourceMarkers != b.TargetMarkers || b.MarkerChainMismatch > 0 {
 			markers = false
 		}
 		if b.ETagMismatches > 0 {

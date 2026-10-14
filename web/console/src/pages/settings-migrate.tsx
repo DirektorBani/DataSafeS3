@@ -7,11 +7,22 @@ import { Label } from "@/components/ui/label";
 
 const verdictNames = ["object_count", "bytes", "delete_markers", "etag", "object_lock", "content_sample"] as const;
 
+type BucketCount = {
+  name: string;
+  source_objects: number;
+  target_objects: number;
+  source_bytes: number;
+  target_bytes: number;
+  source_delete_markers: number;
+  target_delete_markers: number;
+};
+
 type EvidenceFile = {
   verdicts?: Record<string, string>;
   warnings?: string[];
   errors?: string[];
   interrupted?: boolean;
+  buckets?: BucketCount[];
 };
 
 function shellQuote(value: string): string {
@@ -67,6 +78,59 @@ export function buildMigrateCommand(input: {
   return lines.join("\n");
 }
 
+function psQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+export function buildMigratePowerShell(input: {
+  sourceUrl: string;
+  targetUrl: string;
+  buckets: string;
+  sse: string;
+  kmsKey: string;
+  concurrency: string;
+  partSize: string;
+  verifySample: string;
+  stateDir: string;
+  reportDir: string;
+}): string {
+  const lines = [
+    "storage-cli migrate from-minio `",
+    `  --source ${psQuote(input.sourceUrl.trim() || "http://minio.example:9000")} \``,
+    "  --source-key $env:SOURCE_ACCESS_KEY `",
+    "  --source-secret $env:SOURCE_SECRET_KEY `",
+    `  --target ${psQuote(input.targetUrl.trim() || "http://127.0.0.1:9000")} \``,
+    "  --target-key $env:TARGET_ACCESS_KEY `",
+    "  --target-secret $env:TARGET_SECRET_KEY `",
+  ];
+  const buckets = input.buckets
+    .split(",")
+    .map((b) => b.trim())
+    .filter(Boolean)
+    .join(",");
+  if (buckets) {
+    lines.push(`  --buckets ${psQuote(buckets)} \``);
+  }
+  if (input.sse === "AES256" || input.sse === "aws:kms") {
+    lines.push(`  --sse ${input.sse} \``);
+  }
+  if (input.sse === "aws:kms" && input.kmsKey.trim()) {
+    lines.push(`  --kms-key ${psQuote(input.kmsKey.trim())} \``);
+  }
+  if (input.concurrency.trim()) {
+    lines.push(`  --concurrency ${psQuote(input.concurrency.trim())} \``);
+  }
+  if (input.partSize.trim()) {
+    lines.push(`  --part-size ${psQuote(input.partSize.trim())} \``);
+  }
+  if (input.verifySample.trim()) {
+    lines.push(`  --verify-sample ${psQuote(input.verifySample.trim())} \``);
+  }
+  lines.push(`  --state ${psQuote(input.stateDir.trim() || "./.minio-migrate-state")} \``);
+  lines.push(`  --report ${psQuote(input.reportDir.trim() || "./minio-migrate-report")}`);
+  return lines.join("\n");
+}
+
 export function MigrateSettingsPage() {
   const { t } = useTranslation("migrate");
   const [sourceUrl, setSourceUrl] = useState("http://minio.example:9000");
@@ -83,20 +147,21 @@ export function MigrateSettingsPage() {
   const [evidence, setEvidence] = useState<EvidenceFile | null>(null);
   const [evidenceError, setEvidenceError] = useState("");
 
-  const command = useMemo(
-    () =>
-      buildMigrateCommand({
-        sourceUrl,
-        targetUrl,
-        buckets,
-        sse,
-        kmsKey,
-        concurrency,
-        partSize,
-        verifySample,
-        stateDir,
-        reportDir,
-      }),
+  const commandInput = {
+    sourceUrl,
+    targetUrl,
+    buckets,
+    sse,
+    kmsKey,
+    concurrency,
+    partSize,
+    verifySample,
+    stateDir,
+    reportDir,
+  };
+  const command = useMemo(() => buildMigrateCommand(commandInput), [sourceUrl, targetUrl, buckets, sse, kmsKey, concurrency, partSize, verifySample, stateDir, reportDir]);
+  const powershell = useMemo(
+    () => buildMigratePowerShell(commandInput),
     [sourceUrl, targetUrl, buckets, sse, kmsKey, concurrency, partSize, verifySample, stateDir, reportDir],
   );
 
@@ -170,12 +235,16 @@ export function MigrateSettingsPage() {
           <pre data-testid="migrate-command" className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
             {command}
           </pre>
+          <h2 className="text-sm font-medium">{t("powershell")}</h2>
+          <pre data-testid="migrate-command-powershell" className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
+            {powershell}
+          </pre>
           <Button
             type="button"
             variant="outline"
             data-testid="migrate-copy"
             onClick={() => {
-              void navigator.clipboard.writeText(command).then(() => {
+              void navigator.clipboard.writeText(`${command}\n\n${powershell}`).then(() => {
                 setCopied(true);
               });
             }}
@@ -231,6 +300,18 @@ export function MigrateSettingsPage() {
                   </li>
                 ))}
               </ul>
+              {(evidence.buckets?.length ?? 0) > 0 && (
+                <div>
+                  <h2 className="text-sm font-medium">{t("bucketCounts")}</h2>
+                  <ul className="space-y-1 text-sm" data-testid="migrate-bucket-counts">
+                    {evidence.buckets?.map((bucket) => (
+                      <li key={bucket.name}>
+                        {bucket.name}: {bucket.source_objects}/{bucket.target_objects} objects, {bucket.source_bytes}/{bucket.target_bytes} bytes, {bucket.source_delete_markers}/{bucket.target_delete_markers} delete markers
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {evidence.interrupted && <p data-testid="migrate-interrupted">{t("interrupted")}</p>}
               {(evidence.warnings?.length ?? 0) > 0 && (
                 <div>

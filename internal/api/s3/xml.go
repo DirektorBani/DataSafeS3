@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
+	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,16 +43,15 @@ type BucketEntry struct {
 }
 
 type ListBucketResult struct {
-	XMLName               xml.Name     `xml:"ListBucketResult"`
-	Xmlns                 string       `xml:"xmlns,attr"`
-	Name                  string       `xml:"Name"`
-	Prefix                string       `xml:"Prefix"`
-	KeyCount              int          `xml:"KeyCount"`
-	MaxKeys               int          `xml:"MaxKeys"`
-	IsTruncated           bool         `xml:"IsTruncated"`
-	Contents              []ObjectInfo `xml:"Contents"`
-	ContinuationToken     string       `xml:"ContinuationToken,omitempty"`
-	NextContinuationToken string       `xml:"NextContinuationToken,omitempty"`
+	XMLName     xml.Name     `xml:"ListBucketResult"`
+	Xmlns       string       `xml:"xmlns,attr"`
+	Name        string       `xml:"Name"`
+	Prefix      string       `xml:"Prefix"`
+	Marker      string       `xml:"Marker,omitempty"`
+	NextMarker  string       `xml:"NextMarker,omitempty"`
+	MaxKeys     int          `xml:"MaxKeys"`
+	IsTruncated bool         `xml:"IsTruncated"`
+	Contents    []ObjectInfo `xml:"Contents"`
 }
 
 type ListObjectsV2Result struct {
@@ -76,15 +77,24 @@ type ObjectInfo struct {
 }
 
 type ListObjectVersionsResult struct {
-	XMLName       xml.Name       `xml:"ListVersionsResult"`
-	Xmlns         string         `xml:"xmlns,attr"`
-	Name          string         `xml:"Name"`
-	Prefix        string         `xml:"Prefix"`
-	KeyCount      int            `xml:"KeyCount"`
-	MaxKeys       int            `xml:"MaxKeys"`
-	IsTruncated   bool           `xml:"IsTruncated"`
-	Versions      []VersionEntry `xml:"Version"`
-	DeleteMarkers []VersionEntry `xml:"DeleteMarker"`
+	XMLName             xml.Name       `xml:"ListVersionsResult"`
+	Xmlns               string         `xml:"xmlns,attr"`
+	Name                string         `xml:"Name"`
+	Prefix              string         `xml:"Prefix"`
+	KeyMarker           string         `xml:"KeyMarker,omitempty"`
+	VersionIDMarker     string         `xml:"VersionIdMarker,omitempty"`
+	NextKeyMarker       string         `xml:"NextKeyMarker,omitempty"`
+	NextVersionIDMarker string         `xml:"NextVersionIdMarker,omitempty"`
+	KeyCount            int            `xml:"KeyCount"`
+	MaxKeys             int            `xml:"MaxKeys"`
+	IsTruncated         bool           `xml:"IsTruncated"`
+	Items               []orderedEntry `xml:"-"`
+}
+
+// orderedEntry keeps a version and a delete marker in list order.
+type orderedEntry struct {
+	DeleteMarker bool
+	Entry        VersionEntry
 }
 
 // VersionEntry is one object version or delete marker in ListObjectVersions.
@@ -112,9 +122,13 @@ type LifecycleConfiguration struct {
 
 type LifecycleRule struct {
 	ID         string               `xml:"ID"`
-	Prefix     string               `xml:"Prefix,omitempty"`
+	Filter     *LifecycleFilter     `xml:"Filter,omitempty"`
 	Status     string               `xml:"Status"`
 	Expiration *LifecycleExpiration `xml:"Expiration,omitempty"`
+}
+
+type LifecycleFilter struct {
+	Prefix string `xml:"Prefix,omitempty"`
 }
 
 type LifecycleExpiration struct {
@@ -184,25 +198,118 @@ func location(bucket, key string) string {
 	return fmt.Sprintf("/%s/%s", bucket, key)
 }
 
-func lifecycleRulesFromXML(cfg LifecycleConfiguration) []metadata.LifecycleRule {
+// ParseLifecycleXML keeps prefix expiration (legacy Prefix, Filter/Prefix, or
+// Filter/And/Prefix) and rejects every other action. An unsupported rule is
+// not stored as a wider or zero-day rule.
+func ParseLifecycleXML(data []byte) ([]metadata.LifecycleRule, error) {
+	return parseLifecycleXML(data)
+}
+
+func parseLifecycleXML(data []byte) ([]metadata.LifecycleRule, error) {
+	dec := xml.NewDecoder(strings.NewReader(string(data)))
 	var rules []metadata.LifecycleRule
-	for _, r := range cfg.Rules {
-		rule := metadata.LifecycleRule{
-			ID:      r.ID,
-			Name:    r.ID,
-			Prefix:  r.Prefix,
-			Enabled: strings.EqualFold(r.Status, "Enabled"),
-			Action:  metadata.LifecycleExpire,
+	var cur *lcRule
+	var stack []string
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			break
 		}
-		if r.Expiration != nil {
-			rule.ExpirationDays = r.Expiration.Days
+		if err != nil {
+			return nil, fmt.Errorf("malformed lifecycle xml")
 		}
-		if rule.ID == "" {
-			rule.ID = newLifecycleRuleID()
+		switch t := tok.(type) {
+		case xml.StartElement:
+			local := t.Name.Local
+			stack = append(stack, local)
+			if local == "Rule" {
+				cur = &lcRule{}
+			}
+			if cur == nil {
+				continue
+			}
+			switch local {
+			case "Transition", "NoncurrentVersionExpiration", "NoncurrentVersionTransition", "AbortIncompleteMultipartUpload", "ExpiredObjectDeleteMarker", "Tag", "ObjectSizeGreaterThan", "ObjectSizeLessThan":
+				return nil, fmt.Errorf("unsupported lifecycle rule")
+			}
+			if local == "Date" && len(stack) >= 2 && stack[len(stack)-2] == "Expiration" {
+				return nil, fmt.Errorf("unsupported lifecycle rule")
+			}
+		case xml.EndElement:
+			if t.Name.Local == "Rule" && cur != nil {
+				rule, err := cur.done()
+				if err != nil {
+					return nil, err
+				}
+				rules = append(rules, rule)
+				cur = nil
+			}
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		case xml.CharData:
+			if cur == nil {
+				continue
+			}
+			text := strings.TrimSpace(string(t))
+			if text == "" || len(stack) == 0 {
+				continue
+			}
+			path := strings.Join(stack, "/")
+			switch {
+			case strings.HasSuffix(path, "/Rule/ID"):
+				cur.id = text
+			case strings.HasSuffix(path, "/Rule/Status"):
+				cur.status = text
+			case strings.HasSuffix(path, "/Rule/Prefix"):
+				cur.legacy = text
+				cur.hasLegacy = true
+			case strings.HasSuffix(path, "/Filter/Prefix"), strings.HasSuffix(path, "/And/Prefix"):
+				cur.filter = text
+				cur.hasFilter = true
+			case strings.HasSuffix(path, "/Expiration/Days"):
+				n, err := strconv.Atoi(text)
+				if err != nil {
+					return nil, fmt.Errorf("malformed lifecycle xml")
+				}
+				cur.days = n
+				cur.hasDays = true
+			}
 		}
-		rules = append(rules, rule)
 	}
-	return rules
+	return rules, nil
+}
+
+type lcRule struct {
+	id, status, legacy, filter string
+	days                       int
+	hasLegacy, hasFilter       bool
+	hasDays                    bool
+}
+
+func (c *lcRule) done() (metadata.LifecycleRule, error) {
+	if c.hasLegacy && c.hasFilter {
+		return metadata.LifecycleRule{}, fmt.Errorf("unsupported lifecycle rule")
+	}
+	if !c.hasDays || c.days < 1 {
+		return metadata.LifecycleRule{}, fmt.Errorf("unsupported lifecycle rule")
+	}
+	prefix := c.filter
+	if c.hasLegacy {
+		prefix = c.legacy
+	}
+	id := c.id
+	if id == "" {
+		id = newLifecycleRuleID()
+	}
+	return metadata.LifecycleRule{
+		ID:             id,
+		Name:           id,
+		Prefix:         prefix,
+		Enabled:        strings.EqualFold(c.status, "Enabled"),
+		Action:         metadata.LifecycleExpire,
+		ExpirationDays: c.days,
+	}, nil
 }
 
 func lifecycleRulesToXML(rules []metadata.LifecycleRule) LifecycleConfiguration {
@@ -218,13 +325,67 @@ func lifecycleRulesToXML(rules []metadata.LifecycleRule) LifecycleConfiguration 
 		}
 		xr := LifecycleRule{
 			ID:         id,
-			Prefix:     r.Prefix,
 			Status:     status,
 			Expiration: &LifecycleExpiration{Days: r.ExpirationDays},
+		}
+		if r.Prefix != "" {
+			xr.Filter = &LifecycleFilter{Prefix: r.Prefix}
 		}
 		cfg.Rules = append(cfg.Rules, xr)
 	}
 	return cfg
+}
+
+// MarshalXML writes versions and delete markers in list order.
+func (r ListObjectVersionsResult) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	start.Name = xml.Name{Local: "ListVersionsResult"}
+	start.Attr = []xml.Attr{{Name: xml.Name{Local: "xmlns"}, Value: xmlNS}}
+	if err := e.EncodeToken(start); err != nil {
+		return err
+	}
+	write := func(name, value string) error {
+		if value == "" {
+			return nil
+		}
+		return e.EncodeElement(value, xml.StartElement{Name: xml.Name{Local: name}})
+	}
+	if err := write("Name", r.Name); err != nil {
+		return err
+	}
+	if err := write("Prefix", r.Prefix); err != nil {
+		return err
+	}
+	if err := write("KeyMarker", r.KeyMarker); err != nil {
+		return err
+	}
+	if err := write("VersionIdMarker", r.VersionIDMarker); err != nil {
+		return err
+	}
+	if err := write("NextKeyMarker", r.NextKeyMarker); err != nil {
+		return err
+	}
+	if err := write("NextVersionIdMarker", r.NextVersionIDMarker); err != nil {
+		return err
+	}
+	if err := e.EncodeElement(r.MaxKeys, xml.StartElement{Name: xml.Name{Local: "MaxKeys"}}); err != nil {
+		return err
+	}
+	if err := e.EncodeElement(r.IsTruncated, xml.StartElement{Name: xml.Name{Local: "IsTruncated"}}); err != nil {
+		return err
+	}
+	if err := e.EncodeElement(r.KeyCount, xml.StartElement{Name: xml.Name{Local: "KeyCount"}}); err != nil {
+		return err
+	}
+	for _, item := range r.Items {
+		name := "Version"
+		if item.DeleteMarker {
+			name = "DeleteMarker"
+		}
+		if err := e.EncodeElement(item.Entry, xml.StartElement{Name: xml.Name{Local: name}}); err != nil {
+			return err
+		}
+	}
+	return e.EncodeToken(start.End())
 }
 
 func newLifecycleRuleID() string {

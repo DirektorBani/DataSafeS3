@@ -336,7 +336,7 @@ func (s *Store) ListObjectVersions(bucket, prefix string, maxKeys int) ([]Object
 		}
 		return nil
 	})
-	sort.Slice(out, func(i, j int) bool {
+	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Key != out[j].Key {
 			return out[i].Key < out[j].Key
 		}

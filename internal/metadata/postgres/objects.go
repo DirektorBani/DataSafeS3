@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"encoding/json"
@@ -26,6 +27,15 @@ func scanObject(row interface {
 	rec.ScheduledDeleteAt = timePtr(sched)
 	rec.RetentionUntil = timePtr(ret)
 	rec.Metadata = jsonMap(meta)
+	if rec.Metadata != nil {
+		if mode := rec.Metadata[retentionModeMeta]; mode != "" {
+			rec.RetentionMode = mode
+		}
+		delete(rec.Metadata, retentionModeMeta)
+		if len(rec.Metadata) == 0 {
+			rec.Metadata = nil
+		}
+	}
 	rec.Tags = jsonMap(tags)
 	if len(enc) > 0 {
 		var oe metadata.ObjectEncryption
@@ -81,8 +91,26 @@ type pgExec interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+const retentionModeMeta = "\x00retention_mode"
+
+func objectMetaArg(rec metadata.ObjectRecord) []byte {
+	meta := rec.Metadata
+	if rec.RetentionMode != "" {
+		meta = make(map[string]string, len(rec.Metadata)+1)
+		for k, v := range rec.Metadata {
+			if k == retentionModeMeta {
+				continue
+			}
+			meta[k] = v
+		}
+		meta[retentionModeMeta] = rec.RetentionMode
+	}
+	raw, _ := marshalJSON(meta)
+	return raw
+}
+
 func (s *Store) putObjectQ(ctx context.Context, q pgExec, rec metadata.ObjectRecord, versioned bool) error {
-	meta, _ := marshalJSON(rec.Metadata)
+	meta := objectMetaArg(rec)
 	tags, _ := marshalJSON(rec.Tags)
 	if versioned {
 		if rec.VersionID == "" {
@@ -273,15 +301,18 @@ func (s *Store) ListObjectsPage(bucket, prefix, startAfter string, maxKeys int) 
 }
 
 func (s *Store) ListObjectVersions(bucket, prefix string, maxKeys int) ([]metadata.ObjectRecord, error) {
-	if maxKeys <= 0 {
-		maxKeys = 1000
-	}
-	rows, err := s.pool.Query(context.Background(), `
+	q := `
 		SELECT bucket, key, version_id, size, COALESCE(etag,''), COALESCE(content_type,''),
 			last_modified, scheduled_delete_at, is_delete_marker, legal_hold, retention_until,
 			COALESCE(storage_class,''), metadata, tags, created_at, encryption
 		FROM objects WHERE bucket=$1 AND key LIKE $2
-		ORDER BY key, last_modified DESC LIMIT $3`, bucket, prefix+"%", maxKeys)
+		ORDER BY key, last_modified DESC, version_id DESC`
+	args := []any{bucket, prefix + "%"}
+	if maxKeys > 0 {
+		q += ` LIMIT $3`
+		args = append(args, maxKeys)
+	}
+	rows, err := s.pool.Query(context.Background(), q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -355,12 +386,15 @@ func (s *Store) SetObjectLegalHold(bucket, key, versionID string, hold bool) err
 	return s.PutObject(rec)
 }
 
-func (s *Store) SetObjectRetention(bucket, key, versionID string, until time.Time) error {
+func (s *Store) SetObjectRetention(bucket, key, versionID string, until time.Time, mode string) error {
 	rec, err := s.GetObjectVersion(bucket, key, versionID)
 	if err != nil {
 		return err
 	}
 	rec.RetentionUntil = &until
+	if mode = strings.ToUpper(strings.TrimSpace(mode)); mode != "" {
+		rec.RetentionMode = mode
+	}
 	if versionID != "" || rec.VersionID != "" {
 		return s.PutObjectVersioned(rec)
 	}
