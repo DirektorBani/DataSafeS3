@@ -210,10 +210,21 @@ cmd_measure_postgres() {
     -e POSTGRES_PASSWORD=datasafe \
     -e POSTGRES_DB=postgres \
     postgres:16 >/dev/null
+  # pg_isready is true for the short-lived server that runs initdb. The first
+  # psql then hits a closed socket. Wait until that init has finished and a
+  # query succeeds on the server that stays up.
   local deadline=$((SECONDS + 90))
-  until docker exec gate-postgres pg_isready -U datasafe -d postgres >/dev/null 2>&1; do
+  until docker logs gate-postgres 2>&1 | grep -q "PostgreSQL init process complete"; do
     if [ "$SECONDS" -ge "$deadline" ]; then
-      echo "postgres did not become ready" >&2
+      echo "postgres init did not finish" >&2
+      docker logs gate-postgres >&2 || true
+      return 1
+    fi
+    sleep 0.5
+  done
+  until docker exec gate-postgres psql -U datasafe -d postgres -v ON_ERROR_STOP=1 -c 'SELECT 1' >/dev/null 2>&1; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "postgres did not accept queries" >&2
       docker logs gate-postgres >&2 || true
       return 1
     fi
@@ -253,10 +264,18 @@ PY
 }
 
 reset_pg_db() {
-  docker exec gate-postgres psql -U datasafe -d postgres -v ON_ERROR_STOP=1 \
-    -c "DROP DATABASE IF EXISTS datasafe WITH (FORCE);"
-  docker exec gate-postgres psql -U datasafe -d postgres -v ON_ERROR_STOP=1 \
-    -c "CREATE DATABASE datasafe OWNER datasafe;"
+  local attempt
+  for attempt in 1 2 3 4 5 6 7 8; do
+    if docker exec gate-postgres psql -U datasafe -d postgres -v ON_ERROR_STOP=1 \
+        -c "DROP DATABASE IF EXISTS datasafe WITH (FORCE);" >/dev/null \
+      && docker exec gate-postgres psql -U datasafe -d postgres -v ON_ERROR_STOP=1 \
+        -c "CREATE DATABASE datasafe OWNER datasafe;" >/dev/null; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo "could not reset the datasafe database" >&2
+  return 1
 }
 
 one_run_pg() {
