@@ -19,12 +19,18 @@ def sign(method, url, body, access, secret, region):
     amz_date = now.strftime("%Y%m%dT%H%M%SZ")
     date_stamp = now.strftime("%Y%m%d")
     host = parts.netloc
-    canonical_headers = (
-        f"host:{host}\n"
-        f"x-amz-content-sha256:{payload_hash}\n"
-        f"x-amz-date:{amz_date}\n"
-    )
-    signed_headers = "host;x-amz-content-sha256;x-amz-date"
+    # urllib adds Content-Type on every PUT/POST body, including the empty
+    # CreateBucket body. The server rejects that header when it is unsigned.
+    values = {
+        "host": host,
+        "x-amz-content-sha256": payload_hash,
+        "x-amz-date": amz_date,
+    }
+    if method in ("PUT", "POST"):
+        values["content-type"] = "application/octet-stream"
+    names = sorted(values)
+    canonical_headers = "".join(f"{name}:{values[name]}\n" for name in names)
+    signed_headers = ";".join(names)
     canonical = "\n".join([
         method,
         path,
@@ -59,6 +65,8 @@ def sign(method, url, body, access, secret, region):
         "x-amz-content-sha256": payload_hash,
         "Authorization": auth,
     }
+    if "content-type" in values:
+        headers["Content-Type"] = values["content-type"]
     return headers, payload
 
 
