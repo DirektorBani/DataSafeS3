@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -34,7 +35,7 @@ func TestFromMinIOCopiesVersionsLockAndResumes(t *testing.T) {
 	if !ev.OK() {
 		t.Fatalf("verdicts %#v warnings %v", ev.Verdicts, ev.Warnings)
 	}
-	for _, name := range []string{"object_count", "bytes", "delete_markers", "etag", "object_lock", "content_sample"} {
+	for _, name := range []string{"object_count", "bytes", "delete_markers", "etag", "object_lock", "content_sample", "encryption"} {
 		if ev.Verdicts[name] != "PASS" {
 			t.Fatalf("%s %s", name, ev.Verdicts[name])
 		}
@@ -226,8 +227,8 @@ func TestFromMinIOKeepsTargetKMSAndSHA(t *testing.T) {
 	if err != nil || !ev.OK() {
 		t.Fatalf("run: %v %#v warnings %v errors %v", err, ev.Verdicts, ev.Warnings, ev.Errors)
 	}
-	if ev.Verdicts["etag"] != "PASS" {
-		t.Fatalf("etag %s", ev.Verdicts["etag"])
+	if ev.Verdicts["etag"] != "PASS" || ev.Verdicts["encryption"] != "PASS" {
+		t.Fatalf("verdicts %#v", ev.Verdicts)
 	}
 	gotEnc := getBody(t, dstURL, dstCreds, "/"+bucket+"?encryption")
 	if !strings.Contains(gotEnc, "aws:kms") {
@@ -237,9 +238,13 @@ func TestFromMinIOKeepsTargetKMSAndSHA(t *testing.T) {
 		t.Fatalf("body %q", got)
 	}
 	srcETag := strings.Trim(headHeaders(t, srcURL, srcCreds, "/"+bucket+"/f0.txt").Get("ETag"), `"`)
-	dstETag := strings.Trim(headHeaders(t, dstURL, dstCreds, "/"+bucket+"/f0.txt").Get("ETag"), `"`)
+	dstHead := headHeaders(t, dstURL, dstCreds, "/"+bucket+"/f0.txt")
+	dstETag := strings.Trim(dstHead.Get("ETag"), `"`)
 	if srcETag == "" || srcETag == dstETag {
 		t.Fatalf("expected a KMS etag distinct from the plaintext MD5 %q %q", srcETag, dstETag)
+	}
+	if dstHead.Get("x-amz-server-side-encryption") != "aws:kms" {
+		t.Fatalf("object stored without SSE: %#v", dstHead)
 	}
 }
 
@@ -270,6 +275,70 @@ func startEncryptedNode(t *testing.T) (string, auth.Credentials, *api.Server) {
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return ts.URL, creds, srv
+}
+
+func TestVerifyDownloadsWhenMultipartETagDiffers(t *testing.T) {
+	_, srcCreds, src := startNode(t)
+	dstURL, dstCreds, dst := startNode(t)
+	bucket := "mpv"
+	body := "0123456789abcdef"
+	srcWrap := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Query().Has("versions") {
+			rec := httptest.NewRecorder()
+			src.Handler().ServeHTTP(rec, r)
+			out := regexp.MustCompile(`(?s)<ETag>.*?</ETag>`).ReplaceAllString(rec.Body.String(), `<ETag>"0123456789abcdef0123456789abcdef-2"</ETag>`)
+			for k, vs := range rec.Header() {
+				for _, v := range vs {
+					w.Header().Add(k, v)
+				}
+			}
+			w.WriteHeader(rec.Code)
+			_, _ = w.Write([]byte(out))
+			return
+		}
+		src.Handler().ServeHTTP(w, r)
+	}))
+	t.Cleanup(srcWrap.Close)
+	var targetGets atomic.Int32
+	dstWrap := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "big.bin") && !r.URL.Query().Has("versions") {
+			targetGets.Add(1)
+		}
+		if r.Method == http.MethodHead {
+			rec := httptest.NewRecorder()
+			dst.Handler().ServeHTTP(rec, r)
+			for k, vs := range rec.Header() {
+				if strings.EqualFold(k, "x-amz-meta-datasafe-source-version") {
+					continue
+				}
+				for _, v := range vs {
+					w.Header().Add(k, v)
+				}
+			}
+			w.WriteHeader(rec.Code)
+			return
+		}
+		dst.Handler().ServeHTTP(w, r)
+	}))
+	t.Cleanup(dstWrap.Close)
+
+	mustStatus(t, srcWrap.URL, srcCreds, http.MethodPut, "/"+bucket, "", nil, http.StatusOK)
+	mustStatus(t, srcWrap.URL, srcCreds, http.MethodPut, "/"+bucket+"/big.bin", body, nil, http.StatusOK)
+	opt := options(t, srcWrap.URL, srcCreds, dstWrap.URL, dstCreds, bucket)
+	opt.VerifyFull = true
+	ev, err := migrate.Run(context.Background(), opt)
+	if err != nil || !ev.OK() {
+		t.Fatalf("run: %v %#v errors %v", err, ev.Verdicts, ev.Errors)
+	}
+	if ev.Verdicts["etag"] != "PASS" || ev.Verdicts["content_sample"] != "PASS" {
+		t.Fatalf("verdicts %#v", ev.Verdicts)
+	}
+	if targetGets.Load() == 0 {
+		t.Fatal("verifier failed the multipart etag without GET")
+	}
+	if got := getBody(t, dstURL, dstCreds, "/"+bucket+"/big.bin"); got != body {
+		t.Fatalf("body %q", got)
+	}
 }
 
 func TestFromMinIOLive(t *testing.T) {

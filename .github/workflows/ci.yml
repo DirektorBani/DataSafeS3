@@ -49,6 +49,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.9"
+      - name: Install AWS CLI v2
+        run: |
+          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+          unzip -q /tmp/awscliv2.zip -d /tmp
+          /tmp/aws/install -i /tmp/aws-cli -b /tmp/bin
+          echo "/tmp/bin" >> "$GITHUB_PATH"
+          /tmp/bin/aws --version
       - name: go test
         env:
           TEST_POSTGRES_DSN: postgres://datasafe:datasafe@localhost:5432/datasafe?sslmode=disable
@@ -129,7 +136,13 @@ jobs:
             --build-arg GIT_COMMIT="${GITHUB_SHA}" \
             .
       - name: Budget and lone-container smoke
+        env:
+          GATE_SAMPLES_OUT: ${{ runner.temp }}/bolt-samples.json
         run: bash scripts/single-node-gate.sh all
+      - name: Postgres idle RSS versus the Bolt baseline
+        env:
+          GATE_BOLT_SAMPLES: ${{ runner.temp }}/bolt-samples.json
+        run: bash scripts/single-node-gate.sh measure-postgres
       - name: Build console image for the installer pin
         run: docker build -t ghcr.io/direktorbani/datasafe-console:v1.5.0 -f deploy/docker/Dockerfile.console .
       - name: Install core profile (non-interactive)

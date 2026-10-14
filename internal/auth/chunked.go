@@ -133,8 +133,11 @@ func seedFromRequest(r *http.Request) (sig, date, scope, region, dateStamp strin
 	return sig, date, scope, region, dateStamp, nil
 }
 
-// crc64NVMETable is the AWS CRC64NVME polynomial (reflected).
-var crc64NVMETable = crc64.MakeTable(0xAD93D23594C935A9)
+// crc64NVMETable is the reflected AWS CRC64NVME polynomial.
+// crc64.MakeTable runs the reflected algorithm. The normal polynomial
+// 0xAD93D23594C935A9 does not verify the aws-cli trailer.
+// Check value of "123456789" is ae8b14860a799888.
+var crc64NVMETable = crc64.MakeTable(0x9A6C9329AC4BC9B5)
 
 type chunkReader struct {
 	in        *bufio.Reader

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
@@ -85,26 +86,50 @@ func (s *Store) DeleteAccessKey(accessKey string) error {
 	return nil
 }
 
+func multipartMetaArg(meta map[string]string) []byte {
+	clean := map[string]string{}
+	for k, v := range meta {
+		k = strings.ReplaceAll(k, "\x00", "")
+		v = strings.ReplaceAll(v, "\x00", "")
+		if k == "" {
+			continue
+		}
+		clean[k] = v
+	}
+	if len(clean) == 0 {
+		return []byte("null")
+	}
+	raw, err := marshalJSON(clean)
+	if err != nil {
+		return []byte("null")
+	}
+	return raw
+}
+
 func (s *Store) PutMultipart(rec metadata.MultipartRecord) error {
 	_, err := s.pool.Exec(context.Background(), `
-		INSERT INTO multipart_uploads (upload_id, bucket, key, initiated, encryption) VALUES ($1,$2,$3,$4,$5)
-		ON CONFLICT (upload_id) DO UPDATE SET bucket=$2, key=$3, encryption=$5`,
-		rec.UploadID, rec.Bucket, rec.Key, rec.Initiated, encryptionArg(rec.Encryption))
+		INSERT INTO multipart_uploads (upload_id, bucket, key, initiated, encryption, content_type, metadata)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		ON CONFLICT (upload_id) DO UPDATE SET
+			bucket=$2, key=$3, encryption=$5, content_type=$6, metadata=$7`,
+		rec.UploadID, rec.Bucket, rec.Key, rec.Initiated, encryptionArg(rec.Encryption), rec.ContentType, multipartMetaArg(rec.Metadata))
 	return err
 }
 
 func (s *Store) GetMultipart(uploadID string) (metadata.MultipartRecord, error) {
 	var rec metadata.MultipartRecord
-	var enc []byte
+	var enc, meta []byte
 	err := s.pool.QueryRow(context.Background(), `
-		SELECT upload_id, bucket, key, initiated, encryption FROM multipart_uploads WHERE upload_id=$1`, uploadID).Scan(
-		&rec.UploadID, &rec.Bucket, &rec.Key, &rec.Initiated, &enc)
+		SELECT upload_id, bucket, key, initiated, encryption, COALESCE(content_type,''), metadata
+		FROM multipart_uploads WHERE upload_id=$1`, uploadID).Scan(
+		&rec.UploadID, &rec.Bucket, &rec.Key, &rec.Initiated, &enc, &rec.ContentType, &meta)
 	if len(enc) > 0 {
 		var oe metadata.ObjectEncryption
 		if json.Unmarshal(enc, &oe) == nil {
 			rec.Encryption = &oe
 		}
 	}
+	rec.Metadata = jsonMap(meta)
 	if err != nil {
 		return rec, metadata.ErrNotFound
 	}

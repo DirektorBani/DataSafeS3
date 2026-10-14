@@ -347,7 +347,49 @@ func (s *Service) CreateBucketNotifying(ctx context.Context, name, owner string,
 	return s.createBucket(ctx, name, owner, evs)
 }
 
+// callerOwnsBucket reports a logical name this caller already owns.
+// A second CreateBucket must not insert another row: that row has no
+// encryption, and name resolution then serves it in place of the original.
+func (s *Service) callerOwnsBucket(principal, name string) bool {
+	if principal == s.OwnerKey {
+		if _, rec, err := s.ResolveBucketKey(principal, name); err == nil && rec.Name == name {
+			return true
+		}
+		return false
+	}
+	ownerName, ownerID, _, _ := s.resolveBucketOwner(principal)
+	scope := s.bucketScopeForPrincipal(principal)
+	if rec, err := s.Meta.ResolveBucket(scope, name); err == nil && rec.Name == name {
+		return true
+	}
+	if ownerID != "" && scope.Kind != metadata.ScopeOwner {
+		ownerScope := metadata.BucketScope{Kind: metadata.ScopeOwner, OwnerID: ownerID}
+		if rec, err := s.Meta.ResolveBucket(ownerScope, name); err == nil && rec.Name == name {
+			return true
+		}
+	}
+	buckets, err := s.Meta.ListBuckets()
+	if err != nil {
+		return false
+	}
+	for _, b := range buckets {
+		if b.Name != name {
+			continue
+		}
+		if ownerID != "" && b.OwnerID == ownerID {
+			return true
+		}
+		if ownerName != "" && b.Owner == ownerName {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) createBucket(ctx context.Context, name, owner string, evs []events.OutboxRecord) (int, error) {
+	if s.callerOwnsBucket(owner, name) {
+		return 0, metadata.ErrBucketExists
+	}
 	ownerName, ownerID, teamID, tenantID := s.resolveBucketOwner(owner)
 	scope := s.bucketScopeForPrincipal(owner)
 	if scope.Kind == metadata.ScopeOwner && ownerID == "" {

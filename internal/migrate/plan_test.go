@@ -158,14 +158,22 @@ func TestEvidenceFinishVerdicts(t *testing.T) {
 		SourceMarkers: 1, TargetMarkers: 1,
 	}}}
 	ev.finish()
-	for _, name := range []string{"object_count", "bytes", "delete_markers", "etag", "object_lock", "content_sample"} {
+	for _, name := range []string{"object_count", "bytes", "delete_markers", "etag", "object_lock", "content_sample", "encryption"} {
 		if ev.Verdicts[name] != "PASS" {
 			t.Fatalf("%s %s", name, ev.Verdicts[name])
 		}
 	}
 	ev.Interrupted = true
 	ev.finish()
-	if ev.OK() || ev.Verdicts["object_count"] != "FAIL" {
+	if ev.OK() || ev.Verdicts["object_count"] != "FAIL" || ev.Verdicts["encryption"] != "FAIL" {
 		t.Fatalf("interrupted should fail: %+v", ev.Verdicts)
+	}
+	ev = Evidence{Buckets: []BucketEvidence{{
+		SourceObjects: 1, TargetObjects: 1, SourceBytes: 4, TargetBytes: 4,
+		EncryptionMismatches: 1,
+	}}}
+	ev.finish()
+	if ev.OK() || ev.Verdicts["encryption"] != "FAIL" || ev.Verdicts["etag"] != "PASS" {
+		t.Fatalf("encryption loss should fail the run: %+v", ev.Verdicts)
 	}
 }

@@ -134,7 +134,9 @@ def budget_result(samples: dict) -> tuple[bool, str]:
     rss_limit = (b_rss * 110) // 100
     start_ok = p_start <= start_limit
     rss_ok = p_rss <= rss_limit
-    ok = start_ok and rss_ok
+    rss_only = bool(samples.get("rss_only"))
+    ok = rss_ok if rss_only else (start_ok and rss_ok)
+    title = samples.get("title") or "Single-node resource budget"
 
     def fmt_s(ms: int) -> str:
         return f"{ms / 1000:.3f}"
@@ -147,19 +149,28 @@ def budget_result(samples: dict) -> tuple[bool, str]:
         f"| limit |  | {fmt_s(start_limit)} s |  |  | {rss_limit} KiB |  |  |",
         f"| result |  | {'pass' if start_ok else 'FAIL'} (median {fmt_s(p_start)} s, baseline {fmt_s(b_start)} s) |  |  | {'pass' if rss_ok else 'FAIL'} (median {p_rss} KiB, baseline {b_rss} KiB) |  |  |",
     ]
-    note = (
-        "Startup is container create until HTTP /healthz. "
-        "Idle RSS is the median of three VmRSS samples of PID 1 after warm-up, "
-        "then the median across interleaved runs. "
-        "Fail when PR startup median > baseline median + 1s, or PR RSS median > baseline + 10%."
-    )
+    if rss_only:
+        note = (
+            "Postgres idle RSS is the median of three VmRSS samples of PID 1 after warm-up, "
+            "then the median across runs of this image with STORAGE_METADATA_BACKEND=postgres. "
+            "The baseline is the Bolt v1.4.1 measurement from the same job. "
+            "Fail when Postgres RSS median > that Bolt baseline + 10%. "
+            "Startup is printed and is not a failure. The Bolt +10% gate is unchanged."
+        )
+    else:
+        note = (
+            "Startup is container create until HTTP /healthz. "
+            "Idle RSS is the median of three VmRSS samples of PID 1 after warm-up, "
+            "then the median across interleaved runs. "
+            "Fail when PR startup median > baseline median + 1s, or PR RSS median > baseline + 10%."
+        )
     ids = ""
     if samples.get("baseline_id") or samples.get("pr_id"):
         ids = (
             f"\n\nBaseline id `{samples.get('baseline_id', '')}`  \n"
             f"PR id `{samples.get('pr_id', '')}`\n"
         )
-    body = "### Single-node resource budget\n\n" + "\n".join(rows) + "\n\n" + note + ids
+    body = f"### {title}\n\n" + "\n".join(rows) + "\n\n" + note + ids
     return ok, body
 
 
@@ -284,6 +295,24 @@ def self_test() -> None:
         }
     )
     assert edge  # exactly +1s and exactly +10% still pass
+
+    pg_ok, pg_text = budget_result(
+        {
+            "title": "Postgres metadata RSS",
+            "rss_only": True,
+            "baseline": {"startup_ms": [300] * 5, "rss_kib": [1000] * 5},
+            "pr": {"startup_ms": [9000] * 5, "rss_kib": [1060] * 5},
+        }
+    )
+    assert pg_ok and "Postgres metadata RSS" in pg_text, pg_text
+    pg_bad, _ = budget_result(
+        {
+            "rss_only": True,
+            "baseline": {"startup_ms": [300] * 5, "rss_kib": [1000] * 5},
+            "pr": {"startup_ms": [300] * 5, "rss_kib": [1101] * 5},
+        }
+    )
+    assert not pg_bad
 
     print("single-node-gate self-test ok")
 

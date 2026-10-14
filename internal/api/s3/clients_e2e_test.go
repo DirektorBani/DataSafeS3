@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -17,6 +18,88 @@ import (
 
 // TestRealAWSAndMCChunkedPut runs aws-cli and mc when those binaries are on PATH.
 // Both clients send aws-chunked bodies. The stored object must be the decoded bytes.
+// TestAWSCLIDefaultChecksum runs stock aws-cli 2 transfers. Those clients
+// send a CRC64NVME trailer unless checksum calculation is turned off.
+// This test must not set AWS_REQUEST_CHECKSUM_CALCULATION.
+func TestAWSCLIDefaultChecksum(t *testing.T) {
+	if _, err := exec.LookPath("aws"); err != nil {
+		t.Skip("aws is not on PATH")
+	}
+	srv, creds := testServer(t)
+	var uploads atomic.Int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Query().Has("uploads") {
+			uploads.Add(1)
+		}
+		srv.Handler().ServeHTTP(w, r)
+	}))
+	t.Cleanup(ts.Close)
+	setupBucket(t, ts, creds, "e2e")
+
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "aws.config")
+	if err := os.WriteFile(cfg, []byte("[default]\nregion = us-east-1\ns3 =\n    addressing_style = path\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	small := []byte("hello-stock-aws")
+	smallPath := filepath.Join(dir, "small.bin")
+	if err := os.WriteFile(smallPath, small, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runAWSDefault(t, ts.URL, creds, cfg, "s3", "cp", smallPath, "s3://e2e/small.bin")
+	assertStored(t, ts.URL, creds, "/e2e/small.bin", small)
+
+	before := uploads.Load()
+	big := bytes.Repeat([]byte("Z"), 20<<20)
+	bigPath := filepath.Join(dir, "big.bin")
+	if err := os.WriteFile(bigPath, big, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runAWSDefault(t, ts.URL, creds, cfg, "s3", "cp", bigPath, "s3://e2e/big.bin")
+	assertStored(t, ts.URL, creds, "/e2e/big.bin", big)
+	if uploads.Load() == before {
+		t.Fatal("20MiB s3 cp did not start a multipart upload")
+	}
+
+	syncDir := filepath.Join(dir, "syncsrc")
+	if err := os.MkdirAll(syncDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a := []byte("sync-a")
+	b := []byte("sync-b")
+	if err := os.WriteFile(filepath.Join(syncDir, "a.txt"), a, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(syncDir, "b.txt"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runAWSDefault(t, ts.URL, creds, cfg, "s3", "sync", syncDir, "s3://e2e/synced/")
+	assertStored(t, ts.URL, creds, "/e2e/synced/a.txt", a)
+	assertStored(t, ts.URL, creds, "/e2e/synced/b.txt", b)
+}
+
+func runAWSDefault(t *testing.T, endpoint string, creds auth.Credentials, config string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("aws", append([]string{"--endpoint-url", endpoint}, args...)...)
+	env := make([]string, 0, len(os.Environ())+6)
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "AWS_REQUEST_CHECKSUM_CALCULATION=") || strings.HasPrefix(e, "AWS_RESPONSE_CHECKSUM_VALIDATION=") {
+			continue
+		}
+		env = append(env, e)
+	}
+	cmd.Env = append(env,
+		"AWS_ACCESS_KEY_ID="+creds.AccessKey,
+		"AWS_SECRET_ACCESS_KEY="+creds.SecretKey,
+		"AWS_DEFAULT_REGION=us-east-1",
+		"AWS_EC2_METADATA_DISABLED=true",
+		"AWS_CONFIG_FILE="+config,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("aws %v: %v %s", args, err, out)
+	}
+}
+
 func TestRealAWSAndMCChunkedPut(t *testing.T) {
 	awsPath, _ := exec.LookPath("aws")
 	mcPath, _ := exec.LookPath("mc")

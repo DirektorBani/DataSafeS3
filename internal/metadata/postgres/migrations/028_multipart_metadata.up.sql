@@ -1,0 +1,2 @@
+ALTER TABLE multipart_uploads ADD COLUMN IF NOT EXISTS content_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE multipart_uploads ADD COLUMN IF NOT EXISTS metadata JSONB;

@@ -49,32 +49,44 @@ env_value() {
 }
 
 cleanup_lone() {
-  docker rm -f -v gate-measure gate-smoke >/dev/null 2>&1 || true
+  docker rm -f -v gate-measure gate-smoke gate-postgres >/dev/null 2>&1 || true
+  docker network rm gate-pg >/dev/null 2>&1 || true
 }
 trap cleanup_lone EXIT
 
 core_docker_run() {
   local name="$1" port="$2" image="$3"
-  docker run -d --name "$name" \
-    -p "127.0.0.1:${port}:9000" \
-    -e STORAGE_ADDR=:9000 \
-    -e STORAGE_DEV=false \
-    -e STORAGE_LOG_LEVEL=info \
-    -e STORAGE_DATA_DIR=/data \
-    -e STORAGE_REGION=us-east-1 \
-    -e STORAGE_ACCESS_KEY="$GATE_ACCESS_KEY" \
-    -e STORAGE_SECRET_KEY="$GATE_SECRET_KEY" \
-    -e STORAGE_ADMIN_USER="$GATE_ADMIN_USER" \
-    -e STORAGE_ADMIN_PASSWORD="$GATE_ADMIN_PASSWORD" \
-    -e STORAGE_JWT_SECRET="$GATE_JWT_SECRET" \
-    -e STORAGE_METADATA_BACKEND=bolt \
-    -e STORAGE_POSTGRES_HOST=postgres \
-    -e STORAGE_POSTGRES_PORT=5432 \
-    -e STORAGE_POSTGRES_USER=datasafe \
-    -e STORAGE_POSTGRES_PASSWORD=datasafe \
-    -e STORAGE_POSTGRES_DB=datasafe \
-    -e STORAGE_METRICS_TOKEN="$GATE_METRICS_TOKEN" \
-    "$image" >/dev/null
+  local backend="${4:-bolt}"
+  local pghost="${5:-postgres}"
+  local network="${6:-}"
+  local args=(
+    docker run -d --name "$name"
+    -p "127.0.0.1:${port}:9000"
+  )
+  if [ -n "$network" ]; then
+    args+=(--network "$network")
+  fi
+  args+=(
+    -e STORAGE_ADDR=:9000
+    -e STORAGE_DEV=false
+    -e STORAGE_LOG_LEVEL=info
+    -e STORAGE_DATA_DIR=/data
+    -e STORAGE_REGION=us-east-1
+    -e STORAGE_ACCESS_KEY="$GATE_ACCESS_KEY"
+    -e STORAGE_SECRET_KEY="$GATE_SECRET_KEY"
+    -e STORAGE_ADMIN_USER="$GATE_ADMIN_USER"
+    -e STORAGE_ADMIN_PASSWORD="$GATE_ADMIN_PASSWORD"
+    -e STORAGE_JWT_SECRET="$GATE_JWT_SECRET"
+    -e STORAGE_METADATA_BACKEND="$backend"
+    -e STORAGE_POSTGRES_HOST="$pghost"
+    -e STORAGE_POSTGRES_PORT=5432
+    -e STORAGE_POSTGRES_USER=datasafe
+    -e STORAGE_POSTGRES_PASSWORD=datasafe
+    -e STORAGE_POSTGRES_DB=datasafe
+    -e STORAGE_METRICS_TOKEN="$GATE_METRICS_TOKEN"
+    "$image"
+  )
+  "${args[@]}" >/dev/null
 }
 
 wait_health() {
@@ -173,6 +185,98 @@ PY
   if [ -n "${GATE_SAMPLES_OUT:-}" ]; then
     cp "$work/samples.json" "$GATE_SAMPLES_OUT"
   fi
+}
+
+# measure-postgres compares this image on Postgres with the Bolt v1.4.1
+# samples written by measure (GATE_BOLT_SAMPLES). RSS uses the same +10%
+# limit. Startup is printed and is not a failure. The Bolt gate is unchanged.
+cmd_measure_postgres() {
+  local bolt="${GATE_BOLT_SAMPLES:-}"
+  if [ ! -f "$bolt" ]; then
+    echo "GATE_BOLT_SAMPLES must be the JSON written by measure" >&2
+    return 1
+  fi
+  docker image inspect "$PR_IMAGE" >/dev/null
+  docker network create gate-pg >/dev/null 2>&1 || true
+  docker rm -f -v gate-postgres >/dev/null 2>&1 || true
+  docker run -d --name gate-postgres --network gate-pg \
+    -e POSTGRES_USER=datasafe \
+    -e POSTGRES_PASSWORD=datasafe \
+    -e POSTGRES_DB=datasafe \
+    postgres:16 >/dev/null
+  local deadline=$((SECONDS + 90))
+  until docker exec gate-postgres pg_isready -U datasafe >/dev/null 2>&1; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "postgres did not become ready" >&2
+      docker logs gate-postgres >&2 || true
+      return 1
+    fi
+    sleep 0.5
+  done
+  local tsv work i
+  work="$(mktemp -d)"
+  tsv="$work/runs.tsv"
+  : >"$tsv"
+  i=1
+  while [ "$i" -le "$RUNS" ]; do
+    one_run_pg pr "$PR_IMAGE" >>"$tsv"
+    i=$((i + 1))
+  done
+  python3 - "$tsv" "$bolt" "$work/samples.json" "$PR_IMAGE" <<'PY'
+import json, sys
+tsv, bolt_path, out, pr_image = sys.argv[1:]
+bolt = json.load(open(bolt_path, encoding="utf-8"))
+samples = {
+    "title": "Postgres metadata RSS",
+    "rss_only": True,
+    "baseline_image": bolt.get("baseline_image", "v1.4.1") + " bolt",
+    "pr_image": pr_image + " postgres",
+    "baseline_id": bolt.get("baseline_id", ""),
+    "pr_id": bolt.get("pr_id", ""),
+    "baseline": bolt["baseline"],
+    "pr": {"startup_ms": [], "rss_kib": []},
+}
+for line in open(tsv, encoding="utf-8"):
+    label, startup, rss = line.split()
+    samples["pr"]["startup_ms"].append(int(startup))
+    samples["pr"]["rss_kib"].append(int(rss))
+with open(out, "w", encoding="utf-8") as fh:
+    json.dump(samples, fh)
+PY
+  local summary="${GITHUB_STEP_SUMMARY:-}"
+  python3 "$PY" budget "$work/samples.json" --summary "$summary"
+}
+
+one_run_pg() {
+  local label="$1" image="$2"
+  local name="gate-measure"
+  docker rm -f -v "$name" >/dev/null 2>&1 || true
+  local start_ns end_ns startup_ms
+  start_ns="$(now_ns)"
+  core_docker_run "$name" "$MEASURE_PORT" "$image" postgres gate-postgres gate-pg
+  wait_health "http://127.0.0.1:${MEASURE_PORT}/healthz" "$name"
+  end_ns="$(now_ns)"
+  startup_ms=$(((end_ns - start_ns) / 1000000))
+  local cmd
+  cmd="$(docker exec "$name" cat /proc/1/cmdline | tr '\0' ' ')"
+  case "$cmd" in
+    *storage-server*) ;;
+    *)
+      echo "PID 1 is not storage-server: $cmd" >&2
+      return 1
+      ;;
+  esac
+  sleep "$WARMUP"
+  local s1 s2 s3 rss
+  s1="$(sample_rss "$name")"
+  sleep 1
+  s2="$(sample_rss "$name")"
+  sleep 1
+  s3="$(sample_rss "$name")"
+  rss="$(python3 "$PY" median "$s1" "$s2" "$s3")"
+  docker rm -f -v "$name" >/dev/null 2>&1 || true
+  printf '%s\t%s\t%s\n' "$label" "$startup_ms" "$rss"
+  echo "$label postgres run startup_ms=$startup_ms rss_kib=$rss (samples $s1 $s2 $s3)" >&2
 }
 
 ensure_aws() {
@@ -346,14 +450,15 @@ cmd_smoke_installed() {
 
 usage() {
   cat <<EOF
-Usage: bash scripts/single-node-gate.sh <measure|smoke|all|smoke-installed>
+Usage: bash scripts/single-node-gate.sh <measure|measure-postgres|smoke|all|smoke-installed>
 
   measure           interleaved idle RSS and startup vs \$BASE_IMAGE (default $BASE_IMAGE)
+  measure-postgres  this image on Postgres vs the Bolt baseline in \$GATE_BOLT_SAMPLES
   smoke             run only \$PR_IMAGE (default $PR_IMAGE) and smoke it
   all               measure, then smoke
   smoke-installed   smoke the core compose project (default datasafe-gate) using .env
 
-Env: GATE_RUNS ($RUNS), GATE_WARMUP_SEC ($WARMUP), GITHUB_STEP_SUMMARY, GATE_SAMPLES_OUT
+Env: GATE_RUNS ($RUNS), GATE_WARMUP_SEC ($WARMUP), GITHUB_STEP_SUMMARY, GATE_SAMPLES_OUT, GATE_BOLT_SAMPLES
 EOF
 }
 
@@ -361,6 +466,7 @@ main() {
   local cmd="${1:-}"
   case "$cmd" in
     measure) cmd_measure ;;
+    measure-postgres) cmd_measure_postgres ;;
     smoke) cmd_smoke_pr ;;
     all) cmd_measure; cmd_smoke_pr ;;
     smoke-installed) cmd_smoke_installed ;;

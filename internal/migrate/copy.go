@@ -151,13 +151,14 @@ type targetBucket struct {
 }
 
 type runner struct {
-	opt    Options
-	state  *State
-	ev     *Evidence
-	mu     sync.Mutex
-	target int
-	done   int
-	idx    map[string]*targetBucket
+	opt     Options
+	state   *State
+	ev      *Evidence
+	mu      sync.Mutex
+	target  int
+	done    int
+	idx     map[string]*targetBucket
+	encWant map[string]string
 }
 
 func (r *runner) current() Endpoint {
@@ -327,6 +328,10 @@ func (r *runner) listVersions(ctx context.Context, ep Endpoint, bucket string) (
 
 func (r *runner) copyBucketConfig(ctx context.Context, bucket string) ([]string, error) {
 	var warnings []string
+	// Snapshot before CreateBucket. A 200 that inserts a second row would
+	// hide the encrypted bucket, and a snapshot taken afterwards would be empty.
+	savedEnc, _ := r.getBody(ctx, r.current(), http.MethodGet, "/"+url.PathEscape(bucket), url.Values{"encryption": {""}})
+	r.noteTargetEncryption(bucket, savedEnc)
 	resp, err := r.dest(ctx, http.MethodPut, "/"+url.PathEscape(bucket), nil, nil, nil)
 	if err != nil {
 		return warnings, err
@@ -336,9 +341,8 @@ func (r *runner) copyBucketConfig(ctx context.Context, bucket string) ([]string,
 		return warnings, fmt.Errorf("create bucket %d", resp.StatusCode)
 	}
 	// Source encryption is not copied. An empty source configuration must not
-	// delete encryption the target already has. Snapshot it and put it back
-	// if a later config write cleared it.
-	savedEnc, _ := r.getBody(ctx, r.current(), http.MethodGet, "/"+url.PathEscape(bucket), url.Values{"encryption": {""}})
+	// delete encryption the target already has. Put the pre-create snapshot
+	// back if a later config write cleared it.
 	if status, err := r.getVersioning(ctx, r.opt.Source, bucket); err == nil && status != "" {
 		body := "<VersioningConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Status>" + xmlEscape(status) + "</Status></VersioningConfiguration>"
 		if err := r.putXML(ctx, bucket, url.Values{"versioning": {""}}, body); err != nil {
@@ -383,6 +387,39 @@ func (r *runner) copyBucketConfig(ctx context.Context, bucket string) ([]string,
 	}
 	warnings = append(warnings, r.restoreTargetEncryption(ctx, bucket, savedEnc)...)
 	return warnings, nil
+}
+
+func sseAlgorithm(raw string) string {
+	const open = "<SSEAlgorithm>"
+	i := strings.Index(raw, open)
+	if i < 0 {
+		return ""
+	}
+	rest := raw[i+len(open):]
+	j := strings.Index(rest, "</SSEAlgorithm>")
+	if j < 0 {
+		return ""
+	}
+	return strings.TrimSpace(rest[:j])
+}
+
+func (r *runner) noteTargetEncryption(bucket, raw string) {
+	algo := sseAlgorithm(raw)
+	if algo == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.encWant == nil {
+		r.encWant = map[string]string{}
+	}
+	r.encWant[bucket] = algo
+}
+
+func (r *runner) targetEncryption(bucket string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.encWant[bucket]
 }
 
 func (r *runner) restoreTargetEncryption(ctx context.Context, bucket, savedEnc string) []string {
@@ -861,7 +898,14 @@ func (r *runner) verify(ctx context.Context, buckets []string) error {
 		for _, v := range dst {
 			dstByKey[v.Key] = append(dstByKey[v.Key], v)
 		}
-		bySource := r.indexTarget(ctx, bucket, dst)
+		bySource, sseByVer, headOK := r.indexTarget(ctx, bucket, dst)
+		wantEnc := r.targetEncryption(bucket)
+		if wantEnc != "" {
+			now, _ := r.getBody(ctx, r.current(), http.MethodGet, "/"+url.PathEscape(bucket), url.Values{"encryption": {""}})
+			if !strings.Contains(now, wantEnc) {
+				be.EncryptionMismatches++
+			}
+		}
 		var objects []ObjectVersion
 		for _, v := range src {
 			if !v.DeleteMarker {
@@ -874,29 +918,53 @@ func (r *runner) verify(ctx context.Context, buckets []string) error {
 			if _, ok := samples[i]; ok {
 				sample = true
 			}
-			match, ok := bySource[v.Key+"\n"+versionIdentity(v)]
-			if !ok {
-				found := matchVersion(v, dstByKey[v.Key], r.opt.SSEActive())
-				if found == nil {
-					be.ETagMismatches++
-					if sample {
-						be.SampleChecked++
-						be.SampleMismatches++
-					}
-					continue
-				}
-				match = *found
+			var cands []ObjectVersion
+			if match, ok := bySource[v.Key+"\n"+versionIdentity(v)]; ok {
+				cands = []ObjectVersion{match}
+			} else {
+				cands = matchCandidates(v, dstByKey[v.Key], r.opt.SSEActive())
 			}
-			if !r.etagOK(ctx, v, match) {
+			if len(cands) == 0 {
 				be.ETagMismatches++
+				if sample {
+					be.SampleChecked++
+					be.SampleMismatches++
+				}
+				continue
+			}
+			var match ObjectVersion
+			etagPass := false
+			for _, c := range cands {
+				if r.etagOK(ctx, v, c) {
+					match = c
+					etagPass = true
+					break
+				}
+			}
+			if !etagPass {
+				be.ETagMismatches++
+				if sample {
+					be.SampleChecked++
+					be.SampleMismatches++
+				}
+				continue
+			}
+			if wantEnc != "" {
+				id := match.Key + "\n" + match.VersionID
+				if headOK[id] && !strings.EqualFold(sseByVer[id], wantEnc) {
+					be.EncryptionMismatches++
+				}
 			}
 			if err := r.compareLock(ctx, v, match.VersionID); err != nil {
 				be.LockMismatches++
 			}
 			if sample {
 				be.SampleChecked++
-				if err := r.compareSHA(ctx, v, match.VersionID); err != nil {
-					be.SampleMismatches++
+				// etagOK already hashed both bodies when the ETags differed.
+				if v.ETag == "" || trimETag(v.ETag) == trimETag(match.ETag) {
+					if err := r.compareSHA(ctx, v, match.VersionID); err != nil {
+						be.SampleMismatches++
+					}
 				}
 			}
 		}
@@ -907,26 +975,33 @@ func (r *runner) verify(ctx context.Context, buckets []string) error {
 	return nil
 }
 
-func matchVersion(src ObjectVersion, dst []ObjectVersion, sse bool) *ObjectVersion {
+// matchCandidates orders target versions to compare. An exact ETag is preferred.
+// A different multipart ETag, or a missing source-version header, still yields
+// the same-size object so the caller can download it and compare SHA-256.
+func matchCandidates(src ObjectVersion, dst []ObjectVersion, sse bool) []ObjectVersion {
+	var exact, sized, rest []ObjectVersion
 	for i := range dst {
-		if dst[i].DeleteMarker {
+		d := dst[i]
+		if d.DeleteMarker {
 			continue
 		}
-		if !sse && src.ETag != "" && dst[i].ETag == src.ETag && dst[i].Size == src.Size {
-			return &dst[i]
+		if !sse && src.ETag != "" && trimETag(d.ETag) == trimETag(src.ETag) && d.Size == src.Size {
+			exact = append(exact, d)
+			continue
 		}
-		if sse && dst[i].Size == src.Size {
-			return &dst[i]
+		if d.Size == src.Size {
+			sized = append(sized, d)
+			continue
 		}
+		rest = append(rest, d)
 	}
-	if sse {
-		for i := range dst {
-			if !dst[i].DeleteMarker {
-				return &dst[i]
-			}
-		}
+	if len(exact) > 0 {
+		return exact
 	}
-	return nil
+	if len(sized) > 0 {
+		return sized
+	}
+	return rest
 }
 
 func markerChain(vers []ObjectVersion) string {
@@ -1115,8 +1190,10 @@ func (r *runner) compareSHA(ctx context.Context, src ObjectVersion, dstVersion s
 	return nil
 }
 
-func (r *runner) indexTarget(ctx context.Context, bucket string, vers []ObjectVersion) map[string]ObjectVersion {
+func (r *runner) indexTarget(ctx context.Context, bucket string, vers []ObjectVersion) (map[string]ObjectVersion, map[string]string, map[string]bool) {
 	out := map[string]ObjectVersion{}
+	sse := map[string]string{}
+	headOK := map[string]bool{}
 	for _, tv := range vers {
 		if tv.DeleteMarker {
 			continue
@@ -1129,13 +1206,18 @@ func (r *runner) indexTarget(ctx context.Context, bucket string, vers []ObjectVe
 		if err != nil {
 			continue
 		}
+		id := tv.Key + "\n" + tv.VersionID
+		headOK[id] = true
+		if algo := resp.Header.Get("x-amz-server-side-encryption"); algo != "" {
+			sse[id] = algo
+		}
 		src := resp.Header.Get(sourceVersionMeta)
 		resp.Body.Close()
 		if src != "" {
 			out[tv.Key+"\n"+src] = tv
 		}
 	}
-	return out
+	return out, sse, headOK
 }
 
 func (r *runner) etagOK(ctx context.Context, src ObjectVersion, match ObjectVersion) bool {

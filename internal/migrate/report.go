@@ -27,18 +27,19 @@ type Evidence struct {
 
 // BucketEvidence compares one bucket.
 type BucketEvidence struct {
-	Name                string `json:"name"`
-	SourceObjects       int    `json:"source_objects"`
-	TargetObjects       int    `json:"target_objects"`
-	SourceBytes         int64  `json:"source_bytes"`
-	TargetBytes         int64  `json:"target_bytes"`
-	SourceMarkers       int    `json:"source_delete_markers"`
-	TargetMarkers       int    `json:"target_delete_markers"`
-	MarkerChainMismatch int    `json:"marker_chain_mismatch,omitempty"`
-	ETagMismatches      int    `json:"etag_mismatches"`
-	LockMismatches      int    `json:"lock_mismatches"`
-	SampleChecked       int    `json:"sample_checked"`
-	SampleMismatches    int    `json:"sample_mismatches"`
+	Name                 string `json:"name"`
+	SourceObjects        int    `json:"source_objects"`
+	TargetObjects        int    `json:"target_objects"`
+	SourceBytes          int64  `json:"source_bytes"`
+	TargetBytes          int64  `json:"target_bytes"`
+	SourceMarkers        int    `json:"source_delete_markers"`
+	TargetMarkers        int    `json:"target_delete_markers"`
+	MarkerChainMismatch  int    `json:"marker_chain_mismatch,omitempty"`
+	ETagMismatches       int    `json:"etag_mismatches"`
+	LockMismatches       int    `json:"lock_mismatches"`
+	SampleChecked        int    `json:"sample_checked"`
+	SampleMismatches     int    `json:"sample_mismatches"`
+	EncryptionMismatches int    `json:"encryption_mismatches"`
 }
 
 func (e *Evidence) finish() {
@@ -53,7 +54,7 @@ func (e *Evidence) finish() {
 		}
 		return "FAIL"
 	}
-	objects, bytesOK, markers, etag, lock, sample := true, true, true, true, true, true
+	objects, bytesOK, markers, etag, lock, sample, enc := true, true, true, true, true, true, true
 	for _, b := range e.Buckets {
 		if b.SourceObjects != b.TargetObjects {
 			objects = false
@@ -73,9 +74,12 @@ func (e *Evidence) finish() {
 		if b.SampleMismatches > 0 {
 			sample = false
 		}
+		if b.EncryptionMismatches > 0 {
+			enc = false
+		}
 	}
 	if e.Interrupted || len(e.Errors) > 0 {
-		objects, bytesOK, markers, etag, lock, sample = false, false, false, false, false, false
+		objects, bytesOK, markers, etag, lock, sample, enc = false, false, false, false, false, false, false
 	}
 	e.Verdicts["object_count"] = pass(objects)
 	e.Verdicts["bytes"] = pass(bytesOK)
@@ -83,6 +87,7 @@ func (e *Evidence) finish() {
 	e.Verdicts["etag"] = pass(etag)
 	e.Verdicts["object_lock"] = pass(lock)
 	e.Verdicts["content_sample"] = pass(sample)
+	e.Verdicts["encryption"] = pass(enc)
 }
 
 func (e Evidence) OK() bool {
@@ -99,7 +104,7 @@ func (e Evidence) summary() string {
 	fmt.Fprintf(&b, "# MinIO migration\n\n")
 	fmt.Fprintf(&b, "- Source: %s\n- Target: %s\n- Duration: %s\n\n", e.Source, e.Target, e.Duration)
 	fmt.Fprintf(&b, "## Verdicts\n\n")
-	for _, name := range []string{"object_count", "bytes", "delete_markers", "etag", "object_lock", "content_sample"} {
+	for _, name := range []string{"object_count", "bytes", "delete_markers", "etag", "object_lock", "content_sample", "encryption"} {
 		fmt.Fprintf(&b, "- %s: %s\n", name, e.Verdicts[name])
 	}
 	fmt.Fprintf(&b, "\n## Buckets\n\n")
@@ -110,7 +115,8 @@ func (e Evidence) summary() string {
 		fmt.Fprintf(&b, "- Delete markers: source %d, target %d\n", bucket.SourceMarkers, bucket.TargetMarkers)
 		fmt.Fprintf(&b, "- ETag mismatches: %d\n", bucket.ETagMismatches)
 		fmt.Fprintf(&b, "- Object Lock mismatches: %d\n", bucket.LockMismatches)
-		fmt.Fprintf(&b, "- Content samples: %d checked, %d mismatches\n\n", bucket.SampleChecked, bucket.SampleMismatches)
+		fmt.Fprintf(&b, "- Content samples: %d checked, %d mismatches\n", bucket.SampleChecked, bucket.SampleMismatches)
+		fmt.Fprintf(&b, "- Encryption mismatches: %d\n\n", bucket.EncryptionMismatches)
 	}
 	if len(e.Warnings) > 0 {
 		fmt.Fprintf(&b, "## Warnings\n\n")
