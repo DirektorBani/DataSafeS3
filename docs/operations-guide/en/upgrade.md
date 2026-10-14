@@ -384,6 +384,8 @@ On Postgres or HA, the console asks you to check **All nodes are upgraded to 1.6
 
 If `STORAGE_SSE_MASTER_KEY` was set and a later start clears it, the process refuses to start. The error says the key is missing and to set `STORAGE_SSE_MASTER_KEY` to the original key. A different value still reports `SSE master key fingerprint mismatch`.
 
+Vault Transit stays off until `STORAGE_KMS_PROVIDER=vault-transit` and an address are both set, in the environment or under Settings → Vault (KMS). With those empty, the process does not open a Vault connection. SSE-S3 keeps using the server key and does not call Vault. See [kms-vault.md](kms-vault.md).
+
 ## Checklist
 
 - [ ] Backup metadata and objects
@@ -397,3 +399,4 @@ If `STORAGE_SSE_MASTER_KEY` was set and a later start clears it, the process ref
 - [ ] v1.4.1: `STORAGE_DEV` is false unless you opted in; installer or `.env` has `STORAGE_METRICS_TOKEN`; Prometheus scrape still works
 - [ ] v1.5.0: `docker compose pull` the `v1.5.0` server and console images (do not build them); delete old `.env.erasure` / `.env.site-a` if those labs should use the new ports; leave `STORAGE_KAFKA_BROKERS` empty unless you want the external feed
 - [ ] v1.6.0: upgrade every node before enabling encryption. 409 covers a 1.5.0 leader or a registered node only. A 1.5.0 leader accepts its own `PutBucketEncryption`. On Postgres or HA, check “All nodes are upgraded to 1.6.0” in the console. S3 `PutBucketEncryption` has no checkbox.
+- [ ] v1.6.0: leave Vault unset unless you use it. The client starts only when `STORAGE_KMS_PROVIDER=vault-transit` and an address are both set. SSE-S3 does not call Vault. See [kms-vault.md](kms-vault.md).

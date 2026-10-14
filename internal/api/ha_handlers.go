@@ -91,6 +91,8 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	} else {
 		observability.SetHALeaderMetrics(false, false)
 	}
+	kmsProvider, kmsAvailable := s.kmsHealth()
+	resp["kms"] = map[string]any{"provider": kmsProvider, "available": kmsAvailable}
 	if lag, ok := s.meta.ReplicationLagSeconds(); ok {
 		resp["postgres_ok"] = true
 		resp["replication_lag_s"] = lag

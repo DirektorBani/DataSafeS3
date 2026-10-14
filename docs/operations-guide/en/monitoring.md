@@ -46,6 +46,7 @@ Example alerts are `deploy/docker/prometheus/alerts.yml`. Compose mounts the fil
 | `DataSafeEventSinkDegraded` | Any destination has `datasafe_events_sink_degraded` equal to 1 for 5 minutes |
 | `DataSafeEventDeadIncreasing` | `datasafe_events_dead_total` increased during the last 10 minutes |
 | `DataSafeEventDroppedIncreasing` | `datasafe_events_dropped_total{reason="pending_cap"}` increased during the last 10 minutes |
+| `DataSafeKMSUnavailable` | `datasafe_kms_available` stays 0 for 1 minute. The series is published only while Vault Transit is enabled |
 
 Activity records `events_sink_degraded` on the first real failure of a destination and `events_sink_recovered` when it connects again. Retries of the same failure do not add rows. The sentence `waiting for first successful connection` is the status reason before the first probe and is not an Activity row. `events_outbox_dropped` is the pending cap. The console Activity filter lists these actions. `POST /api/v1/events/test` queues a diagnostic event.
 

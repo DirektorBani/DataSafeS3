@@ -25,7 +25,7 @@ type ShareInfo = {
   password_required?: boolean;
 };
 
-type ShareErrorKind = "not_found" | "expired" | "limit_reached" | "blocked" | "invalid_password" | "generic";
+type ShareErrorKind = "not_found" | "expired" | "limit_reached" | "blocked" | "invalid_password" | "unavailable" | "generic";
 
 type ShareError = {
   kind: ShareErrorKind;
@@ -55,6 +55,9 @@ function classifyShareError(
   }
   if (status === 401 || lower.includes("password_required")) {
     return { kind: "invalid_password", message: t("error.passwordRequired") };
+  }
+  if (status === 503 || lower.includes("kms unavailable") || lower.includes("временно недоступен")) {
+    return { kind: "unavailable", message: t("error.unavailable") };
   }
   return {
     kind: "generic",
@@ -238,6 +241,7 @@ export function PublicSharePage() {
               {error.kind === "not_found" && <p>{t("hint.notFound")}</p>}
               {error.kind === "generic" && <p>{t("hint.generic")}</p>}
               {error.kind === "blocked" && <p>{t("hint.blocked")}</p>}
+              {error.kind === "unavailable" && <p>{t("hint.unavailable")}</p>}
             </div>
           )}
 

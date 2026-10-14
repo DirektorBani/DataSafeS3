@@ -29,6 +29,7 @@ import enSearch from "@/locales/en/search.json";
 import enPolicyBuilder from "@/locales/en/policyBuilder.json";
 import enNotifications from "@/locales/en/notifications.json";
 import enEncryption from "@/locales/en/encryption.json";
+import enKms from "@/locales/en/kms.json";
 import deSettings from "@/locales/de/settings.json";
 import deActivity from "@/locales/de/activity.json";
 import frSettings from "@/locales/fr/settings.json";
@@ -62,6 +63,7 @@ import ruSearch from "@/locales/ru/search.json";
 import ruPolicyBuilder from "@/locales/ru/policyBuilder.json";
 import ruNotifications from "@/locales/ru/notifications.json";
 import ruEncryption from "@/locales/ru/encryption.json";
+import ruKms from "@/locales/ru/kms.json";
 
 export const LOCALE_KEY = "datasafe.locale";
 export const SUPPORTED_LOCALES = ["en", "ru", "de", "fr"] as const;
@@ -97,6 +99,7 @@ const namespaces = [
   "policyBuilder",
   "notifications",
   "encryption",
+  "kms",
 ] as const;
 
 export function normalizeLocale(lang: string | undefined | null): AppLocale {
@@ -150,6 +153,7 @@ const enResources = {
   policyBuilder: enPolicyBuilder,
   notifications: enNotifications,
   encryption: enEncryption,
+  kms: enKms,
 };
 
 void i18n.use(initReactI18next).init({
@@ -187,6 +191,7 @@ void i18n.use(initReactI18next).init({
       policyBuilder: ruPolicyBuilder,
       notifications: ruNotifications,
       encryption: ruEncryption,
+      kms: ruKms,
     },
   },
   lng: detectInitialLocale(),

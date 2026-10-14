@@ -22,6 +22,7 @@
 | Модель доступа | [access-model.md](access-model.md) |
 | Field encryption (метаданные) | [field-encryption.md](field-encryption.md) |
 | Vault (инъекция секретов) | [secrets-vault.md](secrets-vault.md) |
+| Vault Transit (ключи объектов) | [kms-vault.md](kms-vault.md) |
 | Устранение неполадок | [troubleshooting.md](troubleshooting.md) |
 
 Helm: [../../../deploy/helm/datasafe/README.md](../../../deploy/helm/datasafe/README.md)

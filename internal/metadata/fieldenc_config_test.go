@@ -31,6 +31,7 @@ func TestEncryptSystemConfigPaths_secretLeaves(t *testing.T) {
 			Loki:          LogSinkEndpoint{Token: "loki-token"},
 			Webhook:       LogSinkEndpoint{Token: "wh-token"},
 		},
+		KMS: VaultKMSConfig{SecretID: "vault-secret-id", Token: "vault-token"},
 	}
 
 	enc, err := EncryptSystemConfigPaths(svc, cfg)
@@ -45,6 +46,8 @@ func TestEncryptSystemConfigPaths_secretLeaves(t *testing.T) {
 		"es_token":    enc.Logging.Elasticsearch.Token,
 		"loki":        enc.Logging.Loki.Token,
 		"webhook":     enc.Logging.Webhook.Token,
+		"kms_secret":  enc.KMS.SecretID,
+		"kms_token":   enc.KMS.Token,
 	} {
 		if !strings.HasPrefix(val, "enc:v1:") {
 			t.Fatalf("%s: expected enc:v1, got %q", name, val)
@@ -61,7 +64,9 @@ func TestEncryptSystemConfigPaths_secretLeaves(t *testing.T) {
 		dec.Logging.Elasticsearch.Password != cfg.Logging.Elasticsearch.Password ||
 		dec.Logging.Elasticsearch.Token != cfg.Logging.Elasticsearch.Token ||
 		dec.Logging.Loki.Token != cfg.Logging.Loki.Token ||
-		dec.Logging.Webhook.Token != cfg.Logging.Webhook.Token {
+		dec.Logging.Webhook.Token != cfg.Logging.Webhook.Token ||
+		dec.KMS.SecretID != cfg.KMS.SecretID ||
+		dec.KMS.Token != cfg.KMS.Token {
 		t.Fatalf("roundtrip mismatch: %+v", dec)
 	}
 }

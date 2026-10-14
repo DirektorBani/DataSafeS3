@@ -110,6 +110,13 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
   const needsUpgradeAck = view.metadata_backend === "postgres" || view.ha_enabled === true;
   const vaultSelected = provider === "vault";
   const publicRead = view.visibility === "public-read";
+  const saveBody = {
+    enabled: true,
+    provider: vaultSelected ? "vault-transit" : "local",
+    key_id: keyID.trim(),
+  };
+  const canSave =
+    canEdit && (vaultSelected ? view.vault_configured : view.server_key_configured) && !(vaultSelected && publicRead);
 
   return (
     <Card data-testid="encryption-card">
@@ -118,6 +125,11 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
         <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {view.vault_configured && view.kms_probed && view.kms_available === false && (
+          <p className="text-sm text-destructive" data-testid="encryption-kms-unavailable">
+            {t("kmsUnavailable")}
+          </p>
+        )}
         {serverKeyMissing && (
           <p className="text-sm text-muted-foreground" data-testid="encryption-key-missing">
             {t("serverKeyMissing")}
@@ -166,13 +178,16 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
                 name="encryption-provider"
                 data-testid="encryption-provider-vault"
                 checked={vaultSelected}
-                disabled
+                disabled={!canEdit || !view.vault_configured}
+                onChange={() => setProvider("vault")}
               />
               <span>
-                <span className="font-medium text-muted-foreground">{t("vaultTitle")}</span>
+                <span className={`font-medium ${view.vault_configured ? "" : "text-muted-foreground"}`}>
+                  {t("vaultTitle")}
+                </span>
                 <span className="block text-xs text-muted-foreground">
-                  {t("vaultHint")}{" "}
-                  <Link to="/admin/settings/security" className="text-primary hover:underline">
+                  {view.vault_configured ? t("vaultHint") : t("vaultHintOff")}{" "}
+                  <Link to="/admin/settings/kms" className="text-primary hover:underline">
                     {t("vaultLink")}
                   </Link>
                 </span>
@@ -189,13 +204,13 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
                 id="encryption-key-id"
                 data-testid="encryption-key-id"
                 value={keyID}
-                disabled={!canEdit || !view.server_key_configured}
+                disabled={!canEdit || (vaultSelected ? !view.vault_configured : !view.server_key_configured)}
                 placeholder={view.default_key_id}
                 onChange={(e) => setKeyID(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">{t("keyIdHint", { allowlist: view.allowlist })}</p>
             </div>
-            {canEdit && view.server_key_configured && provider === "local" && (
+            {canSave && (
               <Button
                 size="sm"
                 data-testid="encryption-save"
@@ -206,11 +221,7 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
                     setConfirmOn(true);
                     return;
                   }
-                  save.mutate({
-                    enabled: true,
-                    provider: "local",
-                    key_id: keyID.trim(),
-                  });
+                  save.mutate(saveBody);
                 }}
               >
                 {t("save")}
@@ -245,13 +256,7 @@ export function EncryptionCard({ bucket }: { bucket: string }) {
             <Button
               data-testid="encryption-upgrade-confirm"
               disabled={!upgradeAck || save.isPending}
-              onClick={() =>
-                save.mutate({
-                  enabled: true,
-                  provider: "local",
-                  key_id: keyID.trim(),
-                })
-              }
+              onClick={() => save.mutate(saveBody)}
             >
               {t("upgradeConfirm")}
             </Button>

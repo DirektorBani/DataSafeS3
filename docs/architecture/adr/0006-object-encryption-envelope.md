@@ -53,7 +53,7 @@ The DEK is 32 random bytes. It is stored only wrapped: AES-256-GCM under the loc
 
 | Field | Meaning |
 | --- | --- |
-| `key_provider` | `local` or, later, `vault-transit` |
+| `key_provider` | `local` or `vault-transit` |
 | `key_id` | `datasafe-<tenant>-<bucket>` unless the caller passed an allow-listed name |
 | `key_version` | 0 for format 0; 1+ for wrapped DEKs |
 | `wrapped_dek` | base64, empty for format 0 |
@@ -68,11 +68,11 @@ Local KEK versions: version 0 is `SHA-256(master string)`, the same bytes 1.5.0 
 
 ### When a new object is encrypted
 
-Encryption is no longer “the process has a key, so encrypt everything”. A new object is encrypted when the request sends `x-amz-server-side-encryption` or the bucket default says so. `AES256` is the local server key. `aws:kms` is the same local KEK in E01 (Vault arrives in E02) and is the algorithm that blocks anonymous access. With no header and no bucket default, the object stays plaintext even if `STORAGE_SSE_MASTER_KEY` is set. That key is still required to read format 0 and to write any new SSE object.
+Encryption is no longer “the process has a key, so encrypt everything”. A new object is encrypted when the request sends `x-amz-server-side-encryption` or the bucket default says so. `AES256` is the local server key and does not call Vault. `aws:kms` uses Vault Transit when `STORAGE_KMS_PROVIDER=vault-transit` and an address are set. Without that, `aws:kms` still wraps with the local KEK and the stored provider stays `local`. `aws:kms` is the algorithm that blocks anonymous access. With no header and no bucket default, the object stays plaintext even if `STORAGE_SSE_MASTER_KEY` is set. That key is still required to read format 0 and to write any new SSE-S3 object.
 
 `public-read` together with bucket default `aws:kms` is rejected with HTTP 409. An anonymous GET or HEAD of an object whose `sse_algorithm` is `aws:kms` is HTTP 403 `объект зашифрован ключом KMS, публичный доступ невозможен`. SSE-S3 (`AES256`) stays anonymously readable when Block Public Access is off, as in 1.5.0.
 
-A share link or presigned URL for any sealed object (`AES256` and `aws:kms`) is decrypted only after the server checks again that the link creator or the signing key’s owner still exists, is active, and can read the object. A plaintext object is not checked again; that link works until it expires or reaches its download limit. Destroyed keys return HTTP 403 `Ключ шифрования уничтожен, файл недоступен навсегда`.
+A share link or presigned URL for any sealed object (`AES256` and `aws:kms`) is decrypted only after the server checks again that the link creator or the signing key’s owner still exists, is active, and can read the object. A plaintext object is not checked again; that link works until it expires or reaches its download limit. Destroyed keys return HTTP 403 `Ключ шифрования уничтожен, файл недоступен навсегда`. An SSE-KMS share whose data key is not cached while Vault is down returns HTTP 503 `Файл временно недоступен, попробуйте позже`.
 
 ### Cluster
 
@@ -88,5 +88,5 @@ Turning bucket encryption off is the dangerous action `encryption_disable` and n
 
 - A format-0 blob stays readable without a rewrite when `STORAGE_SSE_LEGACY_FORMAT0=true`, or when the object row already carries format-0 metadata. Unmarked 1.5.0 objects stay plaintext.
 - New encrypted objects are larger than the plaintext by the header and per-chunk overhead. `Content-Length` is the plaintext size.
-- Vault Transit, DEK cache invalidation, rewrap, and crypto-shred jobs are E02 and E03. The `kms.Provider` methods exist; E01 implements `local`.
-- Postgres migration `025_object_encryption` is additive (`bucket_encryption`, `kms_keys`, `kms_state`, heartbeat rows, `objects.encryption`, `multipart_uploads.encryption`).
+- Vault Transit is opt-in. The client is `net/http` and is created only when the provider is `vault-transit` and an address is set. AES256 stays on the local KEK. The DEK cache (LRU, TTL, generation poll) and fail-closed SSE-KMS (HTTP 503 `KMS unavailable` on a cache miss while Vault is down) ship with that client. Rewrap and crypto-shred jobs are still later work.
+- Postgres migration `025_object_encryption` is additive (`bucket_encryption`, `kms_keys`, `kms_state`, heartbeat rows, `objects.encryption`, `multipart_uploads.encryption`). Migration `026_kms_node_status` adds Vault status columns on `cluster_node_heartbeats`.

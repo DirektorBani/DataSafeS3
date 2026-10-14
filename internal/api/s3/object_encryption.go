@@ -29,6 +29,8 @@ const (
 	MsgPublicKMS = "Публичный доступ к файлам, зашифрованным ключом из Vault, невозможен. Сначала сделайте бакет приватным"
 	// MsgClusterUpgrade is returned while a node older than 1.6.0 is heartbeating.
 	MsgClusterUpgrade = "cluster upgrade in progress"
+	// MsgKMSDown is the console text when Vault cannot wrap or unwrap a DEK.
+	MsgKMSDown = "Vault недоступен: новые файлы в этот бакет сейчас не сохранить, незашифрованные бакеты работают"
 )
 
 var (
@@ -148,6 +150,9 @@ func (s *Service) LocalKMSConfigured() bool {
 }
 
 func defaultKeyID(tenant, bucket string) string {
+	if v := strings.TrimSpace(os.Getenv("STORAGE_KMS_DEFAULT_KEY")); v != "" {
+		return v
+	}
 	clean := func(in string) string {
 		in = strings.ToLower(strings.TrimSpace(in))
 		if in == "" || in == "default" {
@@ -315,7 +320,10 @@ func (s *Service) legacySSE() bool {
 	return err == nil && st.LegacySSEObjects
 }
 
-func (s *Service) ensureKMSKey(id, tenant, bucketKey string) (metadata.KMSKeyRecord, error) {
+func (s *Service) ensureKMSKey(id, tenant, bucketKey, provider string) (metadata.KMSKeyRecord, error) {
+	if provider == "" {
+		provider = kms.ProviderLocal
+	}
 	rec, err := s.Meta.GetKMSKey(id)
 	if err == nil {
 		if rec.Status == "destroyed" {
@@ -327,7 +335,7 @@ func (s *Service) ensureKMSKey(id, tenant, bucketKey string) (metadata.KMSKeyRec
 		return rec, err
 	}
 	rec = metadata.KMSKeyRecord{
-		ID: id, Provider: kms.ProviderLocal, Status: "active",
+		ID: id, Provider: provider, Status: "active",
 		Version: 1, Generation: 1, TenantID: tenant, BucketKey: bucketKey,
 	}
 	if err := s.Meta.PutKMSKey(rec); err != nil {
@@ -345,11 +353,15 @@ func (s *Service) SetBucketEncryption(rec metadata.BucketRecord, algo, keyID str
 	if algo != kms.SSEAlgorithmAES256 && algo != kms.SSEAlgorithmKMS {
 		return rec, metadata.ErrInvalidArgument
 	}
-	if s.Local == nil {
-		return rec, ErrSSEKeyMissing
-	}
 	if algo == kms.SSEAlgorithmKMS && rec.Visibility == "public-read" {
 		return rec, ErrPublicKMS
+	}
+	provider := kms.ProviderLocal
+	if algo == kms.SSEAlgorithmKMS && s.VaultKMS() != nil {
+		provider = kms.ProviderVault
+	}
+	if provider == kms.ProviderLocal && s.Local == nil {
+		return rec, ErrSSEKeyMissing
 	}
 	if strings.TrimSpace(keyID) == "" {
 		keyID = defaultKeyID(rec.TenantID, rec.Name)
@@ -357,13 +369,13 @@ func (s *Service) SetBucketEncryption(rec metadata.BucketRecord, algo, keyID str
 	if !keyAllowed(keyID) {
 		return rec, ErrKeyNotAllowed
 	}
-	key, err := s.ensureKMSKey(keyID, rec.TenantID, rec.EffectiveStorageKey())
+	key, err := s.ensureKMSKey(keyID, rec.TenantID, rec.EffectiveStorageKey(), provider)
 	if err != nil {
 		return rec, err
 	}
 	rec.DefaultEncryption = algo
 	rec.KMSMasterKeyID = key.ID
-	rec.EncryptionProvider = kms.ProviderLocal
+	rec.EncryptionProvider = provider
 	rec.KMSKeyStatus = key.Status
 	if err := s.Meta.UpdateBucket(rec); err != nil {
 		return rec, err
@@ -372,7 +384,7 @@ func (s *Service) SetBucketEncryption(rec metadata.BucketRecord, algo, keyID str
 		StorageKey: rec.EffectiveStorageKey(),
 		Algorithm:  algo,
 		KeyID:      key.ID,
-		Provider:   kms.ProviderLocal,
+		Provider:   provider,
 		Status:     key.Status,
 	})
 	return rec, err
@@ -409,11 +421,31 @@ func (s *Service) resolveAlgo(ctx context.Context, bucket metadata.BucketRecord)
 }
 
 func (s *Service) unwrapDEK(enc *metadata.ObjectEncryption) ([]byte, error) {
+	if enc.Provider == kms.ProviderVault {
+		v := s.VaultKMS()
+		if v == nil {
+			return nil, ErrKMSUnavailable
+		}
+		raw, err := base64.StdEncoding.DecodeString(enc.WrappedDEK)
+		if err != nil {
+			return nil, err
+		}
+		gen := int64(0)
+		ver := enc.KeyVersion
+		if ver < 1 {
+			ver = 1
+		}
+		if key, err := s.Meta.GetKMSKey(enc.KeyID); err == nil {
+			gen = key.Generation
+		}
+		dek, err := v.UnwrapDEK(context.Background(), enc.KeyID, ver, gen, raw)
+		if err != nil {
+			return nil, ErrKMSUnavailable
+		}
+		return dek, nil
+	}
 	if s.Local == nil {
 		return nil, ErrSSEKeyMissing
-	}
-	if enc.Provider == kms.ProviderVault {
-		return nil, ErrKMSUnavailable
 	}
 	raw, err := base64.StdEncoding.DecodeString(enc.WrappedDEK)
 	if err != nil {
@@ -470,7 +502,12 @@ func (s *Service) prepareObjectEncryption(ctx context.Context, bucket metadata.B
 	if algo == kms.SSEAlgorithmKMS && s.clusterUpgradeInProgress() {
 		return nil, nil, nil, ErrClusterUpgrade
 	}
-	if s.Local == nil {
+	provider := kms.ProviderLocal
+	vault := s.VaultKMS()
+	if algo == kms.SSEAlgorithmKMS && vault != nil {
+		provider = kms.ProviderVault
+	}
+	if provider == kms.ProviderLocal && s.Local == nil {
 		return nil, nil, nil, ErrSSEKeyMissing
 	}
 	if keyID == "" {
@@ -479,7 +516,7 @@ func (s *Service) prepareObjectEncryption(ctx context.Context, bucket metadata.B
 	if !keyAllowed(keyID) {
 		return nil, nil, nil, ErrKeyNotAllowed
 	}
-	key, err := s.ensureKMSKey(keyID, bucket.TenantID, bucket.EffectiveStorageKey())
+	key, err := s.ensureKMSKey(keyID, bucket.TenantID, bucket.EffectiveStorageKey(), provider)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -491,13 +528,21 @@ func (s *Service) prepareObjectEncryption(ctx context.Context, bucket metadata.B
 	if ver < 1 {
 		ver = 1
 	}
-	wrapped, ver, err := s.Local.WrapVersion(dek, ver)
-	if err != nil {
-		return nil, nil, nil, err
+	var wrapped []byte
+	if provider == kms.ProviderVault {
+		wrapped, ver, err = vault.Wrap(ctx, key.ID, dek)
+		if err != nil {
+			return nil, nil, nil, ErrKMSUnavailable
+		}
+	} else {
+		wrapped, ver, err = s.Local.WrapVersion(dek, ver)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 	}
 	meta := &metadata.ObjectEncryption{
 		FormatVersion: 1,
-		Provider:      kms.ProviderLocal,
+		Provider:      provider,
 		KeyID:         key.ID,
 		KeyVersion:    ver,
 		WrappedDEK:    base64.StdEncoding.EncodeToString(wrapped),
@@ -531,8 +576,23 @@ func (s *Service) openDecrypted(rc io.ReadCloser, rec metadata.ObjectRecord) (io
 		}
 	}
 	if enc.Provider == kms.ProviderVault {
-		rc.Close()
-		return nil, rec, ErrKMSUnavailable
+		dek, err := s.unwrapDEK(enc)
+		if err != nil {
+			rc.Close()
+			return nil, rec, err
+		}
+		plain, err := kms.DecryptReader(dek, rc)
+		if err != nil {
+			rc.Close()
+			return nil, rec, err
+		}
+		if enc.PlainSize > 0 {
+			rec.Size = enc.PlainSize
+		}
+		return struct {
+			io.Reader
+			io.Closer
+		}{Reader: plain, Closer: rc}, rec, nil
 	}
 	if enc.FormatVersion == 0 || enc.WrappedDEK == "" {
 		return s.openFormat0(rc, rec)

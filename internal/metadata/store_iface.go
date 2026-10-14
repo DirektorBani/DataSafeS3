@@ -271,10 +271,12 @@ type MetadataStore interface {
 	PutKMSState(st KMSState) error
 	PutKMSKey(rec KMSKeyRecord) error
 	GetKMSKey(id string) (KMSKeyRecord, error)
+	ListKMSKeys() ([]KMSKeyRecord, error)
 	PutBucketEncryption(storageKey string, enc BucketEncryption) error
 	GetBucketEncryption(storageKey string) (BucketEncryption, error)
 	DeleteBucketEncryption(storageKey string) error
 	UpsertNodeHeartbeat(nodeID, version string, at time.Time) error
+	UpdateNodeKMSStatus(nodeID string, st NodeKMSStatus) error
 	ListNodeHeartbeats(since time.Time) ([]NodeHeartbeat, error)
 	// LiveLeader is the unexpired HA lease in ha_leader_lock (1.5.0 E07).
 	// holder is holder_id. ok is false when the row is missing, expired, or

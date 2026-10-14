@@ -90,6 +90,7 @@ Environment variables and system settings: [User guide — Administrator setting
 | **Security self-assessment** | [operations-guide/en/security-self-assessment.md](operations-guide/en/security-self-assessment.md) | [operations-guide/ru/security-self-assessment.md](operations-guide/ru/security-self-assessment.md) |
 | **Field encryption (metadata)** | [operations-guide/en/field-encryption.md](operations-guide/en/field-encryption.md) | [operations-guide/ru/field-encryption.md](operations-guide/ru/field-encryption.md) |
 | **Vault secrets injection** | [operations-guide/en/secrets-vault.md](operations-guide/en/secrets-vault.md) | [operations-guide/ru/secrets-vault.md](operations-guide/ru/secrets-vault.md) |
+| **Vault Transit (object keys)** | [operations-guide/en/kms-vault.md](operations-guide/en/kms-vault.md) | [operations-guide/ru/kms-vault.md](operations-guide/ru/kms-vault.md) |
 | **Extension hooks (example)** | [../examples/extension-hook/README.md](../examples/extension-hook/README.md) | same |
 
 ---

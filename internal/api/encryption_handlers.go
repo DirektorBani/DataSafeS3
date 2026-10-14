@@ -34,7 +34,9 @@ func (s *Server) bucketEncryptionView(rec metadata.BucketRecord, canEdit bool) m
 		"key_status":            rec.KMSKeyStatus,
 		"visibility":            rec.Visibility,
 		"server_key_configured": s.svc.LocalKMSConfigured(),
-		"vault_configured":      false,
+		"vault_configured":      s.svc.VaultKMS() != nil,
+		"kms_available":         s.kmsHealthAvailable(),
+		"kms_probed":            s.kmsProbed(),
 		"allowlist":             allow,
 		"can_edit":              canEdit,
 		"default_key_id":        s3DefaultKey(rec),
@@ -43,7 +45,20 @@ func (s *Server) bucketEncryptionView(rec metadata.BucketRecord, canEdit bool) m
 	}
 }
 
+func (s *Server) kmsHealthAvailable() bool {
+	_, ok := s.kmsHealth()
+	return ok
+}
+
+func (s *Server) kmsProbed() bool {
+	p := s.svc.VaultKMS()
+	return p != nil && p.Probed()
+}
+
 func s3DefaultKey(rec metadata.BucketRecord) string {
+	if v := strings.TrimSpace(os.Getenv("STORAGE_KMS_DEFAULT_KEY")); v != "" {
+		return v
+	}
 	tenant := rec.TenantID
 	if tenant == "" {
 		tenant = "default"
@@ -110,14 +125,18 @@ func (s *Server) handlePutBucketEncryption(w http.ResponseWriter, r *http.Reques
 	if !s.requireBucketAdminFactor(w, r, "encryption_enable", rec.Name) {
 		return
 	}
+	algo := "AES256"
 	if strings.EqualFold(req.Provider, "vault") || strings.EqualFold(req.Provider, "vault-transit") {
-		writeJSON(w, http.StatusConflict, map[string]any{
-			"error":   "vault_not_configured",
-			"message": "Сначала подключите Vault в Настройки → Vault (KMS)",
-		})
-		return
+		if s.svc.VaultKMS() == nil {
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error":   "vault_not_configured",
+				"message": "Сначала подключите Vault в Настройки → Vault (KMS)",
+			})
+			return
+		}
+		algo = "aws:kms"
 	}
-	updated, err := s.svc.SetBucketEncryption(rec, "AES256", req.KeyID)
+	updated, err := s.svc.SetBucketEncryption(rec, algo, req.KeyID)
 	if err != nil {
 		writeEncryptionErr(w, err)
 		return
@@ -182,7 +201,10 @@ func (s *Server) writeClusterHeartbeat() {
 }
 
 func (s *Server) runKMSHeartbeat(ctx context.Context) {
-	beat := func() { s.writeClusterHeartbeat() }
+	beat := func() {
+		s.writeClusterHeartbeat()
+		s.refreshVaultFromMeta()
+	}
 	beat()
 	tick := time.NewTicker(30 * time.Second)
 	defer tick.Stop()
@@ -209,6 +231,11 @@ func writeEncryptionErr(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "cluster_upgrade", "message": s3.MsgClusterUpgrade})
 	case errors.Is(err, s3.ErrKeyNotAllowed):
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "key_not_allowed", "message": err.Error()})
+	case errors.Is(err, s3.ErrKMSUnavailable):
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error":   "KMS unavailable",
+			"message": s3.MsgKMSDown,
+		})
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 	}

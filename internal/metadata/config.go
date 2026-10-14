@@ -62,6 +62,22 @@ type SystemConfig struct {
 	// KafkaBrokers is the last STORAGE_KAFKA_BROKERS value this process recorded.
 	// It is compared at startup so a broker-list change is written to Activity.
 	KafkaBrokers string `json:"kafka_brokers,omitempty"`
+	// KMS is the console-saved Vault Transit config. Secrets are field-encrypted.
+	// Per-node environment variables override these values and are not written here.
+	KMS VaultKMSConfig `json:"kms,omitempty"`
+}
+
+// VaultKMSConfig is the shared Vault Transit connection. SecretID and Token are secrets.
+type VaultKMSConfig struct {
+	Provider     string `json:"provider,omitempty"`
+	Addr         string `json:"addr,omitempty"`
+	Namespace    string `json:"namespace,omitempty"`
+	TransitMount string `json:"transit_mount,omitempty"`
+	CACert       string `json:"ca_cert,omitempty"`
+	Auth         string `json:"auth,omitempty"`
+	RoleID       string `json:"role_id,omitempty"`
+	SecretID     string `json:"secret_id,omitempty"`
+	Token        string `json:"token,omitempty"`
 }
 
 type TrashRecord struct {

@@ -2,7 +2,14 @@
 // Vault Transit is a later provider behind the same interface.
 package kms
 
-import "context"
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+// ErrUnavailable means the key store could not wrap or unwrap a DEK.
+var ErrUnavailable = errors.New("KMS unavailable")
 
 // Provider wraps and unwraps data keys. Implementations must not log key bytes.
 type Provider interface {
@@ -13,4 +20,20 @@ type Provider interface {
 	Rotate(ctx context.Context, keyID string) (version int, err error)
 	Destroy(ctx context.Context, keyID string) error
 	Health(ctx context.Context) error
+}
+
+// DEKSource is a Provider that caches unwrapped DEKs. The cache key includes
+// key id, key version, and the kms_keys generation so a poll can drop them.
+type DEKSource interface {
+	Provider
+	UnwrapDEK(ctx context.Context, keyID string, version int, generation int64, wrapped []byte) ([]byte, error)
+	Test(ctx context.Context) error
+	Available() bool
+	Probed() bool
+	LastError() string
+	// Mark records a health transition. The returned action is "", "kms_unavailable", or "kms_recovered".
+	Mark(up bool, code string) string
+	NoteGenerations(gens map[string]int64)
+	Timeout() time.Duration
+	PollInterval() time.Duration
 }

@@ -4,6 +4,10 @@ All notable changes to DataSafeS3 are documented in this file.
 
 ## [1.6.0]
 
+### Added
+
+- **Vault Transit for SSE-KMS (opt-in).** The HTTP client starts only when `STORAGE_KMS_PROVIDER=vault-transit` and an address are set (environment or **Settings → Vault (KMS)**). Empty values open no connection, start no poller, and do not register KMS metrics. There is no Vault SDK. SSE-S3 and plaintext buckets do not call Vault. Until Vault is configured, `aws:kms` still wraps with the local server key. A cache miss while Vault is down fails the SSE-KMS read or write with HTTP 503 `KMS unavailable` and does not store a partial object. A cached data key still decrypts until `STORAGE_KMS_DEK_CACHE_TTL` (default 5m). Nodes drop cache entries when `kms_keys.generation` changes (`STORAGE_KMS_POLL_INTERVAL`, default 2s). Secrets stay in field-encrypted metadata or in per-node env files and are not returned by the settings API, `/healthz`, or Activity. The console page tests the connection, masks a saved secret, and lists each node's Vault status. A share of an SSE-KMS object while Vault is down returns `Файл временно недоступен, попробуйте позже`. Alert `DataSafeKMSUnavailable` fires when `datasafe_kms_available` stays 0 for 1 minute; that series exists only while Vault is enabled. Postgres migration `026`. Guides: [EN](docs/operations-guide/en/kms-vault.md) · [RU](docs/operations-guide/ru/kms-vault.md).
+
 ### Fixed
 
 - **Plaintext objects survive adding `STORAGE_SSE_MASTER_KEY`.** 1.6.0 no longer marks every existing object as SSE-S3 format 0 just because a master key is set and the bucket is not empty. Unmarked objects are returned as stored. A format-0 reading of those bytes is opt-in (`STORAGE_SSE_LEGACY_FORMAT0=true`). A legacy flag written by the first 1.6.0 builds, which inferred it from the object count, is cleared on the next start unless that variable is set. The key fingerprint is unchanged: a different key still refuses to start.

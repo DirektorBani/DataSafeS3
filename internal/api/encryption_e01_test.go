@@ -34,6 +34,8 @@ func newKeyedServer(t *testing.T, dir, key string) *api.Server {
 	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
 	t.Setenv("STORAGE_KAFKA_BROKERS", "")
 	t.Setenv("STORAGE_NATS_URL", "")
+	t.Setenv("STORAGE_KMS_PROVIDER", "")
+	t.Setenv("STORAGE_KMS_VAULT_ADDR", "")
 	s, err := api.NewServer(api.Config{
 		DataDir:       dir,
 		AdminUser:     "admin",
@@ -546,6 +548,8 @@ func TestE01PlaintextUpgradeFrom15Postgres(t *testing.T) {
 	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
 	t.Setenv("STORAGE_KAFKA_BROKERS", "")
 	t.Setenv("STORAGE_NATS_URL", "")
+	t.Setenv("STORAGE_KMS_PROVIDER", "")
+	t.Setenv("STORAGE_KMS_VAULT_ADDR", "")
 	s := start()
 	assertUpgradePlaintext(t, s, "pgup", "old.txt", "pg-plain")
 	_ = s.Close()
@@ -777,6 +781,8 @@ func TestE01Live15LeaderLeaseBlocksEncryption(t *testing.T) {
 	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
 	t.Setenv("STORAGE_KAFKA_BROKERS", "")
 	t.Setenv("STORAGE_NATS_URL", "")
+	t.Setenv("STORAGE_KMS_PROVIDER", "")
+	t.Setenv("STORAGE_KMS_VAULT_ADDR", "")
 	s, err := api.NewServer(api.Config{
 		DataDir: dir, AdminUser: "admin", AdminPassword: "admin", JWTSecret: "test",
 		SSEMasterKey: "lease-key",
@@ -858,6 +864,8 @@ func TestE01FollowerLeaseAttemptDoesNotBlock(t *testing.T) {
 	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
 	t.Setenv("STORAGE_KAFKA_BROKERS", "")
 	t.Setenv("STORAGE_NATS_URL", "")
+	t.Setenv("STORAGE_KMS_PROVIDER", "")
+	t.Setenv("STORAGE_KMS_VAULT_ADDR", "")
 	s, err := api.NewServer(api.Config{
 		DataDir: dir, AdminUser: "admin", AdminPassword: "admin", JWTSecret: "test",
 		SSEMasterKey: "lease-key",

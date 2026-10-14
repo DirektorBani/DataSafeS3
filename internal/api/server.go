@@ -71,6 +71,11 @@ type Server struct {
 	activityRetentionDays int
 	gatewaySyncMu         sync.Mutex
 	gatewaySyncing        map[string]struct{}
+	vaultStop             chan struct{}
+	vaultOnce             sync.Once
+	vaultStopOnce         sync.Once
+	vaultMu               sync.Mutex
+	vaultFP               string
 }
 
 var corsAllowedOrigins []string
@@ -248,6 +253,7 @@ func NewServer(cfg Config) (*Server, error) {
 }
 
 func (s *Server) Close() error {
+	s.stopVaultLoop()
 	// Drop the process-wide gauges before the pool is closed. The next
 	// server in this process installs its own callback.
 	observability.SetExtendedStats(nil)
@@ -304,6 +310,9 @@ func (s *Server) StartBackground(ctx context.Context) {
 		go s.runEventSinkRefresh(ctx)
 		go s.eventDisp.Run(ctx)
 	}
+	// Vault stays off unless provider and address are set. This read does not
+	// start a goroutine when they are empty.
+	s.refreshVaultFromMeta()
 }
 
 // runEventSinkRefresh reloads webhook and bucket-notification sinks from the
@@ -630,6 +639,10 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /api/v1/settings/buckets", adminOnly(s.handleListBucketSettings))
 	mux.HandleFunc("PUT /api/v1/settings/buckets/{name}", adminOnly(s.handleUpdateBucketSettings))
 
+	mux.HandleFunc("GET /api/v1/kms/settings", adminOnly(s.handleGetKMSSettings))
+	mux.HandleFunc("PUT /api/v1/kms/settings", adminOnly(s.handlePutKMSSettings))
+	mux.HandleFunc("POST /api/v1/kms/test", adminOnly(s.handleTestKMS))
+	mux.HandleFunc("GET /api/v1/kms/nodes", adminOnly(s.handleGetKMSNodes))
 	mux.HandleFunc("GET /api/v1/settings/system", adminOnly(s.handleGetSystemConfig))
 	mux.HandleFunc("PUT /api/v1/settings/system", adminOnly(s.handlePutSystemConfig))
 
@@ -1015,11 +1028,7 @@ func (s *Server) handleUploadObjectJSON(w http.ResponseWriter, r *http.Request) 
 		return s.outboxRecords(metadata.EventObjectCreated, bucket, key, obj.VersionID, "", objectEventFields(bucket, key, obj, nil))
 	})
 	if err != nil {
-		if err == metadata.ErrQuotaExceeded {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "quota exceeded"})
-			return
-		}
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		writeObjectStoreErr(w, err)
 		return
 	}
 	uploadDelta := rec.Size - prevSize

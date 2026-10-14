@@ -41,6 +41,8 @@ func freshTestServer(t *testing.T) *api.Server {
 	}
 	t.Setenv("STORAGE_KAFKA_BROKERS", "")
 	t.Setenv("STORAGE_NATS_URL", "")
+	t.Setenv("STORAGE_KMS_PROVIDER", "")
+	t.Setenv("STORAGE_KMS_VAULT_ADDR", "")
 	dir := t.TempDir()
 	s, err := api.NewServer(api.Config{
 		DataDir:       dir,

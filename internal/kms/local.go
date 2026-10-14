@@ -19,7 +19,7 @@ const (
 	SSEAlgorithmKMS = "aws:kms"
 	// ProviderLocal is the on-box KEK from STORAGE_SSE_MASTER_KEY.
 	ProviderLocal = "local"
-	// ProviderVault is reserved for E02.
+	// ProviderVault is HashiCorp Vault Transit. It is constructed only when configured.
 	ProviderVault = "vault-transit"
 
 	kekSalt = "datasafe-sse-kek"

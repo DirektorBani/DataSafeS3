@@ -12,7 +12,9 @@ export function SettingsLayout() {
       ? "security"
       : pathname.includes("/events")
         ? "events"
-        : "buckets";
+        : pathname.includes("/kms")
+          ? "kms"
+          : "buckets";
 
   return (
     <div className="space-y-4">
@@ -25,6 +27,8 @@ export function SettingsLayout() {
             navigate("/admin/settings/security");
           } else if (value === "events") {
             navigate("/admin/settings/events");
+          } else if (value === "kms") {
+            navigate("/admin/settings/kms");
           } else {
             navigate("/admin/settings/buckets");
           }
@@ -35,6 +39,9 @@ export function SettingsLayout() {
           <TabsTrigger value="system">{t("tabs.system")}</TabsTrigger>
           <TabsTrigger value="security">{t("tabs.security")}</TabsTrigger>
           <TabsTrigger value="events">{t("tabs.events")}</TabsTrigger>
+          <TabsTrigger value="kms" data-testid="settings-tab-kms">
+            {t("tabs.kms")}
+          </TabsTrigger>
         </TabsList>
       </Tabs>
       <Outlet />

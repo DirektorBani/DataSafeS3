@@ -332,6 +332,8 @@ HTTP 409 `cluster_upgrade` (`cluster upgrade in progress`) гарантиров�
 
 Если `STORAGE_SSE_MASTER_KEY` уже был записан, а следующий запуск очищает переменную, процесс отказывается стартовать. Текст ошибки говорит, что ключ отсутствует, и что нужно задать `STORAGE_SSE_MASTER_KEY` равным исходному ключу. Другое значение по-прежнему даёт `SSE master key fingerprint mismatch`.
 
+Vault Transit выключен, пока одновременно не заданы `STORAGE_KMS_PROVIDER=vault-transit` и адрес — в окружении или в Настройки → Vault (KMS). Пока оба пусты, процесс соединение с Vault не открывает. SSE-S3 остаётся на ключе сервера и в Vault не ходит. См. [kms-vault.md](kms-vault.md).
+
 ## Чеклист
 
 - [ ] Backup метаданных и объектов
@@ -345,3 +347,4 @@ HTTP 409 `cluster_upgrade` (`cluster upgrade in progress`) гарантиров�
 - [ ] v1.4.1: `STORAGE_DEV` выключен, если вы не включали его явно; в установщике или `.env` есть `STORAGE_METRICS_TOKEN`; скрейп Prometheus работает
 - [ ] v1.5.0: `docker compose pull` образов server и console `v1.5.0` (не собирайте их); удалите старые `.env.erasure` / `.env.site-a`, если лаборатории должны взять новые порты; оставьте `STORAGE_KAFKA_BROKERS` пустым, если внешняя лента не нужна
 - [ ] v1.6.0: обновите каждый узел до включения шифрования. 409 покрывает только лидера 1.5.0 или узел из реестра. Лидер 1.5.0 сам принимает `PutBucketEncryption`. На Postgres или HA отметьте в консоли «Все узлы обновлены до 1.6.0». У S3 `PutBucketEncryption` отметки нет.
+- [ ] v1.6.0: не задавайте Vault, если он не нужен. Клиент стартует только когда заданы и `STORAGE_KMS_PROVIDER=vault-transit`, и адрес. SSE-S3 в Vault не ходит. См. [kms-vault.md](kms-vault.md).

@@ -18,6 +18,7 @@ import { BucketSettingsPage } from "@/pages/settings-buckets";
 import { AdministratorSettingsPage } from "@/pages/settings-system";
 import { SecuritySettingsPage } from "@/pages/settings-security";
 import { EventDeliveryPage } from "@/pages/settings-events";
+import { KMSSettingsPage } from "@/pages/settings-kms";
 import { ProfilePage } from "@/pages/profile";
 import { GatewayPage } from "@/pages/gateway";
 import { FederationPage } from "@/pages/federation";
@@ -218,6 +219,7 @@ export function App() {
           <Route path="system" element={<AdministratorSettingsPage />} />
           <Route path="security" element={<SecuritySettingsPage />} />
           <Route path="events" element={<EventDeliveryPage />} />
+          <Route path="kms" element={<KMSSettingsPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

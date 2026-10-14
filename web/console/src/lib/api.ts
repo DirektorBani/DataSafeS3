@@ -135,11 +135,49 @@ export type BucketEncryption = {
   visibility: string;
   server_key_configured: boolean;
   vault_configured: boolean;
+  kms_available?: boolean;
+  kms_probed?: boolean;
   allowlist: string;
   can_edit: boolean;
   default_key_id: string;
   metadata_backend?: string;
   ha_enabled?: boolean;
+};
+
+export type KMSSettings = {
+  status: "unconfigured" | "checking" | "connected" | "error" | string;
+  provider?: string;
+  addr?: string;
+  namespace?: string;
+  transit_mount?: string;
+  ca_cert?: string;
+  auth?: "approle" | "token" | string;
+  role_id?: string;
+  secret_id_set?: boolean;
+  token_set?: boolean;
+  env_locked?: {
+    provider?: boolean;
+    addr?: boolean;
+    namespace?: boolean;
+    mount?: boolean;
+    ca_cert?: boolean;
+    role_id?: boolean;
+    secret?: boolean;
+    token?: boolean;
+  };
+  allowlist?: string;
+  error?: string;
+  message?: string;
+  kms_available?: boolean;
+};
+
+export type KMSNodeStatus = {
+  node_id: string;
+  version?: string;
+  provider?: string;
+  available?: boolean | null;
+  error?: string;
+  checked_at?: string;
 };
 
 export type BucketSettings = {
@@ -1202,7 +1240,14 @@ export const api = {
           }
           return;
         }
-        reject(new ApiError(xhr.responseText || "Upload failed", xhr.status));
+        let message = xhr.responseText || "Upload failed";
+        try {
+          const json = JSON.parse(xhr.responseText) as { message?: string; error?: string };
+          message = json.message || json.error || message;
+        } catch {
+          /* raw body */
+        }
+        reject(new ApiError(message, xhr.status));
       };
       xhr.onerror = () => reject(new ApiError("Upload failed", 0));
       xhr.send(file);
@@ -1671,6 +1716,38 @@ export const api = {
       { method: "POST" },
     ),
   getSecurityStatus: () => fetchJSON<SecurityStatus>("/settings/security-status"),
+  getKMSSettings: () => fetchJSON<KMSSettings>("/kms/settings"),
+  putKMSSettings: (body: {
+    addr?: string;
+    namespace?: string;
+    transit_mount?: string;
+    ca_cert?: string;
+    auth?: string;
+    role_id?: string;
+    secret_id?: string;
+    token?: string;
+  }) =>
+    fetchJSON<KMSSettings>("/kms/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  testKMS: (body: {
+    addr?: string;
+    namespace?: string;
+    transit_mount?: string;
+    ca_cert?: string;
+    auth?: string;
+    role_id?: string;
+    secret_id?: string;
+    token?: string;
+  }) =>
+    fetchJSON<{ ok: boolean; error?: string; message?: string }>("/kms/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  getKMSNodes: () => fetchJSON<{ nodes: KMSNodeStatus[] }>("/kms/nodes"),
   getGlobalSharing: () => fetchJSON<SharingView>("/settings/sharing"),
   putGlobalSharing: (body: SharingPolicy) =>
     fetchJSON<SharingView>("/settings/sharing", { method: "PUT", body: JSON.stringify(body) }),

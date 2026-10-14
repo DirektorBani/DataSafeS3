@@ -3,7 +3,8 @@
     "buckets": "Bucket settings",
     "system": "Administrator settings",
     "security": "Security posture",
-    "events": "Ereigniszustellung"
+    "events": "Ereigniszustellung",
+    "kms": "Vault (KMS)"
   },
   "buckets": {
     "confirmDiscard": "Discard unsaved changes?",

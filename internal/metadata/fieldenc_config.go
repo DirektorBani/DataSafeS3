@@ -26,6 +26,12 @@ func EncryptSystemConfigPaths(svc FieldEncrypter, cfg SystemConfig) (SystemConfi
 	if cfg.ExternalS3.SecretAccessKey, err = rewrap(svc, fieldenc.PathExternalS3Secret, cfg.ExternalS3.SecretAccessKey); err != nil {
 		return cfg, err
 	}
+	if cfg.KMS.SecretID, err = rewrap(svc, fieldenc.PathKMSVaultSecretID, cfg.KMS.SecretID); err != nil {
+		return cfg, err
+	}
+	if cfg.KMS.Token, err = rewrap(svc, fieldenc.PathKMSVaultToken, cfg.KMS.Token); err != nil {
+		return cfg, err
+	}
 	cfg.Logging, err = encryptLoggingConfig(svc, cfg.Logging)
 	return cfg, err
 }
@@ -43,6 +49,12 @@ func DecryptSystemConfigPaths(svc FieldEncrypter, cfg SystemConfig) (SystemConfi
 		return cfg, err
 	}
 	if cfg.ExternalS3.SecretAccessKey, err = svc.Decrypt(fieldenc.PathExternalS3Secret, cfg.ExternalS3.SecretAccessKey); err != nil {
+		return cfg, err
+	}
+	if cfg.KMS.SecretID, err = svc.Decrypt(fieldenc.PathKMSVaultSecretID, cfg.KMS.SecretID); err != nil {
+		return cfg, err
+	}
+	if cfg.KMS.Token, err = svc.Decrypt(fieldenc.PathKMSVaultToken, cfg.KMS.Token); err != nil {
 		return cfg, err
 	}
 	cfg.Logging, err = decryptLoggingConfig(svc, cfg.Logging)

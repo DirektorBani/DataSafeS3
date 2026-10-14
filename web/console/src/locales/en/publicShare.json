@@ -6,7 +6,8 @@
     "generic": "Could not open share link",
     "blocked": "File sharing for this bucket is disabled by an administrator",
     "passwordRequired": "This link is protected by a password",
-    "invalidPassword": "Wrong password"
+    "invalidPassword": "Wrong password",
+    "unavailable": "This file is temporarily unavailable. Try again later."
   },
   "brand": "DataSafeS3",
   "title": {
@@ -20,6 +21,7 @@
     "notFound": "Check the address or contact the sender.",
     "generic": "Try again later or contact the sender.",
     "blocked": "Ask the bucket administrator to turn sharing back on.",
+    "unavailable": "The key service is not answering. Unencrypted files are unaffected.",
     "password": "Enter the password to download the file."
   },
   "fields": {

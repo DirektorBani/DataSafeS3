@@ -60,6 +60,25 @@ func (s *Store) PutKMSKey(rec metadata.KMSKeyRecord) error {
 	return err
 }
 
+func (s *Store) ListKMSKeys() ([]metadata.KMSKeyRecord, error) {
+	rows, err := s.pool.Query(context.Background(), `
+		SELECT id, provider, status, key_version, generation, COALESCE(tenant_id,''), COALESCE(bucket_key,''), updated_at
+		FROM kms_keys`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []metadata.KMSKeyRecord
+	for rows.Next() {
+		var rec metadata.KMSKeyRecord
+		if err := rows.Scan(&rec.ID, &rec.Provider, &rec.Status, &rec.Version, &rec.Generation, &rec.TenantID, &rec.BucketKey, &rec.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) GetKMSKey(id string) (metadata.KMSKeyRecord, error) {
 	var rec metadata.KMSKeyRecord
 	err := s.pool.QueryRow(context.Background(), `
@@ -129,12 +148,27 @@ func (s *Store) UpsertNodeHeartbeat(nodeID, version string, at time.Time) error 
 	return err
 }
 
+func (s *Store) UpdateNodeKMSStatus(nodeID string, st metadata.NodeKMSStatus) error {
+	_, err := s.pool.Exec(context.Background(), `
+		INSERT INTO cluster_node_heartbeats (node_id, version, seen_at, kms_provider, kms_available, kms_error, kms_checked_at)
+		VALUES ($1, '', NOW(), $2, $3, $4, $5)
+		ON CONFLICT (node_id) DO UPDATE SET
+			kms_provider = EXCLUDED.kms_provider,
+			kms_available = EXCLUDED.kms_available,
+			kms_error = EXCLUDED.kms_error,
+			kms_checked_at = EXCLUDED.kms_checked_at`,
+		nodeID, st.Provider, st.Available, st.Error, st.CheckedAt.UTC())
+	return err
+}
+
 func (s *Store) ListNodeHeartbeats(since time.Time) ([]metadata.NodeHeartbeat, error) {
 	if since.IsZero() {
 		since = time.Unix(0, 0).UTC()
 	}
 	rows, err := s.pool.Query(context.Background(), `
-		SELECT node_id, version, seen_at FROM cluster_node_heartbeats
+		SELECT node_id, version, seen_at,
+			COALESCE(kms_provider, ''), kms_available, COALESCE(kms_error, ''), kms_checked_at
+		FROM cluster_node_heartbeats
 		WHERE seen_at >= $1`, since)
 	if err != nil {
 		return nil, err
@@ -143,8 +177,12 @@ func (s *Store) ListNodeHeartbeats(since time.Time) ([]metadata.NodeHeartbeat, e
 	var out []metadata.NodeHeartbeat
 	for rows.Next() {
 		var rec metadata.NodeHeartbeat
-		if err := rows.Scan(&rec.NodeID, &rec.Version, &rec.SeenAt); err != nil {
+		var checked *time.Time
+		if err := rows.Scan(&rec.NodeID, &rec.Version, &rec.SeenAt, &rec.KMSProvider, &rec.KMSAvailable, &rec.KMSError, &checked); err != nil {
 			return nil, err
+		}
+		if checked != nil {
+			rec.KMSCheckedAt = checked.UTC()
 		}
 		out = append(out, rec)
 	}

@@ -45,6 +45,7 @@
 | `DataSafeEventSinkDegraded` | У любого получателя `datasafe_events_sink_degraded` равен 1 в течение 5 минут |
 | `DataSafeEventDeadIncreasing` | `datasafe_events_dead_total` вырос за последние 10 минут |
 | `DataSafeEventDroppedIncreasing` | `datasafe_events_dropped_total{reason="pending_cap"}` вырос за последние 10 минут |
+| `DataSafeKMSUnavailable` | `datasafe_kms_available` равен 0 дольше 1 минуты. Ряд публикуется только пока включён Vault Transit |
 
 В журнале Activity строка `events_sink_degraded` пишется при первой настоящей ошибке получателя, а `events_sink_recovered` — когда соединение снова удалось. Повторы той же ошибки новых строк не добавляют. Фраза `waiting for first successful connection` — причина статуса до первой проверки; в Activity она не попадает. `events_outbox_dropped` — переполнение очереди. Эти действия есть в фильтре Activity в консоли. `POST /api/v1/events/test` только ставит проверочное событие в очередь.
 

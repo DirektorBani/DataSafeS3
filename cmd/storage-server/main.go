@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -49,6 +50,9 @@ func main() {
 
 	metaCfg := metadata.ConfigFromEnv(dataDir)
 	logger.Info("metadata backend", "backend", metaCfg.Backend)
+	if strings.TrimSpace(os.Getenv("STORAGE_KMS_PROVIDER")) == "vault-transit" {
+		logger.Info("kms", "provider", "vault-transit", "address_set", strings.TrimSpace(os.Getenv("STORAGE_KMS_VAULT_ADDR")) != "")
+	}
 
 	srv, err := api.NewServer(api.Config{
 		DataDir:         dataDir,

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
@@ -31,6 +32,7 @@ type Service struct {
 	OwnerKey string
 	SSE      *storage.SSECipher
 	Local    *kms.Local
+	vault    atomic.Value // vaultSlot
 	// FederationPeers lists registered peer clusters for cross-node GetObject.
 	FederationPeers func() ([]metadata.FederationCluster, error)
 	// OnObjectEvent is called after successful put/delete/copy (event: put|delete|copy).
@@ -49,14 +51,37 @@ type Service struct {
 	putStripes [64]sync.Mutex
 }
 
+type vaultSlot struct {
+	src kms.DEKSource
+}
+
 func NewService(backend storage.ObjectBackend, meta metadata.MetadataStore, signer *auth.Signer, region, ownerKey string) *Service {
-	return &Service{
+	s := &Service{
 		Backend:  backend,
 		Meta:     meta,
 		Signer:   signer,
 		Region:   region,
 		OwnerKey: ownerKey,
 	}
+	s.vault.Store(vaultSlot{})
+	return s
+}
+
+// SetVaultKMS installs or clears the Transit provider. Nil keeps SSE-KMS on the local key.
+func (s *Service) SetVaultKMS(src kms.DEKSource) {
+	if s == nil {
+		return
+	}
+	s.vault.Store(vaultSlot{src: src})
+}
+
+// VaultKMS is the Transit provider, or nil when Vault is not enabled.
+func (s *Service) VaultKMS() kms.DEKSource {
+	if s == nil {
+		return nil
+	}
+	v, _ := s.vault.Load().(vaultSlot)
+	return v.src
 }
 
 // SetSSE enables SSE-S3 encryption for object payloads.

@@ -36,10 +36,23 @@ type BucketEncryption struct {
 }
 
 // NodeHeartbeat is one storage-server version seen by the cluster.
+// KMS fields are set only while Vault Transit is enabled on that node.
 type NodeHeartbeat struct {
-	NodeID  string    `json:"node_id"`
-	Version string    `json:"version"`
-	SeenAt  time.Time `json:"seen_at"`
+	NodeID       string    `json:"node_id"`
+	Version      string    `json:"version"`
+	SeenAt       time.Time `json:"seen_at"`
+	KMSProvider  string    `json:"kms_provider,omitempty"`
+	KMSAvailable *bool     `json:"kms_available,omitempty"`
+	KMSError     string    `json:"kms_error,omitempty"`
+	KMSCheckedAt time.Time `json:"kms_checked_at,omitempty"`
+}
+
+// NodeKMSStatus is the last Vault check from one node.
+type NodeKMSStatus struct {
+	Provider  string
+	Available bool
+	Error     string
+	CheckedAt time.Time
 }
 
 func (s *Store) kmsBucket(tx *bolt.Tx, name string) (*bolt.Bucket, error) {
@@ -123,6 +136,25 @@ func (s *Store) PutKMSKey(rec KMSKeyRecord) error {
 	})
 }
 
+func (s *Store) ListKMSKeys() ([]KMSKeyRecord, error) {
+	var out []KMSKeyRecord
+	err := s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("kms_keys"))
+		if b == nil {
+			return nil
+		}
+		return b.ForEach(func(_, v []byte) error {
+			var rec KMSKeyRecord
+			if err := json.Unmarshal(v, &rec); err != nil {
+				return err
+			}
+			out = append(out, rec)
+			return nil
+		})
+	})
+	return out, err
+}
+
 func (s *Store) GetKMSKey(id string) (KMSKeyRecord, error) {
 	var rec KMSKeyRecord
 	err := s.db.View(func(tx *bolt.Tx) error {
@@ -175,12 +207,45 @@ func (s *Store) LiveLeader() (string, bool, error) {
 }
 
 func (s *Store) UpsertNodeHeartbeat(nodeID, version string, at time.Time) error {
-	rec := NodeHeartbeat{NodeID: nodeID, Version: version, SeenAt: at.UTC()}
 	return s.db.Update(func(tx *bolt.Tx) error {
 		b, err := s.kmsBucket(tx, "cluster_node_heartbeats")
 		if err != nil {
 			return err
 		}
+		rec := NodeHeartbeat{NodeID: nodeID, Version: version, SeenAt: at.UTC()}
+		if cur := b.Get([]byte(nodeID)); cur != nil {
+			var prev NodeHeartbeat
+			if json.Unmarshal(cur, &prev) == nil {
+				rec.KMSProvider = prev.KMSProvider
+				rec.KMSAvailable = prev.KMSAvailable
+				rec.KMSError = prev.KMSError
+				rec.KMSCheckedAt = prev.KMSCheckedAt
+			}
+		}
+		data, err := json.Marshal(rec)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(nodeID), data)
+	})
+}
+
+func (s *Store) UpdateNodeKMSStatus(nodeID string, st NodeKMSStatus) error {
+	avail := st.Available
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b, err := s.kmsBucket(tx, "cluster_node_heartbeats")
+		if err != nil {
+			return err
+		}
+		rec := NodeHeartbeat{NodeID: nodeID, SeenAt: time.Now().UTC()}
+		if cur := b.Get([]byte(nodeID)); cur != nil {
+			_ = json.Unmarshal(cur, &rec)
+		}
+		rec.NodeID = nodeID
+		rec.KMSProvider = st.Provider
+		rec.KMSAvailable = &avail
+		rec.KMSError = st.Error
+		rec.KMSCheckedAt = st.CheckedAt.UTC()
 		data, err := json.Marshal(rec)
 		if err != nil {
 			return err
