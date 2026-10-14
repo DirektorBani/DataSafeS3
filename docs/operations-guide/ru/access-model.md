@@ -28,6 +28,7 @@ STS `AssumeRole` отклоняет непустой `RoleArn`. Сессия н�
 - `DELETE /api/v1/shares/{id}`
 - presign, потому что он создаёт временный ключ доступа
 - `PUT /api/v1/settings/mfa-policy`, `POST /api/v1/auth/step-up`, `POST /api/v1/users/{id}/mfa/reset` и `POST /api/v1/keys`
+- `GET/PUT/DELETE /api/v1/buckets/{bucket}/encryption`
 
 `GET /api/v1/public/share/{token}` и скачивание по ссылке на follower разрешены. Первый отказ после истечения ссылки или после исчерпания `max_downloads` порождает `ShareExpired` или `ShareLimitReached` ровно один раз (одна строка Activity `share.expired` или `share.limit_reached` и одна строка outbox). Следующие отказы той же ссылки событие не создают. `ShareBlocked` пишется на каждую попытку скачивания, пока обмен выключен. Follower кладёт эту строку в outbox, даже если локально sink webhook ещё не зарегистрирован; доставляет её лидер.
 
@@ -35,7 +36,7 @@ STS `AssumeRole` отклоняет непустой `RoleArn`. Сессия н�
 
 `PUT /api/v1/settings/mfa-policy` (только глобальный администратор) пишет политику в `SystemConfig.MFA`. Каждый узел читает её на следующем запросе. `require_admin_mfa` остаётся и совпадает с `apply_to_global_admins`.
 
-Кого касается при `require_bucket_admin_mfa`: пользователь с грантом `admin` хотя бы на одном бакете, включая владельца; администраторы тенантов, если включён `apply_to_tenant_admins`; глобальные администраторы, если включён `apply_to_global_admins`. Достаточно TOTP или ключа безопасности. Вход OIDC засчитывается как 2FA, если `amr` ID-токена содержит `mfa`, `otp`, `hwk`, `swk`, `fpt` (или значение из `oidc_accepted_amr`), либо `acr` есть в `oidc_accepted_acr`. Для LDAP — только локальный фактор. Фактор IdP не подтверждает опасное действие: для этого нужен код TOTP или ключ безопасности DataSafe.
+Кого касается при `require_bucket_admin_mfa`: пользователь с грантом `admin` хотя бы на одном бакете, включая владельца; администраторы тенантов, если включён `apply_to_tenant_admins`; глобальные администраторы, если включён `apply_to_global_admins`. Глобальный администратор, который владеет бакетом или имеет грант `admin`, попадает под правило администратора бакета даже когда `apply_to_global_admins` выключен. Сброс 2FA другого пользователя — опасное действие: без своего фактора такой администратор его не выполнит. Достаточно TOTP или ключа безопасности. Вход OIDC засчитывается как 2FA, если `amr` ID-токена содержит `mfa`, `otp`, `hwk`, `swk`, `fpt` (или значение из `oidc_accepted_amr`), либо `acr` есть в `oidc_accepted_acr`. Для LDAP — только локальный фактор. Фактор IdP не подтверждает опасное действие: для этого нужен код TOTP или ключ безопасности DataSafe.
 
 Льготный период (`grace_period_days`, 0–90, по умолчанию 7) считается от включения политики или от получения прав администратора бакета — что позже. В этот срок консоль показывает баннер, а действия ниже разрешены, если фактор ещё не зарегистрирован. После срока они отвечают `403 {"error":"mfa_required","message":"требуется 2FA"}`. Читать и писать объекты по-прежнему можно.
 
@@ -44,6 +45,8 @@ STS `AssumeRole` отклоняет непустой `RoleArn`. Сессия н�
 S3 не принимает `X-DataSafe-MFA-Token`. Ключ доступа и STS-сессию пользователя, на которого действует политика, можно создать только из подтверждённой сессии; у ключа `created_with_mfa=true`. `PutBucketEncryption`, `DeleteBucketEncryption`, `PutBucketPolicy`, `DeleteBucketPolicy`, `PutObjectLockConfiguration`, `PutObjectRetention` (COMPLIANCE или более ранний срок), приостановка `PutBucketVersioning` и `DeleteBucket` ключом без флага — `403 AccessDenied` «ключ создан без 2FA; создайте новый ключ после входа с 2FA». `PutObject` выполняется. Корневой ключ сервера без владельца под это правило не попадает.
 
 `MfaRequiredDenied` — не чаще одного события в минуту на пару пользователь и действие. `MfaPolicyChanged`, `MfaStepUpRequired`, `MfaStepUpVerified` и `MfaReset` пишутся в outbox и Activity.
+
+`PUT /api/v1/buckets/{bucket}/encryption` пишет ту же запись, что S3 `PutBucketEncryption`. Включение после льготного периода требует фактора (`403 mfa_required`), но не токена действия. Выключение и `DELETE` — опасное действие `encryption_disable`: без `X-DataSafe-MFA-Token` ответ `401 step_up_required`. Анонимный GET и HEAD объекта с `aws:kms` — `403` «объект зашифрован ключом KMS, публичный доступ невозможен». `public-read` вместе с default `aws:kms` — `409` «Публичный доступ к файлам, зашифрованным ключом из Vault, невозможен. Сначала сделайте бакет приватным». Ссылка и presigned на такой объект снова проверяют, что создатель или владелец ключа активен и может читать. Уничтоженный ключ — `403` «Ключ шифрования уничтожен, файл недоступен навсегда». SSE-S3 (`AES256`) по-прежнему отдаётся анонимно, если публичный доступ не заблокирован.
 
 <!-- dangerous-actions:begin -->
 | action | meaning |

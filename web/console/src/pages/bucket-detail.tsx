@@ -63,6 +63,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { BucketSettingsTabs } from "@/components/settings/BucketSettingsTabs";
+import { EncryptionCard } from "@/components/encryption/encryption-card";
 
 type UploadItem = {
   name: string;
@@ -128,7 +129,8 @@ export function BucketDetailPage() {
   const [shareExpires, setShareExpires] = useState("3600");
   const [shareMaxDownloads, setShareMaxDownloads] = useState("0");
   const [sharePassword, setSharePassword] = useState("");
-  const [customExpires, setCustomExpires] = useState("");
+  const [customDays, setCustomDays] = useState("");
+  const [customHours, setCustomHours] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ObjectRow | null>(null);
   const [deleteMode, setDeleteMode] = useState<DeleteMode>("now");
   const [scheduleDuration, setScheduleDuration] = useState<"1d" | "1w" | "1m">("1d");
@@ -476,7 +478,8 @@ export function BucketDetailPage() {
 
   const shareLinkMutation = useMutation({
     mutationFn: async (obj: ObjectRow) => {
-      const expires = shareExpires === "custom" ? parseInt(customExpires, 10) : parseInt(shareExpires, 10);
+      const customSeconds = (parseInt(customDays, 10) || 0) * 86400 + (parseInt(customHours, 10) || 0) * 3600;
+      const expires = shareExpires === "custom" ? customSeconds : parseInt(shareExpires, 10);
       const maxDl = parseInt(shareMaxDownloads, 10) || 0;
       return api.createSharedLink(bucket, {
         key: obj.key,
@@ -869,6 +872,8 @@ export function BucketDetailPage() {
         </TabsContent>
 
         <TabsContent value="settings">
+          <div className="space-y-4">
+            <EncryptionCard bucket={bucket} />
           {settingsDraft && (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
@@ -960,6 +965,7 @@ export function BucketDetailPage() {
               />
             </div>
           )}
+          </div>
         </TabsContent>
 
         {showAccessTab && (
@@ -1307,7 +1313,16 @@ export function BucketDetailPage() {
               </Select>
             </div>
             {shareExpires === "custom" && (
-              <Input type="number" placeholder={t("bucketDetail:placeholder.seconds")} value={customExpires} onChange={(e) => setCustomExpires(e.target.value)} />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="share-custom-days">{t("bucketDetail:share.days")}</Label>
+                  <Input id="share-custom-days" data-testid="share-custom-days" type="number" min={0} value={customDays} onChange={(e) => setCustomDays(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="share-custom-hours">{t("bucketDetail:share.hours")}</Label>
+                  <Input id="share-custom-hours" data-testid="share-custom-hours" type="number" min={0} value={customHours} onChange={(e) => setCustomHours(e.target.value)} />
+                </div>
+              </div>
             )}
             <div className="space-y-2">
               <Label>{t("bucketDetail:share.password")}</Label>

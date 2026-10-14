@@ -28,6 +28,7 @@ Sharing and security changes are ordinary writes. With `STORAGE_HA_ENABLED=true`
 - `DELETE /api/v1/shares/{id}`
 - presign, which creates a temporary access key
 - `PUT /api/v1/settings/mfa-policy`, `POST /api/v1/auth/step-up`, `POST /api/v1/users/{id}/mfa/reset`, and `POST /api/v1/keys`
+- `GET/PUT/DELETE /api/v1/buckets/{bucket}/encryption`
 
 `GET /api/v1/public/share/{token}` and its download stay available on a follower. The first rejected request after the link expires, or after `max_downloads` is used up, emits `ShareExpired` or `ShareLimitReached` once (one Activity row, `share.expired` or `share.limit_reached`, and one outbox row). Later rejects of that link do not emit again. `ShareBlocked` is emitted on every download attempted while sharing is off. A follower still writes that outbox row when a webhook matches, even if this process has not registered the sink; the leader delivers it.
 
@@ -35,7 +36,7 @@ Sharing and security changes are ordinary writes. With `STORAGE_HA_ENABLED=true`
 
 `PUT /api/v1/settings/mfa-policy` (global administrator) stores the policy in `SystemConfig.MFA`. Every node reads it on the next request. `require_admin_mfa` remains and is the same switch as `apply_to_global_admins`.
 
-Who is covered when `require_bucket_admin_mfa` is on: a user with grant level `admin` on at least one bucket, including the owner, plus tenant administrators when `apply_to_tenant_admins` is on, plus global administrators when `apply_to_global_admins` is on. TOTP or a security key counts. An OIDC login counts as having 2FA when the ID token `amr` contains one of `mfa`, `otp`, `hwk`, `swk`, `fpt` (or `oidc_accepted_amr`) or `acr` is in `oidc_accepted_acr`. LDAP users need a local factor. An IdP factor does not confirm a dangerous action; that still needs a DataSafe TOTP code or security key.
+Who is covered when `require_bucket_admin_mfa` is on: a user with grant level `admin` on at least one bucket, including the owner, plus tenant administrators when `apply_to_tenant_admins` is on, plus global administrators when `apply_to_global_admins` is on. A global administrator who owns a bucket or holds an admin grant is covered by the bucket-admin rule even when `apply_to_global_admins` is off. Resetting another user's 2FA is a dangerous action, so that administrator cannot do it without their own factor. TOTP or a security key counts. An OIDC login counts as having 2FA when the ID token `amr` contains one of `mfa`, `otp`, `hwk`, `swk`, `fpt` (or `oidc_accepted_amr`) or `acr` is in `oidc_accepted_acr`. LDAP users need a local factor. An IdP factor does not confirm a dangerous action; that still needs a DataSafe TOTP code or security key.
 
 Grace (`grace_period_days`, 0–90, default 7) starts at policy enable or when the user later becomes a bucket administrator, whichever is later. During grace the console shows a banner and the actions below are allowed for a user who has not enrolled. After grace, those actions return `403 {"error":"mfa_required","message":"требуется 2FA"}`. The user can still read and write objects.
 
@@ -44,6 +45,8 @@ When the policy is off, confirmation matches 1.5.0. When it is on, every dangero
 S3 does not accept `X-DataSafe-MFA-Token`. An access key or STS session for a covered user can be created only from a confirmed session and is stored with `created_with_mfa=true`. `PutBucketEncryption`, `DeleteBucketEncryption`, `PutBucketPolicy`, `DeleteBucketPolicy`, `PutObjectLockConfiguration`, `PutObjectRetention` (COMPLIANCE or a shorter retain-until), `PutBucketVersioning` suspend, and `DeleteBucket` with a key that lacks the flag return `403 AccessDenied` «ключ создан без 2FA; создайте новый ключ после входа с 2FA». `PutObject` still succeeds. The bootstrap root key has no owner and is not subject to this flag.
 
 `MfaRequiredDenied` is emitted at most once a minute per user and action. `MfaPolicyChanged`, `MfaStepUpRequired`, `MfaStepUpVerified`, and `MfaReset` go to the outbox and Activity.
+
+`PUT /api/v1/buckets/{bucket}/encryption` writes the same record as S3 `PutBucketEncryption`. Turning encryption on after grace needs a factor (`403 mfa_required`) and does not need an action token. Turning it off, and `DELETE`, is the dangerous action `encryption_disable`: without `X-DataSafe-MFA-Token` the response is `401 step_up_required`. Anonymous GET and HEAD of an `aws:kms` object return `403` «объект зашифрован ключом KMS, публичный доступ невозможен». `public-read` together with a default of `aws:kms` returns `409` «Публичный доступ к файлам, зашифрованным ключом из Vault, невозможен. Сначала сделайте бакет приватным». A share link or presign of that object checks again that the creator or the signing key's owner is still active and can read. A destroyed key returns `403` «Ключ шифрования уничтожен, файл недоступен навсегда». SSE-S3 (`AES256`) stays anonymously readable when public access is not blocked.
 
 <!-- dangerous-actions:begin -->
 | action | meaning |

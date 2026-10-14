@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"encoding/json"
 	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/jackc/pgx/v5"
@@ -16,9 +17,9 @@ func scanObject(row interface {
 }) (metadata.ObjectRecord, error) {
 	var rec metadata.ObjectRecord
 	var sched, ret pgtype.Timestamptz
-	var meta, tags []byte
+	var meta, tags, enc []byte
 	err := row.Scan(&rec.Bucket, &rec.Key, &rec.VersionID, &rec.Size, &rec.ETag, &rec.ContentType,
-		&rec.LastModified, &sched, &rec.IsDeleteMarker, &rec.LegalHold, &ret, &rec.StorageClass, &meta, &tags, &rec.CreatedAt)
+		&rec.LastModified, &sched, &rec.IsDeleteMarker, &rec.LegalHold, &ret, &rec.StorageClass, &meta, &tags, &rec.CreatedAt, &enc)
 	if err != nil {
 		return rec, err
 	}
@@ -26,7 +27,24 @@ func scanObject(row interface {
 	rec.RetentionUntil = timePtr(ret)
 	rec.Metadata = jsonMap(meta)
 	rec.Tags = jsonMap(tags)
+	if len(enc) > 0 {
+		var oe metadata.ObjectEncryption
+		if json.Unmarshal(enc, &oe) == nil {
+			rec.Encryption = &oe
+		}
+	}
 	return rec, nil
+}
+
+func encryptionArg(e *metadata.ObjectEncryption) any {
+	if e == nil {
+		return nil
+	}
+	b, err := json.Marshal(e)
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 func (s *Store) PutObject(rec metadata.ObjectRecord) error {
@@ -79,15 +97,15 @@ func (s *Store) putObjectQ(ctx context.Context, q pgExec, rec metadata.ObjectRec
 		_, err = q.Exec(ctx, `
 			INSERT INTO objects (bucket, key, version_id, size, etag, content_type, last_modified,
 				scheduled_delete_at, is_delete_marker, legal_hold, retention_until, storage_class,
-				metadata, tags, created_at, is_latest)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,TRUE)
+				metadata, tags, created_at, is_latest, encryption)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,TRUE,$16)
 			ON CONFLICT (bucket, key, version_id) DO UPDATE SET
 				size=$4, etag=$5, content_type=$6, last_modified=$7, scheduled_delete_at=$8,
 				is_delete_marker=$9, legal_hold=$10, retention_until=$11, storage_class=$12,
-				metadata=$13, tags=$14, is_latest=TRUE`,
+				metadata=$13, tags=$14, is_latest=TRUE, encryption=$16`,
 			rec.Bucket, rec.Key, rec.VersionID, rec.Size, rec.ETag, rec.ContentType, rec.LastModified,
 			timestamptzPtr(rec.ScheduledDeleteAt), rec.IsDeleteMarker, rec.LegalHold,
-			timestamptzPtr(rec.RetentionUntil), rec.StorageClass, meta, tags, rec.CreatedAt)
+			timestamptzPtr(rec.RetentionUntil), rec.StorageClass, meta, tags, rec.CreatedAt, encryptionArg(rec.Encryption))
 		return err
 	}
 	_, err := q.Exec(ctx, `DELETE FROM objects WHERE bucket=$1 AND key=$2`, rec.Bucket, rec.Key)
@@ -99,8 +117,8 @@ func (s *Store) putObjectQ(ctx context.Context, q pgExec, rec metadata.ObjectRec
 	_, err = q.Exec(ctx, `
 		INSERT INTO objects (bucket, key, version_id, size, etag, content_type, last_modified,
 			scheduled_delete_at, is_delete_marker, legal_hold, retention_until, storage_class,
-			metadata, tags, created_at, is_latest)
-		VALUES ($1,$2,'', $3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,TRUE)
+			metadata, tags, created_at, is_latest, encryption)
+		VALUES ($1,$2,'', $3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,TRUE,$15)
 		ON CONFLICT (bucket, key, version_id) DO UPDATE SET
 			size = EXCLUDED.size,
 			etag = EXCLUDED.etag,
@@ -114,10 +132,11 @@ func (s *Store) putObjectQ(ctx context.Context, q pgExec, rec metadata.ObjectRec
 			metadata = EXCLUDED.metadata,
 			tags = EXCLUDED.tags,
 			created_at = EXCLUDED.created_at,
-			is_latest = TRUE`,
+			is_latest = TRUE,
+			encryption = EXCLUDED.encryption`,
 		rec.Bucket, rec.Key, rec.Size, rec.ETag, rec.ContentType, rec.LastModified,
 		timestamptzPtr(rec.ScheduledDeleteAt), rec.IsDeleteMarker, rec.LegalHold,
-		timestamptzPtr(rec.RetentionUntil), rec.StorageClass, meta, tags, rec.CreatedAt)
+		timestamptzPtr(rec.RetentionUntil), rec.StorageClass, meta, tags, rec.CreatedAt, encryptionArg(rec.Encryption))
 	return err
 }
 
@@ -139,7 +158,7 @@ func (s *Store) GetObjectVersion(bucket, key, versionID string) (metadata.Object
 		row := s.pool.QueryRow(ctx, `
 			SELECT bucket, key, version_id, size, COALESCE(etag,''), COALESCE(content_type,''),
 				last_modified, scheduled_delete_at, is_delete_marker, legal_hold, retention_until,
-				COALESCE(storage_class,''), metadata, tags, created_at
+				COALESCE(storage_class,''), metadata, tags, created_at, encryption
 			FROM objects WHERE bucket=$1 AND key=$2 AND is_latest=TRUE`, bucket, key)
 		rec, err := scanObject(row)
 		if err != nil {
@@ -153,7 +172,7 @@ func (s *Store) GetObjectVersion(bucket, key, versionID string) (metadata.Object
 	row := s.pool.QueryRow(ctx, `
 		SELECT bucket, key, version_id, size, COALESCE(etag,''), COALESCE(content_type,''),
 			last_modified, scheduled_delete_at, is_delete_marker, legal_hold, retention_until,
-			COALESCE(storage_class,''), metadata, tags, created_at
+			COALESCE(storage_class,''), metadata, tags, created_at, encryption
 		FROM objects WHERE bucket=$1 AND key=$2 AND version_id=$3`, bucket, key, versionID)
 	rec, err := scanObject(row)
 	if err != nil {
@@ -226,7 +245,7 @@ func (s *Store) ListObjectsPage(bucket, prefix, startAfter string, maxKeys int) 
 	rows, err := s.readQueryPool().Query(ctx, `
 		SELECT bucket, key, version_id, size, COALESCE(etag,''), COALESCE(content_type,''),
 			last_modified, scheduled_delete_at, is_delete_marker, legal_hold, retention_until,
-			COALESCE(storage_class,''), metadata, tags, created_at
+			COALESCE(storage_class,''), metadata, tags, created_at, encryption
 		FROM objects WHERE bucket=$1 AND is_latest=TRUE AND is_delete_marker=FALSE
 			AND key LIKE $2 AND ($3 = '' OR key > $3)
 		ORDER BY key LIMIT $4`, bucket, prefix+"%", startAfter, maxKeys+1)
@@ -260,7 +279,7 @@ func (s *Store) ListObjectVersions(bucket, prefix string, maxKeys int) ([]metada
 	rows, err := s.pool.Query(context.Background(), `
 		SELECT bucket, key, version_id, size, COALESCE(etag,''), COALESCE(content_type,''),
 			last_modified, scheduled_delete_at, is_delete_marker, legal_hold, retention_until,
-			COALESCE(storage_class,''), metadata, tags, created_at
+			COALESCE(storage_class,''), metadata, tags, created_at, encryption
 		FROM objects WHERE bucket=$1 AND key LIKE $2
 		ORDER BY key, last_modified DESC LIMIT $3`, bucket, prefix+"%", maxKeys)
 	if err != nil {

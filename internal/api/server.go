@@ -21,6 +21,7 @@ import (
 	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/ha"
 	"github.com/DirektorBani/datasafe/internal/inventory"
+	"github.com/DirektorBani/datasafe/internal/kms"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	_ "github.com/DirektorBani/datasafe/internal/metadata/postgres"
 	pgmeta "github.com/DirektorBani/datasafe/internal/metadata/postgres"
@@ -164,15 +165,20 @@ func NewServer(cfg Config) (*Server, error) {
 		Label:     "bootstrap",
 		CreatedAt: time.Now().UTC(),
 	})
+	if err := s3.EnsureLocalKEK(meta, cfg.SSEMasterKey); err != nil {
+		meta.Close()
+		return nil, err
+	}
+	localKMS, err := kms.NewLocal(cfg.SSEMasterKey)
+	if err != nil {
+		meta.Close()
+		return nil, err
+	}
 	svc := s3.NewService(backend, meta, signer, cfg.Region, cfg.AccessKey)
 	svc.FederationPeers = func() ([]metadata.FederationCluster, error) {
 		return meta.ListFederationClusters()
 	}
-	if cfg.SSEMasterKey != "" {
-		if cipher, err := storage.NewSSECipher(cfg.SSEMasterKey); err == nil {
-			svc.SetSSE(cipher)
-		}
-	}
+	svc.SetLocalKMS(localKMS)
 	s3h := s3.NewHandler(svc)
 	s := &Server{
 		cfg:                   cfg,
@@ -270,6 +276,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 	go s.runClusterCertRotator(ctx)
 	go s.runLDAPSyncWorker(ctx)
 	go s.runMFATokenPurge(ctx)
+	go s.runKMSHeartbeat(ctx)
 	if eb, ok := s.backend.(*erasure.Backend); ok {
 		go erasure.RunHealWorker(ctx, eb, storage.ObjectBackendFromEnv(s.cfg.DataDir, s.cfg.ReadOnly).HealEvery)
 	}
@@ -749,6 +756,9 @@ func (s *Server) routes() {
 	mux.HandleFunc("PUT /api/v1/tenants/{id}/sharing", allRoles(s.handlePutTenantSharing))
 	mux.HandleFunc("GET /api/v1/buckets/{bucket}/sharing", allRoles(s.handleGetBucketSharing))
 	mux.HandleFunc("PUT /api/v1/buckets/{bucket}/sharing", allRoles(s.handlePutBucketSharing))
+	mux.HandleFunc("GET /api/v1/buckets/{bucket}/encryption", allRoles(s.handleGetBucketEncryption))
+	mux.HandleFunc("PUT /api/v1/buckets/{bucket}/encryption", allRoles(s.handlePutBucketEncryption))
+	mux.HandleFunc("DELETE /api/v1/buckets/{bucket}/encryption", allRoles(s.handleDeleteBucketEncryption))
 	mux.HandleFunc("POST /api/v1/buckets/{bucket}/shares/revoke-all", allRoles(s.handleRevokeAllSharedLinks))
 	mux.HandleFunc("POST /api/v1/sts/assume-role", allRoles(s.handleAssumeRole))
 	mux.HandleFunc("POST /api/v1/buckets/{bucket}/objects/transition-storage-class", allRoles(s.handleTransitionStorageClass))
@@ -912,6 +922,10 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 	s.stampBucketOwnership(bucket, info)
 	if vis == "private" || vis == "public-read" {
 		if err := s.applyBucketVisibilityPolicy(info, bucket, vis); err != nil {
+			if errors.Is(err, errPublicKMS) {
+				writeJSON(w, http.StatusConflict, map[string]any{"error": "public_kms_conflict", "message": s3.MsgPublicKMS})
+				return
+			}
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
 			return
 		}

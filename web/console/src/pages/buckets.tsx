@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { type ColumnDef } from "@tanstack/react-table";
 import { useTranslation } from "react-i18next";
 import { FolderOpen, Plus, RefreshCw, Trash2, Pin } from "lucide-react";
+import { BucketEncryptionBadge } from "@/components/encryption/encryption-card";
 import { toast } from "sonner";
 import { api, type Bucket } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
@@ -101,6 +102,7 @@ export function BucketsPage() {
           >
             <FolderOpen className="h-4 w-4" />
             {row.original.name}
+            <BucketEncryptionBadge bucket={row.original} />
           </Link>
         ),
       },

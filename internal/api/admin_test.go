@@ -46,6 +46,7 @@ func freshTestServer(t *testing.T) *api.Server {
 		AdminUser:     "admin",
 		AdminPassword: "admin",
 		JWTSecret:     "test",
+		SSEMasterKey:  "test-sse-master-key",
 	})
 	if err != nil {
 		t.Fatal(err)

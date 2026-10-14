@@ -17,6 +17,7 @@ import (
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/federation"
+	"github.com/DirektorBani/datasafe/internal/kms"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/policy"
 	"github.com/DirektorBani/datasafe/internal/storage"
@@ -29,6 +30,7 @@ type Service struct {
 	Region   string
 	OwnerKey string
 	SSE      *storage.SSECipher
+	Local    *kms.Local
 	// FederationPeers lists registered peer clusters for cross-node GetObject.
 	FederationPeers func() ([]metadata.FederationCluster, error)
 	// OnObjectEvent is called after successful put/delete/copy (event: put|delete|copy).
@@ -447,12 +449,13 @@ func (s *Service) putObject(ctx context.Context, bucket, key string, r io.Reader
 	if err := s.checkQuota(bucketRec, bucket, key, size); err != nil {
 		return metadata.ObjectRecord{}, 0, err
 	}
-	if s.SSE != nil {
-		encReader, err := s.SSE.EncryptReader(r)
-		if err != nil {
-			return metadata.ObjectRecord{}, 0, err
-		}
-		r = encReader
+	body, counter, encMeta, err := s.prepareObjectEncryption(ctx, bucketRec, r)
+	if err != nil {
+		return metadata.ObjectRecord{}, 0, err
+	}
+	r = body
+	if counter != nil {
+		size = -1
 	}
 	versionID := newVersionID()
 	var etag string
@@ -497,6 +500,13 @@ func (s *Service) putObject(ctx context.Context, bucket, key string, r io.Reader
 		LastModified: info.LastModified,
 		Metadata:     userMeta,
 		CreatedAt:    info.LastModified,
+		Encryption:   encMeta,
+	}
+	if counter != nil {
+		rec.Size = counter.n
+		if rec.Encryption != nil {
+			rec.Encryption.PlainSize = counter.n
+		}
 	}
 	if bucketRec.StorageClass != "" {
 		rec.StorageClass = bucketRec.StorageClass
@@ -573,15 +583,7 @@ func (s *Service) GetObject(ctx context.Context, bucket, key, versionID string) 
 	if err != nil {
 		return nil, metadata.ObjectRecord{}, err
 	}
-	if s.SSE != nil {
-		dec, err := s.SSE.DecryptReader(rc)
-		rc.Close()
-		if err != nil {
-			return nil, metadata.ObjectRecord{}, err
-		}
-		return io.NopCloser(dec), rec, nil
-	}
-	return rc, rec, nil
+	return s.openDecrypted(rc, rec)
 }
 
 func (s *Service) getObjectFromFederation(ctx context.Context, storageBucket, key string) (io.ReadCloser, metadata.ObjectRecord, error) {
@@ -630,10 +632,17 @@ func peerCanRead(peer metadata.FederationCluster) bool {
 
 func (s *Service) HeadObject(ctx context.Context, bucket, key, versionID string) (metadata.ObjectRecord, error) {
 	bucket = s.normalizeBucketKey(bucket)
+	var rec metadata.ObjectRecord
+	var err error
 	if versionID != "" {
-		return s.Meta.GetObjectVersion(bucket, key, versionID)
+		rec, err = s.Meta.GetObjectVersion(bucket, key, versionID)
+	} else {
+		rec, err = s.Meta.GetObject(bucket, key)
 	}
-	return s.Meta.GetObject(bucket, key)
+	if err != nil {
+		return rec, err
+	}
+	return displayedSize(rec, s.legacySSE()), nil
 }
 
 func (s *Service) GetObjectTags(ctx context.Context, bucket, key, versionID string) (map[string]string, error) {
@@ -798,12 +807,7 @@ func (s *Service) mergeFederationList(ctx context.Context, logicalBucket, prefix
 func (s *Service) CopyObject(ctx context.Context, srcBucket, srcKey, dstBucket, dstKey string) (metadata.ObjectRecord, error) {
 	srcBucket = s.normalizeBucketKey(srcBucket)
 	dstBucket = s.normalizeBucketKey(dstBucket)
-	src, err := s.Meta.GetObject(srcBucket, srcKey)
-	if err != nil {
-		return metadata.ObjectRecord{}, err
-	}
-	srcVID := src.VersionID
-	rc, _, err := s.Backend.GetObjectVersion(ctx, srcBucket, srcKey, srcVID)
+	rc, src, err := s.GetObject(ctx, srcBucket, srcKey, "")
 	if err != nil {
 		return metadata.ObjectRecord{}, err
 	}
@@ -824,7 +828,12 @@ func (s *Service) CopyObject(ctx context.Context, srcBucket, srcKey, dstBucket, 
 
 func (s *Service) CreateMultipartUpload(ctx context.Context, bucket, key string) (string, error) {
 	bucket = s.normalizeBucketKey(bucket)
-	if _, err := s.Meta.GetBucketByKey(bucket); err != nil {
+	bucketRec, err := s.Meta.GetBucketByKey(bucket)
+	if err != nil {
+		return "", err
+	}
+	_, _, encMeta, err := s.prepareObjectEncryption(ctx, bucketRec, bytes.NewReader(nil))
+	if err != nil {
 		return "", err
 	}
 	uploadID := newUploadID()
@@ -832,10 +841,11 @@ func (s *Service) CreateMultipartUpload(ctx context.Context, bucket, key string)
 		return "", err
 	}
 	rec := metadata.MultipartRecord{
-		UploadID:  uploadID,
-		Bucket:    bucket,
-		Key:       key,
-		Initiated: time.Now().UTC(),
+		UploadID:   uploadID,
+		Bucket:     bucket,
+		Key:        key,
+		Initiated:  time.Now().UTC(),
+		Encryption: encMeta,
 	}
 	if err := s.Meta.PutMultipart(rec); err != nil {
 		return "", err
@@ -851,6 +861,18 @@ func (s *Service) UploadPart(ctx context.Context, bucket, key, uploadID string, 
 	}
 	if mp.Bucket != bucket || mp.Key != key {
 		return "", metadata.ErrNotFound
+	}
+	if mp.Encryption != nil && mp.Encryption.Sealed() && mp.Encryption.FormatVersion == 1 {
+		dek, err := s.unwrapDEK(mp.Encryption)
+		if err != nil {
+			return "", err
+		}
+		enc, err := kms.EncryptReader(dek, r, kms.DefaultChunk)
+		if err != nil {
+			return "", err
+		}
+		r = enc
+		size = -1
 	}
 	return s.Backend.UploadPart(ctx, bucket, key, uploadID, partNumber, r, size)
 }
@@ -874,6 +896,9 @@ func (s *Service) completeMultipart(ctx context.Context, bucket, key, uploadID s
 	}
 	if mp.Bucket != bucket || mp.Key != key {
 		return metadata.ObjectRecord{}, 0, metadata.ErrNotFound
+	}
+	if mp.Encryption != nil && mp.Encryption.Sealed() && mp.Encryption.FormatVersion == 1 {
+		return s.completeEncryptedMultipart(ctx, bucket, key, uploadID, mp, parts, build)
 	}
 	etag, err := s.Backend.CompleteMultipartUpload(ctx, bucket, key, uploadID, parts)
 	if err != nil {

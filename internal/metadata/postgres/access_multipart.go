@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
@@ -86,17 +87,24 @@ func (s *Store) DeleteAccessKey(accessKey string) error {
 
 func (s *Store) PutMultipart(rec metadata.MultipartRecord) error {
 	_, err := s.pool.Exec(context.Background(), `
-		INSERT INTO multipart_uploads (upload_id, bucket, key, initiated) VALUES ($1,$2,$3,$4)
-		ON CONFLICT (upload_id) DO UPDATE SET bucket=$2, key=$3`,
-		rec.UploadID, rec.Bucket, rec.Key, rec.Initiated)
+		INSERT INTO multipart_uploads (upload_id, bucket, key, initiated, encryption) VALUES ($1,$2,$3,$4,$5)
+		ON CONFLICT (upload_id) DO UPDATE SET bucket=$2, key=$3, encryption=$5`,
+		rec.UploadID, rec.Bucket, rec.Key, rec.Initiated, encryptionArg(rec.Encryption))
 	return err
 }
 
 func (s *Store) GetMultipart(uploadID string) (metadata.MultipartRecord, error) {
 	var rec metadata.MultipartRecord
+	var enc []byte
 	err := s.pool.QueryRow(context.Background(), `
-		SELECT upload_id, bucket, key, initiated FROM multipart_uploads WHERE upload_id=$1`, uploadID).Scan(
-		&rec.UploadID, &rec.Bucket, &rec.Key, &rec.Initiated)
+		SELECT upload_id, bucket, key, initiated, encryption FROM multipart_uploads WHERE upload_id=$1`, uploadID).Scan(
+		&rec.UploadID, &rec.Bucket, &rec.Key, &rec.Initiated, &enc)
+	if len(enc) > 0 {
+		var oe metadata.ObjectEncryption
+		if json.Unmarshal(enc, &oe) == nil {
+			rec.Encryption = &oe
+		}
+	}
 	if err != nil {
 		return rec, metadata.ErrNotFound
 	}

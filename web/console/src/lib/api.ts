@@ -23,6 +23,10 @@ export type Bucket = {
   owner?: string;
   owner_id?: string;
   visibility?: string;
+  default_encryption?: string;
+  encryption_provider?: string;
+  kms_key_status?: string;
+  kms_master_key_id?: string;
   tenant_id?: string;
   storage_key?: string;
   access?: {
@@ -120,6 +124,20 @@ export type ConsoleUser = {
   max_objects?: number;
   last_login?: string;
   created_at: string;
+};
+
+export type BucketEncryption = {
+  enabled: boolean;
+  algorithm: string;
+  provider: string;
+  key_id: string;
+  key_status: string;
+  visibility: string;
+  server_key_configured: boolean;
+  vault_configured: boolean;
+  allowlist: string;
+  can_edit: boolean;
+  default_key_id: string;
 };
 
 export type BucketSettings = {
@@ -1657,6 +1675,16 @@ export const api = {
   getTenantSharing: (id: string) => fetchJSON<SharingView>(`/tenants/${encodeURIComponent(id)}/sharing`),
   putTenantSharing: (id: string, body: SharingPolicy) =>
     fetchJSON<SharingView>(`/tenants/${encodeURIComponent(id)}/sharing`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  getBucketEncryption: (bucket: string) =>
+    fetchJSON<BucketEncryption>(`/buckets/${encodeURIComponent(bucket)}/encryption`),
+  putBucketEncryption: (
+    bucket: string,
+    body: { enabled: boolean; provider?: string; key_id?: string }
+  ) =>
+    fetchJSON<BucketEncryption>(`/buckets/${encodeURIComponent(bucket)}/encryption`, {
       method: "PUT",
       body: JSON.stringify(body),
     }),

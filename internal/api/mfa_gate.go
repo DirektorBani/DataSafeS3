@@ -109,6 +109,30 @@ func (s *Server) allowDangerous(w http.ResponseWriter, r *http.Request, action, 
 	return s.consumePresentedToken(w, r, user, action, target, channel)
 }
 
+// requireBucketAdminFactor blocks a bucket-admin action after grace when the
+// caller has no factor. It does not ask for a step-up token.
+func (s *Server) requireBucketAdminFactor(w http.ResponseWriter, r *http.Request, action, target string) bool {
+	info, ok := authFrom(r)
+	if !ok || info.UserID == "" {
+		return true
+	}
+	user, err := s.meta.GetUser(info.UserID)
+	if err != nil {
+		return true
+	}
+	d := s.mfaDecision(user, false)
+	if !d.Subject || d.Code == "" {
+		return true
+	}
+	s.noteMFARequiredDenied(r, user, action, target, mfaChannel(r))
+	writeJSON(w, http.StatusForbidden, map[string]any{
+		"error":   "mfa_required",
+		"message": "требуется 2FA",
+		"action":  action,
+	})
+	return false
+}
+
 func (s *Server) consumePresentedToken(w http.ResponseWriter, r *http.Request, user metadata.UserRecord, action, target, channel string) bool {
 	raw := strings.TrimSpace(r.Header.Get(mfaTokenHeader))
 	if raw == "" {

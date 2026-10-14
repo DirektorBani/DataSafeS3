@@ -28,6 +28,7 @@ import enLayout from "@/locales/en/layout.json";
 import enSearch from "@/locales/en/search.json";
 import enPolicyBuilder from "@/locales/en/policyBuilder.json";
 import enNotifications from "@/locales/en/notifications.json";
+import enEncryption from "@/locales/en/encryption.json";
 import deSettings from "@/locales/de/settings.json";
 import deActivity from "@/locales/de/activity.json";
 import frSettings from "@/locales/fr/settings.json";
@@ -60,6 +61,7 @@ import ruLayout from "@/locales/ru/layout.json";
 import ruSearch from "@/locales/ru/search.json";
 import ruPolicyBuilder from "@/locales/ru/policyBuilder.json";
 import ruNotifications from "@/locales/ru/notifications.json";
+import ruEncryption from "@/locales/ru/encryption.json";
 
 export const LOCALE_KEY = "datasafe.locale";
 export const SUPPORTED_LOCALES = ["en", "ru", "de", "fr"] as const;
@@ -94,6 +96,7 @@ const namespaces = [
   "search",
   "policyBuilder",
   "notifications",
+  "encryption",
 ] as const;
 
 export function normalizeLocale(lang: string | undefined | null): AppLocale {
@@ -146,6 +149,7 @@ const enResources = {
   search: enSearch,
   policyBuilder: enPolicyBuilder,
   notifications: enNotifications,
+  encryption: enEncryption,
 };
 
 void i18n.use(initReactI18next).init({
@@ -182,6 +186,7 @@ void i18n.use(initReactI18next).init({
       search: ruSearch,
       policyBuilder: ruPolicyBuilder,
       notifications: ruNotifications,
+      encryption: ruEncryption,
     },
   },
   lng: detectInitialLocale(),

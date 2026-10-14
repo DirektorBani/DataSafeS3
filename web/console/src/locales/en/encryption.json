@@ -1,0 +1,30 @@
+{
+  "title": "Encryption",
+  "description": "New files are encrypted with the key you choose. Files already in the bucket stay as they are.",
+  "loading": "Loading encryption…",
+  "loadError": "Could not load encryption settings.",
+  "toggle": "Encryption",
+  "newFilesOnly": "Only new files are encrypted. Files already uploaded stay as they are until you run “Encrypt existing”.",
+  "localTitle": "Server key (local)",
+  "localHint": "Files are encrypted with the key set when the server was installed. Use this when Vault is not in use.",
+  "vaultTitle": "Key from Vault",
+  "vaultHint": "Connect Vault first under Settings → Vault (KMS).",
+  "vaultLink": "Open settings",
+  "publicKms": "Public access to files encrypted with a Vault key is not possible. Make the bucket private first.",
+  "keyId": "Custom key name",
+  "keyIdHint": "Leave empty to use {{allowlist}} style name created for this bucket. Allowed pattern: {{allowlist}}.",
+  "save": "Save encryption",
+  "saved": "Encryption saved",
+  "readOnly": "You can view these settings. Changing them needs a bucket administrator.",
+  "serverKeyMissing": "Set STORAGE_SSE_MASTER_KEY and restart the server to turn on the server key.",
+  "disableTitle": "Turn encryption off?",
+  "disableBody": "New files will be stored without encryption. Files that are already encrypted stay encrypted and can still be read.",
+  "disableConfirm": "Turn off",
+  "cancel": "Cancel",
+  "badge": {
+    "server": "Server key",
+    "vault": "Vault: {{name}}",
+    "vaultKey": "key",
+    "destroyed": "Key destroyed"
+  }
+}

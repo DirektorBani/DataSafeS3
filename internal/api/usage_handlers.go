@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 )
@@ -240,6 +241,10 @@ func (s *Server) handleUpdateBucketSettings(w http.ResponseWriter, r *http.Reque
 	}
 	if req.Visibility != "" {
 		if err := s.applyBucketVisibilityPolicy(info, name, req.Visibility); err != nil {
+			if errors.Is(err, errPublicKMS) {
+				writeJSON(w, http.StatusConflict, map[string]any{"error": "public_kms_conflict", "message": s3.MsgPublicKMS})
+				return
+			}
 			status := http.StatusInternalServerError
 			if errors.Is(err, errSharingForbidden) || errors.Is(err, errPublicBlocked) {
 				status = http.StatusForbidden

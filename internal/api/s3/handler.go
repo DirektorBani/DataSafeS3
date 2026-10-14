@@ -575,11 +575,17 @@ func (h *Handler) putObject(w http.ResponseWriter, r *http.Request, bucket, key 
 		contentType = "application/octet-stream"
 	}
 	size := r.ContentLength
-	rec, err := h.Svc.PutObject(WithObjectEvents(r.Context()), sk, key, r.Body, size, contentType, userMetadata(r.Header))
+	ctx, sseErr := ctxWithSSE(WithObjectEvents(r.Context()), r)
+	if sseErr != nil {
+		writeError(w, r, http.StatusBadRequest, "InvalidArgument", "SSEAlgorithm must be AES256 or aws:kms")
+		return
+	}
+	rec, err := h.Svc.PutObject(ctx, sk, key, r.Body, size, contentType, userMetadata(r.Header))
 	if err != nil {
 		mapErr(w, r, err)
 		return
 	}
+	applySSEHeaders(w, rec)
 	w.Header().Set("ETag", rec.ETag)
 	if rec.VersionID != "" {
 		w.Header().Set("x-amz-version-id", rec.VersionID)
@@ -611,6 +617,9 @@ func (h *Handler) getObject(w http.ResponseWriter, r *http.Request, bucket, key 
 	if !ok {
 		return
 	}
+	if h.rejectKMSPresign(w, r, creds, sk, key) {
+		return
+	}
 	h.serveObject(w, r, sk, key)
 	observability.IncS3ReadOps(bucket)
 }
@@ -628,6 +637,9 @@ func (h *Handler) serveAnonymousGet(w http.ResponseWriter, r *http.Request, logi
 		}
 		return false
 	}
+	if h.rejectAnonymousKMS(w, r, rec.EffectiveStorageKey(), key) {
+		return true
+	}
 	h.serveObject(w, r, rec.EffectiveStorageKey(), key)
 	return true
 }
@@ -644,6 +656,9 @@ func (h *Handler) serveAnonymousHead(w http.ResponseWriter, r *http.Request, log
 			return true
 		}
 		return false
+	}
+	if h.rejectAnonymousKMS(w, r, rec.EffectiveStorageKey(), key) {
+		return true
 	}
 	h.serveHeadObject(w, r, rec.EffectiveStorageKey(), key)
 	return true
@@ -668,6 +683,7 @@ func (h *Handler) serveObject(w http.ResponseWriter, r *http.Request, storageBuc
 		return
 	}
 	defer rc.Close()
+	applySSEHeaders(w, rec)
 	w.Header().Set("ETag", rec.ETag)
 	if rec.VersionID != "" {
 		w.Header().Set("x-amz-version-id", rec.VersionID)
@@ -743,6 +759,7 @@ func (h *Handler) serveHeadObject(w http.ResponseWriter, r *http.Request, storag
 		mapErr(w, r, err)
 		return
 	}
+	applySSEHeaders(w, rec)
 	w.Header().Set("ETag", rec.ETag)
 	if rec.VersionID != "" {
 		w.Header().Set("x-amz-version-id", rec.VersionID)
@@ -832,11 +849,17 @@ func (h *Handler) copyObject(w http.ResponseWriter, r *http.Request, dstBucket, 
 	if !ok {
 		return
 	}
-	rec, err := h.Svc.CopyObject(WithObjectEvents(r.Context()), srcSK, srcKey, dstSK, dstKey)
+	ctx, sseErr := ctxWithSSE(WithObjectEvents(r.Context()), r)
+	if sseErr != nil {
+		writeError(w, r, http.StatusBadRequest, "InvalidArgument", "SSEAlgorithm must be AES256 or aws:kms")
+		return
+	}
+	rec, err := h.Svc.CopyObject(ctx, srcSK, srcKey, dstSK, dstKey)
 	if err != nil {
 		mapErr(w, r, err)
 		return
 	}
+	applySSEHeaders(w, rec)
 	w.Header().Set("ETag", rec.ETag)
 	w.WriteHeader(http.StatusOK)
 }
@@ -853,7 +876,12 @@ func (h *Handler) createMultipart(w http.ResponseWriter, r *http.Request, bucket
 	if !ok {
 		return
 	}
-	uploadID, err := h.Svc.CreateMultipartUpload(r.Context(), sk, key)
+	ctx, sseErr := ctxWithSSE(r.Context(), r)
+	if sseErr != nil {
+		writeError(w, r, http.StatusBadRequest, "InvalidArgument", "SSEAlgorithm must be AES256 or aws:kms")
+		return
+	}
+	uploadID, err := h.Svc.CreateMultipartUpload(ctx, sk, key)
 	if err != nil {
 		mapErr(w, r, err)
 		return
@@ -1048,6 +1076,18 @@ func mapErr(w http.ResponseWriter, r *http.Request, err error) {
 		writeError(w, r, http.StatusConflict, "BucketNotEmpty", "bucket not empty")
 	case metadata.ErrQuotaExceeded:
 		writeError(w, r, http.StatusForbidden, "QuotaExceeded", "quota exceeded")
+	case ErrSSEKeyMissing:
+		writeError(w, r, http.StatusBadRequest, "InvalidArgument", ErrSSEKeyMissing.Error())
+	case ErrPublicKMS:
+		writeError(w, r, http.StatusConflict, "InvalidRequest", MsgPublicKMS)
+	case ErrClusterUpgrade:
+		writeError(w, r, http.StatusConflict, "InvalidRequest", MsgClusterUpgrade)
+	case ErrKeyNotAllowed:
+		writeError(w, r, http.StatusBadRequest, "InvalidArgument", ErrKeyNotAllowed.Error())
+	case ErrKeyDestroyed:
+		writeError(w, r, http.StatusForbidden, "AccessDenied", MsgKeyDestroyed)
+	case ErrKMSUnavailable:
+		writeError(w, r, http.StatusServiceUnavailable, "ServiceUnavailable", "KMS unavailable")
 	case metadata.ErrLegalHold:
 		writeError(w, r, http.StatusForbidden, "AccessDenied", "object is under legal hold")
 	case metadata.ErrRetentionLocked:

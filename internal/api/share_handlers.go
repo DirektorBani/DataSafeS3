@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
@@ -31,6 +32,9 @@ func (s *Server) applyBucketVisibilityPolicy(info auth.TokenInfo, logicalBucket,
 		if s.effectiveSharingForRecord(rec).PublicAccessBlocked {
 			return errPublicBlocked
 		}
+		if rec.DefaultEncryption == "aws:kms" {
+			return errPublicKMS
+		}
 		rec.Policy = publicReadBucketPolicy(logicalBucket)
 	} else if visibility == "private" && rec.Policy == publicReadBucketPolicy(logicalBucket) {
 		rec.Policy = ""
@@ -42,6 +46,7 @@ func (s *Server) applyBucketVisibilityPolicy(info auth.TokenInfo, logicalBucket,
 var (
 	errSharingForbidden = errors.New("forbidden")
 	errPublicBlocked    = errors.New("public_access_blocked")
+	errPublicKMS        = errors.New("public_kms_conflict")
 )
 
 func (s *Server) handleListSharedLinks(w http.ResponseWriter, r *http.Request) {
@@ -243,6 +248,13 @@ func (s *Server) handlePublicShareDownload(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, status, errBody)
 		return
 	}
+	brec, _ := s.bucketByStoredName(link.Bucket)
+	if obj, oerr := s.meta.GetObject(link.Bucket, link.Key); oerr == nil && obj.Encryption.KMS() {
+		if !s.shareCreatorCanRead(link, brec) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "signer is not allowed to read this encrypted object"})
+			return
+		}
+	}
 	if _, err := s.meta.IncrementSharedLinkDownload(link.ID); err != nil {
 		if errors.Is(err, metadata.ErrShareExpired) || errors.Is(err, metadata.ErrShareLimitReached) {
 			s.noteShareTerminal(r, link, err)
@@ -258,9 +270,12 @@ func (s *Server) handlePublicShareDownload(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	brec, _ := s.bucketByStoredName(link.Bucket)
 	rc, rec, err := s.svc.GetObject(r.Context(), link.Bucket, link.Key, "")
 	if err != nil {
+		if errors.Is(err, s3.ErrKeyDestroyed) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": s3.MsgKeyDestroyed})
+			return
+		}
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "object not found"})
 		return
 	}
@@ -269,6 +284,10 @@ func (s *Server) handlePublicShareDownload(w http.ResponseWriter, r *http.Reques
 	payload := map[string]any{
 		"link_id": link.ID, "actor": "anonymous", "client_ip": clientIP(r),
 		"user_agent": r.UserAgent(), "size": rec.Size, "bucket": brec.Name, "key": link.Key,
+	}
+	if rec.Encryption != nil && rec.Encryption.Sealed() {
+		payload["key_id"] = rec.Encryption.KeyID
+		payload["key_version"] = rec.Encryption.KeyVersion
 	}
 	s.publishEvent(r.Context(), "ShareDownloaded", brec.Name, link.Key, "", brec.EffectiveTenantID(), payload)
 	w.Header().Set("Content-Type", rec.ContentType)
@@ -326,6 +345,22 @@ func (s *Server) noteShareTerminal(r *http.Request, link metadata.SharedLinkReco
 	brec, _ := s.bucketByStoredName(link.Bucket)
 	s.logActivityAs("public", clientIP(r), action, "share", link.ID)
 	s.publishShareEvent(r, eventType, brec, link, "anonymous")
+}
+
+func (s *Server) shareCreatorCanRead(link metadata.SharedLinkRecord, brec metadata.BucketRecord) bool {
+	if link.CreatedBy == "" {
+		return false
+	}
+	user, err := s.meta.GetUserByUsername(link.CreatedBy)
+	if err != nil || user.Status != metadata.StatusActive {
+		return false
+	}
+	info := auth.TokenInfo{UserID: user.ID, Username: user.Username, Role: user.Role}
+	name := brec.Name
+	if name == "" {
+		name = link.Bucket
+	}
+	return s.canAccessBucket(info, name)
 }
 
 func (s *Server) sharePasswordOK(r *http.Request, link *metadata.SharedLinkRecord) bool {

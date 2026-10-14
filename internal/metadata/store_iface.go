@@ -265,6 +265,18 @@ type MetadataStore interface {
 	ClearMFAStepUpFailures(userID string) error
 	ResetTOTPStep(userID string) error
 
+	// Object encryption (ADR-0006). Shared by Bolt and Postgres.
+	GetKMSState() (KMSState, error)
+	InitKMSState(st KMSState) (KMSState, error)
+	PutKMSState(st KMSState) error
+	PutKMSKey(rec KMSKeyRecord) error
+	GetKMSKey(id string) (KMSKeyRecord, error)
+	PutBucketEncryption(storageKey string, enc BucketEncryption) error
+	GetBucketEncryption(storageKey string) (BucketEncryption, error)
+	DeleteBucketEncryption(storageKey string) error
+	UpsertNodeHeartbeat(nodeID, version string, at time.Time) error
+	ListNodeHeartbeats(since time.Time) ([]NodeHeartbeat, error)
+
 	// Field encryption KEK registry
 	ListEncryptionKeys(ctx context.Context) ([]EncryptionKeyRecord, error)
 	GetEncryptionKey(ctx context.Context, kekID string) (EncryptionKeyRecord, error)

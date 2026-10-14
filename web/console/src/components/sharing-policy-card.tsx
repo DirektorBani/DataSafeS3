@@ -3,10 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { api, type SharingPolicy } from "@/lib/api";
+import { DurationFields } from "@/components/duration-fields";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -17,11 +16,6 @@ import {
 } from "@/components/ui/dialog";
 
 type Scope = "global" | "tenant" | "bucket";
-
-function numOrEmpty(v: number | null | undefined): string {
-  if (v === undefined || v === null) return "";
-  return String(v);
-}
 
 function formatPolicyTTL(seconds: number, t: (key: string, opts?: { count: number }) => string): string {
   if (!seconds || seconds <= 0) return t("sharing.unlimited");
@@ -141,38 +135,22 @@ export function SharingPolicyCard({
           onChange={(v) => setBool("share_password_required", v)}
         />
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label>{t("sharing.maxShareTtl")}</Label>
-            <Input
-              type="number"
-              disabled={!canEdit}
-              value={numOrEmpty(current.max_share_ttl_sec)}
-              placeholder={t("sharing.ttlPlaceholder")}
-              onChange={(e) =>
-                setDraft({
-                  ...current,
-                  max_share_ttl_sec: e.target.value === "" ? null : Number(e.target.value),
-                })
-              }
-            />
-            <p className="text-xs text-muted-foreground">{t("sharing.ttlHint")}</p>
-          </div>
-          <div className="space-y-1">
-            <Label>{t("sharing.maxPresignTtl")}</Label>
-            <Input
-              type="number"
-              disabled={!canEdit}
-              value={numOrEmpty(current.max_presign_ttl_sec)}
-              placeholder={t("sharing.ttlPlaceholder")}
-              onChange={(e) =>
-                setDraft({
-                  ...current,
-                  max_presign_ttl_sec: e.target.value === "" ? null : Number(e.target.value),
-                })
-              }
-            />
-            <p className="text-xs text-muted-foreground">{t("sharing.presignTtlHint")}</p>
-          </div>
+          <DurationFields
+            idPrefix="share-ttl"
+            label={t("sharing.maxShareTtl")}
+            hint={t("sharing.ttlHint")}
+            seconds={current.max_share_ttl_sec}
+            disabled={!canEdit}
+            onChange={(seconds) => setDraft({ ...current, max_share_ttl_sec: seconds })}
+          />
+          <DurationFields
+            idPrefix="presign-ttl"
+            label={t("sharing.maxPresignTtl")}
+            hint={t("sharing.presignTtlHint")}
+            seconds={current.max_presign_ttl_sec}
+            disabled={!canEdit}
+            onChange={(seconds) => setDraft({ ...current, max_presign_ttl_sec: seconds })}
+          />
         </div>
         {canEdit && (
           <div className="flex flex-wrap gap-2">
