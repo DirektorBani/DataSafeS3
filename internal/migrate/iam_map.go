@@ -151,16 +151,28 @@ func unsupportedCondition(st policy.Statement) []string {
 
 // userStatements ports each user's policies and enabled group policies.
 // A user in refused has a Deny that cannot be stored; that user gets no key.
+// MinIO returns no policy at all for a member of a disabled group, which denies
+// every request, including that user's own allows. Those allows are replaced
+// with an unconditional deny on each named bucket.
 func userStatements(snap IAMSnapshot) (userStmts map[string][]policy.Statement, refused map[string]string, warnings []string) {
 	userStmts = map[string][]policy.Statement{}
 	refused = map[string]string{}
 	for _, u := range snap.Users {
 		names := splitPolicies(u.PolicyName)
+		var scan []string
+		scan = append(scan, names...)
+		var disabled []string
 		for _, g := range groupsOf(u, snap.Groups) {
-			if !accountEnabled(g.Status) || strings.TrimSpace(g.Policy) == "" {
+			if strings.TrimSpace(g.Policy) != "" {
+				scan = append(scan, splitPolicies(g.Policy)...)
+			}
+			if !accountEnabled(g.Status) {
+				disabled = append(disabled, g.Name)
 				continue
 			}
-			names = append(names, splitPolicies(g.Policy)...)
+			if strings.TrimSpace(g.Policy) != "" {
+				names = append(names, splitPolicies(g.Policy)...)
+			}
 		}
 		var stmts []policy.Statement
 		bad := false
@@ -186,9 +198,84 @@ func userStatements(snap IAMSnapshot) (userStmts map[string][]policy.Statement, 
 			refused[u.AccessKey] = "deny cannot be represented"
 			continue
 		}
+		if len(disabled) > 0 {
+			sort.Strings(disabled)
+			buckets := namedBucketsInPolicies(snap.Policies, scan)
+			if len(buckets) == 0 {
+				reason := "member of disabled group " + strings.Join(disabled, ", ") + "; MinIO denies every request and that deny cannot be attached to a named bucket"
+				refused[u.AccessKey] = reason
+				warnings = append(warnings, "user "+u.AccessKey+" is refused: "+reason)
+				continue
+			}
+			stmts = denyBuckets(buckets)
+			warnings = append(warnings, "user "+u.AccessKey+" is a member of disabled group "+strings.Join(disabled, ", ")+"; MinIO denies every request, so allows were dropped and access is denied")
+		}
 		userStmts[u.AccessKey] = stmts
 	}
 	return userStmts, refused, warnings
+}
+
+// denyBuckets is an unconditional deny of every S3 action on the bucket and
+// its objects. It is stricter than dropping the user's allows and leaving the
+// key unbound, which would still permit ListAllMyBuckets.
+func denyBuckets(buckets []string) []policy.Statement {
+	out := make([]policy.Statement, 0, len(buckets))
+	for _, bucket := range buckets {
+		out = append(out, policy.Statement{
+			Sid:      "disabled-group",
+			Effect:   "Deny",
+			Action:   []string{"s3:*"},
+			Resource: []string{"arn:aws:s3:::" + bucket, "arn:aws:s3:::" + bucket + "/*"},
+		})
+	}
+	return out
+}
+
+func namedBucketsInPolicies(policies map[string]string, names []string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, name := range uniqueStrings(names) {
+		raw := strings.TrimSpace(policies[name])
+		if raw == "" {
+			continue
+		}
+		var doc policy.Document
+		if json.Unmarshal([]byte(raw), &doc) != nil {
+			continue
+		}
+		for _, st := range doc.Statement {
+			for _, res := range st.Resource {
+				bucket, ok := bucketFromResource(res)
+				if !ok {
+					continue
+				}
+				if _, dup := seen[bucket]; dup {
+					continue
+				}
+				seen[bucket] = struct{}{}
+				out = append(out, bucket)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func bucketFromResource(res string) (string, bool) {
+	res = strings.TrimSpace(res)
+	switch res {
+	case "", "*", "arn:aws:s3:::*", "arn:aws:s3:::*/*":
+		return "", false
+	}
+	const prefix = "arn:aws:s3:::"
+	if !strings.HasPrefix(res, prefix) {
+		return "", false
+	}
+	name, _, _ := strings.Cut(strings.TrimPrefix(res, prefix), "/")
+	if name == "" || name == "*" {
+		return "", false
+	}
+	return name, true
 }
 
 // EffectiveIAM binds each imported access key to statements that are equal to
@@ -221,7 +308,7 @@ func EffectiveIAM(snap IAMSnapshot, userStmts map[string][]policy.Statement, ref
 			}
 		} else {
 			note.PolicyApplied = false
-			note.Detail = "group is disabled; its policy was not applied"
+			note.Detail = "group is disabled; its policy was not applied. MinIO denies every request for a member, so those members' allows were dropped"
 		}
 		groups = append(groups, note)
 	}

@@ -139,12 +139,17 @@ func TestIAMRightsAreNotBroaderAndRerunKeepsState(t *testing.T) {
 	unolist := keyFor(keys, "unolist", "user")
 	saImp := keyFor(keys, "uparent", "saImp")
 	saNar := keyFor(keys, "uparent", "saNar")
-	for _, row := range []iamKeyRow{u03, u21} {
-		assertStatus(row, http.MethodGet, "/bkt1", true)
-		assertStatus(row, http.MethodGet, "/bkt1/pub/a", false)
-		assertStatus(row, http.MethodGet, "/bkt1/priv/a", false)
-		assertStatus(row, http.MethodGet, "/", false)
+	if !strings.Contains(strings.Join(rep.Warnings, "\n"), "u03 is a member of disabled group g4") {
+		t.Fatalf("warnings %v", rep.Warnings)
 	}
+	assertStatus(u03, http.MethodGet, "/bkt1", false)
+	assertStatus(u03, http.MethodGet, "/bkt1/pub/a", false)
+	assertStatus(u03, http.MethodGet, "/bkt1/priv/a", false)
+	assertStatus(u03, http.MethodGet, "/", false)
+	assertStatus(u21, http.MethodGet, "/bkt1", true)
+	assertStatus(u21, http.MethodGet, "/bkt1/pub/a", false)
+	assertStatus(u21, http.MethodGet, "/bkt1/priv/a", false)
+	assertStatus(u21, http.MethodGet, "/", false)
 	assertStatus(u05, http.MethodGet, "/bkt1/pub/a", true)
 	assertStatus(u05, http.MethodGet, "/bkt1/home/a", true)
 	assertStatus(u05, http.MethodGet, "/bkt1/priv/a", false)
