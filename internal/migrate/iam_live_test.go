@@ -99,7 +99,7 @@ func TestFromMinIOLiveIAMMatrix(t *testing.T) {
 	secretByUser := map[string]string{
 		"u03": "u03secretvalue1", "u21": "u21secretvalue1", "u05": "u05secretvalue1",
 		"uden": "udensecretvalue", "uip": "uipsecretvalue1", "uparent": "uparentsecret11",
-		"unolist": "unolistsecret11",
+		"unolist": "unolistsecret11", "unobind": "unobindsecret111",
 	}
 	var people []principal
 	for user, sec := range secretByUser {
@@ -150,7 +150,11 @@ func TestFromMinIOLiveIAMMatrix(t *testing.T) {
 			dsCode := signedQuery(t, ds, p.datasafeKey, p.datasafeSecret, op.method, op.path, op.query, nil)
 			if dsCode >= 200 && dsCode < 300 && (minioCode < 200 || minioCode >= 300) {
 				broader++
-				t.Errorf("broader %s %s %s minio %d datasafe %d", p.name, op.method, op.path, minioCode, dsCode)
+				label := op.path
+				if len(op.query) > 0 {
+					label += "?" + op.query.Encode()
+				}
+				t.Errorf("broader %s %s %s minio %d datasafe %d", p.name, op.method, label, minioCode, dsCode)
 			}
 		}
 	}
@@ -209,11 +213,15 @@ func provisionMinIOIAM(t *testing.T, src migrate.Endpoint) error {
 		{"uip", "uipsecretvalue1", "pip"},
 		{"uparent", "uparentsecret11", "pparent"},
 		{"unolist", "unolistsecret11", "pobj"},
+		{"unobind", "unobindsecret111", ""},
 	}
 	for _, u := range users {
 		body, _ := json.Marshal(map[string]string{"secretKey": u.secret, "status": "enabled"})
 		if err := minioAdmin(t, src, http.MethodPut, "/minio/admin/v3/add-user", url.Values{"accessKey": {u.name}}, body, true); err != nil {
 			return err
+		}
+		if u.policy == "" {
+			continue
 		}
 		if err := minioAdmin(t, src, http.MethodPut, "/minio/admin/v3/set-user-or-group-policy", url.Values{
 			"policyName": {u.policy}, "userOrGroup": {u.name}, "isGroup": {"false"},

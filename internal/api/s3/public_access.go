@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
@@ -219,12 +221,86 @@ func (s *Service) tenantAdmin(userID, tenantID string) bool {
 	return false
 }
 
+// requestSourceIP is the address aws:SourceIp sees. It is the TCP peer.
+// X-Forwarded-For is used only when that peer is inside STORAGE_TRUSTED_PROXIES,
+// and then the rightmost hop that is not itself a trusted proxy. A header from
+// any other peer is ignored.
 func requestSourceIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
+	remote := peerIP(r.RemoteAddr)
+	if !ipTrusted(remote) {
+		return remote
 	}
-	return host
+	if client := forwardedClientIP(r.Header.Get("X-Forwarded-For")); client != "" {
+		return client
+	}
+	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" && net.ParseIP(xri) != nil && !ipTrusted(xri) {
+		return xri
+	}
+	return remote
+}
+
+func peerIP(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	return strings.Trim(host, "[]")
+}
+
+func forwardedClientIP(xff string) string {
+	parts := strings.Split(xff, ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		ip := strings.TrimSpace(parts[i])
+		if net.ParseIP(ip) == nil {
+			continue
+		}
+		if ipTrusted(ip) {
+			continue
+		}
+		return ip
+	}
+	return ""
+}
+
+func ipTrusted(ip string) bool {
+	parsed := net.ParseIP(strings.TrimSpace(ip))
+	if parsed == nil {
+		return false
+	}
+	for _, n := range trustedProxyNets() {
+		if n.Contains(parsed) {
+			return true
+		}
+	}
+	return false
+}
+
+func trustedProxyNets() []*net.IPNet {
+	raw := os.Getenv("STORAGE_TRUSTED_PROXIES")
+	var out []*net.IPNet
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if !strings.Contains(part, "/") {
+			parsed := net.ParseIP(part)
+			if parsed == nil {
+				continue
+			}
+			bits := 32
+			if parsed.To4() == nil {
+				bits = 128
+			}
+			part = part + "/" + strconv.Itoa(bits)
+		}
+		_, network, err := net.ParseCIDR(part)
+		if err != nil {
+			continue
+		}
+		out = append(out, network)
+	}
+	return out
 }
 
 func tenantHint(r *http.Request) string {

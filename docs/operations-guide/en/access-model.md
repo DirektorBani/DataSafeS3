@@ -11,6 +11,8 @@ Cells:
 
 Bucket admin is the bucket owner, a tenant administrator of the bucket's tenant, a global administrator, or a grant with level `admin`. Write and read grants do not include purge, COMPLIANCE retention, grant changes, or sharing policy.
 
+`aws:SourceIp` on a bucket policy is the TCP address of the peer that connected to this process. Behind a load balancer that is the balancer address, and a client-supplied `X-Forwarded-For` is ignored. `STORAGE_TRUSTED_PROXIES` is a comma-separated list of balancer CIDRs; only a connection from one of those networks may supply the client address in `X-Forwarded-For` (the rightmost hop that is not itself in the list). `s3:ListAllMyBuckets` is HTTP 403 AccessDenied for an access key that is not an administrator, an operator, or the bootstrap owner, unless a bucket policy explicitly allows that action. The console lists buckets with `GET /api/v1/buckets`.
+
 Anonymous reads are allowed only for a single unambiguous public bucket (header `X-DataSafe-Tenant` or query `tenant` when names collide) and only when Block Public Access is off at every level. `public-read` is stored as a bucket policy with `Principal: "*"`.
 
 Presigned URLs are signed with a temporary access key owned by the caller. The root access key cannot presign. DELETE cannot be presigned. The TTL cannot exceed 7 days or the effective `max_presign_ttl`.

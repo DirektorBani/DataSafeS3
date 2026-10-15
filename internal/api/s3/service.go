@@ -127,8 +127,9 @@ func (s *Service) Authorize(logicalBucket, key, action, principal string) bool {
 
 // AuthorizeRequest is Authorize with the caller address. A bucket policy that
 // names this access key is the only allow for that key: a bucket grant cannot
-// widen it. ListAllMyBuckets is denied for a key that is named in a bucket
-// policy and is not allowed that action.
+// widen it. ListAllMyBuckets is denied unless the key is the bootstrap owner,
+// an administrator or operator, or a bucket policy explicitly allows that action.
+// A key with no such allow receives 403, not an empty 200.
 func (s *Service) AuthorizeRequest(logicalBucket, key, action, principal, sourceIP string, secure bool) bool {
 	if principal == "" {
 		return false
@@ -204,12 +205,10 @@ func (s *Service) allowListAllMyBuckets(principal string) bool {
 	if err != nil {
 		return false
 	}
-	mentioned := false
 	for _, b := range buckets {
-		if !policyBindsAccessKey(b.Policy, ak.AccessKey) {
+		if strings.TrimSpace(b.Policy) == "" {
 			continue
 		}
-		mentioned = true
 		for _, resource := range []string{"*", "arn:aws:s3:::*", policy.BucketARN(b.Name)} {
 			if policy.EvaluateContext(b.Policy, policy.EvalContext{
 				Action:     "s3:ListAllMyBuckets",
@@ -220,10 +219,7 @@ func (s *Service) allowListAllMyBuckets(principal string) bool {
 			}
 		}
 	}
-	if mentioned {
-		return false
-	}
-	return true
+	return false
 }
 
 func (s *Service) userTenantMemberships(userID string) []auth.TenantMembership {

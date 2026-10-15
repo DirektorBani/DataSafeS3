@@ -87,7 +87,15 @@ func TestIAMRightsAreNotBroaderAndRerunKeepsState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rep.Groups) != 5 {
+	if len(rep.Errors) != 0 || rep.Verdicts["access"] != "PASS" || rep.Verdicts["policies"] != "PASS" {
+		t.Fatalf("verdicts %+v errors %v probes %+v", rep.Verdicts, rep.Errors, rep.Probes)
+	}
+	for _, p := range rep.Probes {
+		if p.Username == "uip" && (p.Verdict != "PASS" || p.Status < 300) {
+			t.Fatalf("uip probe %+v", p)
+		}
+	}
+	if len(rep.Groups) != 6 {
 		t.Fatalf("groups %+v", rep.Groups)
 	}
 	for _, g := range rep.Groups {
@@ -113,6 +121,12 @@ func TestIAMRightsAreNotBroaderAndRerunKeepsState(t *testing.T) {
 	u03 := keyFor(keys, "u03", "user")
 	if u03.SecretKey == "" || u03.Password == "" {
 		t.Fatalf("u03 key %+v", u03)
+	}
+	if keyFor(keys, "u08", "user").SecretKey != "" || keyFor(keys, "u15", "user").SecretKey != "" {
+		t.Fatal("refused user received a key")
+	}
+	if !strings.Contains(strings.Join(rep.Warnings, "\n"), "u08") || !strings.Contains(strings.Join(rep.Warnings, "\n"), "u15") {
+		t.Fatalf("warnings %v", rep.Warnings)
 	}
 	if keyFor(keys, "uparent", "saOff").SecretKey != "" {
 		t.Fatal("disabled service account received a key")
@@ -198,6 +212,13 @@ func TestIAMRightsAreNotBroaderAndRerunKeepsState(t *testing.T) {
 	pol = getIAMPolicy(t, ds.URL, admin, "bkt1")
 	if !strings.Contains(pol, "keep-me") {
 		t.Fatalf("policy shrank: %s", pol)
+	}
+	rep, err = migrate.RunIAM(t.Context(), opt)
+	if err != nil {
+		t.Fatalf("stable rerun: %v", err)
+	}
+	if againPol := getIAMPolicy(t, ds.URL, admin, "bkt1"); againPol != pol {
+		t.Fatalf("policy grew %d -> %d", len(pol), len(againPol))
 	}
 	raw, err := os.ReadFile(keysPath)
 	if err != nil {
@@ -385,18 +406,22 @@ func startRightsMinIO(t *testing.T) migrate.Endpoint {
 		"uip":     map[string]any{"status": "enabled", "policyName": "pip"},
 		"uparent": map[string]any{"status": "enabled", "policyName": "pparent"},
 		"unolist": map[string]any{"status": "enabled", "policyName": "pobj"},
+		"u08":     map[string]any{"status": "enabled", "policyName": "pdenyall"},
+		"u15":     map[string]any{"status": "enabled", "policyName": "pstar", "memberOf": []string{"g5"}},
 	}
 	policies := map[string]string{
-		"plist":   `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::bkt1"]}]}`,
-		"pprefix": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":"arn:aws:s3:::bkt1"},{"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::bkt1/pub/*","arn:aws:s3:::bkt1/home/*"]}]}`,
-		"pdeny":   `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket"],"Resource":["arn:aws:s3:::bkt1","arn:aws:s3:::bkt1/*"]},{"Sid":"time","Effect":"Deny","Action":"s3:GetObject","Resource":"arn:aws:s3:::bkt1/*","Condition":{"DateGreaterThan":{"aws:CurrentTime":"2000-01-01T00:00:00Z"}}}]}`,
-		"pip":     `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket"],"Resource":["arn:aws:s3:::bkt1","arn:aws:s3:::bkt1/*"],"Condition":{"IpAddress":{"aws:SourceIp":"203.0.113.9"}}}]}`,
-		"pparent": `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket","s3:GetObject"],"Resource":["arn:aws:s3:::bkt1","arn:aws:s3:::bkt1/*"]}]}`,
-		"pobj":    `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":"arn:aws:s3:::bkt1/pub/*"}]}`,
-		"ppriv":   `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":"arn:aws:s3:::bkt1/priv/*"}]}`,
-		"pnar":    `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":"arn:aws:s3:::bkt1"}]}`,
+		"plist":    `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::bkt1"]}]}`,
+		"pprefix":  `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":"arn:aws:s3:::bkt1"},{"Effect":"Allow","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::bkt1/pub/*","arn:aws:s3:::bkt1/home/*"]}]}`,
+		"pdeny":    `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket"],"Resource":["arn:aws:s3:::bkt1","arn:aws:s3:::bkt1/*"]},{"Sid":"time","Effect":"Deny","Action":"s3:GetObject","Resource":"arn:aws:s3:::bkt1/*","Condition":{"DateGreaterThan":{"aws:CurrentTime":"2000-01-01T00:00:00Z"}}}]}`,
+		"pip":      `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket"],"Resource":["arn:aws:s3:::bkt1","arn:aws:s3:::bkt1/*"],"Condition":{"IpAddress":{"aws:SourceIp":"203.0.113.9"}}}]}`,
+		"pparent":  `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket","s3:GetObject"],"Resource":["arn:aws:s3:::bkt1","arn:aws:s3:::bkt1/*"]}]}`,
+		"pobj":     `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":"arn:aws:s3:::bkt1/pub/*"}]}`,
+		"ppriv":    `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":"arn:aws:s3:::bkt1/priv/*"}]}`,
+		"pnar":     `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":"arn:aws:s3:::bkt1"}]}`,
+		"pdenyall": `{"Version":"2012-10-17","Statement":[{"Effect":"Deny","Action":"s3:*","Resource":"*"}]}`,
+		"pstar":    `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]}`,
 	}
-	groups := []string{"g0", "g1", "g2", "g3", "g4"}
+	groups := []string{"g0", "g1", "g2", "g3", "g4", "g5"}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body []byte
 		switch {
@@ -419,6 +444,11 @@ func startRightsMinIO(t *testing.T) migrate.Endpoint {
 				status = "disabled"
 				members = []string{"u03"}
 				policyName = "ppriv"
+			}
+			if g == "g5" {
+				status = "disabled"
+				members = []string{"u15"}
+				policyName = "pstar"
 			}
 			body, _ = json.Marshal(map[string]any{"name": g, "status": status, "members": members, "policy": policyName})
 		case strings.HasSuffix(r.URL.Path, "/list-canned-policies"):

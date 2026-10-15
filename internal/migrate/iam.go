@@ -343,11 +343,26 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 		if refusedUsers[u.AccessKey] == "" {
 			continue
 		}
-		rep.Errors = append(rep.Errors, "user "+u.AccessKey+" was not given a key: "+refusedUsers[u.AccessKey])
+		rep.Warnings = append(rep.Warnings, "user "+u.AccessKey+" was not given a key: "+refusedUsers[u.AccessKey])
 		rep.NotTransferred = append(rep.NotTransferred, IAMSkip{Kind: "user", Name: u.AccessKey, Reason: refusedUsers[u.AccessKey]})
 	}
 	var issued []issuedKey
 	keysByUser := map[string]issuedKey{}
+	var keysWarn string
+	persistKeys := func() error {
+		if strings.TrimSpace(opt.KeysFile) == "" {
+			return nil
+		}
+		warn, err := writeKeysFile(opt.KeysFile, prevKeys, issued)
+		if err != nil {
+			return err
+		}
+		if warn != "" && keysWarn == "" {
+			keysWarn = warn
+			rep.Warnings = append(rep.Warnings, warn)
+		}
+		return nil
+	}
 	userKeyID := map[string]string{}
 	for _, u := range snap.Users {
 		if users[u.AccessKey] == "" || !accountEnabled(u.Status) || refusedUsers[u.AccessKey] != "" {
@@ -366,6 +381,9 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 		issued = append(issued, row)
 		keysByUser[u.AccessKey] = row
 		userKeyID[u.AccessKey] = row.AccessKey
+		if err := persistKeys(); err != nil {
+			return rep, err
+		}
 	}
 	saKeyID := map[string]string{}
 	for _, sa := range snap.ServiceAccounts {
@@ -394,6 +412,9 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 		row.Status = "enabled"
 		issued = append(issued, row)
 		saKeyID[sa.AccessKey] = row.AccessKey
+		if err := persistKeys(); err != nil {
+			return rep, err
+		}
 	}
 	for _, u := range snap.Users {
 		if users[u.AccessKey] == "" || !accountEnabled(u.Status) || refusedUsers[u.AccessKey] != "" {
@@ -410,10 +431,8 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 	rep.ServiceAccounts = saNotes
 	mapped, mapWarnings := MapBucketPolicies(docs, principals)
 	rep.Warnings = append(rep.Warnings, mapWarnings...)
-	if warn, err := writeKeysFile(opt.KeysFile, prevKeys, issued); err != nil {
+	if err := persistKeys(); err != nil {
 		return rep, err
-	} else if warn != "" {
-		rep.Warnings = append(rep.Warnings, warn)
 	}
 	for bucket, statements := range mapped {
 		existing, found, err := ds.getPolicy(ctx, bucket)
@@ -447,18 +466,21 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 		rep.PoliciesTransferred++
 	}
 	leader := ds.current()
+	secureProbe := strings.HasPrefix(strings.ToLower(leader.URL), "https:")
 	for _, u := range snap.Users {
 		row, ok := keysByUser[u.AccessKey]
 		if !ok {
 			continue
 		}
 		for bucket, statements := range mapped {
-			if !policyAllowsList(statements, policy.AccessKeyARN(row.AccessKey)) {
+			run, want := listProbePlan(statements, policy.AccessKeyARN(row.AccessKey), bucket, secureProbe)
+			if !run {
 				continue
 			}
 			status, perr := probeList(ctx, leader, row, bucket)
+			got := perr == nil && status >= 200 && status < 300
 			verdict := "FAIL"
-			if perr == nil && status == http.StatusOK {
+			if perr == nil && got == want {
 				verdict = "PASS"
 			}
 			rep.Probes = append(rep.Probes, IAMProbe{
@@ -844,6 +866,14 @@ func (c *dsClient) current() Endpoint {
 	return c.targets[c.idx%len(c.targets)]
 }
 
+func (c *dsClient) noteLeaderDown(ctx context.Context) {
+	prev := c.idx
+	c.pickLeader(ctx)
+	if c.idx == prev && len(c.targets) > 1 {
+		c.idx = (c.idx + 1) % len(c.targets)
+	}
+}
+
 func (c *dsClient) pickLeader(ctx context.Context) {
 	if len(c.targets) < 2 {
 		return
@@ -990,33 +1020,41 @@ func (c *dsClient) call(ctx context.Context, method, path string, in any, out an
 	if auth {
 		token = c.token
 	}
+	deadline := time.Now().Add(35 * time.Second)
 	var last error
-	for attempt := 0; attempt < 6; attempt++ {
+	for attempt := 0; ; attempt++ {
 		status, raw, err := c.do(ctx, method, path, in, token)
+		retry := false
 		if err != nil {
 			last = err
-			if !sleepIAM(ctx, time.Duration(attempt+1)*100*time.Millisecond) {
-				return ctx.Err()
-			}
-			continue
-		}
-		if status == http.StatusServiceUnavailable && isNotLeader(status, string(raw)) {
+			retry = true
+		} else if status == http.StatusServiceUnavailable && isNotLeader(status, string(raw)) {
 			last = ErrNotLeader
-			c.pickLeader(ctx)
-			if !sleepIAM(ctx, time.Duration(attempt+1)*100*time.Millisecond) {
-				return ctx.Err()
-			}
-			continue
-		}
-		if status >= 300 {
+			retry = true
+		} else if status >= 300 {
 			return fmt.Errorf("http %d %s", status, strings.TrimSpace(string(raw)))
-		}
-		if out != nil && len(bytes.TrimSpace(raw)) > 0 {
-			if err := json.Unmarshal(raw, out); err != nil {
-				return err
+		} else {
+			if out != nil && len(bytes.TrimSpace(raw)) > 0 {
+				if err := json.Unmarshal(raw, out); err != nil {
+					return err
+				}
 			}
+			return nil
 		}
-		return nil
+		if !retry || time.Now().After(deadline) {
+			break
+		}
+		c.noteLeaderDown(ctx)
+		delay := 200 * time.Millisecond
+		if attempt > 0 {
+			delay = time.Duration(attempt+1) * 400 * time.Millisecond
+		}
+		if delay > 2*time.Second {
+			delay = 2 * time.Second
+		}
+		if !sleepIAM(ctx, delay) {
+			return ctx.Err()
+		}
 	}
 	if last == nil {
 		last = ErrNotLeader

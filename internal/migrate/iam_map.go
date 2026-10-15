@@ -1,6 +1,7 @@
 package migrate
 
 import (
+	"bytes"
 	"encoding/json"
 	"sort"
 	"strings"
@@ -548,7 +549,9 @@ func accountEnabled(status string) bool {
 }
 
 // MergeBucketPolicy appends statements that are not already present.
-// Statements already stored are left in place.
+// Statements already stored are left in place. Actions, resources, principals,
+// and conditions are compared in canonical form, and the stored document is
+// rewritten in that form so a second merge of the same statements is byte-stable.
 func MergeBucketPolicy(existing string, add []policy.Statement) (string, error) {
 	var doc policy.Document
 	existing = strings.TrimSpace(existing)
@@ -557,21 +560,34 @@ func MergeBucketPolicy(existing string, add []policy.Statement) (string, error) 
 			return "", err
 		}
 	}
-	seen := map[string]struct{}{}
-	for _, st := range doc.Statement {
-		raw, _ := json.Marshal(st)
-		seen[string(raw)] = struct{}{}
-	}
-	for _, st := range add {
-		raw, err := json.Marshal(st)
+	seen := map[string]policy.Statement{}
+	var order []string
+	addOne := func(st policy.Statement) error {
+		canon, key, err := canonicalStatement(st)
 		if err != nil {
+			return err
+		}
+		if _, ok := seen[key]; ok {
+			return nil
+		}
+		seen[key] = canon
+		order = append(order, key)
+		return nil
+	}
+	for _, st := range doc.Statement {
+		if err := addOne(st); err != nil {
 			return "", err
 		}
-		if _, ok := seen[string(raw)]; ok {
-			continue
+	}
+	for _, st := range add {
+		if err := addOne(st); err != nil {
+			return "", err
 		}
-		seen[string(raw)] = struct{}{}
-		doc.Statement = append(doc.Statement, st)
+	}
+	sort.Strings(order)
+	doc.Statement = doc.Statement[:0]
+	for _, key := range order {
+		doc.Statement = append(doc.Statement, seen[key])
 	}
 	if doc.Version == "" {
 		doc.Version = "2012-10-17"
@@ -581,6 +597,124 @@ func MergeBucketPolicy(existing string, add []policy.Statement) (string, error) 
 		return "", err
 	}
 	return string(out), nil
+}
+
+func canonicalStatement(st policy.Statement) (policy.Statement, string, error) {
+	switch strings.ToLower(strings.TrimSpace(st.Effect)) {
+	case "allow":
+		st.Effect = "Allow"
+	case "deny":
+		st.Effect = "Deny"
+	}
+	st.Sid = strings.TrimSpace(st.Sid)
+	st.Action = sortedCopy(st.Action)
+	st.Resource = sortedCopy(st.Resource)
+	st.Principal = canonicalPrincipal(st.Principal)
+	st.Condition = canonicalCondition(st.Condition)
+	raw, err := json.Marshal(st)
+	if err != nil {
+		return st, "", err
+	}
+	return st, string(raw), nil
+}
+
+func sortedCopy(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := append([]string(nil), in...)
+	sort.Strings(out)
+	return out
+}
+
+func canonicalPrincipal(raw json.RawMessage) json.RawMessage {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var asString string
+	if json.Unmarshal(raw, &asString) == nil {
+		b, _ := json.Marshal(map[string][]string{"AWS": {asString}})
+		return b
+	}
+	var box struct {
+		AWS json.RawMessage `json:"AWS"`
+	}
+	if json.Unmarshal(raw, &box) != nil || len(bytes.TrimSpace(box.AWS)) == 0 {
+		return raw
+	}
+	var many []string
+	var one string
+	if json.Unmarshal(box.AWS, &one) == nil {
+		many = []string{one}
+	} else if json.Unmarshal(box.AWS, &many) != nil {
+		return raw
+	}
+	many = uniqueStrings(many)
+	b, err := json.Marshal(map[string][]string{"AWS": many})
+	if err != nil {
+		return raw
+	}
+	return b
+}
+
+func canonicalCondition(in map[string]map[string]any) map[string]map[string]any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := map[string]map[string]any{}
+	for op, keys := range in {
+		op = strings.ToLower(strings.TrimSpace(op))
+		if op == "" {
+			continue
+		}
+		dst := map[string]any{}
+		for key, value := range keys {
+			key = strings.ToLower(strings.TrimSpace(key))
+			if key == "" {
+				continue
+			}
+			vals := conditionStrings(value)
+			sort.Strings(vals)
+			dst[key] = vals
+		}
+		if len(dst) > 0 {
+			out[op] = dst
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func conditionStrings(v any) []string {
+	switch t := v.(type) {
+	case string:
+		return []string{t}
+	case bool:
+		if t {
+			return []string{"true"}
+		}
+		return []string{"false"}
+	case []string:
+		return append([]string(nil), t...)
+	case []any:
+		var out []string
+		for _, item := range t {
+			out = append(out, conditionStrings(item)...)
+		}
+		return out
+	default:
+		if t == nil {
+			return nil
+		}
+		b, err := json.Marshal(t)
+		if err != nil {
+			return nil
+		}
+		return []string{string(b)}
+	}
 }
 
 func bucketsFromResources(resources []string) (buckets []string, all bool) {
@@ -627,19 +761,38 @@ func uniqueStrings(in []string) []string {
 	return out
 }
 
-func policyAllowsList(statements []policy.Statement, principal string) bool {
+// listProbePlan reports whether this principal's statements mention ListBucket
+// on the bucket, and whether a probe from this host is expected to be allowed.
+// An Allow whose condition does not match (for example aws:SourceIp) is a deny.
+func listProbePlan(statements []policy.Statement, principal, bucket string, secure bool) (probe bool, allow bool) {
+	var mine []policy.Statement
 	for _, st := range statements {
-		if !strings.EqualFold(st.Effect, "Allow") {
+		if !principalListed(st.Principal, principal) || !statementListsBucket(st) {
 			continue
 		}
-		if !principalListed(st.Principal, principal) {
-			continue
-		}
-		for _, action := range st.Action {
-			switch strings.ToLower(action) {
-			case "s3:listbucket", "s3:list*", "s3:*", "*":
-				return true
-			}
+		mine = append(mine, st)
+	}
+	if len(mine) == 0 {
+		return false, false
+	}
+	raw, err := json.Marshal(policy.Document{Version: "2012-10-17", Statement: mine})
+	if err != nil {
+		return true, false
+	}
+	allow = policy.EvaluateContext(string(raw), policy.EvalContext{
+		Action:          "s3:ListBucket",
+		Resource:        policy.BucketARN(bucket),
+		Principals:      []string{principal},
+		SecureTransport: secure,
+	})
+	return true, allow
+}
+
+func statementListsBucket(st policy.Statement) bool {
+	for _, action := range st.Action {
+		switch strings.ToLower(action) {
+		case "s3:listbucket", "s3:list*", "s3:*", "*":
+			return true
 		}
 	}
 	return false

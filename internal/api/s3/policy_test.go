@@ -117,6 +117,124 @@ func TestPolicyDeniesUnauthorizedGet(t *testing.T) {
 	}
 }
 
+func TestListAllMyBucketsRequiresAllow(t *testing.T) {
+	srv, owner := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	setupBucket(t, ts, owner, "listed")
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/", nil)
+	signRequest(t, req, owner, "us-east-1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("owner list %d", resp.StatusCode)
+	}
+
+	token, err := srv.AdminToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	create, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/users", strings.NewReader(`{"username":"plain","password":"pass123","role":"user","email":"p@test.com"}`))
+	create.Header.Set("Content-Type", "application/json")
+	create.Header.Set("Authorization", "Bearer "+token)
+	resp, err = http.DefaultClient.Do(create)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create user %d", resp.StatusCode)
+	}
+	login, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/admin/login", strings.NewReader(`{"username":"plain","password":"pass123"}`))
+	login.Header.Set("Content-Type", "application/json")
+	resp, err = http.DefaultClient.Do(login)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	var session struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(loginBody, &session); err != nil || session.Token == "" {
+		t.Fatalf("login %s %v", loginBody, err)
+	}
+	keyReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/keys", strings.NewReader(`{"label":"plain"}`))
+	keyReq.Header.Set("Content-Type", "application/json")
+	keyReq.Header.Set("Authorization", "Bearer "+session.Token)
+	resp, err = http.DefaultClient.Do(keyReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("key %d %s", resp.StatusCode, keyBody)
+	}
+	var keyResp struct {
+		AccessKey string `json:"access_key"`
+		SecretKey string `json:"secret_key"`
+	}
+	if err := json.Unmarshal(keyBody, &keyResp); err != nil {
+		t.Fatal(err)
+	}
+	req, _ = http.NewRequest(http.MethodGet, ts.URL+"/", nil)
+	signRequest(t, req, auth.Credentials{AccessKey: keyResp.AccessKey, SecretKey: keyResp.SecretKey}, "us-east-1")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden || !strings.Contains(string(body), "AccessDenied") {
+		t.Fatalf("user list %d %s", resp.StatusCode, body)
+	}
+
+	adminLogin, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/admin/login", strings.NewReader(`{"username":"admin","password":"admin"}`))
+	adminLogin.Header.Set("Content-Type", "application/json")
+	resp, err = http.DefaultClient.Do(adminLogin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	var adminSession struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(adminBody, &adminSession); err != nil || adminSession.Token == "" {
+		t.Fatalf("admin login %s", adminBody)
+	}
+	adminKey, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/keys", strings.NewReader(`{"label":"admin"}`))
+	adminKey.Header.Set("Content-Type", "application/json")
+	adminKey.Header.Set("Authorization", "Bearer "+adminSession.Token)
+	resp, err = http.DefaultClient.Do(adminKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminKeyBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("admin key %d %s", resp.StatusCode, adminKeyBody)
+	}
+	if err := json.Unmarshal(adminKeyBody, &keyResp); err != nil {
+		t.Fatal(err)
+	}
+	req, _ = http.NewRequest(http.MethodGet, ts.URL+"/", nil)
+	signRequest(t, req, auth.Credentials{AccessKey: keyResp.AccessKey, SecretKey: keyResp.SecretKey}, "us-east-1")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("admin list %d", resp.StatusCode)
+	}
+}
+
 func TestAdminLoginAndMetrics(t *testing.T) {
 	srv, _ := testServer(t)
 	handler := observability.MetricsMiddleware(srv.Handler())

@@ -266,6 +266,155 @@ func TestIAMWritesFollowTheLeader(t *testing.T) {
 	}
 }
 
+func TestMergeBucketPolicyIsByteStable(t *testing.T) {
+	add := []policy.Statement{{
+		Effect:    "Allow",
+		Action:    []string{"s3:GetObject", "s3:ListBucket"},
+		Resource:  []string{"arn:aws:s3:::bkt2/home/*", "arn:aws:s3:::bkt2"},
+		Principal: json.RawMessage(`{"AWS":"arn:aws:iam::datasafe:access-key/AKIA"}`),
+		Condition: map[string]map[string]any{"IpAddress": {"aws:SourceIp": "10.1.0.0/16"}},
+	}}
+	first, err := migrate.MergeBucketPolicy("", add)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reversed := []policy.Statement{{
+		Effect:    "allow",
+		Action:    []string{"s3:ListBucket", "s3:GetObject"},
+		Resource:  []string{"arn:aws:s3:::bkt2", "arn:aws:s3:::bkt2/home/*"},
+		Principal: json.RawMessage(`{"AWS":["arn:aws:iam::datasafe:access-key/AKIA"]}`),
+		Condition: map[string]map[string]any{"ipaddress": {"aws:SourceIp": []any{"10.1.0.0/16"}}},
+	}}
+	second, err := migrate.MergeBucketPolicy(first, reversed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second != first {
+		t.Fatalf("rerun changed policy\n%s\n%s", first, second)
+	}
+	if strings.Count(second, "s3:GetObject") != 1 {
+		t.Fatalf("statement duplicated: %s", second)
+	}
+	third, err := migrate.MergeBucketPolicy(second, add)
+	if err != nil || third != second {
+		t.Fatalf("third %s err %v", third, err)
+	}
+}
+
+func TestIAMReconnectsAfterLeaderDrops(t *testing.T) {
+	var mu sync.Mutex
+	phase := 0
+	var policyHits int
+	serve := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/api/v1/admin/login":
+			_, _ = w.Write([]byte(`{"token":"t"}`))
+		case r.URL.Path == "/api/v1/users" && r.Method == http.MethodPost:
+			_, _ = w.Write([]byte(`{"id":"u1","user_id":"u1"}`))
+		case r.URL.Path == "/api/v1/users":
+			_, _ = w.Write([]byte(`{"users":[{"id":"u1","username":"alice"}]}`))
+		case strings.Contains(r.URL.Path, "/access-keys"):
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"access_key":"AKIATEST"}`))
+			mu.Lock()
+			phase = 1
+			mu.Unlock()
+		case strings.Contains(r.URL.Path, "/policy") && r.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`{"policy":""}`))
+		case strings.Contains(r.URL.Path, "/policy"):
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case strings.HasPrefix(r.URL.Path, "/box"):
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = w.Write([]byte(`<ListBucketResult></ListBucketResult>`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		p := phase
+		mu.Unlock()
+		if r.URL.Path == "/healthz" {
+			fmt.Fprintf(w, `{"is_leader":%t}`, p == 0)
+			return
+		}
+		if p == 1 {
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				http.Error(w, "no hijack", http.StatusInternalServerError)
+				return
+			}
+			conn, _, err := hj.Hijack()
+			if err == nil {
+				conn.Close()
+			}
+			return
+		}
+		serve(w, r)
+	}))
+	t.Cleanup(primary.Close)
+	secondary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		p := phase
+		if strings.Contains(r.URL.Path, "/policy") {
+			policyHits++
+		}
+		mu.Unlock()
+		if r.URL.Path == "/healthz" {
+			fmt.Fprintf(w, `{"is_leader":%t}`, p == 1)
+			return
+		}
+		serve(w, r)
+	}))
+	t.Cleanup(secondary.Close)
+	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := []byte(`{}`)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/list-users"):
+			body = []byte(`{"alice":{"status":"enabled","policyName":"read"}}`)
+		case strings.HasSuffix(r.URL.Path, "/groups"):
+			body = []byte(`[]`)
+		case strings.HasSuffix(r.URL.Path, "/list-canned-policies"):
+			body = []byte(`{"read":"{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::box\"]}]}"}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		sealed, err := migrate.EncryptAdmin("minioadmin", body)
+		if err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write(sealed)
+	}))
+	t.Cleanup(src.Close)
+	dir := t.TempDir()
+	keysPath := filepath.Join(dir, "keys.json")
+	rep, err := migrate.RunIAM(t.Context(), migrate.IAMOptions{
+		Source:        migrate.Endpoint{URL: src.URL, AccessKey: "minioadmin", SecretKey: "minioadmin", Region: "us-east-1"},
+		Targets:       []migrate.Endpoint{{URL: primary.URL, Region: "us-east-1"}, {URL: secondary.URL, Region: "us-east-1"}},
+		AdminUser:     "admin",
+		AdminPassword: "admin",
+		KeysFile:      keysPath,
+		ReportDir:     filepath.Join(dir, "report"),
+	})
+	if err != nil {
+		t.Fatalf("import: %v errors %v", err, rep.Errors)
+	}
+	raw, err := os.ReadFile(keysPath)
+	if err != nil || !strings.Contains(string(raw), `"username": "alice"`) || !strings.Contains(string(raw), `"secret_key":`) {
+		t.Fatalf("keys file %s err %v", raw, err)
+	}
+	mu.Lock()
+	hits := policyHits
+	mu.Unlock()
+	if hits < 1 {
+		t.Fatal("import did not continue on the new leader")
+	}
+}
+
 func TestFromMinIOLiveIAM(t *testing.T) {
 	ep := os.Getenv("MINIO_ENDPOINT")
 	key := os.Getenv("MINIO_ACCESS_KEY")
