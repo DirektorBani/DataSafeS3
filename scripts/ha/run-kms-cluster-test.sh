@@ -79,13 +79,18 @@ write_nginx() {
     echo "events { worker_connections 128; }"
     echo "http {"
     echo "  upstream datasafe {"
-    local name
+    local name upstream
     for name in "${LIVE[@]}"; do
       case "$name" in
-        ds-kms-s1) echo "    server storage-1:9000 max_fails=1 fail_timeout=5s;" ;;
-        ds-kms-s2) echo "    server storage-2:9000 max_fails=1 fail_timeout=5s;" ;;
-        ds-kms-s3) echo "    server storage-3:9000 max_fails=1 fail_timeout=5s;" ;;
+        ds-kms-s1) upstream="storage-1:9000" ;;
+        ds-kms-s2) upstream="storage-2:9000" ;;
+        ds-kms-s3) upstream="storage-3:9000" ;;
+        *)
+          echo "LB upstream has unknown node $name" >&2
+          exit 1
+          ;;
       esac
+      echo "    server ${upstream} max_fails=1 fail_timeout=5s;"
     done
     echo "  }"
     echo "  server {"
@@ -94,13 +99,37 @@ write_nginx() {
     echo "    location / {"
     echo "      proxy_pass http://datasafe;"
     echo "      proxy_http_version 1.1;"
-    echo "      proxy_set_header Host \$host;"
+    # $host drops the port. SigV4 signs Host with the port, so the node
+    # returns 403. $http_host is the header the client sent.
+    echo "      proxy_set_header Host \$http_host;"
     echo "      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
     echo "      proxy_read_timeout 180s;"
     echo "    }"
     echo "  }"
     echo "}"
   } >"$STATE/nginx.conf"
+}
+
+# The first config is written before any node is stopped. All three backends
+# must be listed, or a later SigV4 403 is easy to misread as a KMS failure.
+assert_initial_lb() {
+  local missing=0 node
+  if ! grep -q 'proxy_set_header Host $http_host;' "$STATE/nginx.conf"; then
+    echo "LB sends Host \$host, which drops the port and fails every SigV4 request" >&2
+    missing=1
+  fi
+  for node in storage-1 storage-2 storage-3; do
+    if ! grep -q "server ${node}:9000" "$STATE/nginx.conf"; then
+      echo "LB upstream is missing ${node}" >&2
+      missing=1
+    fi
+  done
+  if [ "$missing" -ne 0 ]; then
+    echo "---- nginx.conf ----" >&2
+    cat "$STATE/nginx.conf" >&2
+    exit 1
+  fi
+  echo "lb upstream: storage-1 storage-2 storage-3; Host=\$http_host" >&2
 }
 
 reload_lb() {
@@ -171,12 +200,36 @@ api() {
   fi
 }
 
+# A signed request through the balancer that comes back as generic AccessDenied
+# is the Host-header bug, not a KMS result. Stop there and print the config.
+die_if_lb_sigv4() {
+  local url="$1"
+  case "$url" in
+    "$LB"|"$LB"/*) ;;
+    *) return 0 ;;
+  esac
+  if [ "$HTTP_CODE" != "403" ]; then
+    return 0
+  fi
+  if ! grep -q '>access denied<' "$STATE/body.txt"; then
+    return 0
+  fi
+  echo "SigV4 through the load balancer returned 403 AccessDenied for $url" >&2
+  echo "The client signs Host with the port. nginx must proxy \$http_host, not \$host." >&2
+  echo "response: $(cat "$STATE/body.txt")" >&2
+  echo "---- nginx.conf ----" >&2
+  cat "$STATE/nginx.conf" >&2
+  verdict sigv4_host FAIL
+  exit 1
+}
+
 s3_put() {
   local url="$1" data="$2"
   shift 2
   http_code --aws-sigv4 "aws:amz:us-east-1:s3" --user "datasafe:datasafesecret" \
     -X PUT -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" \
     "$@" --data-binary "$data" "$url"
+  die_if_lb_sigv4 "$url"
 }
 
 s3_get() {
@@ -185,6 +238,7 @@ s3_get() {
     -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" \
     "$url"
   cp "$STATE/body.txt" "$STATE/got.bin"
+  die_if_lb_sigv4 "$url"
 }
 
 wait_health() {
@@ -257,6 +311,7 @@ if ! docker image inspect "$KMS_CLUSTER_IMAGE" >/dev/null 2>&1; then
 fi
 
 write_nginx
+assert_initial_lb
 "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
 "${COMPOSE[@]}" up -d --force-recreate
 wait_health "http://127.0.0.1:${KMS_NODE1_PORT}/healthz" ds-kms-s1

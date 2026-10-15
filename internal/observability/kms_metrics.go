@@ -58,19 +58,28 @@ var (
 		Name: "datasafe_kms_legacy_classify_current_bytes",
 		Help: "Size of the unmarked object currently being authenticated. 0 when the walk is between objects.",
 	})
+	legacyClassifyResults = []string{"plaintext", "format0", "skipped", "error"}
 )
 
-func ensureLegacyClassifyMetrics() {
+func init() {
+	RegisterLegacyClassifyMetrics()
+}
+
+// RegisterLegacyClassifyMetrics publishes the classification series at zero.
+// An idle node with nothing to classify still shows the counters and the gauge.
+func RegisterLegacyClassifyMetrics() {
 	legacyRegOnce.Do(func() {
 		prometheus.MustRegister(legacyClassifyObjects, legacyClassifyCurrent)
+		for _, result := range legacyClassifyResults {
+			legacyClassifyObjects.WithLabelValues(result)
+		}
+		legacyClassifyCurrent.Set(0)
 	})
 }
 
 // ObserveLegacyClassify counts one classification decision.
-// The series is registered on the first object, not at process start, so an
-// idle node with no unmarked objects does not publish datasafe_kms_legacy_*.
 func ObserveLegacyClassify(result string) {
-	ensureLegacyClassifyMetrics()
+	RegisterLegacyClassifyMetrics()
 	legacyClassifyObjects.WithLabelValues(result).Inc()
 }
 
@@ -80,7 +89,7 @@ func SetLegacyClassifyCurrent(bytes int64) {
 	if bytes < 0 {
 		bytes = 0
 	}
-	ensureLegacyClassifyMetrics()
+	RegisterLegacyClassifyMetrics()
 	legacyClassifyCurrent.Set(float64(bytes))
 }
 
@@ -93,8 +102,9 @@ func ResetLegacyClassifyMetricsForTest() {
 }
 
 // ObserveKMSJob counts one object finished by a leader job.
-// Registration is separate from Vault metrics, so an idle node that never
-// runs a job does not publish datasafe_kms_*.
+// Registration is separate from Vault metrics and from the classification
+// series, so an idle node that never runs a job does not publish
+// datasafe_kms_jobs_objects_total.
 func ObserveKMSJob(job, result string) {
 	jobRegOnce.Do(func() {
 		prometheus.MustRegister(kmsJobs)

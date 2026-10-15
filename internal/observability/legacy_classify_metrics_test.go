@@ -7,10 +7,18 @@ import (
 	dto "github.com/prometheus/client_model/go"
 )
 
-func TestLegacyClassifyMetricsStayUnregisteredUntilWork(t *testing.T) {
+func TestLegacyClassifyMetricsRegisteredAtZero(t *testing.T) {
 	ResetLegacyClassifyMetricsForTest()
-	if _, ok := legacyClassifyValue(t, "datasafe_kms_legacy_classify_objects_total", "plaintext"); ok {
-		t.Fatal("counter published before classification")
+	RegisterLegacyClassifyMetrics()
+	for _, result := range []string{"plaintext", "format0", "skipped", "error"} {
+		got, ok := legacyClassifyValue(t, "datasafe_kms_legacy_classify_objects_total", result)
+		if !ok || got != 0 {
+			t.Fatalf("%s at startup %v ok=%v", result, got, ok)
+		}
+	}
+	cur0, ok := legacyClassifyValue(t, "datasafe_kms_legacy_classify_current_bytes", "")
+	if !ok || cur0 != 0 {
+		t.Fatalf("gauge at startup %v ok=%v", cur0, ok)
 	}
 	ObserveLegacyClassify("plaintext")
 	SetLegacyClassifyCurrent(32 << 20)

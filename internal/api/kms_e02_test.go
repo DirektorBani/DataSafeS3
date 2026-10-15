@@ -57,11 +57,7 @@ func TestE02IdleHasNoVaultClient(t *testing.T) {
 	if body.KMS.Provider != kms.ProviderLocal || !body.KMS.Available {
 		t.Fatalf("kms health %+v", body.KMS)
 	}
-	metrics := httptest.NewRecorder()
-	s.Handler().ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	if metrics.Code != http.StatusOK || strings.Contains(metrics.Body.String(), "datasafe_kms") {
-		t.Fatalf("idle metrics %d %s", metrics.Code, metrics.Body.String())
-	}
+	assertIdleKMSMetrics(t, s)
 }
 
 func TestE02IdlePostgresNoVaultClient(t *testing.T) {
@@ -121,10 +117,31 @@ func TestE02IdlePostgresNoVaultClient(t *testing.T) {
 	if s.Svc().VaultKMS() != nil {
 		t.Fatal("settings watcher opened a vault client with no provider")
 	}
+	assertIdleKMSMetrics(t, s)
+}
+
+func assertIdleKMSMetrics(t *testing.T, s *api.Server) {
+	t.Helper()
+	observability.ResetLegacyClassifyMetricsForTest()
+	observability.RegisterLegacyClassifyMetrics()
 	metrics := httptest.NewRecorder()
 	s.Handler().ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	if metrics.Code != http.StatusOK || strings.Contains(metrics.Body.String(), "datasafe_kms") {
-		t.Fatalf("idle metrics %d %s", metrics.Code, metrics.Body.String())
+	body := metrics.Body.String()
+	if metrics.Code != http.StatusOK {
+		t.Fatalf("idle metrics %d %s", metrics.Code, body)
+	}
+	for _, name := range []string{
+		"datasafe_kms_requests_total",
+		"datasafe_kms_available",
+		"datasafe_kms_dek_cache",
+		"datasafe_kms_jobs_objects_total",
+	} {
+		if strings.Contains(body, name) {
+			t.Fatalf("idle metrics published %s", name)
+		}
+	}
+	if !strings.Contains(body, "datasafe_kms_legacy_classify_objects_total") || !strings.Contains(body, "datasafe_kms_legacy_classify_current_bytes") {
+		t.Fatal("legacy classify metrics missing at startup")
 	}
 }
 
