@@ -1,6 +1,12 @@
 {
   "title": "Migrate from MinIO",
-  "lead": "Build a storage-cli command and read a local evidence file. Source credentials stay in your shell. This page does not send or store them.",
+  "lead": "Three steps: print the object-copy command, print the IAM command, then open a local evidence file. Source credentials stay in your shell. This page does not send or store them.",
+  "stepOf": "Step {{current}} of {{total}}",
+  "stepObjects": "Object copy",
+  "stepIam": "IAM",
+  "stepEvidence": "Evidence",
+  "next": "Next",
+  "back": "Back",
   "commandTitle": "Command",
   "commandHint": "Keys are the environment variables below. Nothing on this form is saved on the server.",
   "sourceUrl": "Source URL",

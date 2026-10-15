@@ -21,6 +21,7 @@
 | Security self-assessment | [security-self-assessment.md](security-self-assessment.md) |
 | Модель доступа | [access-model.md](access-model.md) |
 | Field encryption (метаданные) | [field-encryption.md](field-encryption.md) |
+| Шифрование объектов (SSE-S3, SSE-KMS) | [encryption.md](encryption.md) |
 | Vault (инъекция секретов) | [secrets-vault.md](secrets-vault.md) |
 | Vault Transit (ключи объектов) | [kms-vault.md](kms-vault.md) |
 | Устранение неполадок | [troubleshooting.md](troubleshooting.md) |

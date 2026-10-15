@@ -57,3 +57,16 @@ Key rotation, rewrap, and crypto-shred run only on the leader. Progress is a row
 A Vault Transit key is created with `deletion_allowed` set, which Transit requires before `DELETE`. Crypto-shred calls that delete with the admin AppRole (`STORAGE_KMS_VAULT_ADMIN_*`) when one is set. If Vault refuses the delete, the bucket key is still marked `destroyed` and wrapped data keys are still cleared, and the job field `vault_delete_error` plus the console danger zone show the Vault error. `GET /api/v1/public/share/{token}` after destroy is HTTP 403 `Ключ шифрования уничтожен, файл недоступен навсегда` (the share page shows that sentence). A follower that is not the leader forwards a write, or returns HTTP 503 `not cluster leader` with `Retry-After`. The same 503 is returned when the metadata commit hits a read-only transaction (SQLSTATE 25006) or the Postgres connection drops during a leader change. That used to be HTTP 500 `InternalError`.
 
 A write that reaches a node whose process has already been killed has no HTTP status: the client sees a connection reset and retries.
+
+## Threat model
+
+Crypto-shred marks the bucket key `destroyed` and deletes wrapped data keys from the metadata this process can write. A read, a share, and a presigned GET then return HTTP 403. When the admin AppRole delete succeeds, the Transit key is gone from that Vault as well. A local server key has nothing remote to delete: only the wrapped keys in the current metadata are erased.
+
+That does not cover:
+
+- A Vault backup, snapshot, or raft snapshot taken while the Transit key still existed. Restoring it brings the key back. Destroy the key in every copy of Vault you keep, or treat that backup as still able to unwrap.
+- A metadata backup (the Bolt file, or a Postgres dump) taken before the job deleted wrapped data keys. Restoring it restores those wrapped keys. For a local server key that backup is enough on its own.
+- A data key already unwrapped in a node's memory. The cache key includes `kms_keys.generation`. Crypto-shred increments generation, and a node that is polling drops that key's entries on the next read (`STORAGE_KMS_POLL_INTERVAL`, default 2s). Until that read, the cached key still decrypts. An entry also expires after `STORAGE_KMS_DEK_CACHE_TTL` (default 5m) even when generation has not changed, which is the Vault-down case. A process that is not polling, a core dump, or a copy of the process memory can still hold the plaintext data key for that TTL or until the process exits.
+- Ciphertext outside this cluster: a client-side copy, a disk image, a replica you do not operate.
+
+The node AppRole (`deploy/vault/policies/datasafe-kms.hcl`) may encrypt, decrypt, rewrap, and create or read `datasafe-*`. It may not delete a key. The admin AppRole (`datasafe-kms-admin.hcl`, `STORAGE_KMS_VAULT_ADMIN_*`) is the one that rotates and deletes. A per-node secret in the environment is not written back into shared metadata. The settings API, Activity, `/healthz`, and logs do not return it.

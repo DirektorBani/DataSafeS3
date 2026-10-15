@@ -34,7 +34,7 @@ storage-cli migrate from-minio \
   --verify-sample 10
 ```
 
-**Настройки → Миграция** в консоли печатает эту команду и команду IAM и открывает локальный `evidence.json`. Учётные данные источника туда не отправляются и не сохраняются.
+**Настройки → Миграция** — мастер из трёх шагов: команда копирования объектов, команда IAM, затем локальный `evidence.json`. Учётные данные источника туда не отправляются и не сохраняются. Шифрование объектов на цели — [encryption.md](encryption.md).
 
 ## IAM
 
@@ -183,10 +183,14 @@ pwsh -File scripts/migrate/minio-cutover-smoke.ps1 `
 ## 11. FAQ
 
 **Можно ли автоматически импортировать пользователей MinIO?**  
-Нет. Создайте пользователей/teams/tenants DataSafe и новые S3-ключи.
+`storage-cli migrate from-minio iam` переносит встроенных пользователей, группы и canned-политики. Секреты MinIO не копируются. LDAP и OIDC — предупреждения. Мастер в консоли только печатает команду.
 
 **Нужен ли Gateway?**  
 Нет. Предпочтителен параллельный sync + cutover.
 
 **Trusted clusters?**  
 Когда **оба** сайта — DataSafeS3 — [trusted-clusters.md](./trusted-clusters.md). Для MinIO как source используйте этот гайд (rclone/aws).
+
+## 12. AIStor Free
+
+MinIO OSS (AGPLv3) больше не сопровождается. Текущий продукт — AIStor. Что входит в Free и что он отклоняет, написано у вендора, не в кратком пересказе: [licenses](https://docs.min.io/aistor/operations/licenses/) и [pricing](https://www.min.io/pricing). На странице лицензий шифрование на диске и репликация указаны только для Enterprise Lite и Enterprise. То же сравнение для шифрования объектов — в [encryption.md](encryption.md#aistor-free).

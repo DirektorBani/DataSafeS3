@@ -817,6 +817,9 @@ func (s *Service) GetObject(ctx context.Context, bucket, key, versionID string) 
 	if err != nil {
 		return nil, metadata.ObjectRecord{}, err
 	}
+	// A file already on this disk is returned as stored. This path does not
+	// compare the bytes with the metadata ETag. A corrupted local copy is
+	// still served. Peer intake checks the ETag before it keeps a copy.
 	return s.openDecrypted(rc, rec)
 }
 

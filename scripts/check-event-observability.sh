@@ -34,6 +34,12 @@ need = [
     "histogram_quantile(0.99, sum by (le, sink) (rate(datasafe_events_delivery_lag_seconds_bucket[5m])))",
     "datasafe_events_bridge_restarts_total",
     "datasafe_events_sink_degraded",
+    "KMS",
+    "datasafe_kms_available",
+    "histogram_quantile(0.95, sum by (le, op, provider, instance) (rate(datasafe_kms_request_duration_seconds_bucket[5m])))",
+    "rate(datasafe_kms_dek_cache_hits_total[5m])",
+    "rate(datasafe_kms_dek_cache_misses_total[5m])",
+    "sum by (job, result, instance) (rate(datasafe_kms_jobs_objects_total[5m]))",
 ]
 for path in (
     "deploy/docker/grafana/dashboards/datasafe-overview.json",
@@ -76,7 +82,7 @@ def walk(panels):
         titles.append(p.get("title") or "")
         walk(p.get("panels"))
 walk(dash.get("panels"))
-need=["Event delivery","Outbox pending","Delivery rates","Delivery lag","Sink degraded","Event bridge restarts"]
+need=["Event delivery","Outbox pending","Delivery rates","Delivery lag","Sink degraded","Event bridge restarts","KMS","KMS available","KMS latency","DEK cache","KMS jobs"]
 missing=[t for t in need if t not in titles]
 if missing:
     raise SystemExit(1)

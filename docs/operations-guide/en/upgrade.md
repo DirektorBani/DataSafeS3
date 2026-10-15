@@ -366,6 +366,10 @@ Pull the `v1.5.0` server and console images. Do not `docker compose build` for t
 
 ## Upgrading to v1.6.0
 
+**Fixed, and it was in v1.5.0.** An unversioned object overwrite on Postgres ran `DELETE FROM objects` and `INSERT` as two autocommit statements. A crash between them deleted the metadata row and left the file on disk. 1.6.0 runs both statements in one transaction. The previous row remains. A rewrap job whose present count is short of the count taken at the start finishes `completed_with_errors`, not `completed`.
+
+**Tracked, not fixed.** S3 `GET` of a file that is already on this node's disk does not compare the bytes with the stored ETag. A corrupted local copy is HTTP 200. Peer intake checks the ETag. See [encryption.md](encryption.md).
+
 Update every storage node to 1.6.0 before you enable bucket encryption. A 1.5.0 process cannot read a format-1 object (`DSSE`). A live 1.5.0 peer makes a 1.6.0 encryption change HTTP 409 `cluster upgrade in progress`. That gate exists only in 1.6.0. A 1.5.0 leader runs 1.5.0 code and accepts `PutBucketEncryption` itself, so do not leave the call on the last old node. Finish the rolling upgrade first, then turn encryption on.
 
 ## Mixed cluster

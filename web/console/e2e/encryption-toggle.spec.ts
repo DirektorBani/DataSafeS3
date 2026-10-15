@@ -52,6 +52,7 @@ test("bucket encryption card toggles and list shows a badge", async ({ page, req
 
   await page.goto("/buckets");
   await expect(page.getByTestId("bucket-encryption-badge").first()).toBeVisible({ timeout: 15_000 });
+  await page.screenshot({ path: "test-results/e08/04-encryption-badge.png", fullPage: true });
 
   await page.goto(`/buckets/${encodeURIComponent(bucket)}?tab=settings`);
   await page.getByTestId("encryption-toggle").click();

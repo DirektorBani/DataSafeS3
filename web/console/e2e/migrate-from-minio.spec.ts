@@ -6,6 +6,13 @@ test("migrate settings build a command and read evidence locally", async ({ page
   await page.goto("/admin/settings/migrate");
   await expect(page.getByTestId("migrate-settings")).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
+  await expect(page.getByTestId("migrate-wizard")).toHaveAttribute("data-step", "objects");
+
+  await page.getByRole("button", { name: "RU", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Миграция с MinIO" })).toBeVisible();
+  await expect(page.getByTestId("migrate-step-objects")).toContainText("Копирование объектов");
+  await page.getByRole("button", { name: "EN", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Migrate from MinIO" })).toBeVisible();
 
   await page.getByTestId("migrate-source").fill("http://minio.internal:9000");
   await page.getByTestId("migrate-target").fill("http://datasafe.internal:9000");
@@ -23,7 +30,17 @@ test("migrate settings build a command and read evidence locally", async ({ page
   await expect(powershell).toContainText("$env:SOURCE_SECRET_KEY");
   await expect(powershell).toContainText("--buckets 'logs,media'");
   await expect(powershell).not.toContainText("datasafesecret");
+  await page.screenshot({ path: "test-results/e08/01-migrate-command.png", fullPage: true });
 
+  await page.getByTestId("migrate-next").click();
+  await expect(page.getByTestId("migrate-wizard")).toHaveAttribute("data-step", "iam");
+  await expect(page.getByTestId("migrate-iam-command")).toContainText("migrate from-minio iam");
+  await expect(page.getByTestId("migrate-iam-command")).toContainText("$SOURCE_ACCESS_KEY");
+  await expect(page.locator('input[type="password"]')).toHaveCount(0);
+  await page.screenshot({ path: "test-results/e08/02-migrate-iam.png", fullPage: true });
+
+  await page.getByTestId("migrate-next").click();
+  await expect(page.getByTestId("migrate-wizard")).toHaveAttribute("data-step", "evidence");
   await page.getByTestId("migrate-evidence-file").setInputFiles({
     name: "evidence.json",
     mimeType: "application/json",
@@ -56,4 +73,10 @@ test("migrate settings build a command and read evidence locally", async ({ page
   await expect(page.getByTestId("migrate-verdict-content_sample")).toContainText("FAIL");
   await expect(page.getByTestId("migrate-evidence")).toContainText("DropMe");
   await expect(page.getByTestId("migrate-bucket-counts")).toContainText("logs: 2/2 objects, 10/10 bytes, 1/1 delete markers");
+  await page.screenshot({ path: "test-results/e08/03-migrate-evidence.png", fullPage: true });
+
+  await page.getByTestId("migrate-back").click();
+  await expect(page.getByTestId("migrate-iam-command")).toBeVisible();
+  await page.getByTestId("migrate-step-objects").click();
+  await expect(page.getByTestId("migrate-command")).toContainText("--source 'http://minio.internal:9000'");
 });

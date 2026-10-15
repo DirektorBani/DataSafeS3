@@ -59,6 +59,7 @@ test("rotate key, job progress, and destroy requires the bucket name", async ({ 
   await page.getByTestId("encryption-destroy-name").fill(bucket);
   await page.getByTestId("encryption-destroy-confirm").click();
   await expect(page.getByTestId("encryption-key-destroyed")).toBeVisible({ timeout: 10_000 });
+  await page.screenshot({ path: "test-results/e08/05-key-destroyed.png", fullPage: true });
 
   const downloaded = await request.get(
     `${baseURL}/api/v1/buckets/${encodeURIComponent(bucket)}/objects/hello.txt`,

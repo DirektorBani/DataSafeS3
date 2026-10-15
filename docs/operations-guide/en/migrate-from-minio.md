@@ -34,7 +34,7 @@ storage-cli migrate from-minio \
   --verify-sample 10
 ```
 
-**Settings → Migrate** in the console prints this command and the IAM command, and can open a local `evidence.json`. It does not send or store source credentials.
+**Settings → Migrate** is a three-step wizard: the object-copy command, the IAM command, then a local `evidence.json`. It does not send or store source credentials. Object encryption on the target is [encryption.md](encryption.md).
 
 ## IAM
 
@@ -189,10 +189,14 @@ pwsh -File scripts/migrate/minio-cutover-smoke.ps1 `
 ## 11. FAQ
 
 **Q: Can I import MinIO users automatically?**  
-No. Create DataSafe users/teams/tenants and issue new S3 keys.
+`storage-cli migrate from-minio iam` imports builtin users, groups, and canned policies. MinIO secrets are not copied. LDAP and OIDC identities are warnings. The console wizard only prints the command.
 
 **Q: Is Gateway required?**  
 No. Prefer parallel sync + cutover. Gateway is optional for hybrid/DR to an external S3 endpoint.
 
 **Q: Trusted clusters?**  
 Use when **both** sites run DataSafeS3 — [trusted-clusters.md](./trusted-clusters.md). For MinIO as source during migration, use rclone/aws sync (this guide).
+
+## 12. AIStor Free
+
+MinIO OSS (AGPLv3) is no longer maintained. AIStor is the current product. What Free includes, and what it refuses, is on the vendor pages, not in this guide's summary: [licenses](https://docs.min.io/aistor/operations/licenses/) and [pricing](https://www.min.io/pricing). The license page lists encryption at rest and replication as Enterprise Lite / Enterprise only. The same comparison for object encryption is in [encryption.md](encryption.md#aistor-free).

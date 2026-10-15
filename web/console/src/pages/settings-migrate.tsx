@@ -177,6 +177,9 @@ export function MigrateSettingsPage() {
   const [copied, setCopied] = useState(false);
   const [evidence, setEvidence] = useState<EvidenceFile | null>(null);
   const [evidenceError, setEvidenceError] = useState("");
+  const [step, setStep] = useState<"objects" | "iam" | "evidence">("objects");
+  const steps = ["objects", "iam", "evidence"] as const;
+  const stepIndex = steps.indexOf(step);
 
   const commandInput = {
     sourceUrl,
@@ -200,13 +203,41 @@ export function MigrateSettingsPage() {
     [sourceUrl, targetUrl, tenant, keepKeys, iamReport],
   );
 
+  const stepLabel = step === "objects" ? t("stepObjects") : step === "iam" ? t("stepIam") : t("stepEvidence");
+
   return (
     <div className="space-y-4" data-testid="migrate-settings">
       <div>
         <h1 className="text-2xl font-semibold">{t("title")}</h1>
         <p className="text-muted-foreground mt-1 max-w-3xl">{t("lead")}</p>
       </div>
-      <Card>
+      <div className="space-y-3" data-testid="migrate-wizard" data-step={step}>
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{t("stepOf", { current: stepIndex + 1, total: steps.length })}</span>
+          <span>{stepLabel}</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {steps.map((id, index) => {
+            const active = id === step;
+            const done = index < stepIndex;
+            const label = id === "objects" ? t("stepObjects") : id === "iam" ? t("stepIam") : t("stepEvidence");
+            return (
+              <button
+                key={id}
+                type="button"
+                data-testid={`migrate-step-${id}`}
+                className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                  active ? "bg-primary text-primary-foreground" : done ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                }`}
+                onClick={() => setStep(id)}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {step === "objects" && <Card>
         <CardHeader>
           <CardTitle>{t("commandTitle")}</CardTitle>
           <CardDescription>{t("commandHint")}</CardDescription>
@@ -287,8 +318,8 @@ export function MigrateSettingsPage() {
             {copied ? t("copied") : t("copy")}
           </Button>
         </CardContent>
-      </Card>
-      <Card>
+      </Card>}
+      {step === "iam" && <Card>
         <CardHeader>
           <CardTitle>{t("iamTitle")}</CardTitle>
           <CardDescription>{t("iamHint")}</CardDescription>
@@ -317,8 +348,8 @@ export function MigrateSettingsPage() {
             {iamCommand}
           </pre>
         </CardContent>
-      </Card>
-      <Card>
+      </Card>}
+      {step === "evidence" && <Card>
         <CardHeader>
           <CardTitle>{t("evidenceTitle")}</CardTitle>
           <CardDescription>{t("evidenceHint")}</CardDescription>
@@ -408,7 +439,19 @@ export function MigrateSettingsPage() {
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card>}
+      <div className="flex gap-2">
+        {stepIndex > 0 && (
+          <Button type="button" variant="outline" data-testid="migrate-back" onClick={() => setStep(steps[stepIndex - 1])}>
+            {t("back")}
+          </Button>
+        )}
+        {stepIndex < steps.length - 1 && (
+          <Button type="button" data-testid="migrate-next" onClick={() => setStep(steps[stepIndex + 1])}>
+            {t("next")}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

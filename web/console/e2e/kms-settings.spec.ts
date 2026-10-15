@@ -20,6 +20,7 @@ test("vault settings refuse a failed probe and never return the secret", async (
     await page.goto("/admin/settings/kms");
     await expect(page.getByTestId("kms-settings")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("kms-status")).toContainText(/Not configured|Не настроено/);
+    await page.screenshot({ path: "test-results/e08/06-kms-settings.png", fullPage: true });
 
     await page.goto(`/buckets/${encodeURIComponent(bucket)}?tab=settings`);
     await expect(page.getByTestId("encryption-card")).toBeVisible({ timeout: 15_000 });
