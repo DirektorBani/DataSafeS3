@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path"
@@ -31,6 +32,18 @@ const (
 	MsgClusterUpgrade = "cluster upgrade in progress"
 	// MsgKMSDown is the console text when Vault cannot wrap or unwrap a DEK.
 	MsgKMSDown = "Vault недоступен: новые файлы в этот бакет сейчас не сохранить, незашифрованные бакеты работают"
+
+	// format0MinLen is the shortest 1.5.0 blob: a 12-byte nonce and a 16-byte tag.
+	format0MinLen = 12 + 16
+	// plainSample is the prefix used to tell unmarked plaintext from ciphertext.
+	plainSample = 4096
+	// plainPrintableMin is the printable-ASCII share of that prefix.
+	plainPrintableMin = 0.90
+	// plainEntropyMax is the Shannon entropy, in bits per byte, below which an
+	// authentication failure is still unmarked plaintext.
+	plainEntropyMax = 7.0
+	// sealAuthLimit is the plaintext size read fully before a success status.
+	sealAuthLimit = 32 << 20
 )
 
 var (
@@ -658,13 +671,7 @@ func (s *Service) openDecrypted(rc io.ReadCloser, rec metadata.ObjectRecord) (io
 			rc.Close()
 			return nil, rec, err
 		}
-		if enc.PlainSize > 0 {
-			rec.Size = enc.PlainSize
-		}
-		return struct {
-			io.Reader
-			io.Closer
-		}{Reader: plain, Closer: rc}, rec, nil
+		return finishSealed(rc, plain, rec)
 	}
 	if enc.FormatVersion == 0 || enc.WrappedDEK == "" {
 		return s.openFormat0(rc, rec)
@@ -679,21 +686,41 @@ func (s *Service) openDecrypted(rc io.ReadCloser, rec metadata.ObjectRecord) (io
 		rc.Close()
 		return nil, rec, err
 	}
-	if enc.PlainSize > 0 {
-		rec.Size = enc.PlainSize
+	return finishSealed(rc, plain, rec)
+}
+
+// finishSealed authenticates ciphertext before the caller writes HTTP 200.
+// Up to sealAuthLimit the whole object is opened in memory. A larger object
+// is checked on the first byte, which is the first chunk, and then streamed.
+func finishSealed(rc io.ReadCloser, plain io.Reader, rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {
+	if rec.Size <= sealAuthLimit {
+		data, err := io.ReadAll(plain)
+		_ = rc.Close()
+		if err != nil {
+			return nil, rec, err
+		}
+		rec.Size = int64(len(data))
+		return io.NopCloser(bytes.NewReader(data)), rec, nil
+	}
+	var one [1]byte
+	n, err := plain.Read(one[:])
+	if err != nil && err != io.EOF {
+		_ = rc.Close()
+		return nil, rec, err
 	}
 	return struct {
 		io.Reader
 		io.Closer
-	}{Reader: plain, Closer: rc}, rec, nil
+	}{Reader: io.MultiReader(bytes.NewReader(one[:n]), plain), Closer: rc}, rec, nil
 }
 
 // openUnmarked serves an object that 1.5.0 stored with no encryption metadata.
 // A format-1 body (DSSE, version 1) is not format 0 and is not returned as
 // plaintext. When the server key is set, a format-0 blob that authenticates
-// is returned as plaintext. A failed authentication returns the original
-// bytes, so unmarked plaintext stays plaintext. Ciphertext this key can open
-// is never returned as the body.
+// is returned as plaintext. A failed authentication is returned only when the
+// bytes are too short to be format 0, or they look like plaintext. Any other
+// failure is the authentication error. Ciphertext this key can open is never
+// returned as the body, and neither is ciphertext that does not authenticate.
 func (s *Service) openUnmarked(rc io.ReadCloser, rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {
 	if s.Local == nil {
 		return s.openUnmarkedRaw(rc, rec)
@@ -706,11 +733,61 @@ func (s *Service) openUnmarked(rc io.ReadCloser, rec metadata.ObjectRecord) (io.
 	if unmarkedDSSE(data) {
 		return nil, rec, errors.New("object envelope is missing encryption metadata")
 	}
-	if plain, err := s.Local.DecryptFormat0(data); err == nil {
+	if len(data) < format0MinLen {
+		return io.NopCloser(bytes.NewReader(data)), rec, nil
+	}
+	plain, err := s.Local.DecryptFormat0(data)
+	if err == nil {
 		rec.Size = int64(len(plain))
 		return io.NopCloser(bytes.NewReader(plain)), rec, nil
 	}
-	return io.NopCloser(bytes.NewReader(data)), rec, nil
+	if unmarkedPlaintext(data) {
+		return io.NopCloser(bytes.NewReader(data)), rec, nil
+	}
+	return nil, rec, err
+}
+
+// unmarkedPlaintext reports whether an unmarked body that failed format-0
+// authentication is still ordinary plaintext. AES-GCM output is not
+// distinguishable from high-entropy plaintext, so that case fails closed.
+func unmarkedPlaintext(b []byte) bool {
+	if len(b) > plainSample {
+		b = b[:plainSample]
+	}
+	if len(b) == 0 {
+		return true
+	}
+	if printableRatio(b) >= plainPrintableMin {
+		return true
+	}
+	return shannonBits(b) < plainEntropyMax
+}
+
+func printableRatio(b []byte) float64 {
+	n := 0
+	for _, c := range b {
+		if c == '\t' || c == '\n' || c == '\r' || (c >= 0x20 && c <= 0x7e) {
+			n++
+		}
+	}
+	return float64(n) / float64(len(b))
+}
+
+func shannonBits(b []byte) float64 {
+	var freq [256]int
+	for _, c := range b {
+		freq[c]++
+	}
+	n := float64(len(b))
+	var h float64
+	for _, c := range freq {
+		if c == 0 {
+			continue
+		}
+		p := float64(c) / n
+		h -= p * math.Log2(p)
+	}
+	return h
 }
 
 func (s *Service) openUnmarkedRaw(rc io.ReadCloser, rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {

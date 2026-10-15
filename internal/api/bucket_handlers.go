@@ -154,6 +154,11 @@ func (s *Server) handleDownloadObjectJSON(w http.ResponseWriter, r *http.Request
 			})
 			return
 		}
+		if strings.Contains(err.Error(), "message authentication failed") {
+			w.Header().Set("Connection", "close")
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 		return
 	}

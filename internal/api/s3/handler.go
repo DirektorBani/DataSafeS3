@@ -877,6 +877,9 @@ func (h *Handler) serveObject(w http.ResponseWriter, r *http.Request, storageBuc
 		if errors.Is(err, ErrKMSUnavailable) {
 			h.notePresignDecrypt(r, storageBucket, key, rec, "kms_unavailable")
 		}
+		if strings.Contains(err.Error(), "message authentication failed") {
+			w.Header().Set("Connection", "close")
+		}
 		mapErr(w, r, err)
 		return
 	}
