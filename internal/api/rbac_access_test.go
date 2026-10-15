@@ -629,28 +629,85 @@ func TestS3ListBucketsFilteredByAccessKey(t *testing.T) {
 		t.Fatalf("set narrow policy: %d %s", rec.Code, rec.Body.String())
 	}
 	status, body = list()
-	if status != http.StatusForbidden || !bytes.Contains(body, []byte("AccessDenied")) {
-		t.Fatalf("policy without s3:ListAllMyBuckets: %d %s", status, body)
+	if status != http.StatusOK || !bytes.Contains(body, []byte("s3a-bucket")) || bytes.Contains(body, []byte("s3b-bucket")) {
+		t.Fatalf("owner named by a GetObject policy: %d %s", status, body)
 	}
 
-	policy := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::datasafe:access-key/%s"},"Action":"s3:ListAllMyBuckets","Resource":"arn:aws:s3:::s3a-bucket"}]}`, keyResp["access_key"])
-	polBody, _ = json.Marshal(map[string]string{"policy": policy})
-	req = authReq(http.MethodPut, "/api/v1/buckets/s3a-bucket/policy", adminTok, polBody)
+	req = authReq(http.MethodPost, "/api/v1/buckets/s3other", adminTok, nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create s3other: %d %s", rec.Code, rec.Body.String())
+	}
+	other := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::datasafe:access-key/%s"},"Action":"s3:GetObject","Resource":"arn:aws:s3:::s3other/*"}]}`, keyResp["access_key"])
+	polBody, _ = json.Marshal(map[string]string{"policy": other})
+	req = authReq(http.MethodPut, "/api/v1/buckets/s3other/policy", adminTok, polBody)
 	rec = httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("set policy: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("set other policy: %d %s", rec.Code, rec.Body.String())
+	}
+	status, body = list()
+	if status != http.StatusOK || !bytes.Contains(body, []byte("s3a-bucket")) || !bytes.Contains(body, []byte("s3other")) || bytes.Contains(body, []byte("s3b-bucket")) {
+		t.Fatalf("owner plus policy-visible bucket: %d %s", status, body)
 	}
 
-	status, body = list()
-	if status != http.StatusOK {
-		t.Fatalf("s3 list buckets status %d %s", status, body)
+	noneTok := createUser(t, s, adminTok, "s3none", auth.RoleUser)
+	noneBody, _ := json.Marshal(map[string]string{"label": "none"})
+	req = authReq(http.MethodPost, "/api/v1/keys", noneTok, noneBody)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("none key: %d %s", rec.Code, rec.Body.String())
 	}
-	if !bytes.Contains(body, []byte("s3a-bucket")) {
-		t.Fatalf("expected s3a-bucket in listing: %s", body)
+	var noneKey map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &noneKey)
+	signedList := func(c auth.Credentials) (int, []byte) {
+		t.Helper()
+		listReq, err := http.NewRequest(http.MethodGet, ts.URL+"/", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := auth.SignRequest(listReq, c, "us-east-1", "s3", "UNSIGNED-PAYLOAD"); err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(listReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		raw := new(bytes.Buffer)
+		_, _ = raw.ReadFrom(resp.Body)
+		return resp.StatusCode, raw.Bytes()
 	}
-	if bytes.Contains(body, []byte("s3b-bucket")) {
-		t.Fatalf("user a key should not list user b bucket: %s", body)
+	noneCreds := auth.Credentials{AccessKey: noneKey["access_key"], SecretKey: noneKey["secret_key"]}
+	status, body = signedList(noneCreds)
+	if status != http.StatusForbidden || !bytes.Contains(body, []byte("AccessDenied")) {
+		t.Fatalf("key with nothing owned: %d %s", status, body)
+	}
+	getOnly := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::datasafe:access-key/%s"},"Action":"s3:GetObject","Resource":"arn:aws:s3:::s3b-bucket/*"}]}`, noneKey["access_key"])
+	polBody, _ = json.Marshal(map[string]string{"policy": getOnly})
+	req = authReq(http.MethodPut, "/api/v1/buckets/s3b-bucket/policy", adminTok, polBody)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set get-only policy: %d %s", rec.Code, rec.Body.String())
+	}
+	status, body = signedList(noneCreds)
+	if status != http.StatusForbidden || !bytes.Contains(body, []byte("AccessDenied")) {
+		t.Fatalf("get-only policy without ownership: %d %s", status, body)
+	}
+	allowList := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::datasafe:access-key/%s"},"Action":"s3:ListAllMyBuckets","Resource":"arn:aws:s3:::s3b-bucket"}]}`, noneKey["access_key"])
+	polBody, _ = json.Marshal(map[string]string{"policy": allowList})
+	req = authReq(http.MethodPut, "/api/v1/buckets/s3b-bucket/policy", adminTok, polBody)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set list policy: %d %s", rec.Code, rec.Body.String())
+	}
+	status, body = signedList(noneCreds)
+	if status != http.StatusOK || !bytes.Contains(body, []byte("s3b-bucket")) || bytes.Contains(body, []byte("s3a-bucket")) {
+		t.Fatalf("explicit ListAllMyBuckets: %d %s", status, body)
 	}
 }
 

@@ -1,8 +1,11 @@
 #!/bin/bash
 # Compare GET / (aws s3 ls and mc ls) for console keys on the published v1.5.0
 # image and this build. A bucket owner, a bucket-admin grant, an operator, and
-# an administrator must list the same bucket names on both. On this build, a
-# key named by a bucket policy that lacks s3:ListAllMyBuckets must be denied.
+# an administrator must list the same bucket names on both. An owner whose key
+# is also named by a read policy on an unrelated bucket must still list the
+# owned buckets (this build may also list that policy bucket). On this build,
+# a key that owns nothing, has no grant, and has no s3:ListAllMyBuckets allow
+# is denied, including when a GetObject policy names it.
 set -euo pipefail
 
 BASELINE_IMAGE="${BASELINE_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.5.0}"
@@ -182,8 +185,96 @@ while read -r role bkey bsec; do
   compare_role "$role" "$bkey" "$bsec" "$hkey" "$hsec"
 done <"$base_keys"
 
-# This build denies ListAllMyBuckets when a policy names the key and omits the action.
+field_of() {
+  local file="$1" role="$2" n="$3"
+  awk -v r="$role" -v n="$n" '$1==r { print $n }' "$file"
+}
+
+# A read policy on an unrelated bucket must not turn the owner's list into 403.
+# This build may also return that policy bucket. v1.5.0 must stay successful,
+# and every name it returns must still be present here.
+put_other_read() {
+  local port="$1" owner_key="$2"
+  local admin policy
+  admin="$(api POST "http://127.0.0.1:${port}/api/v1/admin/login" "" '{"username":"admin","password":"Adminpass1"}' | json_field token)"
+  api POST "http://127.0.0.1:${port}/api/v1/buckets/other" "$admin" '{}' >/dev/null
+  policy="$(printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::datasafe:access-key/%s"},"Action":"s3:GetObject","Resource":"arn:aws:s3:::other/*"}]}' "$owner_key")"
+  api PUT "http://127.0.0.1:${port}/api/v1/buckets/other/policy" "$admin" "$(python3 -c 'import json,sys; print(json.dumps({"policy": sys.argv[1]}))' "$policy")" >/dev/null
+}
+
+names_or_fail() {
+  local label="$1" kind="$2"
+  shift 2
+  local out err code
+  out="$(mktemp)"
+  err="$(mktemp)"
+  set +e
+  if [ "$kind" = aws ]; then
+    list_aws "$@" >"$out" 2>"$err"
+  else
+    list_mc "$@" >"$out" 2>"$err"
+  fi
+  code=$?
+  set -e
+  if [ "$code" -ne 0 ]; then
+    echo "$label failed ($code)" >&2
+    cat "$err" >&2
+    rm -f "$out" "$err"
+    exit 1
+  fi
+  if [ "$kind" = aws ]; then
+    names_from_aws <"$out"
+  else
+    names_from_mc <"$out"
+  fi
+  rm -f "$out" "$err"
+}
+
+require_subset() {
+  local label="$1" base="$2" head="$3"
+  local missing
+  missing="$(comm -23 <(printf '%s\n' "$base" | sed '/^$/d') <(printf '%s\n' "$head" | sed '/^$/d') || true)"
+  if [ -n "$missing" ]; then
+    echo "$label missing names that v1.5.0 returned:" >&2
+    printf '%s\n' "$missing" >&2
+    echo "head was:" >&2
+    printf '%s\n' "$head" >&2
+    exit 1
+  fi
+}
+
+base_owner_key="$(field_of "$base_keys" owner 2)"
+base_owner_sec="$(field_of "$base_keys" owner 3)"
+head_owner_key="$(field_of "$head_keys" owner 2)"
+head_owner_sec="$(field_of "$head_keys" owner 3)"
+put_other_read "$BASE_PORT" "$base_owner_key"
+put_other_read "$HEAD_PORT" "$head_owner_key"
+
+base_aws="$(names_or_fail "baseline owner after other" aws "http://127.0.0.1:${BASE_PORT}" "$base_owner_key" "$base_owner_sec")"
+head_aws="$(names_or_fail "head owner after other" aws "http://127.0.0.1:${HEAD_PORT}" "$head_owner_key" "$head_owner_sec")"
+base_mc="$(names_or_fail "baseline owner mc after other" mc "base-owner-other" "http://127.0.0.1:${BASE_PORT}" "$base_owner_key" "$base_owner_sec")"
+head_mc="$(names_or_fail "head owner mc after other" mc "head-owner-other" "http://127.0.0.1:${HEAD_PORT}" "$head_owner_key" "$head_owner_sec")"
+if ! printf '%s\n' "$head_aws" | grep -qx 'own-bucket'; then
+  echo "head aws owner list dropped own-bucket: [$head_aws]" >&2
+  exit 1
+fi
+if ! printf '%s\n' "$head_mc" | grep -qx 'own-bucket'; then
+  echo "head mc owner list dropped own-bucket: [$head_mc]" >&2
+  exit 1
+fi
+require_subset "head aws" "$base_aws" "$head_aws"
+require_subset "head mc" "$base_mc" "$head_mc"
+echo "owner named on other still lists own-bucket"
+
+# Nothing owned or granted, and no ListAllMyBuckets allow: this build denies
+# the list. v1.5.0 may return an empty 200, so the two sides are not compared.
 head_admin="$(api POST "http://127.0.0.1:${HEAD_PORT}/api/v1/admin/login" "" '{"username":"admin","password":"Adminpass1"}' | json_field token)"
+api POST "http://127.0.0.1:${HEAD_PORT}/api/v1/users" "$head_admin" '{"username":"empty","password":"Emptypass1","role":"user","email":"empty@test.com"}' >/dev/null
+empty_tok="$(api POST "http://127.0.0.1:${HEAD_PORT}/api/v1/admin/login" "" '{"username":"empty","password":"Emptypass1"}' | json_field token)"
+empty_raw="$(api POST "http://127.0.0.1:${HEAD_PORT}/api/v1/keys" "$empty_tok" '{"label":"empty"}')"
+empty_key="$(printf '%s' "$empty_raw" | json_field access_key)"
+empty_sec="$(printf '%s' "$empty_raw" | json_field secret_key)"
+
 api POST "http://127.0.0.1:${HEAD_PORT}/api/v1/users" "$head_admin" '{"username":"bound","password":"Boundpass1","role":"user","email":"bound@test.com"}' >/dev/null
 bound_tok="$(api POST "http://127.0.0.1:${HEAD_PORT}/api/v1/admin/login" "" '{"username":"bound","password":"Boundpass1"}' | json_field token)"
 bound_raw="$(api POST "http://127.0.0.1:${HEAD_PORT}/api/v1/keys" "$bound_tok" '{"label":"bound"}')"
@@ -192,15 +283,22 @@ bound_sec="$(printf '%s' "$bound_raw" | json_field secret_key)"
 policy="$(printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::datasafe:access-key/%s"},"Action":"s3:GetObject","Resource":"arn:aws:s3:::own-bucket/*"}]}' "$bound_key")"
 api PUT "http://127.0.0.1:${HEAD_PORT}/api/v1/buckets/own-bucket/policy" "$head_admin" "$(python3 -c 'import json,sys; print(json.dumps({"policy": sys.argv[1]}))' "$policy")" >/dev/null
 
-set +e
-list_aws "http://127.0.0.1:${HEAD_PORT}" "$bound_key" "$bound_sec" >/dev/null 2>"$(mktemp)"
-aws_code=$?
-list_mc "head-bound" "http://127.0.0.1:${HEAD_PORT}" "$bound_key" "$bound_sec" >/dev/null 2>"$(mktemp)"
-mc_code=$?
-set -e
-if [ "$aws_code" -eq 0 ] || [ "$mc_code" -eq 0 ]; then
-  echo "bound key without s3:ListAllMyBuckets was listed (aws $aws_code mc $mc_code)" >&2
-  exit 1
-fi
-echo "bound key aws exit $aws_code mc exit $mc_code"
+expect_denied() {
+  local label="$1" key="$2" secret="$3" alias="$4"
+  local aws_code mc_code
+  set +e
+  list_aws "http://127.0.0.1:${HEAD_PORT}" "$key" "$secret" >/dev/null 2>"$(mktemp)"
+  aws_code=$?
+  list_mc "$alias" "http://127.0.0.1:${HEAD_PORT}" "$key" "$secret" >/dev/null 2>"$(mktemp)"
+  mc_code=$?
+  set -e
+  if [ "$aws_code" -eq 0 ] || [ "$mc_code" -eq 0 ]; then
+    echo "$label was listed (aws $aws_code mc $mc_code)" >&2
+    exit 1
+  fi
+  echo "$label aws exit $aws_code mc exit $mc_code"
+}
+
+expect_denied "empty key" "$empty_key" "$empty_sec" "head-empty"
+expect_denied "get-only key" "$bound_key" "$bound_sec" "head-bound"
 echo "list-buckets clients match v1.5.0"

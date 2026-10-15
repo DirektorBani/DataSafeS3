@@ -217,8 +217,8 @@ func userStatements(snap IAMSnapshot) (userStmts map[string][]policy.Statement, 
 }
 
 // denyBuckets is an unconditional deny of every S3 action on the bucket and
-// its objects. It is stricter than dropping the user's allows and leaving the
-// key unbound, which would still permit ListAllMyBuckets.
+// its objects. Dropping the allows without this deny would still allow
+// ListBucket and GetObject on those buckets.
 func denyBuckets(buckets []string) []policy.Statement {
 	out := make([]policy.Statement, 0, len(buckets))
 	for _, bucket := range buckets {

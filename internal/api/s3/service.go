@@ -127,9 +127,9 @@ func (s *Service) Authorize(logicalBucket, key, action, principal string) bool {
 
 // AuthorizeRequest is Authorize with the caller address. A bucket policy that
 // names this access key is the only allow for that key: a bucket grant cannot
-// widen it. ListAllMyBuckets is denied when a bucket policy names the key and
-// does not allow that action. A key no policy names keeps the v1.5.0 listing
-// of buckets it owns or is granted.
+// widen it. ListAllMyBuckets is allowed when the key's owner owns a bucket,
+// holds a grant, is an administrator or operator, or a policy allows that
+// action. A key with none of those is HTTP 403, not an empty 200.
 func (s *Service) AuthorizeRequest(logicalBucket, key, action, principal, sourceIP string, secure bool) bool {
 	if principal == "" {
 		return false
@@ -197,7 +197,7 @@ func (s *Service) allowListAllMyBuckets(principal string) bool {
 	if err != nil {
 		return false
 	}
-	role, _, _, _ := s.accessKeyIdentity(ak)
+	role, userID, username, _ := s.accessKeyIdentity(ak)
 	if auth.CanSeeAllBuckets(role) {
 		return true
 	}
@@ -205,12 +205,13 @@ func (s *Service) allowListAllMyBuckets(principal string) bool {
 	if err != nil {
 		return false
 	}
-	bound := false
+	if accessKeyOwnsOrGranted(userID, username, buckets, s.grantBucketKeysForUser(userID)) {
+		return true
+	}
 	for _, b := range buckets {
-		if strings.TrimSpace(b.Policy) == "" || !policyBindsAccessKey(b.Policy, ak.AccessKey) {
+		if strings.TrimSpace(b.Policy) == "" {
 			continue
 		}
-		bound = true
 		for _, resource := range []string{"*", "arn:aws:s3:::*", policy.BucketARN(b.Name)} {
 			if policy.EvaluateContext(b.Policy, policy.EvalContext{
 				Action:     "s3:ListAllMyBuckets",
@@ -221,9 +222,52 @@ func (s *Service) allowListAllMyBuckets(principal string) bool {
 			}
 		}
 	}
-	// An imported or explicit policy that names this key and does not allow
-	// the action is 403. Every other key lists owned and granted buckets.
-	return !bound
+	return false
+}
+
+// accessKeyOwnsOrGranted is ownership or an explicit bucket grant. Tenant
+// membership alone does not count: an imported user with no bucket of their
+// own must not receive an empty 200.
+func accessKeyOwnsOrGranted(userID, username string, buckets []metadata.BucketRecord, grants map[string]struct{}) bool {
+	for _, b := range buckets {
+		if userID != "" && b.OwnerID == userID {
+			return true
+		}
+		if username != "" && b.Owner == username {
+			return true
+		}
+		if _, ok := grants[b.EffectiveStorageKey()]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// policyVisibleToAccessKey reports a bucket a policy lets this key read or
+// list. An empty policy does not count, and a policy that does not name the
+// key does not count.
+func policyVisibleToAccessKey(policyJSON, accessKey, bucket string) bool {
+	if !policyBindsAccessKey(policyJSON, accessKey) {
+		return false
+	}
+	principals := []string{accessKey, policy.AccessKeyARN(accessKey)}
+	checks := []struct{ action, resource string }{
+		{"s3:ListBucket", policy.BucketARN(bucket)},
+		{"s3:ListBucket", "*"},
+		{"s3:ListAllMyBuckets", policy.BucketARN(bucket)},
+		{"s3:ListAllMyBuckets", "*"},
+		{"s3:GetBucketLocation", policy.BucketARN(bucket)},
+		{"s3:GetObject", policy.ObjectARN(bucket, "object")},
+		{"s3:GetObject", "*"},
+	}
+	for _, c := range checks {
+		if policy.EvaluateContext(policyJSON, policy.EvalContext{
+			Action: c.action, Resource: c.resource, Principals: principals,
+		}) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) userTenantMemberships(userID string) []auth.TenantMembership {
@@ -294,7 +338,30 @@ func (s *Service) ListBucketsForAccessKey(ctx context.Context, accessKey string)
 		filter.UserID = userID
 		filter.Username = username
 	}
-	return s.Meta.ListBucketsFiltered(filter)
+	listed, err := s.Meta.ListBucketsFiltered(filter)
+	if err != nil || filter.Unfiltered {
+		return listed, err
+	}
+	seen := map[string]struct{}{}
+	for _, b := range listed {
+		seen[b.EffectiveStorageKey()] = struct{}{}
+	}
+	all, err := s.Meta.ListBuckets()
+	if err != nil {
+		return listed, nil
+	}
+	for _, b := range all {
+		key := b.EffectiveStorageKey()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		if !policyVisibleToAccessKey(b.Policy, ak.AccessKey, b.Name) {
+			continue
+		}
+		listed = append(listed, b)
+		seen[key] = struct{}{}
+	}
+	return listed, nil
 }
 
 func (s *Service) bucketScopeForPrincipal(principal string) metadata.BucketScope {

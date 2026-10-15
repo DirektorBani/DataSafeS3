@@ -119,6 +119,7 @@ func TestPolicyDeniesUnauthorizedGet(t *testing.T) {
 }
 
 func TestListAllMyBucketsRequiresAllow(t *testing.T) {
+	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
 	srv, owner := testServer(t)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -192,8 +193,8 @@ func TestListAllMyBucketsRequiresAllow(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || strings.Contains(string(body), "AccessDenied") {
-		t.Fatalf("console key list %d %s", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusForbidden || !strings.Contains(string(body), "AccessDenied") {
+		t.Fatalf("key with nothing owned %d %s", resp.StatusCode, body)
 	}
 
 	narrow := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::datasafe:access-key/%s"},"Action":"s3:GetObject","Resource":"arn:aws:s3:::listed/*"}]}`, keyResp.AccessKey)
@@ -218,7 +219,30 @@ func TestListAllMyBucketsRequiresAllow(t *testing.T) {
 	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden || !strings.Contains(string(body), "AccessDenied") {
-		t.Fatalf("bound key without ListAllMyBuckets %d %s", resp.StatusCode, body)
+		t.Fatalf("get-only policy without ownership %d %s", resp.StatusCode, body)
+	}
+
+	mine, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/buckets/mine", strings.NewReader(`{}`))
+	mine.Header.Set("Content-Type", "application/json")
+	mine.Header.Set("Authorization", "Bearer "+session.Token)
+	resp, err = http.DefaultClient.Do(mine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create mine %d", resp.StatusCode)
+	}
+	req, _ = http.NewRequest(http.MethodGet, ts.URL+"/", nil)
+	signRequest(t, req, plain, "us-east-1")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "mine") || !strings.Contains(string(body), "listed") {
+		t.Fatalf("owner plus policy-visible bucket %d %s", resp.StatusCode, body)
 	}
 
 	adminLogin, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/admin/login", strings.NewReader(`{"username":"admin","password":"admin"}`))
