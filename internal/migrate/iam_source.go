@@ -147,7 +147,7 @@ func ReadMinIOIAM(ctx context.Context, src Endpoint) (IAMSnapshot, error) {
 			continue
 		}
 		for _, acc := range list.Accounts {
-			sa := IAMServiceAccount{Parent: u.AccessKey, AccessKey: acc.AccessKey, ImpliedPolicy: true, Status: "enabled", Expires: acc.Expiration}
+			sa := IAMServiceAccount{Parent: u.AccessKey, AccessKey: acc.AccessKey, ImpliedPolicy: true, Status: "enabled", Expires: usableExpiration(acc.Expiration)}
 			info, ierr := adminGet(ctx, src, minioAdminPrefix+"/info-service-account", url.Values{"accessKey": {acc.AccessKey}})
 			if ierr == nil {
 				var body struct {
@@ -166,8 +166,10 @@ func ReadMinIOIAM(ctx context.Context, src Endpoint) (IAMSnapshot, error) {
 					if body.AccountStatus != "" {
 						sa.Status = body.AccountStatus
 					}
-					if body.Expiration != nil {
-						sa.Expires = body.Expiration
+					if exp := usableExpiration(body.Expiration); exp != nil {
+						sa.Expires = exp
+					} else if body.Expiration != nil {
+						sa.Expires = nil
 					}
 				}
 			}
@@ -283,6 +285,19 @@ func adminMissing(err error) bool {
 	}
 	// 426 is what a current MinIO returns for the retired /group-desc path.
 	return ae.Status == http.StatusNotFound || ae.Status == http.StatusMethodNotAllowed || ae.Status == http.StatusUpgradeRequired
+}
+
+// usableExpiration drops the zero and Unix-epoch values MinIO sends when a
+// service account does not expire.
+func usableExpiration(t *time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	u := t.UTC()
+	if u.IsZero() || u.Year() < 2000 {
+		return nil
+	}
+	return &u
 }
 
 func rawJSONString(raw json.RawMessage) string {

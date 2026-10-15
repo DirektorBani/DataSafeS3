@@ -424,7 +424,7 @@ func startRightsMinIO(t *testing.T) migrate.Endpoint {
 			body, _ = json.Marshal(raw)
 		case strings.HasSuffix(r.URL.Path, "/list-service-accounts"):
 			if r.URL.Query().Get("user") == "uparent" {
-				body = []byte(`{"accounts":[{"accessKey":"saImp"},{"accessKey":"saNar"},{"accessKey":"saOff"},{"accessKey":"saExp","expiration":"` + exp + `"}]}`)
+				body = []byte(`{"accounts":[{"accessKey":"saImp","expiration":"0001-01-01T00:00:00Z"},{"accessKey":"saNar","expiration":"1970-01-01T00:00:00Z"},{"accessKey":"saOff"},{"accessKey":"saExp","expiration":"` + exp + `"}]}`)
 			} else {
 				body = []byte(`{"accounts":[]}`)
 			}
