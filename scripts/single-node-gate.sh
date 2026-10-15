@@ -484,7 +484,8 @@ cmd_smoke_installed() {
 # legacy-sse is not part of the RSS or startup sample. v1.5.0 stores an SSE
 # object only on a chunked PUT (Content-Length writes hit the size-mismatch
 # bug). 1.6.0 reads that unmarked blob with the same server key. The flag
-# STORAGE_SSE_LEGACY_FORMAT0=true still forces the format-0 reader.
+# STORAGE_SSE_LEGACY_FORMAT0 is still set. Reads classify each object and do not
+# treat every unmarked body as ciphertext.
 cmd_legacy_sse() {
   local port="${GATE_LEGACY_PORT:-19080}"
   local name="gate-legacy-sse"

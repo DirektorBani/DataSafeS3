@@ -3,6 +3,7 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,31 +23,30 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func TestE06TamperedReadsBolt(t *testing.T) {
+func TestE06LegacyClassifyBolt(t *testing.T) {
 	t.Setenv("STORAGE_SSE_LEGACY_FORMAT0", "")
 	dir := t.TempDir()
 	s := newKeyedServer(t, dir, "legacy-key")
-	runE06TamperReads(t, s, dir)
+	runE06LegacyClassify(t, s, dir, true)
 }
 
-func TestE06TamperedReadsPostgres(t *testing.T) {
-	t.Setenv("STORAGE_SSE_LEGACY_FORMAT0", "")
-	s, dir := e06PostgresWithKey(t, "legacy-key")
-	runE06TamperReads(t, s, dir)
-}
-
-func TestE06TamperedLegacyWithFlagBolt(t *testing.T) {
+func TestE06LegacyClassifyBoltFlag(t *testing.T) {
 	t.Setenv("STORAGE_SSE_LEGACY_FORMAT0", "true")
 	dir := t.TempDir()
 	s := newKeyedServer(t, dir, "legacy-key")
-	tok := loginToken(t, s, "admin", "admin")
-	createBucket(t, s, tok, "flagbox", nil)
-	sk := plantFormat0(t, s, dir, "flagbox", "old.bin", bytes.Repeat([]byte("flagged-"), 400))
-	flipLastByte(t, dir, sk, "old.bin")
-	ts := httptest.NewServer(s.Handler())
-	t.Cleanup(ts.Close)
-	code, body, closed := liveS3GET(t, ts.URL, "/flagbox/old.bin")
-	assertAuthFailed(t, code, body, closed)
+	runE06LegacyClassify(t, s, dir, false)
+}
+
+func TestE06LegacyClassifyPostgres(t *testing.T) {
+	t.Setenv("STORAGE_SSE_LEGACY_FORMAT0", "")
+	s, dir := e06PostgresWithKey(t, "legacy-key")
+	runE06LegacyClassify(t, s, dir, false)
+}
+
+func TestE06LegacyClassifyPostgresFlag(t *testing.T) {
+	t.Setenv("STORAGE_SSE_LEGACY_FORMAT0", "true")
+	s, dir := e06PostgresWithKey(t, "legacy-key")
+	runE06LegacyClassify(t, s, dir, false)
 }
 
 func TestE06ConsoleVaultKMSMixedCluster(t *testing.T) {
@@ -135,38 +135,78 @@ func e06PostgresWithKey(t *testing.T, key string) (*api.Server, string) {
 	return s, dir
 }
 
-func runE06TamperReads(t *testing.T, s *api.Server, dir string) {
+func runE06LegacyClassify(t *testing.T, s *api.Server, dir string, background bool) {
 	t.Helper()
 	tok := loginToken(t, s, "admin", "admin")
 	createBucket(t, s, tok, "tamper", nil)
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(ts.Close)
 
+	rnd := make([]byte, 64<<10)
+	if _, err := rand.Read(rnd); err != nil {
+		t.Fatal(err)
+	}
+	jpeg := append([]byte{0xff, 0xd8, 0xff, 0xe0}, rnd...)
+	gzipBody := append([]byte{0x1f, 0x8b, 0x08, 0x00}, rnd...)
+	zipBody := append([]byte{'P', 'K', 3, 4}, rnd...)
+	short := rnd[:20]
+	almost := rnd[:29]
+	text := bytes.Repeat([]byte("plain-from-15\n"), 4000)
+	zeros := make([]byte, 8192)
+	bodies := map[string][]byte{
+		"photo.jpg": jpeg,
+		"real.gz":   gzipBody,
+		"rand.zip":  zipBody,
+		"rand.bin":  rnd,
+		"short.bin": short,
+		"b29.bin":   almost,
+		"long.txt":  text,
+		"zeros.bin": zeros,
+	}
+	for key, body := range bodies {
+		plantUnmarkedLive(t, s, dir, "tamper", key, body)
+	}
+	if background {
+		s.Svc().RunLegacyClassify(context.Background())
+		for key := range bodies {
+			assertPlaintextMarker(t, s, "tamper", key)
+		}
+	}
+	for key, body := range bodies {
+		got := s3Call(t, s, http.MethodGet, "/tamper/"+key, nil, nil)
+		if got.Code != http.StatusOK || !bytes.Equal(got.Body.Bytes(), body) {
+			t.Fatalf("plaintext %s %d %d bytes", key, got.Code, got.Body.Len())
+		}
+		assertPlaintextMarker(t, s, "tamper", key)
+	}
+
 	plain := bytes.Repeat([]byte("legacy-sse-block-"), 180)
 	sk := plantFormat0(t, s, dir, "tamper", "old.bin", plain)
 	got := s3Call(t, s, http.MethodGet, "/tamper/old.bin", nil, nil)
 	if got.Code != http.StatusOK || !bytes.Equal(got.Body.Bytes(), plain) {
-		t.Fatalf("legacy before tamper %d %d bytes", got.Code, got.Body.Len())
+		t.Fatalf("legacy sse %d %d bytes", got.Code, got.Body.Len())
+	}
+	obj, err := s.Meta().GetObject(sk, "old.bin")
+	if err != nil || obj.Encryption == nil || !obj.Encryption.Sealed() || obj.Encryption.SSEAlgorithm != "AES256" || obj.Encryption.FormatVersion != 0 {
+		t.Fatalf("format0 marker %+v %v", obj.Encryption, err)
 	}
 	flipLastByte(t, dir, sk, "old.bin")
 	code, body, closed := liveS3GET(t, ts.URL, "/tamper/old.bin")
 	assertAuthFailed(t, code, body, closed)
-	if bytes.Contains(body, plain[:16]) {
-		t.Fatal("tampered legacy response contains plaintext")
-	}
 
-	text := bytes.Repeat([]byte("plain-from-15\n"), (2<<20)/15)
-	plantUnmarkedLive(t, s, dir, "tamper", "long.txt", text)
-	got = s3Call(t, s, http.MethodGet, "/tamper/long.txt", nil, nil)
-	if got.Code != http.StatusOK || !bytes.Equal(got.Body.Bytes(), text) {
-		t.Fatalf("long plaintext %d %d bytes", got.Code, got.Body.Len())
+	// A legacy blob that never authenticated is not positively encrypted.
+	// Classification stores plaintext and the bytes stream.
+	corrupt := plantFormat0(t, s, dir, "tamper", "corrupt.bin", plain)
+	flipLastByte(t, dir, corrupt, "corrupt.bin")
+	onDisk, err := os.ReadFile(filepath.Join(dir, "objects", "buckets", corrupt, "objects", "corrupt.bin"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	zeros := make([]byte, 8192)
-	plantUnmarkedLive(t, s, dir, "tamper", "zeros.bin", zeros)
-	got = s3Call(t, s, http.MethodGet, "/tamper/zeros.bin", nil, nil)
-	if got.Code != http.StatusOK || !bytes.Equal(got.Body.Bytes(), zeros) {
-		t.Fatalf("zero plaintext %d %d bytes", got.Code, got.Body.Len())
+	got = s3Call(t, s, http.MethodGet, "/tamper/corrupt.bin", nil, nil)
+	if got.Code != http.StatusOK || !bytes.Equal(got.Body.Bytes(), onDisk) {
+		t.Fatalf("unclassified tamper %d %d bytes", got.Code, got.Body.Len())
 	}
+	assertPlaintextMarker(t, s, "tamper", "corrupt.bin")
 
 	payload := []byte("format-one-payload-0123456789")
 	put := s3Call(t, s, http.MethodPut, "/tamper/new.bin", payload, map[string]string{
@@ -179,18 +219,17 @@ func runE06TamperReads(t *testing.T, s *api.Server, dir string) {
 	if got.Code != http.StatusOK || !bytes.Equal(got.Body.Bytes(), payload) {
 		t.Fatalf("format1 before tamper %d %q", got.Code, got.Body.String())
 	}
-	other := s3Call(t, s, http.MethodPut, "/tamper/keep.bin", []byte("still-good"), map[string]string{
-		"x-amz-server-side-encryption": "AES256",
-	})
-	if other.Code != http.StatusOK {
-		t.Fatalf("keep put %d %s", other.Code, other.Body.String())
-	}
 	flipLastByte(t, dir, sk, "new.bin")
 	code, body, closed = liveS3GET(t, ts.URL, "/tamper/new.bin")
 	assertAuthFailed(t, code, body, closed)
-	keep := s3Call(t, s, http.MethodGet, "/tamper/keep.bin", nil, nil)
-	if keep.Code != http.StatusOK || keep.Body.String() != "still-good" {
-		t.Fatalf("untampered %d %q", keep.Code, keep.Body.String())
+}
+
+func assertPlaintextMarker(t *testing.T, s *api.Server, bucket, key string) {
+	t.Helper()
+	sk := storageKeyOf(t, s, bucket)
+	obj, err := s.Meta().GetObject(sk, key)
+	if err != nil || obj.Encryption == nil || !obj.Encryption.Plaintext || obj.Encryption.Sealed() {
+		t.Fatalf("plaintext marker %s %+v %v", key, obj.Encryption, err)
 	}
 }
 

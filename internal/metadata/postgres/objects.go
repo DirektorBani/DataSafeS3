@@ -57,6 +57,23 @@ func encryptionArg(e *metadata.ObjectEncryption) any {
 	return b
 }
 
+// SetObjectEncryptionIfAbsent writes enc when encryption IS NULL.
+// A marker that is already stored is not replaced.
+func (s *Store) SetObjectEncryptionIfAbsent(bucket, key, versionID string, enc *metadata.ObjectEncryption) (bool, error) {
+	bucket = s.normalizeObjectBucket(bucket)
+	ctx := context.Background()
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE objects SET encryption=$1
+		WHERE bucket=$2 AND key=$3
+		  AND (($4 <> '' AND version_id=$4) OR ($4 = '' AND is_latest=TRUE))
+		  AND encryption IS NULL`,
+		encryptionArg(enc), bucket, key, versionID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 func (s *Store) PutObject(rec metadata.ObjectRecord) error {
 	_, err := s.putObject(rec, false, nil)
 	return err

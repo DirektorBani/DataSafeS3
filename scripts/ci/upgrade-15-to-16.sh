@@ -35,6 +35,32 @@ wait_health() {
   done
 }
 
+s3_put_file() {
+  local url="$1" file="$2"
+  S3_CODE="$(curl --aws-sigv4 "aws:amz:us-east-1:s3" --user "datasafe:datasafesecret" \
+    -sS -o /tmp/e06-put-body.txt -w '%{http_code}' -X PUT \
+    -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" \
+    -H "Content-Type: application/octet-stream" \
+    --data-binary @"$file" "$url" || true)"
+}
+
+s3_get_file() {
+  local url="$1" dest="$2"
+  S3_CODE="$(curl --aws-sigv4 "aws:amz:us-east-1:s3" --user "datasafe:datasafesecret" \
+    -sS -o "$dest" -w '%{http_code}' -X GET \
+    -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" \
+    "$url" || true)"
+}
+
+assert_same_file() {
+  local url="$1" file="$2" label="$3"
+  s3_get_file "$url" /tmp/e06-got.bin
+  if [ "$S3_CODE" != "200" ] || ! cmp -s "$file" /tmp/e06-got.bin; then
+    echo "$label HTTP $S3_CODE" >&2
+    return 1
+  fi
+}
+
 s3_code() {
   local method="$1" url="$2" body="${3-}"
   local out
@@ -79,6 +105,9 @@ start_node() {
   if [ -n "$ssekey" ]; then
     args+=(-e STORAGE_SSE_MASTER_KEY="$ssekey")
   fi
+  if [ "${7:-}" = "legacy" ]; then
+    args+=(-e STORAGE_SSE_LEGACY_FORMAT0=true)
+  fi
   args+=("$image")
   "${args[@]}" >/dev/null
   wait_health "http://127.0.0.1:${port}/healthz" "$name"
@@ -122,11 +151,55 @@ forward_path() {
   [ "$S3_CODE" = "200" ] || { echo "create bucket $S3_CODE $S3_BODY" >&2; return 1; }
   s3_code PUT "$base/upbox/plain.txt" "plain-from-15"
   [ "$S3_CODE" = "200" ] || { echo "put 1.5 $S3_CODE $S3_BODY" >&2; return 1; }
+  local bin
+  mkdir -p /tmp/e06-bins
+  { printf '\xff\xd8\xff\xe0'; dd if=/dev/urandom bs=1024 count=8 status=none; } > /tmp/e06-bins/photo.jpg
+  { printf '\x1f\x8b\x08\x00'; dd if=/dev/urandom bs=1024 count=8 status=none; } > /tmp/e06-bins/real.gz
+  { printf 'PK\x03\x04'; dd if=/dev/urandom bs=1024 count=8 status=none; } > /tmp/e06-bins/rand.zip
+  dd if=/dev/urandom bs=1024 count=8 of=/tmp/e06-bins/rand.bin status=none
+  for bin in photo.jpg real.gz rand.zip rand.bin; do
+    s3_put_file "$base/upbox/$bin" "/tmp/e06-bins/$bin"
+    [ "$S3_CODE" = "200" ] || { echo "put 1.5 $bin $S3_CODE" >&2; return 1; }
+  done
+  docker stop "$name" >/dev/null
+  docker rm "$name" >/dev/null
+  # Chunked PUT is the only 1.5.0 write that stores SSE. Content-Length puts
+  # hit the size mismatch and are not used here.
+  start_node "$name" "$BASE_IMAGE" "$port" "$vol" "$dsn" "$SSE_KEY"
+  local sse_code
+  sse_code="$(printf '%s' 'legacy-sse-payload-v15' | curl --http1.1 --aws-sigv4 "aws:amz:us-east-1:s3" --user "datasafe:datasafesecret" \
+    -sS -o /tmp/e06-sse-put.txt -w '%{http_code}' -T - \
+    -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" \
+    "$base/upbox/sse.bin")"
+  [ "$sse_code" = "200" ] || { echo "1.5 chunked sse HTTP $sse_code" >&2; cat /tmp/e06-sse-put.txt >&2; return 1; }
   docker stop "$name" >/dev/null
   docker rm "$name" >/dev/null
   start_node "$name" "$PR_IMAGE" "$port" "$vol" "$dsn" "$SSE_KEY"
   s3_code GET "$base/upbox/plain.txt" ""
   [ "$S3_CODE" = "200" ] && [ "$S3_BODY" = "plain-from-15" ] || { echo "plaintext after upgrade $S3_CODE $S3_BODY" >&2; return 1; }
+  for bin in photo.jpg real.gz rand.zip rand.bin; do
+    assert_same_file "$base/upbox/$bin" "/tmp/e06-bins/$bin" "binary $bin"
+  done
+  s3_code GET "$base/upbox/sse.bin" ""
+  [ "$S3_CODE" = "200" ] && [ "$S3_BODY" = "legacy-sse-payload-v15" ] || { echo "legacy sse $S3_CODE $S3_BODY" >&2; return 1; }
+  docker stop "$name" >/dev/null
+  docker rm "$name" >/dev/null
+  start_node "$name" "$PR_IMAGE" "$port" "$vol" "$dsn" "$SSE_KEY" legacy
+  for bin in photo.jpg real.gz rand.zip rand.bin; do
+    assert_same_file "$base/upbox/$bin" "/tmp/e06-bins/$bin" "flag $bin"
+  done
+  s3_code GET "$base/upbox/sse.bin" ""
+  [ "$S3_CODE" = "200" ] && [ "$S3_BODY" = "legacy-sse-payload-v15" ] || { echo "flag legacy sse $S3_CODE $S3_BODY" >&2; return 1; }
+  local sse_path
+  sse_path="$(docker exec "$name" find /data/objects -type f -name sse.bin)"
+  sse_path="${sse_path%%$'\n'*}"
+  [ -n "$sse_path" ] || { echo "sse.bin not on disk" >&2; return 1; }
+  docker cp "$name:$sse_path" /tmp/e06-sse.bin
+  python3 -c 'p="/tmp/e06-sse.bin"; d=bytearray(open(p,"rb").read()); d[-1]^=0xff; open(p,"wb").write(d)'
+  docker cp /tmp/e06-sse.bin "$name:$sse_path"
+  s3_code GET "$base/upbox/sse.bin" ""
+  printf '%s' "$S3_BODY" | grep -q 'message authentication failed' || { echo "tampered sse $S3_CODE $S3_BODY" >&2; return 1; }
+  [ "$S3_CODE" = "500" ] || { echo "tampered sse status $S3_CODE" >&2; return 1; }
   local tok
   tok="$(admin_token "$base")"
   local enc

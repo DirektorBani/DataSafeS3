@@ -860,7 +860,7 @@ func (s *Service) HeadObject(ctx context.Context, bucket, key, versionID string)
 	if err != nil {
 		return rec, err
 	}
-	return displayedSize(rec, s.legacySSE()), nil
+	return displayedSize(rec), nil
 }
 
 func (s *Service) GetObjectTags(ctx context.Context, bucket, key, versionID string) (map[string]string, error) {

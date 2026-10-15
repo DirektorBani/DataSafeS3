@@ -278,6 +278,11 @@ type MetadataStore interface {
 	PutBucketEncryption(storageKey string, enc BucketEncryption) error
 	GetBucketEncryption(storageKey string) (BucketEncryption, error)
 	DeleteBucketEncryption(storageKey string) error
+	// SetObjectEncryptionIfAbsent stores enc when the object has no encryption
+	// marker yet. A marker already stored, including plaintext, is left as it
+	// is. applied is false when the row was missing or already marked.
+	// versionID empty updates the latest row.
+	SetObjectEncryptionIfAbsent(bucket, key, versionID string, enc *ObjectEncryption) (applied bool, err error)
 	UpsertNodeHeartbeat(nodeID, version string, at time.Time) error
 	// RegisterNodeAddress records the URL other nodes use to reach nodeID.
 	// Follower write forwarding reads it from this registry.

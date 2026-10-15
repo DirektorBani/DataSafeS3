@@ -302,6 +302,11 @@ func (s *Server) StartBackground(ctx context.Context) {
 		s.writeClusterHeartbeat()
 		go s.runKMSHeartbeat(ctx)
 	}
+	// Classification exits when the unmarked set is done. An empty key does
+	// not start it: that process has nothing to authenticate.
+	if s.svc.LocalKMSConfigured() {
+		go s.svc.RunLegacyClassify(ctx)
+	}
 	if eb, ok := s.backend.(*erasure.Backend); ok {
 		go erasure.RunHealWorker(ctx, eb, storage.ObjectBackendFromEnv(s.cfg.DataDir, s.cfg.ReadOnly).HealEvery)
 	}

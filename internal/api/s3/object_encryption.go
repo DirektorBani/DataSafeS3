@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"math"
+	"log/slog"
 	"net/http"
 	"os"
 	"path"
@@ -35,13 +35,6 @@ const (
 
 	// format0MinLen is the shortest 1.5.0 blob: a 12-byte nonce and a 16-byte tag.
 	format0MinLen = 12 + 16
-	// plainSample is the prefix used to tell unmarked plaintext from ciphertext.
-	plainSample = 4096
-	// plainPrintableMin is the printable-ASCII share of that prefix.
-	plainPrintableMin = 0.90
-	// plainEntropyMax is the Shannon entropy, in bits per byte, below which an
-	// authentication failure is still unmarked plaintext.
-	plainEntropyMax = 7.0
 	// sealAuthLimit is the plaintext size read fully before a success status.
 	sealAuthLimit = 32 << 20
 )
@@ -93,11 +86,11 @@ func (b *byteCounter) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// legacyFormat0OptIn is the only way to treat unmarked objects as 1.5.0 SSE-S3.
-// 1.5.0 rejected those writes (plaintext Content-Length versus ciphertext size),
-// so a real directory does not contain them. Counting objects must not turn the
-// flag on: that made every pre-existing plaintext GET fail, and the stored
-// fingerprint then blocks starting again without the key.
+// legacyFormat0OptIn records STORAGE_SSE_LEGACY_FORMAT0. The flag does not
+// decide which objects are ciphertext. Each unmarked object is classified
+// once and the marker is what later reads use. Counting objects must not
+// turn the flag on: a fingerprint stored from that guess blocks a later
+// start with the key cleared.
 func legacyFormat0OptIn() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("STORAGE_SSE_LEGACY_FORMAT0"))) {
 	case "1", "true", "yes", "on":
@@ -354,14 +347,6 @@ func fetchPeerVersion(address string) (string, bool) {
 		return "", false
 	}
 	return body.Version, true
-}
-
-func (s *Service) legacySSE() bool {
-	if s.Local == nil {
-		return false
-	}
-	st, err := s.Meta.GetKMSState()
-	return err == nil && st.LegacySSEObjects
 }
 
 // bucketKeyDestroyed is true after crypto-shred. Every object in the bucket
@@ -648,9 +633,6 @@ func (s *Service) openDecrypted(rc io.ReadCloser, rec metadata.ObjectRecord) (io
 		if enc != nil && enc.Plaintext {
 			return rc, rec, nil
 		}
-		if s.legacySSE() {
-			return s.openFormat0(rc, rec)
-		}
 		return s.openUnmarked(rc, rec)
 	}
 	if enc.KeyID != "" {
@@ -714,80 +696,153 @@ func finishSealed(rc io.ReadCloser, plain io.Reader, rec metadata.ObjectRecord) 
 	}{Reader: io.MultiReader(bytes.NewReader(one[:n]), plain), Closer: rc}, rec, nil
 }
 
-// openUnmarked serves an object that 1.5.0 stored with no encryption metadata.
-// A format-1 body (DSSE, version 1) is not format 0 and is not returned as
-// plaintext. When the server key is set, a format-0 blob that authenticates
-// is returned as plaintext. A failed authentication is returned only when the
-// bytes are too short to be format 0, or they look like plaintext. Any other
-// failure is the authentication error. Ciphertext this key can open is never
-// returned as the body, and neither is ciphertext that does not authenticate.
+// openUnmarked serves an object 1.5.0 stored with no encryption metadata.
+// A recorded size below the format-0 minimum cannot be ciphertext and is
+// streamed. Anything longer is classified once: a blob that authenticates is
+// marked format 0 and then decrypted, and every other body is marked plaintext
+// and streamed. Reads after that use the marker and do not try again.
 func (s *Service) openUnmarked(rc io.ReadCloser, rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {
 	if s.Local == nil {
 		return s.openUnmarkedRaw(rc, rec)
 	}
-	defer rc.Close()
-	data, err := io.ReadAll(rc)
+	if rec.Size >= 0 && rec.Size < format0MinLen {
+		_ = rc.Close()
+		s.persistLegacy(rec, plaintextMarker())
+		return s.reopenPlain(rec)
+	}
+	ok, err := s.Local.AuthenticateFormat0(rc)
+	_ = rc.Close()
 	if err != nil {
 		return nil, rec, err
 	}
-	if unmarkedDSSE(data) {
-		return nil, rec, errors.New("object envelope is missing encryption metadata")
+	if ok {
+		marker := format0Marker(rec.Size - format0MinLen)
+		s.persistLegacy(rec, marker)
+		return s.reopenFormat0(rec)
 	}
-	if len(data) < format0MinLen {
-		return io.NopCloser(bytes.NewReader(data)), rec, nil
-	}
-	plain, err := s.Local.DecryptFormat0(data)
-	if err == nil {
-		rec.Size = int64(len(plain))
-		return io.NopCloser(bytes.NewReader(plain)), rec, nil
-	}
-	if unmarkedPlaintext(data) {
-		return io.NopCloser(bytes.NewReader(data)), rec, nil
-	}
-	return nil, rec, err
+	s.persistLegacy(rec, plaintextMarker())
+	return s.reopenPlain(rec)
 }
 
-// unmarkedPlaintext reports whether an unmarked body that failed format-0
-// authentication is still ordinary plaintext. AES-GCM output is not
-// distinguishable from high-entropy plaintext, so that case fails closed.
-func unmarkedPlaintext(b []byte) bool {
-	if len(b) > plainSample {
-		b = b[:plainSample]
-	}
-	if len(b) == 0 {
-		return true
-	}
-	if printableRatio(b) >= plainPrintableMin {
-		return true
-	}
-	return shannonBits(b) < plainEntropyMax
+func plaintextMarker() *metadata.ObjectEncryption {
+	return &metadata.ObjectEncryption{Plaintext: true}
 }
 
-func printableRatio(b []byte) float64 {
-	n := 0
-	for _, c := range b {
-		if c == '\t' || c == '\n' || c == '\r' || (c >= 0x20 && c <= 0x7e) {
-			n++
+func format0Marker(plainSize int64) *metadata.ObjectEncryption {
+	if plainSize < 0 {
+		plainSize = 0
+	}
+	return &metadata.ObjectEncryption{
+		FormatVersion: 0,
+		Provider:      kms.ProviderLocal,
+		Alg:           "AES-256-GCM",
+		SSEAlgorithm:  kms.SSEAlgorithmAES256,
+		PlainSize:     plainSize,
+	}
+}
+
+func legacyClassified(enc *metadata.ObjectEncryption) bool {
+	return enc != nil && (enc.Plaintext || enc.Sealed())
+}
+
+func (s *Service) persistLegacy(rec metadata.ObjectRecord, marker *metadata.ObjectEncryption) {
+	if s == nil || s.Meta == nil || marker == nil {
+		return
+	}
+	if _, err := s.Meta.SetObjectEncryptionIfAbsent(rec.Bucket, rec.Key, rec.VersionID, marker); err != nil {
+		slog.Warn("legacy object classification was not stored", "bucket", rec.Bucket, "key", rec.Key, "err", err)
+	}
+}
+
+func (s *Service) reopenPlain(rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {
+	rc, _, err := s.Backend.GetObjectVersion(context.Background(), rec.Bucket, rec.Key, rec.VersionID)
+	if err != nil {
+		return nil, rec, err
+	}
+	rec.Encryption = plaintextMarker()
+	return rc, rec, nil
+}
+
+func (s *Service) reopenFormat0(rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {
+	rc, _, err := s.Backend.GetObjectVersion(context.Background(), rec.Bucket, rec.Key, rec.VersionID)
+	if err != nil {
+		return nil, rec, err
+	}
+	rec.Encryption = format0Marker(rec.Size - format0MinLen)
+	return s.openFormat0(rc, rec)
+}
+
+// RunLegacyClassify walks unmarked objects once and stores a format marker.
+// It is resumable: a marker already stored is skipped, and a restart continues
+// with whatever is still unmarked. Bolt and Postgres both accept the same
+// conditional write, so two HA nodes classifying one object keep one result.
+func (s *Service) RunLegacyClassify(ctx context.Context) {
+	if s == nil || s.Local == nil || s.Meta == nil || s.Backend == nil {
+		return
+	}
+	buckets, err := s.Meta.ListBuckets()
+	if err != nil {
+		slog.Warn("legacy classification could not list buckets", "err", err)
+		return
+	}
+	var marked, skipped int
+	for _, b := range buckets {
+		if ctx.Err() != nil {
+			return
+		}
+		sk := b.EffectiveStorageKey()
+		start := ""
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+			page, trunc, next, err := s.Meta.ListObjectsPage(sk, "", start, 200)
+			if err != nil {
+				slog.Warn("legacy classification could not list objects", "bucket", sk, "err", err)
+				break
+			}
+			for _, rec := range page {
+				if legacyClassified(rec.Encryption) || rec.IsDeleteMarker {
+					skipped++
+					continue
+				}
+				if err := s.classifyStored(ctx, rec); err != nil {
+					slog.Warn("legacy classification skipped an object", "bucket", rec.Bucket, "key", rec.Key, "err", err)
+					continue
+				}
+				marked++
+			}
+			if !trunc || next == "" || next == start {
+				break
+			}
+			start = next
 		}
 	}
-	return float64(n) / float64(len(b))
+	if marked > 0 {
+		slog.Info("legacy object classification stored markers", "marked", marked, "already", skipped)
+	}
 }
 
-func shannonBits(b []byte) float64 {
-	var freq [256]int
-	for _, c := range b {
-		freq[c]++
+func (s *Service) classifyStored(ctx context.Context, rec metadata.ObjectRecord) error {
+	if rec.Size >= 0 && rec.Size < format0MinLen {
+		s.persistLegacy(rec, plaintextMarker())
+		return nil
 	}
-	n := float64(len(b))
-	var h float64
-	for _, c := range freq {
-		if c == 0 {
-			continue
-		}
-		p := float64(c) / n
-		h -= p * math.Log2(p)
+	rc, _, err := s.Backend.GetObjectVersion(ctx, rec.Bucket, rec.Key, rec.VersionID)
+	if err != nil {
+		return err
 	}
-	return h
+	defer rc.Close()
+	ok, err := s.Local.AuthenticateFormat0(rc)
+	if err != nil {
+		return err
+	}
+	if ok {
+		s.persistLegacy(rec, format0Marker(rec.Size-format0MinLen))
+		return nil
+	}
+	s.persistLegacy(rec, plaintextMarker())
+	return nil
 }
 
 func (s *Service) openUnmarkedRaw(rc io.ReadCloser, rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {
@@ -914,17 +969,16 @@ func (s *Service) completeEncryptedMultipart(ctx context.Context, bucket, key, u
 	return rec, dropped, nil
 }
 
-func displayedSize(rec metadata.ObjectRecord, legacy bool) metadata.ObjectRecord {
+func displayedSize(rec metadata.ObjectRecord) metadata.ObjectRecord {
+	if rec.Encryption != nil && rec.Encryption.Plaintext {
+		return rec
+	}
 	if rec.Encryption != nil && rec.Encryption.PlainSize > 0 {
 		rec.Size = rec.Encryption.PlainSize
 		return rec
 	}
-	if rec.Encryption != nil && rec.Encryption.FormatVersion == 0 && rec.Size > 28 {
-		rec.Size -= 28
-		return rec
-	}
-	if rec.Encryption == nil && legacy && rec.Size > 28 {
-		rec.Size -= 28
+	if rec.Encryption != nil && rec.Encryption.Sealed() && rec.Encryption.FormatVersion == 0 && rec.Size >= format0MinLen {
+		rec.Size -= format0MinLen
 	}
 	return rec
 }
