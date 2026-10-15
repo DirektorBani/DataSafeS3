@@ -3,6 +3,7 @@ package api_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -511,31 +512,60 @@ func TestS3ListBucketsFilteredByAccessKey(t *testing.T) {
 	req = authReq(http.MethodPost, "/api/v1/keys", userATok, keyBody)
 	rec = httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create key: %d %s", rec.Code, rec.Body.String())
+	}
 	var keyResp map[string]string
 	_ = json.Unmarshal(rec.Body.Bytes(), &keyResp)
+	if keyResp["access_key"] == "" || keyResp["secret_key"] == "" {
+		t.Fatalf("create key response: %s", rec.Body.String())
+	}
 
 	ts := httptest.NewServer(s.Handler())
 	defer ts.Close()
-	listReq, _ := http.NewRequest(http.MethodGet, ts.URL+"/", nil)
 	creds := auth.Credentials{AccessKey: keyResp["access_key"], SecretKey: keyResp["secret_key"]}
-	if err := auth.SignRequest(listReq, creds, "us-east-1", "s3", "UNSIGNED-PAYLOAD"); err != nil {
-		t.Fatal(err)
+	list := func() (int, []byte) {
+		t.Helper()
+		listReq, err := http.NewRequest(http.MethodGet, ts.URL+"/", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := auth.SignRequest(listReq, creds, "us-east-1", "s3", "UNSIGNED-PAYLOAD"); err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(listReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body := new(bytes.Buffer)
+		_, _ = body.ReadFrom(resp.Body)
+		return resp.StatusCode, body.Bytes()
 	}
-	resp, err := http.DefaultClient.Do(listReq)
-	if err != nil {
-		t.Fatal(err)
+
+	status, body := list()
+	if status != http.StatusForbidden || !bytes.Contains(body, []byte("AccessDenied")) {
+		t.Fatalf("list without s3:ListAllMyBuckets: %d %s", status, body)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("s3 list buckets status %d", resp.StatusCode)
+
+	policy := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::datasafe:access-key/%s"},"Action":"s3:ListAllMyBuckets","Resource":"arn:aws:s3:::s3a-bucket"}]}`, keyResp["access_key"])
+	polBody, _ := json.Marshal(map[string]string{"policy": policy})
+	req = authReq(http.MethodPut, "/api/v1/buckets/s3a-bucket/policy", adminTok, polBody)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set policy: %d %s", rec.Code, rec.Body.String())
 	}
-	body := new(bytes.Buffer)
-	_, _ = body.ReadFrom(resp.Body)
-	if !bytes.Contains(body.Bytes(), []byte("s3a-bucket")) {
-		t.Fatalf("expected s3a-bucket in listing: %s", body.String())
+
+	status, body = list()
+	if status != http.StatusOK {
+		t.Fatalf("s3 list buckets status %d %s", status, body)
 	}
-	if bytes.Contains(body.Bytes(), []byte("s3b-bucket")) {
-		t.Fatalf("user a key should not list user b bucket: %s", body.String())
+	if !bytes.Contains(body, []byte("s3a-bucket")) {
+		t.Fatalf("expected s3a-bucket in listing: %s", body)
+	}
+	if bytes.Contains(body, []byte("s3b-bucket")) {
+		t.Fatalf("user a key should not list user b bucket: %s", body)
 	}
 }
 
