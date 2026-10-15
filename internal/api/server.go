@@ -264,6 +264,7 @@ func NewServer(cfg Config) (*Server, error) {
 			}
 			s.haLeader = ha.New(haCfg, pg)
 			s.svc.ReplicateObject = s.replicateStoredObject
+			s.svc.FetchStoredObject = s.fetchStoredObject
 			if s.eventDisp != nil {
 				s.eventDisp.SetOnFence(s.haLeader.Resign)
 				s.haLeader.SetOnAcquired(s.syncEventSinks)

@@ -539,6 +539,7 @@ off_pre="$HTTP_CODE"
 api PUT /api/v1/buckets/plainbox/sharing "$TOK" '{"share_links_allowed":true}'
 http_code "$LB/api/v1/public/share/${PLAIN_TOKEN}/download"
 share_code="$HTTP_CODE"
+share_body="$(head -c 180 "$STATE/body.txt" | tr '\n' ' ')"
 http_code "$PLAIN_URL"
 pre_code="$HTTP_CODE"
 if [ "$plain_anon" = "200" ] && [ "$s3_anon" = "200" ] && [ "$kms_anon" = "403" ] \
@@ -546,7 +547,7 @@ if [ "$plain_anon" = "200" ] && [ "$s3_anon" = "200" ] && [ "$kms_anon" = "403" 
   && [ "$stranger_code" = "403" ] && [ "$off_share" = "403" ] && [ "$off_pre" = "403" ]; then
   verdict share_matrix PASS
 else
-  echo "matrix anon=$plain_anon/$s3_anon/$kms_anon share=$share_code pre=$pre_code stranger=$stranger_code off=$off_share/$off_pre" >&2
+  echo "matrix anon=$plain_anon/$s3_anon/$kms_anon share=$share_code pre=$pre_code stranger=$stranger_code off=$off_share/$off_pre token_len=${#PLAIN_TOKEN} share_body=$share_body" >&2
   verdict share_matrix FAIL
 fi
 

@@ -32,7 +32,7 @@ STS `AssumeRole` отклоняет непустой `RoleArn`. Сессия н�
 - `PUT /api/v1/settings/mfa-policy`, `POST /api/v1/auth/step-up`, `POST /api/v1/users/{id}/mfa/reset` и `POST /api/v1/keys`
 - `GET/PUT/DELETE /api/v1/buckets/{bucket}/encryption`
 
-`GET /api/v1/public/share/{token}` и скачивание по ссылке на follower разрешены. Первый отказ после истечения ссылки или после исчерпания `max_downloads` порождает `ShareExpired` или `ShareLimitReached` ровно один раз (одна строка Activity `share.expired` или `share.limit_reached` и одна строка outbox). Следующие отказы той же ссылки событие не создают. `ShareBlocked` пишется на каждую попытку скачивания, пока обмен выключен. Follower кладёт эту строку в outbox, даже если локально sink webhook ещё не зарегистрирован; доставляет её лидер.
+`GET /api/v1/public/share/{token}` и скачивание по ссылке на follower разрешены. Если файла нет на этом диске, скачивание копирует сохранённые байты с другого узла и читает их здесь. Первый отказ после истечения ссылки или после исчерпания `max_downloads` порождает `ShareExpired` или `ShareLimitReached` ровно один раз (одна строка Activity `share.expired` или `share.limit_reached` и одна строка outbox). Следующие отказы той же ссылки событие не создают. `ShareBlocked` пишется на каждую попытку скачивания, пока обмен выключен. Follower кладёт эту строку в outbox, даже если локально sink webhook ещё не зарегистрирован; доставляет её лидер.
 
 ## Обязательная 2FA для администраторов бакетов
 

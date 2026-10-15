@@ -51,6 +51,9 @@ type Service struct {
 	// ReplicateObject copies the stored bytes to other HA nodes after a local write.
 	// Nil when this process is not in an HA group. The copy is the ciphertext on disk.
 	ReplicateObject func(ctx context.Context, bucket, key, versionID string)
+	// FetchStoredObject copies stored bytes onto this disk when metadata names
+	// the object and the local file is missing. Nil outside an HA group.
+	FetchStoredObject func(ctx context.Context, bucket, key, versionID string) error
 	// putStripes serializes writers of one key on this process so the file,
 	// etag, and metadata row belong to the same last writer.
 	putStripes [64]sync.Mutex
@@ -801,6 +804,11 @@ func (s *Service) GetObject(ctx context.Context, bucket, key, versionID string) 
 	}
 	vid := rec.VersionID
 	rc, _, err := s.Backend.GetObjectVersion(ctx, bucket, key, vid)
+	if errors.Is(err, storage.ErrNotFound) && s.FetchStoredObject != nil {
+		if ferr := s.FetchStoredObject(ctx, bucket, key, vid); ferr == nil {
+			rc, _, err = s.Backend.GetObjectVersion(ctx, bucket, key, vid)
+		}
+	}
 	if err != nil {
 		return nil, metadata.ObjectRecord{}, err
 	}

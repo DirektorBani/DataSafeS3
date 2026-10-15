@@ -32,7 +32,7 @@ Sharing and security changes are ordinary writes. With `STORAGE_HA_ENABLED=true`
 - `PUT /api/v1/settings/mfa-policy`, `POST /api/v1/auth/step-up`, `POST /api/v1/users/{id}/mfa/reset`, and `POST /api/v1/keys`
 - `GET/PUT/DELETE /api/v1/buckets/{bucket}/encryption`
 
-`GET /api/v1/public/share/{token}` and its download stay available on a follower. The first rejected request after the link expires, or after `max_downloads` is used up, emits `ShareExpired` or `ShareLimitReached` once (one Activity row, `share.expired` or `share.limit_reached`, and one outbox row). Later rejects of that link do not emit again. `ShareBlocked` is emitted on every download attempted while sharing is off. A follower still writes that outbox row when a webhook matches, even if this process has not registered the sink; the leader delivers it.
+`GET /api/v1/public/share/{token}` and its download stay available on a follower. When the file is absent from this disk, the download copies the stored bytes from a peer and then reads them here. The first rejected request after the link expires, or after `max_downloads` is used up, emits `ShareExpired` or `ShareLimitReached` once (one Activity row, `share.expired` or `share.limit_reached`, and one outbox row). Later rejects of that link do not emit again. `ShareBlocked` is emitted on every download attempted while sharing is off. A follower still writes that outbox row when a webhook matches, even if this process has not registered the sink; the leader delivers it.
 
 ## Bucket-admin 2FA
 

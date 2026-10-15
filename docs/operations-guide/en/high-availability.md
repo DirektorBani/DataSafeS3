@@ -10,6 +10,8 @@ The lab layout and ports are in the [2-node reference](reference-deployment-2nod
 
 With `STORAGE_HA_ENABLED=true` and the Postgres metadata backend, a follower rejects writes with **503** and body `not cluster leader` (`Retry-After: 30`). A follower proxies `GET` and `HEAD` of an object to the leader and keeps the original `Host`, so SigV4 still matches. If that dial fails, the follower serves the copy on its own disk. Bucket listings, `/healthz`, `/metrics`, and `/api/v1/health` are answered locally.
 
+A local read whose metadata row is present and whose file is missing copies the stored bytes from a peer that has them, then opens that copy on this node. Public share download uses that path. The bytes copied are the bytes already stored, including ciphertext.
+
 The same 503 applies to v1.6 sharing and access-security writes: global, tenant, and bucket sharing policy, creating and revoking share links, and presign. Public share GET and download stay on followers. See [Access model](access-model.md).
 
 `GET /healthz` includes `ha_enabled`, `is_leader`, `node_id`, `version`, and `commit`.

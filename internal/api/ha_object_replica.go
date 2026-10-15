@@ -5,14 +5,18 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/DirektorBani/datasafe/internal/storage"
 )
 
 // replicaMAC authenticates a copy of stored object bytes between HA nodes.
@@ -40,10 +44,10 @@ func replicaMACOK(secret, bucket, key, versionID, got string) bool {
 	return hmac.Equal(a, b)
 }
 
-// handleObjectReplica stores bytes the leader already wrote. It does not
-// update metadata and it does not go through the leader proxy.
+// handleObjectReplica stores or returns bytes already written on a peer.
+// It does not update metadata and it does not go through the leader proxy.
 func (s *Server) handleObjectReplica(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPut {
+	if r.Method != http.MethodPut && r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
@@ -52,6 +56,10 @@ func (s *Server) handleObjectReplica(w http.ResponseWriter, r *http.Request) {
 	versionID := r.URL.Query().Get("version")
 	if bucket == "" || key == "" || !replicaMACOK(s.cfg.JWTSecret, bucket, key, versionID, r.Header.Get("X-DataSafe-Replica")) {
 		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		s.serveObjectReplica(w, r, bucket, key, versionID)
 		return
 	}
 	var err error
@@ -66,6 +74,27 @@ func (s *Server) handleObjectReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) serveObjectReplica(w http.ResponseWriter, r *http.Request, bucket, key, versionID string) {
+	rc, info, err := s.backend.GetObjectVersion(r.Context(), bucket, key, versionID)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		slog.Error("object replica read", "bucket", bucket, "key", key, "err", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer rc.Close()
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size, 10))
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	_, _ = io.Copy(w, rc)
 }
 
 // replicateStoredObject copies the file just written to every other node that
@@ -137,9 +166,91 @@ var replicaClient = &http.Client{
 		DialContext: (&net.Dialer{
 			Timeout: 1 * time.Second,
 		}).DialContext,
-		MaxIdleConns:    10,
-		IdleConnTimeout: 30 * time.Second,
+		ResponseHeaderTimeout: 5 * time.Second,
+		MaxIdleConns:          10,
+		IdleConnTimeout:       30 * time.Second,
 	},
+}
+
+// fetchStoredObject copies a file that this disk does not have from a peer
+// that does. Public share download and other local reads stay on this node.
+func (s *Server) fetchStoredObject(ctx context.Context, bucket, key, versionID string) error {
+	if s == nil || s.haLeader == nil || !s.haLeader.Enabled() || s.cfg.JWTSecret == "" {
+		return storage.ErrNotFound
+	}
+	return s.pullFromPeers(ctx, s.replicaPeers(), bucket, key, versionID)
+}
+
+func (s *Server) pullFromPeers(ctx context.Context, peers []string, bucket, key, versionID string) error {
+	if len(peers) == 0 {
+		return storage.ErrNotFound
+	}
+	var last error = storage.ErrNotFound
+	for _, addr := range peers {
+		err := s.pullObjectReplica(ctx, addr, bucket, key, versionID)
+		if err == nil {
+			return nil
+		}
+		last = err
+		slog.Error("object replica pull", "peer", addr, "bucket", bucket, "key", key, "err", err)
+	}
+	return last
+}
+
+func (s *Server) pullObjectReplica(ctx context.Context, addr, bucket, key, versionID string) error {
+	if !strings.Contains(addr, "://") {
+		addr = "http://" + addr
+	}
+	q := url.Values{}
+	q.Set("bucket", bucket)
+	q.Set("key", key)
+	q.Set("version", versionID)
+	endpoint := strings.TrimRight(addr, "/") + "/api/v1/ha/object-replica?" + q.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-DataSafe-Replica", replicaMAC(s.cfg.JWTSecret, bucket, key, versionID))
+	resp, err := replicaClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return storage.ErrNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return errStatus(resp.StatusCode)
+	}
+	size := resp.ContentLength
+	body := io.Reader(resp.Body)
+	if size < 0 {
+		tmp, terr := os.CreateTemp("", "ds-object-pull-*")
+		if terr != nil {
+			return terr
+		}
+		defer func() {
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
+		}()
+		n, cerr := io.Copy(tmp, resp.Body)
+		if cerr != nil {
+			return cerr
+		}
+		if _, serr := tmp.Seek(0, io.SeekStart); serr != nil {
+			return serr
+		}
+		size = n
+		body = tmp
+	}
+	if versionID != "" {
+		_, err = s.backend.PutObjectVersion(ctx, bucket, key, versionID, body, size, "")
+	} else {
+		_, err = s.backend.PutObject(ctx, bucket, key, body, size, "")
+	}
+	return err
 }
 
 func (s *Server) pushObjectReplica(ctx context.Context, addr, bucket, key, versionID string, body io.Reader, size int64) error {
