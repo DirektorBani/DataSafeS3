@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const minioAdminPrefix = "/minio/admin/v3"
@@ -36,6 +37,8 @@ type IAMServiceAccount struct {
 	Policy        string
 	ImpliedPolicy bool
 	Status        string
+	// Expires is the source expiration, when MinIO reported one.
+	Expires *time.Time
 }
 
 // IAMExternal is an LDAP or OIDC identity. It is not imported.
@@ -84,7 +87,9 @@ func ReadMinIOIAM(ctx context.Context, src Endpoint) (IAMSnapshot, error) {
 		snap.Warnings = append(snap.Warnings, "MinIO groups endpoint was not available; no groups were imported")
 	}
 	for i, g := range snap.Groups {
-		desc, err := adminGet(ctx, src, minioAdminPrefix+"/group-desc", url.Values{"group": {g.Name}})
+		// Real MinIO serves GET /group?group=name. /group-desc answers 426 and
+		// must not abort the import.
+		desc, err := adminGet(ctx, src, minioAdminPrefix+"/group", url.Values{"group": {g.Name}})
 		if err != nil {
 			if adminMissing(err) {
 				snap.Warnings = append(snap.Warnings, "group "+g.Name+" has no description and its members were not copied")
@@ -94,18 +99,26 @@ func ReadMinIOIAM(ctx context.Context, src Endpoint) (IAMSnapshot, error) {
 		}
 		var body struct {
 			Members     []string `json:"members"`
+			Policy      string   `json:"policy"`
 			GroupPolicy string   `json:"groupPolicy"`
-			Status      string   `json:"groupStatus"`
+			Status      string   `json:"status"`
+			GroupStatus string   `json:"groupStatus"`
 		}
 		if json.Unmarshal(desc, &body) == nil {
 			if len(body.Members) > 0 {
 				snap.Groups[i].Members = body.Members
 			}
-			if body.GroupPolicy != "" {
+			switch {
+			case body.Policy != "":
+				snap.Groups[i].Policy = body.Policy
+			case body.GroupPolicy != "":
 				snap.Groups[i].Policy = body.GroupPolicy
 			}
-			if body.Status != "" {
+			switch {
+			case body.Status != "":
 				snap.Groups[i].Status = body.Status
+			case body.GroupStatus != "":
+				snap.Groups[i].Status = body.GroupStatus
 			}
 		}
 	}
@@ -126,26 +139,35 @@ func ReadMinIOIAM(ctx context.Context, src Endpoint) (IAMSnapshot, error) {
 		}
 		var list struct {
 			Accounts []struct {
-				AccessKey string `json:"accessKey"`
+				AccessKey  string     `json:"accessKey"`
+				Expiration *time.Time `json:"expiration"`
 			} `json:"accounts"`
 		}
 		if json.Unmarshal(accounts, &list) != nil {
 			continue
 		}
 		for _, acc := range list.Accounts {
-			sa := IAMServiceAccount{Parent: u.AccessKey, AccessKey: acc.AccessKey, ImpliedPolicy: true, Status: "enabled"}
+			sa := IAMServiceAccount{Parent: u.AccessKey, AccessKey: acc.AccessKey, ImpliedPolicy: true, Status: "enabled", Expires: acc.Expiration}
 			info, ierr := adminGet(ctx, src, minioAdminPrefix+"/info-service-account", url.Values{"accessKey": {acc.AccessKey}})
 			if ierr == nil {
 				var body struct {
-					Policy        string `json:"policy"`
-					ImpliedPolicy bool   `json:"impliedPolicy"`
-					AccountStatus string `json:"accountStatus"`
+					Policy        json.RawMessage `json:"policy"`
+					ImpliedPolicy *bool           `json:"impliedPolicy"`
+					AccountStatus string          `json:"accountStatus"`
+					Expiration    *time.Time      `json:"expiration"`
 				}
 				if json.Unmarshal(info, &body) == nil {
-					sa.Policy = body.Policy
-					sa.ImpliedPolicy = body.ImpliedPolicy
+					sa.Policy = rawJSONString(body.Policy)
+					if body.ImpliedPolicy != nil {
+						sa.ImpliedPolicy = *body.ImpliedPolicy
+					} else if strings.TrimSpace(sa.Policy) != "" {
+						sa.ImpliedPolicy = false
+					}
 					if body.AccountStatus != "" {
 						sa.Status = body.AccountStatus
+					}
+					if body.Expiration != nil {
+						sa.Expires = body.Expiration
 					}
 				}
 			}
@@ -259,7 +281,22 @@ func adminMissing(err error) bool {
 	if !errors.As(err, &ae) {
 		return false
 	}
-	return ae.Status == http.StatusNotFound || ae.Status == http.StatusMethodNotAllowed
+	// 426 is what a current MinIO returns for the retired /group-desc path.
+	return ae.Status == http.StatusNotFound || ae.Status == http.StatusMethodNotAllowed || ae.Status == http.StatusUpgradeRequired
+}
+
+func rawJSONString(raw json.RawMessage) string {
+	raw = bytesTrim(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	if raw[0] == '"' {
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			return s
+		}
+	}
+	return string(raw)
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }

@@ -4,13 +4,15 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/DirektorBani/datasafe/internal/policy"
 )
 
 // MapBucketPolicies turns MinIO canned policies and their user bindings into
-// one DataSafe bucket policy per bucket. Unsupported conditions are named in
-// the warnings and those statements are not copied.
+// one DataSafe bucket policy per bucket. An Allow that cannot be represented
+// exactly is dropped. A Deny with an unsupported condition is kept with that
+// condition removed, so it denies unconditionally.
 func MapBucketPolicies(docs map[string]string, principals map[string][]string) (map[string][]policy.Statement, []string) {
 	var warnings []string
 	out := map[string][]policy.Statement{}
@@ -30,16 +32,12 @@ func MapBucketPolicies(docs map[string]string, principals map[string][]string) (
 			warnings = append(warnings, "policy "+name+" has no user binding and was not copied")
 			continue
 		}
-		ported, dropped := PortPolicy(raw)
+		stmts, dropped, refuse := portIAMDocument(raw)
 		for _, w := range dropped {
 			warnings = append(warnings, "policy "+name+": "+w)
 		}
-		if ported == "" {
-			continue
-		}
-		var doc policy.Document
-		if err := json.Unmarshal([]byte(ported), &doc); err != nil {
-			warnings = append(warnings, "policy "+name+" is not JSON and was not copied")
+		if refuse {
+			warnings = append(warnings, "policy "+name+" has a deny that cannot be represented; its allows were not copied")
 			continue
 		}
 		principal, err := json.Marshal(map[string][]string{"AWS": who})
@@ -47,13 +45,21 @@ func MapBucketPolicies(docs map[string]string, principals map[string][]string) (
 			warnings = append(warnings, "policy "+name+" principals could not be encoded")
 			continue
 		}
-		for _, st := range doc.Statement {
+		for _, st := range stmts {
 			buckets, all := bucketsFromResources(st.Resource)
 			if all {
+				if strings.EqualFold(st.Effect, "Deny") {
+					warnings = append(warnings, "policy "+name+" deny applies to every bucket and cannot be stored; principals of this policy are refused")
+					continue
+				}
 				warnings = append(warnings, "policy "+name+" applies to every bucket and was not copied; DataSafe stores a policy on a named bucket")
 				continue
 			}
 			if len(buckets) == 0 {
+				if strings.EqualFold(st.Effect, "Deny") {
+					warnings = append(warnings, "policy "+name+" deny has no bucket resource and cannot be stored; principals of this policy are refused")
+					continue
+				}
 				warnings = append(warnings, "policy "+name+" has no bucket resource and was not copied")
 				continue
 			}
@@ -64,6 +70,430 @@ func MapBucketPolicies(docs map[string]string, principals map[string][]string) (
 		}
 	}
 	return out, warnings
+}
+
+// portIAMDocument keeps statements DataSafe can enforce without widening them.
+// refuse is set when a Deny cannot be attached to a named bucket.
+func portIAMDocument(raw string) (stmts []policy.Statement, warnings []string, refuse bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil, false
+	}
+	var doc policy.Document
+	if json.Unmarshal([]byte(raw), &doc) != nil {
+		return nil, []string{"policy is not JSON and was not copied"}, false
+	}
+	for _, st := range doc.Statement {
+		effect := strings.ToLower(strings.TrimSpace(st.Effect))
+		sid := st.Sid
+		if sid == "" {
+			sid = strings.Join(st.Action, ",")
+		}
+		if effect != "allow" && effect != "deny" {
+			warnings = append(warnings, "statement "+sid+" was not copied: effect must be Allow or Deny")
+			continue
+		}
+		bad := unsupportedCondition(st)
+		if len(bad) > 0 {
+			if effect == "deny" {
+				st.Condition = nil
+				warnings = append(warnings, "deny statement "+sid+" is enforced unconditionally; unsupported condition dropped: "+strings.Join(bad, ", "))
+			} else {
+				warnings = append(warnings, "allow statement "+sid+" dropped: "+strings.Join(bad, ", "))
+				continue
+			}
+		}
+		buckets, all := bucketsFromResources(st.Resource)
+		if effect == "deny" && (all || len(buckets) == 0) {
+			warnings = append(warnings, "deny statement "+sid+" cannot be represented on a named bucket")
+			refuse = true
+			continue
+		}
+		if effect == "allow" && (all || len(buckets) == 0) {
+			warnings = append(warnings, "allow statement "+sid+" applies to every bucket and was not copied")
+			continue
+		}
+		stmts = append(stmts, st)
+	}
+	return stmts, warnings, refuse
+}
+
+func unsupportedCondition(st policy.Statement) []string {
+	var bad []string
+	for op, keys := range st.Condition {
+		switch strings.ToLower(op) {
+		case "ipaddress", "notipaddress":
+			for key := range keys {
+				if !strings.EqualFold(key, "aws:SourceIp") {
+					bad = append(bad, op+" "+key)
+				}
+			}
+		case "bool":
+			for key := range keys {
+				if !strings.EqualFold(key, "aws:SecureTransport") {
+					bad = append(bad, op+" "+key)
+				}
+			}
+		default:
+			named := false
+			for key := range keys {
+				bad = append(bad, op+" "+key)
+				named = true
+			}
+			if !named {
+				bad = append(bad, op)
+			}
+		}
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+// userStatements ports each user's policies and enabled group policies.
+// A user in refused has a Deny that cannot be stored; that user gets no key.
+func userStatements(snap IAMSnapshot) (userStmts map[string][]policy.Statement, refused map[string]string, warnings []string) {
+	userStmts = map[string][]policy.Statement{}
+	refused = map[string]string{}
+	for _, u := range snap.Users {
+		names := splitPolicies(u.PolicyName)
+		for _, g := range groupsOf(u, snap.Groups) {
+			if !accountEnabled(g.Status) || strings.TrimSpace(g.Policy) == "" {
+				continue
+			}
+			names = append(names, splitPolicies(g.Policy)...)
+		}
+		var stmts []policy.Statement
+		bad := false
+		for _, name := range uniqueStrings(names) {
+			raw := snap.Policies[name]
+			if strings.TrimSpace(raw) == "" {
+				warnings = append(warnings, "policy "+name+" has no document and was not copied")
+				continue
+			}
+			st, w, refuse := portIAMDocument(raw)
+			for _, line := range w {
+				warnings = append(warnings, "policy "+name+": "+line)
+			}
+			if refuse {
+				bad = true
+				warnings = append(warnings, "user "+u.AccessKey+" is refused: policy "+name+" has a deny that cannot be represented")
+			}
+			if !bad {
+				stmts = append(stmts, st...)
+			}
+		}
+		if bad {
+			refused[u.AccessKey] = "deny cannot be represented"
+			continue
+		}
+		userStmts[u.AccessKey] = stmts
+	}
+	return userStmts, refused, warnings
+}
+
+// EffectiveIAM binds each imported access key to statements that are equal to
+// or stricter than MinIO. A service account with an inline policy does not
+// inherit parent allows the inline policy does not itself grant.
+func EffectiveIAM(snap IAMSnapshot, userStmts map[string][]policy.Statement, refusedUser map[string]string, userKeys map[string]string, saKeys map[string]string, now time.Time) (docs map[string]string, principals map[string][]string, warnings []string, groups []IAMGroupNote, accounts []IAMServiceAccountNote, refused []string) {
+	docs = map[string]string{}
+	principals = map[string][]string{}
+	if userStmts == nil {
+		userStmts = map[string][]policy.Statement{}
+	}
+	if refusedUser == nil {
+		refusedUser = map[string]string{}
+	}
+	for user := range refusedUser {
+		refused = append(refused, user)
+	}
+	for _, g := range snap.Groups {
+		note := IAMGroupNote{
+			Name: g.Name, Status: g.Status, Policy: g.Policy, Members: append([]string(nil), g.Members...),
+		}
+		if note.Status == "" {
+			note.Status = "enabled"
+		}
+		if accountEnabled(g.Status) {
+			note.PolicyApplied = strings.TrimSpace(g.Policy) != ""
+			note.Detail = "group policy is expanded to member access keys; DataSafe bucket policies have no group principal"
+			if !note.PolicyApplied {
+				note.Detail = "group has no policy"
+			}
+		} else {
+			note.PolicyApplied = false
+			note.Detail = "group is disabled; its policy was not applied"
+		}
+		groups = append(groups, note)
+	}
+	sort.Slice(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
+	for user, stmts := range userStmts {
+		ak := userKeys[user]
+		if ak == "" || len(stmts) == 0 {
+			continue
+		}
+		id := "user:" + user
+		raw, err := json.Marshal(policy.Document{Version: "2012-10-17", Statement: stmts})
+		if err != nil {
+			warnings = append(warnings, "user "+user+" policy could not be encoded")
+			continue
+		}
+		docs[id] = string(raw)
+		principals[id] = []string{policy.AccessKeyARN(ak)}
+	}
+	for _, sa := range snap.ServiceAccounts {
+		note := IAMServiceAccountNote{
+			AccessKey: sa.AccessKey, Parent: sa.Parent, Status: sa.Status, ImpliedPolicy: sa.ImpliedPolicy,
+		}
+		if note.Status == "" {
+			note.Status = "enabled"
+		}
+		if sa.Expires != nil {
+			note.Expiration = sa.Expires.UTC().Format(time.RFC3339)
+		}
+		switch {
+		case !accountEnabled(sa.Status):
+			note.Inline = "disabled"
+			note.Detail = "service account is disabled; no access key was created"
+			warnings = append(warnings, "service account "+sa.AccessKey+" is disabled; no access key was created")
+		case sa.Expires != nil && !sa.Expires.After(now):
+			note.Inline = "expired"
+			note.Detail = "service account is expired; no access key was created"
+			warnings = append(warnings, "service account "+sa.AccessKey+" is expired; no access key was created")
+		case refusedUser[sa.Parent] != "":
+			note.Inline = "refused"
+			note.Detail = "parent user was refused; service account was not imported"
+		case userKeys[sa.Parent] == "" && saKeys[sa.AccessKey] == "":
+			note.Inline = "skipped"
+			note.Detail = "parent user has no access key"
+		default:
+			parent := userStmts[sa.Parent]
+			ak := saKeys[sa.AccessKey]
+			var stmts []policy.Statement
+			if !sa.ImpliedPolicy && strings.TrimSpace(sa.Policy) != "" {
+				if _, _, refuse := portIAMDocument(sa.Policy); refuse {
+					note.Inline = "refused"
+					note.Detail = "inline deny cannot be represented; no access key was created"
+					warnings = append(warnings, "service account "+sa.AccessKey+" is refused: inline deny cannot be represented")
+					refused = append(refused, sa.AccessKey)
+					accounts = append(accounts, note)
+					continue
+				}
+			}
+			if ak == "" {
+				note.Inline = "skipped"
+				note.Detail = "no access key was created"
+				accounts = append(accounts, note)
+				continue
+			}
+			if sa.ImpliedPolicy || strings.TrimSpace(sa.Policy) == "" {
+				note.ImpliedPolicy = true
+				note.Inline = "implied"
+				note.Detail = "service account uses the parent policy; the MinIO secret was not available"
+				stmts = parent
+				if ak != "" {
+					warnings = append(warnings, "service account "+sa.AccessKey+" secret was not available; a new key was issued for "+sa.Parent)
+				}
+			} else {
+				inline, w, refuse := portIAMDocument(sa.Policy)
+				for _, line := range w {
+					warnings = append(warnings, "service account "+sa.AccessKey+" inline policy: "+line)
+				}
+				if refuse {
+					note.Inline = "refused"
+					note.Detail = "inline deny cannot be represented; no access key was created"
+					warnings = append(warnings, "service account "+sa.AccessKey+" is refused: inline deny cannot be represented")
+					refused = append(refused, sa.AccessKey)
+					accounts = append(accounts, note)
+					continue
+				}
+				var narrowed []string
+				stmts, narrowed = intersectAllows(parent, inline)
+				note.Inline = "applied"
+				note.Detail = "inline policy replaces parent allows for this key; the MinIO secret was not available"
+				if len(narrowed) > 0 {
+					note.Inline = "narrowed"
+					note.Detail = "inline policy narrowed: " + strings.Join(narrowed, "; ")
+					warnings = append(warnings, "service account "+sa.AccessKey+" inline policy narrowed: "+strings.Join(narrowed, "; "))
+				}
+				warnings = append(warnings, "service account "+sa.AccessKey+" secret was not available; a new key was issued for "+sa.Parent+" and the inline policy is the allow set")
+			}
+			if ak != "" && len(stmts) > 0 {
+				id := "sa:" + sa.AccessKey
+				raw, err := json.Marshal(policy.Document{Version: "2012-10-17", Statement: stmts})
+				if err != nil {
+					warnings = append(warnings, "service account "+sa.AccessKey+" policy could not be encoded")
+				} else {
+					docs[id] = string(raw)
+					principals[id] = []string{policy.AccessKeyARN(ak)}
+				}
+			}
+		}
+		accounts = append(accounts, note)
+	}
+	sort.Strings(refused)
+	return docs, principals, warnings, groups, accounts, refused
+}
+
+func intersectAllows(parent, inline []policy.Statement) ([]policy.Statement, []string) {
+	var out []policy.Statement
+	var warnings []string
+	for _, st := range inline {
+		if strings.EqualFold(st.Effect, "Deny") {
+			out = append(out, st)
+			continue
+		}
+		if !strings.EqualFold(st.Effect, "Allow") {
+			continue
+		}
+		cover, ok := coveringAllow(parent, st)
+		if !ok {
+			sid := st.Sid
+			if sid == "" {
+				sid = strings.Join(st.Action, ",")
+			}
+			warnings = append(warnings, "allow "+sid+" is outside the parent policy and was dropped")
+			continue
+		}
+		st.Condition = mergeConditions(st.Condition, cover.Condition)
+		out = append(out, st)
+	}
+	for _, st := range parent {
+		if strings.EqualFold(st.Effect, "Deny") {
+			out = append(out, st)
+		}
+	}
+	return out, warnings
+}
+
+func coveringAllow(parent []policy.Statement, child policy.Statement) (policy.Statement, bool) {
+	for _, st := range parent {
+		if !strings.EqualFold(st.Effect, "Allow") {
+			continue
+		}
+		if !actionsCovered(st.Action, child.Action) || !resourcesCovered(st.Resource, child.Resource) {
+			continue
+		}
+		return st, true
+	}
+	return policy.Statement{}, false
+}
+
+func actionsCovered(parent, child []string) bool {
+	if len(child) == 0 {
+		return false
+	}
+	for _, c := range child {
+		ok := false
+		for _, p := range parent {
+			if p == "*" || p == "s3:*" || p == c {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func resourcesCovered(parent, child []string) bool {
+	if len(child) == 0 {
+		return false
+	}
+	for _, c := range child {
+		ok := false
+		for _, p := range parent {
+			if resourceCovers(p, c) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func resourceCovers(parent, child string) bool {
+	parent = strings.TrimSpace(parent)
+	child = strings.TrimSpace(child)
+	switch parent {
+	case "*", "arn:aws:s3:::*", "arn:aws:s3:::*/*":
+		return true
+	}
+	if parent == child {
+		return true
+	}
+	if strings.HasSuffix(parent, "/*") {
+		prefix := strings.TrimSuffix(parent, "*")
+		return strings.HasPrefix(child, prefix) || child == strings.TrimSuffix(prefix, "/")
+	}
+	return false
+}
+
+func mergeConditions(a, b map[string]map[string]any) map[string]map[string]any {
+	if len(a) == 0 && len(b) == 0 {
+		return nil
+	}
+	out := map[string]map[string]any{}
+	for _, src := range []map[string]map[string]any{a, b} {
+		for op, keys := range src {
+			if out[op] == nil {
+				out[op] = map[string]any{}
+			}
+			for k, v := range keys {
+				out[op][k] = v
+			}
+		}
+	}
+	return out
+}
+
+func accountEnabled(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "", "enabled", "on", "active":
+		return true
+	default:
+		return false
+	}
+}
+
+// MergeBucketPolicy appends statements that are not already present.
+// Statements already stored are left in place.
+func MergeBucketPolicy(existing string, add []policy.Statement) (string, error) {
+	var doc policy.Document
+	existing = strings.TrimSpace(existing)
+	if existing != "" {
+		if err := json.Unmarshal([]byte(existing), &doc); err != nil {
+			return "", err
+		}
+	}
+	seen := map[string]struct{}{}
+	for _, st := range doc.Statement {
+		raw, _ := json.Marshal(st)
+		seen[string(raw)] = struct{}{}
+	}
+	for _, st := range add {
+		raw, err := json.Marshal(st)
+		if err != nil {
+			return "", err
+		}
+		if _, ok := seen[string(raw)]; ok {
+			continue
+		}
+		seen[string(raw)] = struct{}{}
+		doc.Statement = append(doc.Statement, st)
+	}
+	if doc.Version == "" {
+		doc.Version = "2012-10-17"
+	}
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }
 
 func bucketsFromResources(resources []string) (buckets []string, all bool) {

@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
@@ -23,7 +24,7 @@ var (
 	ErrPublicAmbiguous = errors.New("ambiguous public bucket")
 )
 
-func (s *Service) policyDenies(rec metadata.BucketRecord, action, key, principal string, ak *metadata.AccessKeyRecord) bool {
+func (s *Service) policyDenies(rec metadata.BucketRecord, action, key, principal string, ak *metadata.AccessKeyRecord, sourceIP string, secure bool) bool {
 	if strings.TrimSpace(rec.Policy) == "" {
 		return false
 	}
@@ -32,14 +33,69 @@ func (s *Service) policyDenies(rec metadata.BucketRecord, action, key, principal
 		resource = policy.ObjectARN(rec.Name, key)
 	}
 	ctx := policy.EvalContext{
-		Action:     action,
-		Resource:   resource,
-		Principals: []string{principal, policy.AccessKeyARN(principal)},
+		Action:          action,
+		Resource:        resource,
+		Principals:      []string{principal, policy.AccessKeyARN(principal)},
+		SourceIP:        sourceIP,
+		SecureTransport: secure,
 	}
 	if ak != nil && ak.Owner != "" {
 		ctx.Principals = append(ctx.Principals, ak.Owner, policy.UserARN(ak.Owner))
 	}
 	return policy.Denies(rec.Policy, ctx)
+}
+
+func policyBindsAccessKey(policyJSON, accessKey string) bool {
+	policyJSON = strings.TrimSpace(policyJSON)
+	if policyJSON == "" || accessKey == "" {
+		return false
+	}
+	var doc policy.Document
+	if json.Unmarshal([]byte(policyJSON), &doc) != nil {
+		return false
+	}
+	want := policy.AccessKeyARN(accessKey)
+	for _, st := range doc.Statement {
+		if principalExact(st.Principal, accessKey) || principalExact(st.Principal, want) {
+			return true
+		}
+	}
+	return false
+}
+
+func principalExact(raw json.RawMessage, want string) bool {
+	raw = bytesTrimJSON(raw)
+	if len(raw) == 0 || string(raw) == "null" || want == "" {
+		return false
+	}
+	var asString string
+	if json.Unmarshal(raw, &asString) == nil {
+		return asString == want
+	}
+	var box struct {
+		AWS json.RawMessage `json:"AWS"`
+	}
+	if json.Unmarshal(raw, &box) != nil {
+		return false
+	}
+	var one string
+	if json.Unmarshal(box.AWS, &one) == nil {
+		return one == want
+	}
+	var many []string
+	if json.Unmarshal(box.AWS, &many) != nil {
+		return false
+	}
+	for _, p := range many {
+		if p == want {
+			return true
+		}
+	}
+	return false
+}
+
+func bytesTrimJSON(b []byte) []byte {
+	return []byte(strings.TrimSpace(string(b)))
 }
 
 func (s *Service) EffectiveSharing(rec metadata.BucketRecord) metadata.EffectiveSharing {

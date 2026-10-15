@@ -1334,11 +1334,12 @@ func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type safe struct {
-		AccessKey      string    `json:"access_key"`
-		Label          string    `json:"label"`
-		Owner          string    `json:"owner,omitempty"`
-		CreatedAt      time.Time `json:"created_at"`
-		CreatedWithMFA bool      `json:"created_with_mfa"`
+		AccessKey      string     `json:"access_key"`
+		Label          string     `json:"label"`
+		Owner          string     `json:"owner,omitempty"`
+		CreatedAt      time.Time  `json:"created_at"`
+		ExpiresAt      *time.Time `json:"expires_at,omitempty"`
+		CreatedWithMFA bool       `json:"created_with_mfa"`
 	}
 	var out []safe
 	for _, k := range keys {
@@ -1350,7 +1351,7 @@ func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		out = append(out, safe{AccessKey: k.AccessKey, Label: k.Label, Owner: k.Owner, CreatedAt: k.CreatedAt, CreatedWithMFA: k.CreatedWithMFA})
+		out = append(out, safe{AccessKey: k.AccessKey, Label: k.Label, Owner: k.Owner, CreatedAt: k.CreatedAt, ExpiresAt: k.ExpiresAt, CreatedWithMFA: k.CreatedWithMFA})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"keys": out})
 }
@@ -1402,6 +1403,7 @@ func (s *Server) handleImportAccessKey(w http.ResponseWriter, r *http.Request) {
 		AccessKey string `json:"access_key"`
 		SecretKey string `json:"secret_key"`
 		Label     string `json:"label"`
+		ExpiresAt string `json:"expires_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
@@ -1420,12 +1422,23 @@ func (s *Server) handleImportAccessKey(w http.ResponseWriter, r *http.Request) {
 	if req.Label == "" {
 		req.Label = "minio-import"
 	}
+	var expires *time.Time
+	if strings.TrimSpace(req.ExpiresAt) != "" {
+		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(req.ExpiresAt))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "expires_at must be RFC3339"})
+			return
+		}
+		parsed = parsed.UTC()
+		expires = &parsed
+	}
 	rec := metadata.AccessKeyRecord{
 		AccessKey:      req.AccessKey,
 		SecretKey:      req.SecretKey,
 		Label:          req.Label,
 		OwnerID:        user.ID,
 		Owner:          user.Username,
+		ExpiresAt:      expires,
 		CreatedWithMFA: s.accessKeyMFAFlag(info.UserID),
 		CreatedAt:      time.Now().UTC(),
 	}

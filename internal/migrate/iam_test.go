@@ -159,7 +159,7 @@ func TestE05IAMImportTwentyUsers(t *testing.T) {
 		t.Fatalf("users %d", len(users))
 	}
 	pol := getIAMPolicy(t, ds.URL, admin, "b0")
-	if !strings.Contains(pol, policy.UserARN("u00")) || strings.Contains(pol, "s3:prefix") {
+	if !strings.Contains(pol, "arn:aws:iam::datasafe:access-key/") || strings.Contains(pol, "s3:prefix") {
 		t.Fatalf("policy %s", pol)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "report", "summary.md")); err != nil {
@@ -204,8 +204,11 @@ func TestIAMWritesFollowTheLeader(t *testing.T) {
 			_, _ = w.Write([]byte(`{"id":"u1","user_id":"u1","username":"alice"}`))
 		case r.URL.Path == "/api/v1/keys":
 			_, _ = w.Write([]byte(`{"access_key":"AKIATEST","secret_key":"secretsecretsecret"}`))
+		case strings.Contains(r.URL.Path, "/access-keys"):
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"access_key":"AKIATEST"}`))
 		case strings.Contains(r.URL.Path, "/policy"):
-			_, _ = w.Write([]byte(`{"ok":true}`))
+			_, _ = w.Write([]byte(`{"policy":""}`))
 		case strings.Contains(r.URL.Path, "/access"):
 			_, _ = w.Write([]byte(`{"ok":true}`))
 		case r.URL.Path == "/box" || strings.HasPrefix(r.URL.Path, "/box"):
@@ -312,6 +315,9 @@ func startMinIOIAM(t *testing.T) migrate.Endpoint {
 		case strings.HasSuffix(r.URL.Path, "/groups"):
 			body, _ = json.Marshal(groups)
 		case strings.HasSuffix(r.URL.Path, "/group-desc"):
+			w.WriteHeader(http.StatusUpgradeRequired)
+			return
+		case strings.HasSuffix(r.URL.Path, "/group"):
 			g := r.URL.Query().Get("group")
 			var n int
 			fmt.Sscanf(g, "g%d", &n)
@@ -319,7 +325,7 @@ func startMinIOIAM(t *testing.T) migrate.Endpoint {
 			for i := n * 4; i < n*4+4 && i < 20; i++ {
 				members = append(members, fmt.Sprintf("u%02d", i))
 			}
-			body, _ = json.Marshal(map[string]any{"members": members, "groupPolicy": fmt.Sprintf("p%d", n), "groupStatus": "enabled"})
+			body, _ = json.Marshal(map[string]any{"members": members, "policy": fmt.Sprintf("p%d", n), "status": "enabled"})
 		case strings.HasSuffix(r.URL.Path, "/list-canned-policies"):
 			raw := map[string]json.RawMessage{}
 			for name, doc := range policies {

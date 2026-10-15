@@ -122,6 +122,14 @@ func (s *Service) publicReadStorageKey(logicalBucket string) (string, error) {
 }
 
 func (s *Service) Authorize(logicalBucket, key, action, principal string) bool {
+	return s.AuthorizeRequest(logicalBucket, key, action, principal, "", false)
+}
+
+// AuthorizeRequest is Authorize with the caller address. A bucket policy that
+// names this access key is the only allow for that key: a bucket grant cannot
+// widen it. ListAllMyBuckets is denied for a key that is named in a bucket
+// policy and is not allowed that action.
+func (s *Service) AuthorizeRequest(logicalBucket, key, action, principal, sourceIP string, secure bool) bool {
 	if principal == "" {
 		return false
 	}
@@ -129,13 +137,26 @@ func (s *Service) Authorize(logicalBucket, key, action, principal string) bool {
 		return true
 	}
 	if logicalBucket == "" {
-		return true
+		return s.allowListAllMyBuckets(principal)
 	}
 	_, rec, err := s.ResolveBucketKey(principal, logicalBucket)
 	if err != nil {
 		return false
 	}
+	resource := policy.BucketARN(logicalBucket)
+	if key != "" {
+		resource = policy.ObjectARN(logicalBucket, key)
+	}
 	if ak, err := s.Meta.GetAccessKey(principal); err == nil {
+		if policyBindsAccessKey(rec.Policy, ak.AccessKey) {
+			return policy.EvaluateContext(rec.Policy, policy.EvalContext{
+				Action:          action,
+				Resource:        resource,
+				Principals:      []string{ak.AccessKey, policy.AccessKeyARN(ak.AccessKey)},
+				SourceIP:        sourceIP,
+				SecureTransport: secure,
+			})
+		}
 		if !s.bucketVisibleToAccessKey(ak, rec) {
 			return false
 		}
@@ -151,19 +172,58 @@ func (s *Service) Authorize(logicalBucket, key, action, principal string) bool {
 		} else {
 			allowed = true
 		}
-		if !allowed || s.policyDenies(rec, action, key, principal, &ak) {
+		if !allowed || s.policyDenies(rec, action, key, principal, &ak, sourceIP, secure) {
 			return false
 		}
 		return true
 	}
 	if rec.Owner == principal {
-		return !s.policyDenies(rec, action, key, principal, nil)
+		return !s.policyDenies(rec, action, key, principal, nil, sourceIP, secure)
 	}
-	resource := policy.BucketARN(logicalBucket)
-	if key != "" {
-		resource = policy.ObjectARN(logicalBucket, key)
+	return policy.EvaluateContext(rec.Policy, policy.EvalContext{
+		Action: action, Resource: resource,
+		Principals:      []string{principal, policy.UserARN(principal), policy.AccessKeyARN(principal)},
+		SourceIP:        sourceIP,
+		SecureTransport: secure,
+	})
+}
+
+func (s *Service) allowListAllMyBuckets(principal string) bool {
+	if principal == s.OwnerKey {
+		return true
 	}
-	return policy.Evaluate(rec.Policy, action, resource, principal)
+	ak, err := s.Meta.GetAccessKey(principal)
+	if err != nil {
+		return false
+	}
+	role, _, _, _ := s.accessKeyIdentity(ak)
+	if auth.CanSeeAllBuckets(role) {
+		return true
+	}
+	buckets, err := s.Meta.ListBuckets()
+	if err != nil {
+		return false
+	}
+	mentioned := false
+	for _, b := range buckets {
+		if !policyBindsAccessKey(b.Policy, ak.AccessKey) {
+			continue
+		}
+		mentioned = true
+		for _, resource := range []string{"*", "arn:aws:s3:::*", policy.BucketARN(b.Name)} {
+			if policy.EvaluateContext(b.Policy, policy.EvalContext{
+				Action:     "s3:ListAllMyBuckets",
+				Resource:   resource,
+				Principals: []string{ak.AccessKey, policy.AccessKeyARN(ak.AccessKey)},
+			}) {
+				return true
+			}
+		}
+	}
+	if mentioned {
+		return false
+	}
+	return true
 }
 
 func (s *Service) userTenantMemberships(userID string) []auth.TenantMembership {

@@ -48,16 +48,39 @@ type IAMSkip struct {
 	Reason string `json:"reason"`
 }
 
+// IAMGroupNote is one group in the import report.
+type IAMGroupNote struct {
+	Name          string   `json:"name"`
+	Status        string   `json:"status"`
+	Policy        string   `json:"policy,omitempty"`
+	Members       []string `json:"members,omitempty"`
+	PolicyApplied bool     `json:"policy_applied"`
+	Detail        string   `json:"detail,omitempty"`
+}
+
+// IAMServiceAccountNote records an imported or skipped service account.
+type IAMServiceAccountNote struct {
+	AccessKey     string `json:"access_key"`
+	Parent        string `json:"parent"`
+	Status        string `json:"status"`
+	Expiration    string `json:"expiration,omitempty"`
+	ImpliedPolicy bool   `json:"implied_policy"`
+	Inline        string `json:"inline"`
+	Detail        string `json:"detail,omitempty"`
+}
+
 // IAMReport is evidence.json for an IAM import.
 type IAMReport struct {
-	UsersTransferred    int               `json:"users_transferred"`
-	GroupsTransferred   int               `json:"groups_transferred"`
-	PoliciesTransferred int               `json:"policies_transferred"`
-	Warnings            []string          `json:"warnings,omitempty"`
-	Errors              []string          `json:"errors,omitempty"`
-	NotTransferred      []IAMSkip         `json:"not_transferred,omitempty"`
-	Probes              []IAMProbe        `json:"probes,omitempty"`
-	Verdicts            map[string]string `json:"verdicts"`
+	UsersTransferred    int                     `json:"users_transferred"`
+	GroupsTransferred   int                     `json:"groups_transferred"`
+	PoliciesTransferred int                     `json:"policies_transferred"`
+	Warnings            []string                `json:"warnings,omitempty"`
+	Errors              []string                `json:"errors,omitempty"`
+	NotTransferred      []IAMSkip               `json:"not_transferred,omitempty"`
+	Groups              []IAMGroupNote          `json:"groups,omitempty"`
+	ServiceAccounts     []IAMServiceAccountNote `json:"service_accounts,omitempty"`
+	Probes              []IAMProbe              `json:"probes,omitempty"`
+	Verdicts            map[string]string       `json:"verdicts"`
 }
 
 type issuedKey struct {
@@ -66,6 +89,8 @@ type issuedKey struct {
 	AccessKey string `json:"access_key"`
 	SecretKey string `json:"secret_key"`
 	Source    string `json:"source,omitempty"`
+	ExpiresAt string `json:"expires_at,omitempty"`
+	Status    string `json:"status,omitempty"`
 }
 
 type keptKey struct {
@@ -304,81 +329,113 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 		}
 		rep.GroupsTransferred++
 	}
+	prevKeys, keyWarn, err := readIssuedKeys(opt.KeysFile)
+	if err != nil {
+		return rep, err
+	}
+	if keyWarn != "" {
+		rep.Warnings = append(rep.Warnings, keyWarn)
+	}
+	now := time.Now().UTC()
+	userStmts, refusedUsers, rightWarnings := userStatements(snap)
+	rep.Warnings = append(rep.Warnings, rightWarnings...)
+	for _, u := range snap.Users {
+		if refusedUsers[u.AccessKey] == "" {
+			continue
+		}
+		rep.Errors = append(rep.Errors, "user "+u.AccessKey+" was not given a key: "+refusedUsers[u.AccessKey])
+		rep.NotTransferred = append(rep.NotTransferred, IAMSkip{Kind: "user", Name: u.AccessKey, Reason: refusedUsers[u.AccessKey]})
+	}
 	var issued []issuedKey
 	keysByUser := map[string]issuedKey{}
-	saKeyByOld := map[string]string{}
+	userKeyID := map[string]string{}
 	for _, u := range snap.Users {
-		if users[u.AccessKey] == "" || strings.EqualFold(u.Status, "disabled") {
-			if strings.EqualFold(u.Status, "disabled") {
+		if users[u.AccessKey] == "" || !accountEnabled(u.Status) || refusedUsers[u.AccessKey] != "" {
+			if users[u.AccessKey] != "" && !accountEnabled(u.Status) {
 				rep.Warnings = append(rep.Warnings, "user "+u.AccessKey+" is disabled; no access key was created")
 			}
 			continue
 		}
-		row, err := issueKey(ctx, ds, users[u.AccessKey], u.AccessKey, passwords[u.AccessKey], kept, "")
+		row, err := issueKey(ctx, ds, users[u.AccessKey], u.AccessKey, passwords[u.AccessKey], kept, prevKeys, "user", "")
 		if err != nil {
-			rep.Warnings = append(rep.Warnings, "user "+u.AccessKey+" access key: "+err.Error())
+			rep.Errors = append(rep.Errors, "user "+u.AccessKey+" access key: "+err.Error())
 			continue
 		}
 		row.Source = "user"
+		row.Status = "enabled"
 		issued = append(issued, row)
 		keysByUser[u.AccessKey] = row
+		userKeyID[u.AccessKey] = row.AccessKey
 	}
+	saKeyID := map[string]string{}
 	for _, sa := range snap.ServiceAccounts {
 		if users[sa.Parent] == "" {
 			rep.NotTransferred = append(rep.NotTransferred, IAMSkip{Kind: "service-account", Name: sa.AccessKey, Reason: "parent user was not imported"})
 			continue
 		}
-		rep.Warnings = append(rep.Warnings, "service account "+sa.AccessKey+" secret was not available; a new key was issued for "+sa.Parent)
-		row, err := issueKey(ctx, ds, users[sa.Parent], sa.Parent, passwords[sa.Parent], kept, sa.AccessKey)
+		if !accountEnabled(sa.Status) || (sa.Expires != nil && !sa.Expires.After(now)) || refusedUsers[sa.Parent] != "" || saInlineRefused(sa) {
+			continue
+		}
+		if userKeyID[sa.Parent] == "" && !accountEnabled(userStatus(snap, sa.Parent)) {
+			continue
+		}
+		exp := ""
+		if sa.Expires != nil {
+			exp = sa.Expires.UTC().Format(time.RFC3339)
+		}
+		row, err := issueKey(ctx, ds, users[sa.Parent], sa.Parent, passwords[sa.Parent], kept, prevKeys, sa.AccessKey, exp)
 		if err != nil {
-			rep.Warnings = append(rep.Warnings, "service account "+sa.AccessKey+": "+err.Error())
+			rep.Errors = append(rep.Errors, "service account "+sa.AccessKey+": "+err.Error())
 			continue
 		}
 		row.Source = sa.AccessKey
 		row.Password = ""
+		row.ExpiresAt = exp
+		row.Status = "enabled"
 		issued = append(issued, row)
-		saKeyByOld[sa.AccessKey] = row.AccessKey
-		if !sa.ImpliedPolicy && strings.TrimSpace(sa.Policy) != "" {
-			snap.Policies["service-account-"+sa.AccessKey] = sa.Policy
-		}
+		saKeyID[sa.AccessKey] = row.AccessKey
 	}
-	if err := writeKeysFile(opt.KeysFile, issued); err != nil {
-		return rep, err
-	}
-	principals := map[string][]string{}
 	for _, u := range snap.Users {
-		arn := policy.UserARN(u.AccessKey)
-		if row, ok := keysByUser[u.AccessKey]; ok {
-			arn = policy.UserARN(u.AccessKey)
-			principalsFor(principals, splitPolicies(u.PolicyName), arn, policy.AccessKeyARN(row.AccessKey))
-		} else {
-			principalsFor(principals, splitPolicies(u.PolicyName), arn)
-		}
-		for _, g := range groupsOf(u, snap.Groups) {
-			principalsFor(principals, splitPolicies(g.Policy), arn)
-			if row, ok := keysByUser[u.AccessKey]; ok {
-				principalsFor(principals, splitPolicies(g.Policy), policy.AccessKeyARN(row.AccessKey))
-			}
-		}
-	}
-	for _, sa := range snap.ServiceAccounts {
-		ak := saKeyByOld[sa.AccessKey]
-		if ak == "" || sa.ImpliedPolicy || strings.TrimSpace(sa.Policy) == "" {
+		if users[u.AccessKey] == "" || !accountEnabled(u.Status) || refusedUsers[u.AccessKey] != "" {
 			continue
 		}
-		principals["service-account-"+sa.AccessKey] = append(principals["service-account-"+sa.AccessKey], policy.AccessKeyARN(ak))
+		if _, ok := keysByUser[u.AccessKey]; ok {
+			continue
+		}
+		rep.Errors = append(rep.Errors, "user "+u.AccessKey+" has no access key after import")
 	}
-	mapped, mapWarnings := MapBucketPolicies(snap.Policies, principals)
+	docs, principals, bindWarnings, groupNotes, saNotes, _ := EffectiveIAM(snap, userStmts, refusedUsers, userKeyID, saKeyID, now)
+	rep.Warnings = append(rep.Warnings, bindWarnings...)
+	rep.Groups = groupNotes
+	rep.ServiceAccounts = saNotes
+	mapped, mapWarnings := MapBucketPolicies(docs, principals)
 	rep.Warnings = append(rep.Warnings, mapWarnings...)
-	grants := map[string]map[string]struct{}{}
+	if warn, err := writeKeysFile(opt.KeysFile, prevKeys, issued); err != nil {
+		return rep, err
+	} else if warn != "" {
+		rep.Warnings = append(rep.Warnings, warn)
+	}
 	for bucket, statements := range mapped {
-		doc := policy.Document{Version: "2012-10-17", Statement: statements}
-		raw, err := json.Marshal(doc)
+		existing, found, err := ds.getPolicy(ctx, bucket)
 		if err != nil {
 			rep.Errors = append(rep.Errors, "policy "+bucket+": "+err.Error())
 			continue
 		}
-		if err := ds.putPolicy(ctx, bucket, string(raw)); err != nil {
+		if !found {
+			rep.Warnings = append(rep.Warnings, "bucket "+bucket+" does not exist; its policy was not stored and access was not checked")
+			rep.NotTransferred = append(rep.NotTransferred, IAMSkip{Kind: "policy", Name: bucket, Reason: "bucket does not exist"})
+			continue
+		}
+		merged, err := MergeBucketPolicy(existing, statements)
+		if err != nil {
+			rep.Errors = append(rep.Errors, "policy "+bucket+" was left unchanged: "+err.Error())
+			continue
+		}
+		if err := policy.Validate(merged); err != nil {
+			rep.Errors = append(rep.Errors, "policy "+bucket+" was left unchanged: "+err.Error())
+			continue
+		}
+		if err := ds.putPolicy(ctx, bucket, merged); err != nil {
 			if strings.Contains(err.Error(), "404") || strings.Contains(strings.ToLower(err.Error()), "not found") {
 				rep.Warnings = append(rep.Warnings, "bucket "+bucket+" does not exist; its policy was not stored and access was not checked")
 				rep.NotTransferred = append(rep.NotTransferred, IAMSkip{Kind: "policy", Name: bucket, Reason: "bucket does not exist"})
@@ -388,27 +445,6 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 			continue
 		}
 		rep.PoliciesTransferred++
-		if grants[bucket] == nil {
-			grants[bucket] = map[string]struct{}{}
-		}
-		for _, u := range snap.Users {
-			if users[u.AccessKey] == "" || strings.EqualFold(u.Status, "disabled") {
-				continue
-			}
-			if policyAllowsList(statements, policy.UserARN(u.AccessKey)) || (keysByUser[u.AccessKey].AccessKey != "" && policyAllowsList(statements, policy.AccessKeyARN(keysByUser[u.AccessKey].AccessKey))) {
-				grants[bucket][users[u.AccessKey]] = struct{}{}
-			}
-		}
-	}
-	for bucket, ids := range grants {
-		var body []map[string]any
-		for id := range ids {
-			body = append(body, map[string]any{"user_id": id, "can_read": true, "can_write": false})
-		}
-		sort.Slice(body, func(i, j int) bool { return body[i]["user_id"].(string) < body[j]["user_id"].(string) })
-		if err := ds.putGrants(ctx, bucket, body); err != nil {
-			rep.Warnings = append(rep.Warnings, "bucket "+bucket+" grants: "+err.Error())
-		}
 	}
 	leader := ds.current()
 	for _, u := range snap.Users {
@@ -417,10 +453,7 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 			continue
 		}
 		for bucket, statements := range mapped {
-			if _, granted := grants[bucket][users[u.AccessKey]]; !granted {
-				continue
-			}
-			if !policyAllowsList(statements, policy.UserARN(u.AccessKey)) && !policyAllowsList(statements, policy.AccessKeyARN(row.AccessKey)) {
+			if !policyAllowsList(statements, policy.AccessKeyARN(row.AccessKey)) {
 				continue
 			}
 			status, perr := probeList(ctx, leader, row, bucket)
@@ -455,12 +488,35 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 		rep.Warnings = append(rep.Warnings, "no ListBucket request was sent; access was not checked")
 		accessPass = false
 	}
+	if len(rep.Errors) > 0 {
+		accessPass = false
+	}
 	rep.Verdicts["access"] = passFail(accessPass)
 	if err := writeIAMReport(opt.ReportDir, rep); err != nil {
 		return rep, err
 	}
 	fmt.Fprintf(opt.Stderr, "iam users %d groups %d policies %d report %s\n", rep.UsersTransferred, rep.GroupsTransferred, rep.PoliciesTransferred, opt.ReportDir)
+	if len(rep.Errors) > 0 {
+		return rep, fmt.Errorf("iam import recorded %d error(s)", len(rep.Errors))
+	}
 	return rep, nil
+}
+
+func userStatus(snap IAMSnapshot, name string) string {
+	for _, u := range snap.Users {
+		if u.AccessKey == name {
+			return u.Status
+		}
+	}
+	return ""
+}
+
+func saInlineRefused(sa IAMServiceAccount) bool {
+	if sa.ImpliedPolicy || strings.TrimSpace(sa.Policy) == "" {
+		return false
+	}
+	_, _, refuse := portIAMDocument(sa.Policy)
+	return refuse
 }
 
 func passFail(ok bool) string {
@@ -479,12 +535,6 @@ func splitPolicies(name string) []string {
 		}
 	}
 	return out
-}
-
-func principalsFor(dst map[string][]string, policies []string, arns ...string) {
-	for _, p := range policies {
-		dst[p] = append(dst[p], arns...)
-	}
 }
 
 func groupsOf(u IAMUser, groups []IAMGroup) []IAMGroup {
@@ -506,27 +556,57 @@ func sliceHas(in []string, want string) bool {
 	return false
 }
 
-func issueKey(ctx context.Context, ds *dsClient, userID, username, password string, kept []keptKey, serviceAccount string) (issuedKey, error) {
+func issueKey(ctx context.Context, ds *dsClient, userID, username, password string, kept []keptKey, prev []issuedKey, source, expires string) (issuedKey, error) {
 	for _, k := range kept {
-		if k.Username != username || k.ServiceAccount != serviceAccount {
+		if !keptMatches(k, username, source) {
 			continue
 		}
-		if err := ds.importKey(ctx, userID, k.AccessKey, k.SecretKey); err != nil {
+		if err := ds.importKey(ctx, userID, k.AccessKey, k.SecretKey, expires); err != nil && !strings.Contains(err.Error(), "409") {
 			return issuedKey{}, err
 		}
-		return issuedKey{Username: username, Password: password, AccessKey: k.AccessKey, SecretKey: k.SecretKey}, nil
+		return issuedKey{Username: username, Password: password, AccessKey: k.AccessKey, SecretKey: k.SecretKey, ExpiresAt: expires}, nil
 	}
-	if serviceAccount != "" && len(kept) > 0 {
-		return issuedKey{}, fmt.Errorf("keep file has no key for service account %s", serviceAccount)
+	if source != "user" && len(kept) > 0 {
+		return issuedKey{}, fmt.Errorf("keep file has no key for service account %s", source)
 	}
-	if len(kept) > 0 && serviceAccount == "" {
+	if len(kept) > 0 && source == "user" {
 		return issuedKey{}, fmt.Errorf("keep file has no key for %s", username)
 	}
-	access, secret, err := ds.createKey(ctx, username, password)
-	if err != nil {
+	if row, ok := findIssued(prev, username, source); ok && row.SecretKey != "" {
+		if err := ds.importKey(ctx, userID, row.AccessKey, row.SecretKey, firstNonEmpty(expires, row.ExpiresAt)); err != nil && !strings.Contains(err.Error(), "409") {
+			return issuedKey{}, err
+		}
+		if password == "" {
+			password = row.Password
+		}
+		if expires == "" {
+			expires = row.ExpiresAt
+		}
+		return issuedKey{Username: username, Password: password, AccessKey: row.AccessKey, SecretKey: row.SecretKey, ExpiresAt: expires}, nil
+	}
+	access := "AKIA" + randomSecret()[:16]
+	secret := randomSecret()
+	if err := ds.importKey(ctx, userID, access, secret, expires); err != nil {
 		return issuedKey{}, err
 	}
-	return issuedKey{Username: username, Password: password, AccessKey: access, SecretKey: secret}, nil
+	return issuedKey{Username: username, Password: password, AccessKey: access, SecretKey: secret, ExpiresAt: expires}, nil
+}
+
+func firstNonEmpty(a, b string) string {
+	if strings.TrimSpace(a) != "" {
+		return a
+	}
+	return b
+}
+
+func keptMatches(k keptKey, username, source string) bool {
+	if k.Username != username {
+		return false
+	}
+	if source == "user" {
+		return k.ServiceAccount == "" || k.ServiceAccount == "user"
+	}
+	return k.ServiceAccount == source
 }
 
 func readKeptKeys(path string) ([]keptKey, error) {
@@ -549,10 +629,106 @@ func readKeptKeys(path string) ([]keptKey, error) {
 	return rows, nil
 }
 
-func writeKeysFile(path string, rows []issuedKey) error {
-	if path == "" {
-		return fmt.Errorf("keys file path is empty")
+func readIssuedKeys(path string) ([]issuedKey, string, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, "", nil
 	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, "", nil
+		}
+		return nil, "", err
+	}
+	if len(bytes.TrimSpace(b)) == 0 {
+		return nil, "", nil
+	}
+	var rows []issuedKey
+	if err := json.Unmarshal(b, &rows); err != nil {
+		return nil, "keys file " + path + " could not be read and was not overwritten", nil
+	}
+	return rows, "", nil
+}
+
+func findIssued(rows []issuedKey, username, source string) (issuedKey, bool) {
+	for _, row := range rows {
+		src := row.Source
+		if src == "" {
+			src = "user"
+		}
+		if row.Username == username && src == source && row.SecretKey != "" {
+			return row, true
+		}
+	}
+	return issuedKey{}, false
+}
+
+func mergeIssued(prev, fresh []issuedKey) []issuedKey {
+	out := append([]issuedKey(nil), prev...)
+	index := map[string]int{}
+	for i, row := range out {
+		index[issuedIdentity(row)] = i
+	}
+	for _, row := range fresh {
+		id := issuedIdentity(row)
+		at, ok := index[id]
+		if !ok {
+			index[id] = len(out)
+			out = append(out, row)
+			continue
+		}
+		kept := out[at]
+		if kept.SecretKey != "" {
+			row.SecretKey = kept.SecretKey
+			row.AccessKey = kept.AccessKey
+		}
+		if kept.Password != "" && row.Password == "" {
+			row.Password = kept.Password
+		}
+		if kept.ExpiresAt != "" && row.ExpiresAt == "" {
+			row.ExpiresAt = kept.ExpiresAt
+		}
+		out[at] = row
+	}
+	return out
+}
+
+func issuedIdentity(row issuedKey) string {
+	src := row.Source
+	if src == "" {
+		src = "user"
+	}
+	return row.Username + "\x00" + src
+}
+
+func writeKeysFile(path string, prev, fresh []issuedKey) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("keys file path is empty")
+	}
+	rows := mergeIssued(prev, fresh)
+	warn := ""
+	target := path
+	if _, err := os.Stat(path); err == nil {
+		if _, keyWarn, rerr := readIssuedKeys(path); rerr != nil {
+			return "", rerr
+		} else if keyWarn != "" {
+			target = path + ".new"
+			warn = "keys file " + path + " was not overwritten; new keys were written to " + target
+		}
+	}
+	if err := writeKeysAtomic(target, rows); err != nil {
+		return "", err
+	}
+	if extra := restrictKeysFile(target); extra != nil {
+		if warn != "" {
+			warn += "; "
+		}
+		warn += "keys file " + target + " is not restricted to the owner: " + extra.Error()
+	}
+	return warn, nil
+}
+
+func writeKeysAtomic(path string, rows []issuedKey) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil && filepath.Dir(path) != "." {
 		return err
 	}
@@ -561,15 +737,22 @@ func writeKeysFile(path string, rows []issuedKey) error {
 		return err
 	}
 	raw = append(raw, '\n')
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	tmp := path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	if _, err := f.Write(raw); err != nil {
+		f.Close()
 		return err
 	}
-	return f.Chmod(0o600)
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	return nil
 }
 
 func writeIAMReport(dir string, rep IAMReport) error {
@@ -589,6 +772,20 @@ func writeIAMReport(dir string, rep IAMReport) error {
 	fmt.Fprintf(&b, "- Groups: %d (%s)\n", rep.GroupsTransferred, rep.Verdicts["groups"])
 	fmt.Fprintf(&b, "- Policies: %d (%s)\n", rep.PoliciesTransferred, rep.Verdicts["policies"])
 	fmt.Fprintf(&b, "- Access: %s\n\n", rep.Verdicts["access"])
+	if len(rep.Groups) > 0 {
+		b.WriteString("## Groups\n\n")
+		for _, g := range rep.Groups {
+			fmt.Fprintf(&b, "- %s status %s policy %q applied %t members %d: %s\n", g.Name, g.Status, g.Policy, g.PolicyApplied, len(g.Members), g.Detail)
+		}
+		b.WriteString("\n")
+	}
+	if len(rep.ServiceAccounts) > 0 {
+		b.WriteString("## Service accounts\n\n")
+		for _, sa := range rep.ServiceAccounts {
+			fmt.Fprintf(&b, "- %s parent %s status %s expiration %s implied %t inline %s: %s\n", sa.AccessKey, sa.Parent, sa.Status, sa.Expiration, sa.ImpliedPolicy, sa.Inline, sa.Detail)
+		}
+		b.WriteString("\n")
+	}
 	if len(rep.Warnings) > 0 {
 		b.WriteString("## WARN\n\n")
 		for _, w := range rep.Warnings {
@@ -729,6 +926,19 @@ func (c *dsClient) createUser(ctx context.Context, username, password, status, t
 }
 
 func (c *dsClient) createTeam(ctx context.Context, name string) (string, error) {
+	var list struct {
+		Teams []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"teams"`
+	}
+	if err := c.call(ctx, http.MethodGet, "/api/v1/teams", nil, &list, true); err == nil {
+		for _, team := range list.Teams {
+			if team.Name == name && team.ID != "" {
+				return team.ID, nil
+			}
+		}
+	}
 	var resp struct {
 		Team struct {
 			ID string `json:"id"`
@@ -747,70 +957,32 @@ func (c *dsClient) putMembers(ctx context.Context, id string, userIDs []string) 
 	return c.call(ctx, http.MethodPut, "/api/v1/teams/"+url.PathEscape(id)+"/members", map[string]any{"user_ids": userIDs}, nil, true)
 }
 
-func (c *dsClient) importKey(ctx context.Context, userID, access, secret string) error {
-	return c.call(ctx, http.MethodPost, "/api/v1/users/"+url.PathEscape(userID)+"/access-keys", map[string]string{
+func (c *dsClient) importKey(ctx context.Context, userID, access, secret, expires string) error {
+	body := map[string]string{
 		"access_key": access, "secret_key": secret, "label": "minio-import",
-	}, nil, true)
+	}
+	if strings.TrimSpace(expires) != "" {
+		body["expires_at"] = expires
+	}
+	return c.call(ctx, http.MethodPost, "/api/v1/users/"+url.PathEscape(userID)+"/access-keys", body, nil, true)
 }
 
-func (c *dsClient) createKey(ctx context.Context, username, password string) (string, string, error) {
-	var login struct {
-		Token string `json:"token"`
+func (c *dsClient) getPolicy(ctx context.Context, bucket string) (string, bool, error) {
+	var resp struct {
+		Policy string `json:"policy"`
 	}
-	if err := c.call(ctx, http.MethodPost, "/api/v1/admin/login", map[string]string{
-		"username": username, "password": password,
-	}, &login, false); err != nil {
-		return "", "", err
+	err := c.call(ctx, http.MethodGet, "/api/v1/buckets/"+url.PathEscape(bucket)+"/policy", nil, &resp, true)
+	if err == nil {
+		return resp.Policy, true, nil
 	}
-	var created struct {
-		AccessKey string `json:"access_key"`
-		SecretKey string `json:"secret_key"`
+	if strings.Contains(err.Error(), "404") || strings.Contains(strings.ToLower(err.Error()), "not found") {
+		return "", false, nil
 	}
-	reqBody := map[string]string{"label": "minio-import"}
-	var status int
-	var raw []byte
-	var err error
-	for attempt := 0; attempt < 6; attempt++ {
-		status, raw, err = c.do(ctx, http.MethodPost, "/api/v1/keys", reqBody, login.Token)
-		if err != nil {
-			if !sleepIAM(ctx, time.Duration(attempt+1)*100*time.Millisecond) {
-				return "", "", ctx.Err()
-			}
-			continue
-		}
-		if status == http.StatusServiceUnavailable && isNotLeader(status, string(raw)) {
-			c.pickLeader(ctx)
-			if !sleepIAM(ctx, time.Duration(attempt+1)*100*time.Millisecond) {
-				return "", "", ctx.Err()
-			}
-			continue
-		}
-		break
-	}
-	if err != nil {
-		return "", "", err
-	}
-	if status == http.StatusForbidden || status == http.StatusUnauthorized {
-		return "", "", fmt.Errorf("http %d key creation needs a step-up or was refused", status)
-	}
-	if status >= 300 {
-		return "", "", fmt.Errorf("http %d %s", status, strings.TrimSpace(string(raw)))
-	}
-	if err := json.Unmarshal(raw, &created); err != nil {
-		return "", "", err
-	}
-	if created.AccessKey == "" || created.SecretKey == "" {
-		return "", "", fmt.Errorf("key response was empty")
-	}
-	return created.AccessKey, created.SecretKey, nil
+	return "", false, err
 }
 
 func (c *dsClient) putPolicy(ctx context.Context, bucket, document string) error {
 	return c.call(ctx, http.MethodPut, "/api/v1/buckets/"+url.PathEscape(bucket)+"/policy", map[string]string{"policy": document}, nil, true)
-}
-
-func (c *dsClient) putGrants(ctx context.Context, bucket string, grants []map[string]any) error {
-	return c.call(ctx, http.MethodPut, "/api/v1/buckets/"+url.PathEscape(bucket)+"/access", map[string]any{"grants": grants}, nil, true)
 }
 
 func (c *dsClient) call(ctx context.Context, method, path string, in any, out any, auth bool) error {

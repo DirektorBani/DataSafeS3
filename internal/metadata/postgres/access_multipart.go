@@ -55,7 +55,7 @@ func (s *Store) GetAccessKey(accessKey string) (metadata.AccessKeyRecord, error)
 
 func (s *Store) ListAccessKeys() ([]metadata.AccessKeyRecord, error) {
 	rows, err := s.pool.Query(context.Background(), `
-		SELECT access_key, secret_key, COALESCE(label,''), COALESCE(owner_id,''), COALESCE(owner,''), created_at, created_with_mfa
+		SELECT access_key, secret_key, COALESCE(label,''), COALESCE(owner_id,''), COALESCE(owner,''), created_at, created_with_mfa, expires_at
 		FROM access_keys ORDER BY created_at`)
 	if err != nil {
 		return nil, err
@@ -64,9 +64,11 @@ func (s *Store) ListAccessKeys() ([]metadata.AccessKeyRecord, error) {
 	var out []metadata.AccessKeyRecord
 	for rows.Next() {
 		var rec metadata.AccessKeyRecord
-		if err := rows.Scan(&rec.AccessKey, &rec.SecretKey, &rec.Label, &rec.OwnerID, &rec.Owner, &rec.CreatedAt, &rec.CreatedWithMFA); err != nil {
+		var exp pgtype.Timestamptz
+		if err := rows.Scan(&rec.AccessKey, &rec.SecretKey, &rec.Label, &rec.OwnerID, &rec.Owner, &rec.CreatedAt, &rec.CreatedWithMFA, &exp); err != nil {
 			return nil, err
 		}
+		rec.ExpiresAt = timePtr(exp)
 		if rec.SecretKey, err = s.fieldDecrypt(fieldenc.PathAccessKeySecretKey, rec.SecretKey); err != nil {
 			return nil, err
 		}

@@ -227,7 +227,7 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request) (auth.Cre
 }
 
 func (h *Handler) authorize(w http.ResponseWriter, r *http.Request, creds auth.Credentials, bucket, key, action string) bool {
-	if !h.Svc.Authorize(bucket, key, action, creds.AccessKey) {
+	if !h.Svc.AuthorizeRequest(bucket, key, action, creds.AccessKey, requestSourceIP(r), r.TLS != nil) {
 		writeError(w, r, http.StatusForbidden, "AccessDenied", "access denied")
 		return false
 	}
