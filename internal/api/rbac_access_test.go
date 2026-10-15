@@ -544,12 +544,97 @@ func TestS3ListBucketsFilteredByAccessKey(t *testing.T) {
 	}
 
 	status, body := list()
+	if status != http.StatusOK {
+		t.Fatalf("owner key list %d %s", status, body)
+	}
+	if !bytes.Contains(body, []byte("s3a-bucket")) || bytes.Contains(body, []byte("s3b-bucket")) {
+		t.Fatalf("owner listing: %s", body)
+	}
+
+	opTok := createUser(t, s, adminTok, "s3op", auth.RoleOperator)
+	opBody, _ := json.Marshal(map[string]string{"label": "op"})
+	req = authReq(http.MethodPost, "/api/v1/keys", opTok, opBody)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("operator key: %d %s", rec.Code, rec.Body.String())
+	}
+	var opKey map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &opKey)
+	opReq, err := http.NewRequest(http.MethodGet, ts.URL+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SignRequest(opReq, auth.Credentials{AccessKey: opKey["access_key"], SecretKey: opKey["secret_key"]}, "us-east-1", "s3", "UNSIGNED-PAYLOAD"); err != nil {
+		t.Fatal(err)
+	}
+	opResp, err := http.DefaultClient.Do(opReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opRaw := new(bytes.Buffer)
+	_, _ = opRaw.ReadFrom(opResp.Body)
+	opResp.Body.Close()
+	if opResp.StatusCode != http.StatusOK || !bytes.Contains(opRaw.Bytes(), []byte("s3a-bucket")) || !bytes.Contains(opRaw.Bytes(), []byte("s3b-bucket")) {
+		t.Fatalf("operator list %d %s", opResp.StatusCode, opRaw.Bytes())
+	}
+
+	grantTok := createUser(t, s, adminTok, "s3grant", auth.RoleUser)
+	grantee, err := s.Meta().GetUserByUsername("s3grant")
+	if err != nil {
+		t.Fatal(err)
+	}
+	grantBody, _ := json.Marshal(map[string]any{
+		"grants": []map[string]any{{"user_id": grantee.ID, "level": "admin", "can_read": true, "can_write": true}},
+	})
+	req = authReq(http.MethodPut, "/api/v1/buckets/s3b-bucket/access", adminTok, grantBody)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("grant: %d %s", rec.Code, rec.Body.String())
+	}
+	gBody, _ := json.Marshal(map[string]string{"label": "grant"})
+	req = authReq(http.MethodPost, "/api/v1/keys", grantTok, gBody)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("grant key: %d %s", rec.Code, rec.Body.String())
+	}
+	var grantKey map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &grantKey)
+	gReq, err := http.NewRequest(http.MethodGet, ts.URL+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SignRequest(gReq, auth.Credentials{AccessKey: grantKey["access_key"], SecretKey: grantKey["secret_key"]}, "us-east-1", "s3", "UNSIGNED-PAYLOAD"); err != nil {
+		t.Fatal(err)
+	}
+	gResp, err := http.DefaultClient.Do(gReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gRaw := new(bytes.Buffer)
+	_, _ = gRaw.ReadFrom(gResp.Body)
+	gResp.Body.Close()
+	if gResp.StatusCode != http.StatusOK || !bytes.Contains(gRaw.Bytes(), []byte("s3b-bucket")) || bytes.Contains(gRaw.Bytes(), []byte("s3a-bucket")) {
+		t.Fatalf("grant list %d %s", gResp.StatusCode, gRaw.Bytes())
+	}
+
+	narrow := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::datasafe:access-key/%s"},"Action":"s3:GetObject","Resource":"arn:aws:s3:::s3a-bucket/*"}]}`, keyResp["access_key"])
+	polBody, _ := json.Marshal(map[string]string{"policy": narrow})
+	req = authReq(http.MethodPut, "/api/v1/buckets/s3a-bucket/policy", adminTok, polBody)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set narrow policy: %d %s", rec.Code, rec.Body.String())
+	}
+	status, body = list()
 	if status != http.StatusForbidden || !bytes.Contains(body, []byte("AccessDenied")) {
-		t.Fatalf("list without s3:ListAllMyBuckets: %d %s", status, body)
+		t.Fatalf("policy without s3:ListAllMyBuckets: %d %s", status, body)
 	}
 
 	policy := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::datasafe:access-key/%s"},"Action":"s3:ListAllMyBuckets","Resource":"arn:aws:s3:::s3a-bucket"}]}`, keyResp["access_key"])
-	polBody, _ := json.Marshal(map[string]string{"policy": policy})
+	polBody, _ = json.Marshal(map[string]string{"policy": policy})
 	req = authReq(http.MethodPut, "/api/v1/buckets/s3a-bucket/policy", adminTok, polBody)
 	rec = httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)

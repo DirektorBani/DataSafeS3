@@ -434,6 +434,8 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 	if err := persistKeys(); err != nil {
 		return rep, err
 	}
+	absent := 0
+	stored := map[string]struct{}{}
 	for bucket, statements := range mapped {
 		existing, found, err := ds.getPolicy(ctx, bucket)
 		if err != nil {
@@ -441,6 +443,7 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 			continue
 		}
 		if !found {
+			absent++
 			rep.Warnings = append(rep.Warnings, "bucket "+bucket+" does not exist; its policy was not stored and access was not checked")
 			rep.NotTransferred = append(rep.NotTransferred, IAMSkip{Kind: "policy", Name: bucket, Reason: "bucket does not exist"})
 			continue
@@ -456,6 +459,7 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 		}
 		if err := ds.putPolicy(ctx, bucket, merged); err != nil {
 			if strings.Contains(err.Error(), "404") || strings.Contains(strings.ToLower(err.Error()), "not found") {
+				absent++
 				rep.Warnings = append(rep.Warnings, "bucket "+bucket+" does not exist; its policy was not stored and access was not checked")
 				rep.NotTransferred = append(rep.NotTransferred, IAMSkip{Kind: "policy", Name: bucket, Reason: "bucket does not exist"})
 				continue
@@ -464,9 +468,11 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 			continue
 		}
 		rep.PoliciesTransferred++
+		stored[bucket] = struct{}{}
 	}
 	leader := ds.current()
 	secureProbe := strings.HasPrefix(strings.ToLower(leader.URL), "https:")
+	skippedList := 0
 	for _, u := range snap.Users {
 		row, ok := keysByUser[u.AccessKey]
 		if !ok {
@@ -475,6 +481,10 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 		for bucket, statements := range mapped {
 			run, want := listProbePlan(statements, policy.AccessKeyARN(row.AccessKey), bucket, secureProbe)
 			if !run {
+				continue
+			}
+			if _, ok := stored[bucket]; !ok {
+				skippedList++
 				continue
 			}
 			status, perr := probeList(ctx, leader, row, bucket)
@@ -499,14 +509,14 @@ func RunIAM(ctx context.Context, opt IAMOptions) (IAMReport, error) {
 		rep.Verdicts["users"] = "PASS"
 	}
 	rep.Verdicts["groups"] = passFail(rep.GroupsTransferred == len(snap.Groups))
-	rep.Verdicts["policies"] = passFail(rep.PoliciesTransferred == len(mapped))
-	accessPass := len(rep.Probes) > 0
+	rep.Verdicts["policies"] = passFail(rep.PoliciesTransferred+absent == len(mapped))
+	accessPass := true
 	for _, p := range rep.Probes {
 		if p.Verdict != "PASS" {
 			accessPass = false
 		}
 	}
-	if len(rep.Probes) == 0 {
+	if len(rep.Probes) == 0 && skippedList == 0 {
 		rep.Warnings = append(rep.Warnings, "no ListBucket request was sent; access was not checked")
 		accessPass = false
 	}

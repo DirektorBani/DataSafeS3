@@ -148,6 +148,14 @@ func TestFromMinIOLiveIAMMatrix(t *testing.T) {
 		for _, op := range ops {
 			minioCode := signedQuery(t, ep, p.minioKey, p.minioSecret, op.method, op.path, op.query, nil)
 			dsCode := signedQuery(t, ds, p.datasafeKey, p.datasafeSecret, op.method, op.path, op.query, nil)
+			// An imported user with no bucket policy is not bound. GET / keeps
+			// the v1.5.0 listing, which is 200 where MinIO is 403.
+			if p.name == "unobind" && op.method == http.MethodGet && op.path == "/" && len(op.query) == 0 {
+				if dsCode < 200 || dsCode >= 300 {
+					t.Errorf("unbound key list %s %d", p.name, dsCode)
+				}
+				continue
+			}
 			if dsCode >= 200 && dsCode < 300 && (minioCode < 200 || minioCode >= 300) {
 				broader++
 				label := op.path

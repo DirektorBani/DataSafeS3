@@ -421,6 +421,40 @@ jobs:
           MINIO_SECRET_KEY: minioadmin
         run: go test -count=1 -timeout 10m ./internal/migrate/ -run TestFromMinIOLive
 
+  # Console keys: aws s3 ls and mc ls on v1.5.0 and this image must agree.
+  list-buckets-clients:
+    needs: [docker-build]
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: storage-server-image
+      - name: Load this build
+        run: gzip -dc datasafe-storage-server-ci.tar.gz | docker load
+      - name: Log in to GHCR
+        if: github.token != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
+        continue-on-error: true
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Pull v1.5.0 baseline
+        run: docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+      - name: Install AWS CLI v2 and mc
+        run: |
+          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+          unzip -q /tmp/awscliv2.zip -d /tmp
+          /tmp/aws/install -i /tmp/aws-cli -b /tmp/bin
+          curl -fsSL -o /tmp/bin/mc https://dl.min.io/client/mc/release/linux-amd64/mc
+          chmod +x /tmp/bin/mc
+          echo "/tmp/bin" >> "$GITHUB_PATH"
+          /tmp/bin/aws --version
+          /tmp/bin/mc --version
+      - name: Compare bucket listings
+        run: bash scripts/list-buckets-clients.sh
+
   # Postgres primary + replica, two storage-server nodes, webhook traffic
   # across a scripted promote. Ports stay off :9000 and :9001.
   # The image is the docker-build artifact, the same Dockerfile output.

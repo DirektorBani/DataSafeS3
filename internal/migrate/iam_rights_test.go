@@ -125,8 +125,14 @@ func TestIAMRightsAreNotBroaderAndRerunKeepsState(t *testing.T) {
 	if keyFor(keys, "u08", "user").SecretKey != "" || keyFor(keys, "u15", "user").SecretKey != "" {
 		t.Fatal("refused user received a key")
 	}
-	if !strings.Contains(strings.Join(rep.Warnings, "\n"), "u08") || !strings.Contains(strings.Join(rep.Warnings, "\n"), "u15") {
+	joined := strings.Join(rep.Warnings, "\n")
+	if !strings.Contains(joined, "u08") || !strings.Contains(joined, "u15") || !strings.Contains(joined, "ghost") {
 		t.Fatalf("warnings %v", rep.Warnings)
+	}
+	for _, p := range rep.Probes {
+		if p.Bucket == "ghost" {
+			t.Fatalf("probed missing bucket %+v", p)
+		}
 	}
 	if keyFor(keys, "uparent", "saOff").SecretKey != "" {
 		t.Fatal("disabled service account received a key")
@@ -408,6 +414,7 @@ func startRightsMinIO(t *testing.T) migrate.Endpoint {
 		"unolist": map[string]any{"status": "enabled", "policyName": "pobj"},
 		"u08":     map[string]any{"status": "enabled", "policyName": "pdenyall"},
 		"u15":     map[string]any{"status": "enabled", "policyName": "pstar", "memberOf": []string{"g5"}},
+		"ughost":  map[string]any{"status": "enabled", "policyName": "pghost"},
 	}
 	policies := map[string]string{
 		"plist":    `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::bkt1"]}]}`,
@@ -420,6 +427,7 @@ func startRightsMinIO(t *testing.T) migrate.Endpoint {
 		"pnar":     `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":"arn:aws:s3:::bkt1"}]}`,
 		"pdenyall": `{"Version":"2012-10-17","Statement":[{"Effect":"Deny","Action":"s3:*","Resource":"*"}]}`,
 		"pstar":    `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]}`,
+		"pghost":   `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::ghost"]}]}`,
 	}
 	groups := []string{"g0", "g1", "g2", "g3", "g4", "g5"}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

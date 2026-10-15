@@ -3,6 +3,7 @@ package s3_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -182,16 +183,42 @@ func TestListAllMyBucketsRequiresAllow(t *testing.T) {
 	if err := json.Unmarshal(keyBody, &keyResp); err != nil {
 		t.Fatal(err)
 	}
+	plain := auth.Credentials{AccessKey: keyResp.AccessKey, SecretKey: keyResp.SecretKey}
 	req, _ = http.NewRequest(http.MethodGet, ts.URL+"/", nil)
-	signRequest(t, req, auth.Credentials{AccessKey: keyResp.AccessKey, SecretKey: keyResp.SecretKey}, "us-east-1")
+	signRequest(t, req, plain, "us-east-1")
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || strings.Contains(string(body), "AccessDenied") {
+		t.Fatalf("console key list %d %s", resp.StatusCode, body)
+	}
+
+	narrow := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::datasafe:access-key/%s"},"Action":"s3:GetObject","Resource":"arn:aws:s3:::listed/*"}]}`, keyResp.AccessKey)
+	payload, _ := json.Marshal(map[string]string{"policy": narrow})
+	req, _ = http.NewRequest(http.MethodPut, ts.URL+"/api/v1/buckets/listed/policy", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("narrow policy %d", resp.StatusCode)
+	}
+	req, _ = http.NewRequest(http.MethodGet, ts.URL+"/", nil)
+	signRequest(t, req, plain, "us-east-1")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden || !strings.Contains(string(body), "AccessDenied") {
-		t.Fatalf("user list %d %s", resp.StatusCode, body)
+		t.Fatalf("bound key without ListAllMyBuckets %d %s", resp.StatusCode, body)
 	}
 
 	adminLogin, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/admin/login", strings.NewReader(`{"username":"admin","password":"admin"}`))
