@@ -518,3 +518,46 @@ jobs:
             /tmp/datasafe-promote-drill/storage-b.log
             /tmp/datasafe-promote-drill/postgres-a.log
             /tmp/datasafe-promote-drill/postgres-b.log
+
+  # Postgres, three storage nodes, Vault dev, MinIO, webhook. Ports stay off
+  # :9000 and :9001. Resource budgets stay in single-node-gate.
+  cluster-kms-gate:
+    needs: [docker-build]
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/console/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+      - uses: actions/download-artifact@v4
+        with:
+          name: storage-server-image
+      - name: Load this build
+        run: gzip -dc datasafe-storage-server-ci.tar.gz | docker load
+      - name: Cluster KMS gate
+        env:
+          KMS_CLUSTER_IMAGE: datasafe-storage-server:ci
+          KMS_CLUSTER_SKIP_BUILD: "1"
+        run: bash scripts/ha/run-kms-cluster-test.sh
+      - name: Evidence pack
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-kms-evidence
+          if-no-files-found: ignore
+          path: |
+            /tmp/datasafe-kms-cluster/evidence/summary.md
+            /tmp/datasafe-kms-cluster/evidence/evidence.json
+            /tmp/datasafe-kms-cluster/migrate-first.log
+            /tmp/datasafe-kms-cluster/migrate-second.log
+            /tmp/datasafe-kms-cluster/vite.log

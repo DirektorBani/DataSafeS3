@@ -38,7 +38,7 @@ SSE-S3 (`AES256`) всегда использует `STORAGE_SSE_MASTER_KEY` и 
 
 У каждого узла может быть свой AppRole в окружении. Этот секрет обратно в общую конфигурацию не пишется.
 
-Лабораторный оверлей (dev-режим, корневой токен, не для production): `deploy/compose/docker-compose.vault-kms.yml`. Политики: `deploy/vault/policies/datasafe-kms.hcl` (encrypt, decrypt, rewrap, создание и чтение `datasafe-*`; delete нет) и `datasafe-kms-admin.hcl` (rotate, delete и `deletion_allowed`). Ключ, который создаёт этот сервер, получает `deletion_allowed` сразу. Без этого флага Vault не удаляет ключ, и crypto-shred записывает ошибку в задачу.
+Лабораторный оверлей (dev-режим, корневой токен, не для production): `deploy/compose/docker-compose.vault-kms.yml`. Политики: `deploy/vault/policies/datasafe-kms.hcl` (encrypt, decrypt, rewrap, создание и чтение `datasafe-*`, `deletion_allowed` на config ключа; delete нет) и `datasafe-kms-admin.hcl` (rotate, delete и `deletion_allowed`). Ключ, который создаёт этот сервер, получает `deletion_allowed` сразу. Без этого флага Vault не удаляет ключ, и crypto-shred записывает ошибку в задачу.
 
 ## Когда Vault недоступен
 

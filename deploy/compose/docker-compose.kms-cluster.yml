@@ -1,0 +1,145 @@
+# Three storage nodes, Vault dev (AppRole per node), MinIO, webhook, load balancer.
+# Ports stay off :9000 and :9001.
+#   bash scripts/ha/run-kms-cluster-test.sh
+
+services:
+  postgres:
+    container_name: ds-kms-pg
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: datasafe
+      POSTGRES_PASSWORD: datasafe
+      POSTGRES_DB: datasafe
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datasafe -d datasafe"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  vault:
+    container_name: ds-kms-vault
+    image: hashicorp/vault:1.18.5
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: root
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    command: ["server", "-dev"]
+    ports:
+      - "127.0.0.1:${KMS_VAULT_PORT:-18200}:8200"
+
+  vault-init:
+    container_name: ds-kms-vault-init
+    image: hashicorp/vault:1.18.5
+    restart: "no"
+    depends_on:
+      vault:
+        condition: service_started
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: root
+    volumes:
+      - ../vault/policies:/policies:ro
+      - ../vault/init-kms-cluster.sh:/init.sh:ro
+    entrypoint: ["/bin/sh", "/init.sh"]
+
+  nats:
+    container_name: ds-kms-nats
+    image: nats:2-alpine
+    command: ["-js", "-m", "8222"]
+
+  minio:
+    container_name: ds-kms-minio
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "127.0.0.1:${KMS_MINIO_PORT:-19090}:9000"
+
+  hook:
+    container_name: ds-kms-hook
+    image: python:3.12-alpine
+    command: ["python", "/hook.py"]
+    environment:
+      HOOK_PATH: /data/events.jsonl
+    volumes:
+      - ${KMS_CLUSTER_ROOT}/scripts/ha/kms_cluster_hook.py:/hook.py:ro
+      - ${KMS_CLUSTER_STATE}/webhook:/data
+
+  lb:
+    container_name: ds-kms-lb
+    image: nginx:1.27-alpine
+    volumes:
+      - ${KMS_CLUSTER_STATE}/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:${KMS_LB_PORT:-19080}:8080"
+    depends_on:
+      - storage-1
+      - storage-2
+      - storage-3
+
+  storage-1: &storage
+    container_name: ds-kms-s1
+    image: ${KMS_CLUSTER_IMAGE:-datasafe-storage-server:ci}
+    environment: &storage_env
+      STORAGE_ADDR: ":9000"
+      STORAGE_DEV: "true"
+      STORAGE_LOG_LEVEL: info
+      STORAGE_DATA_DIR: /data
+      STORAGE_REGION: us-east-1
+      STORAGE_ACCESS_KEY: datasafe
+      STORAGE_SECRET_KEY: datasafesecret
+      STORAGE_ADMIN_USER: admin
+      STORAGE_ADMIN_PASSWORD: admin
+      STORAGE_JWT_SECRET: kms-cluster-jwt
+      STORAGE_AUTO_HOME_BUCKET: "false"
+      STORAGE_METADATA_BACKEND: postgres
+      STORAGE_POSTGRES_DSN: postgres://datasafe:datasafe@postgres:5432/datasafe?sslmode=disable
+      STORAGE_HA_ENABLED: "true"
+      STORAGE_HA_LEADER_TTL: 10s
+      STORAGE_NODE_ID: storage-1
+      STORAGE_ADVERTISE_URL: http://storage-1:9000
+      STORAGE_SSE_MASTER_KEY: kms-cluster-master-key
+      STORAGE_KMS_PROVIDER: vault-transit
+      STORAGE_KMS_VAULT_ADDR: http://vault:8200
+      STORAGE_KMS_VAULT_ROLE_ID: node1-role-id
+      STORAGE_KMS_VAULT_SECRET_ID: node1-secret-id
+      STORAGE_KMS_VAULT_ADMIN_ROLE_ID: kms-admin-role
+      STORAGE_KMS_VAULT_ADMIN_SECRET_ID: kms-admin-secret
+      STORAGE_KMS_POLL_INTERVAL: 1s
+      STORAGE_NATS_URL: nats://nats:4222
+    ports:
+      - "127.0.0.1:${KMS_NODE1_PORT:-19111}:9000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+      nats:
+        condition: service_started
+
+  storage-2:
+    <<: *storage
+    container_name: ds-kms-s2
+    environment:
+      <<: *storage_env
+      STORAGE_NODE_ID: storage-2
+      STORAGE_ADVERTISE_URL: http://storage-2:9000
+      STORAGE_KMS_VAULT_ROLE_ID: node2-role-id
+      STORAGE_KMS_VAULT_SECRET_ID: node2-secret-id
+    ports:
+      - "127.0.0.1:${KMS_NODE2_PORT:-19112}:9000"
+
+  storage-3:
+    <<: *storage
+    container_name: ds-kms-s3
+    environment:
+      <<: *storage_env
+      STORAGE_NODE_ID: storage-3
+      STORAGE_ADVERTISE_URL: http://storage-3:9000
+      STORAGE_KMS_VAULT_ROLE_ID: node3-role-id
+      STORAGE_KMS_VAULT_SECRET_ID: node3-secret-id
+    ports:
+      - "127.0.0.1:${KMS_NODE3_PORT:-19113}:9000"

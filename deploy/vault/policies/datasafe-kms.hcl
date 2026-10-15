@@ -17,6 +17,13 @@ path "transit/keys/datasafe-*" {
   capabilities = ["create", "read", "update"]
 }
 
+# EnsureKey sets deletion_allowed with this node's token when the key is created.
+# The path has an extra slash, so the rule above does not cover it. Delete stays
+# on the admin policy.
+path "transit/keys/datasafe-*/config" {
+  capabilities = ["update"]
+}
+
 # The connection test creates datasafe-connection-test when STORAGE_KMS_PROBE_KEY
 # and STORAGE_KMS_DEFAULT_KEY are empty. It does not delete that key.
 # Delete stays on the admin policy, which crypto-shred uses.

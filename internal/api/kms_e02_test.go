@@ -19,10 +19,12 @@ import (
 	"github.com/DirektorBani/datasafe/internal/kms"
 	"github.com/DirektorBani/datasafe/internal/kms/vaulttransit"
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/DirektorBani/datasafe/internal/observability"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestE02IdleHasNoVaultClient(t *testing.T) {
+	observability.ResetLegacyClassifyMetricsForTest()
 	t.Setenv("STORAGE_METRICS_TOKEN", "")
 	s := testServer(t)
 	if s.Svc().VaultKMS() != nil {
@@ -63,6 +65,7 @@ func TestE02IdleHasNoVaultClient(t *testing.T) {
 }
 
 func TestE02IdlePostgresNoVaultClient(t *testing.T) {
+	observability.ResetLegacyClassifyMetricsForTest()
 	dsn := os.Getenv("TEST_POSTGRES_DSN")
 	if dsn == "" {
 		t.Skip("TEST_POSTGRES_DSN not set — skipping postgres integration test")

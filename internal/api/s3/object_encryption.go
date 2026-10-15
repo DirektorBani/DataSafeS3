@@ -18,6 +18,7 @@ import (
 	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/kms"
 	"github.com/DirektorBani/datasafe/internal/metadata"
+	"github.com/DirektorBani/datasafe/internal/observability"
 	"github.com/DirektorBani/datasafe/internal/storage"
 )
 
@@ -708,19 +709,25 @@ func (s *Service) openUnmarked(rc io.ReadCloser, rec metadata.ObjectRecord) (io.
 	if rec.Size >= 0 && rec.Size < format0MinLen {
 		_ = rc.Close()
 		s.persistLegacy(rec, plaintextMarker())
+		noteLegacyClassify("plaintext", rec)
 		return s.reopenPlain(rec)
 	}
+	noteLegacyClassifyRead(rec)
 	ok, err := s.Local.AuthenticateFormat0(rc)
+	observability.SetLegacyClassifyCurrent(0)
 	_ = rc.Close()
 	if err != nil {
+		noteLegacyClassify("error", rec)
 		return nil, rec, err
 	}
 	if ok {
 		marker := format0Marker(rec.Size - format0MinLen)
 		s.persistLegacy(rec, marker)
+		noteLegacyClassify("format0", rec)
 		return s.reopenFormat0(rec)
 	}
 	s.persistLegacy(rec, plaintextMarker())
+	noteLegacyClassify("plaintext", rec)
 	return s.reopenPlain(rec)
 }
 
@@ -785,7 +792,11 @@ func (s *Service) RunLegacyClassify(ctx context.Context) {
 		slog.Warn("legacy classification could not list buckets", "err", err)
 		return
 	}
-	var marked, skipped int
+	slog.Info("legacy classification started")
+	var marked, skipped, failed int
+	defer func() {
+		slog.Info("legacy classification finished", "marked", marked, "skipped", skipped, "errors", failed)
+	}()
 	for _, b := range buckets {
 		if ctx.Err() != nil {
 			return
@@ -804,13 +815,22 @@ func (s *Service) RunLegacyClassify(ctx context.Context) {
 			for _, rec := range page {
 				if legacyClassified(rec.Encryption) || rec.IsDeleteMarker {
 					skipped++
+					noteLegacyClassify("skipped", rec)
 					continue
 				}
-				if err := s.classifyStored(ctx, rec); err != nil {
+				result, err := s.classifyStored(ctx, rec)
+				if err != nil {
+					failed++
+					noteLegacyClassify("error", rec)
 					slog.Warn("legacy classification skipped an object", "bucket", rec.Bucket, "key", rec.Key, "err", err)
 					continue
 				}
 				marked++
+				noteLegacyClassify(result, rec)
+			}
+			seen := marked + skipped + failed
+			if seen > 0 && seen%100 == 0 {
+				slog.Info("legacy classification progress", "marked", marked, "skipped", skipped, "errors", failed)
 			}
 			if !trunc || next == "" || next == start {
 				break
@@ -818,31 +838,49 @@ func (s *Service) RunLegacyClassify(ctx context.Context) {
 			start = next
 		}
 	}
-	if marked > 0 {
-		slog.Info("legacy object classification stored markers", "marked", marked, "already", skipped)
-	}
 }
 
-func (s *Service) classifyStored(ctx context.Context, rec metadata.ObjectRecord) error {
+func (s *Service) classifyStored(ctx context.Context, rec metadata.ObjectRecord) (string, error) {
 	if rec.Size >= 0 && rec.Size < format0MinLen {
 		s.persistLegacy(rec, plaintextMarker())
-		return nil
+		return "plaintext", nil
 	}
+	noteLegacyClassifyRead(rec)
+	defer observability.SetLegacyClassifyCurrent(0)
 	rc, _, err := s.Backend.GetObjectVersion(ctx, rec.Bucket, rec.Key, rec.VersionID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer rc.Close()
 	ok, err := s.Local.AuthenticateFormat0(rc)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if ok {
 		s.persistLegacy(rec, format0Marker(rec.Size-format0MinLen))
-		return nil
+		return "format0", nil
 	}
 	s.persistLegacy(rec, plaintextMarker())
-	return nil
+	return "plaintext", nil
+}
+
+// legacyClassifyLogBytes is the size at which one object is logged on its own.
+// Smaller objects are counted in the periodic progress line.
+const legacyClassifyLogBytes = 32 << 20
+
+func noteLegacyClassifyRead(rec metadata.ObjectRecord) {
+	if rec.Size < legacyClassifyLogBytes {
+		return
+	}
+	slog.Info("legacy classification reading object", "bucket", rec.Bucket, "key", rec.Key, "bytes", rec.Size)
+	observability.SetLegacyClassifyCurrent(rec.Size)
+}
+
+func noteLegacyClassify(result string, rec metadata.ObjectRecord) {
+	observability.ObserveLegacyClassify(result)
+	if rec.Size >= legacyClassifyLogBytes {
+		slog.Info("legacy classification finished object", "bucket", rec.Bucket, "key", rec.Key, "bytes", rec.Size, "result", result)
+	}
 }
 
 func (s *Service) openUnmarkedRaw(rc io.ReadCloser, rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {

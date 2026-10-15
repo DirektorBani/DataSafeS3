@@ -38,7 +38,7 @@ A Postgres node reloads shared Vault settings on the 2 second poll (`STORAGE_KMS
 
 Each node can keep its own AppRole in the environment. That secret is not written back to the shared config.
 
-Lab overlay (dev mode, root token, not for production): `deploy/compose/docker-compose.vault-kms.yml`. Policies: `deploy/vault/policies/datasafe-kms.hcl` (encrypt, decrypt, rewrap, and create/read on `datasafe-*`; no delete) and `datasafe-kms-admin.hcl` (rotate, delete, and `deletion_allowed`). A key this server creates has `deletion_allowed` set at creation. Without that flag Vault refuses to delete the key, and crypto-shred records the error on the job.
+Lab overlay (dev mode, root token, not for production): `deploy/compose/docker-compose.vault-kms.yml`. Policies: `deploy/vault/policies/datasafe-kms.hcl` (encrypt, decrypt, rewrap, create/read on `datasafe-*`, and `deletion_allowed` on the key config; no delete) and `datasafe-kms-admin.hcl` (rotate, delete, and `deletion_allowed`). A key this server creates has `deletion_allowed` set at creation. Without that flag Vault refuses to delete the key, and crypto-shred records the error on the job.
 
 ## When Vault is down
 

@@ -2,6 +2,8 @@ import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const apiTarget = process.env.DS_API_PROXY || "http://127.0.0.1:9000";
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -15,11 +17,11 @@ export default defineConfig({
     host: true,
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:9000",
+        target: apiTarget,
         xfwd: true,
       },
-      "/healthz": "http://127.0.0.1:9000",
-      "/metrics": "http://127.0.0.1:9000",
+      "/healthz": apiTarget,
+      "/metrics": apiTarget,
     },
   },
 });

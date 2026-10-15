@@ -47,6 +47,51 @@ func ensureKMSMetrics() {
 
 var jobRegOnce sync.Once
 
+var (
+	legacyRegOnce sync.Once
+
+	legacyClassifyObjects = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "datasafe_kms_legacy_classify_objects_total",
+		Help: "Classification decisions for unmarked 1.5.0 objects. result is plaintext, format0, skipped, or error.",
+	}, []string{"result"})
+	legacyClassifyCurrent = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "datasafe_kms_legacy_classify_current_bytes",
+		Help: "Size of the unmarked object currently being authenticated. 0 when the walk is between objects.",
+	})
+)
+
+func ensureLegacyClassifyMetrics() {
+	legacyRegOnce.Do(func() {
+		prometheus.MustRegister(legacyClassifyObjects, legacyClassifyCurrent)
+	})
+}
+
+// ObserveLegacyClassify counts one classification decision.
+// The series is registered on the first object, not at process start, so an
+// idle node with no unmarked objects does not publish datasafe_kms_legacy_*.
+func ObserveLegacyClassify(result string) {
+	ensureLegacyClassifyMetrics()
+	legacyClassifyObjects.WithLabelValues(result).Inc()
+}
+
+// SetLegacyClassifyCurrent records the object size being authenticated.
+// A large unmarked read logs this so an operator can see why the first GET waits.
+func SetLegacyClassifyCurrent(bytes int64) {
+	if bytes < 0 {
+		bytes = 0
+	}
+	ensureLegacyClassifyMetrics()
+	legacyClassifyCurrent.Set(float64(bytes))
+}
+
+// ResetLegacyClassifyMetricsForTest drops the classification series from the
+// default registry. Package tests share that registry.
+func ResetLegacyClassifyMetricsForTest() {
+	prometheus.Unregister(legacyClassifyObjects)
+	prometheus.Unregister(legacyClassifyCurrent)
+	legacyRegOnce = sync.Once{}
+}
+
 // ObserveKMSJob counts one object finished by a leader job.
 // Registration is separate from Vault metrics, so an idle node that never
 // runs a job does not publish datasafe_kms_*.
