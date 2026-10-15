@@ -90,7 +90,14 @@ func PortPolicy(raw string) (string, []string) {
 					}
 				}
 			default:
-				bad = append(bad, op)
+				named := false
+				for key := range keys {
+					bad = append(bad, op+" "+key)
+					named = true
+				}
+				if !named {
+					bad = append(bad, op)
+				}
 			}
 		}
 		if len(bad) > 0 {

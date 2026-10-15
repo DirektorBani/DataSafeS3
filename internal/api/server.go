@@ -647,6 +647,7 @@ func (s *Server) routes() {
 	mux.HandleFunc("PUT /api/v1/users/{id}", adminOnly(s.handleUpdateUser))
 	mux.HandleFunc("DELETE /api/v1/users/{id}", adminOnly(s.handleDeleteUser))
 	mux.HandleFunc("POST /api/v1/users/{id}/reset-password", adminOnly(s.handleResetPassword))
+	mux.HandleFunc("POST /api/v1/users/{id}/access-keys", adminOnly(s.handleImportAccessKey))
 
 	mux.HandleFunc("GET /api/v1/settings/buckets", adminOnly(s.handleListBucketSettings))
 	mux.HandleFunc("PUT /api/v1/settings/buckets/{name}", adminOnly(s.handleUpdateBucketSettings))
@@ -1384,6 +1385,56 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 		"secret_key": secretKey,
 		"label":      req.Label,
 	})
+}
+
+func (s *Server) handleImportAccessKey(w http.ResponseWriter, r *http.Request) {
+	info, _ := authFrom(r)
+	id := r.PathValue("id")
+	if !s.allowDangerous(w, r, auth.ActionAccessKeyCreate, id) {
+		return
+	}
+	user, err := s.meta.GetUser(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	var req struct {
+		AccessKey string `json:"access_key"`
+		SecretKey string `json:"secret_key"`
+		Label     string `json:"label"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	req.AccessKey = strings.TrimSpace(req.AccessKey)
+	req.SecretKey = strings.TrimSpace(req.SecretKey)
+	if req.AccessKey == "" || len(req.SecretKey) < 16 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "access_key and secret_key are required"})
+		return
+	}
+	if _, err := s.meta.GetAccessKey(req.AccessKey); err == nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "access key exists"})
+		return
+	}
+	if req.Label == "" {
+		req.Label = "minio-import"
+	}
+	rec := metadata.AccessKeyRecord{
+		AccessKey:      req.AccessKey,
+		SecretKey:      req.SecretKey,
+		Label:          req.Label,
+		OwnerID:        user.ID,
+		Owner:          user.Username,
+		CreatedWithMFA: s.accessKeyMFAFlag(info.UserID),
+		CreatedAt:      time.Now().UTC(),
+	}
+	if err := s.meta.PutAccessKey(rec); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	s.logActivity(r, metadata.ActionAccessKeyCreated, "access_key", req.AccessKey)
+	writeJSON(w, http.StatusCreated, map[string]any{"access_key": req.AccessKey, "label": req.Label})
 }
 
 func (s *Server) handleDeleteKey(w http.ResponseWriter, r *http.Request) {

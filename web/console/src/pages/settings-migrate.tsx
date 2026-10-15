@@ -23,6 +23,7 @@ type EvidenceFile = {
   errors?: string[];
   interrupted?: boolean;
   buckets?: BucketCount[];
+  probes?: { username: string; bucket: string; action: string; status: number; verdict: string }[];
 };
 
 function shellQuote(value: string): string {
@@ -75,6 +76,33 @@ export function buildMigrateCommand(input: {
   }
   lines.push(`  --state ${shellQuote(input.stateDir.trim() || "./.minio-migrate-state")} \\`);
   lines.push(`  --report ${shellQuote(input.reportDir.trim() || "./minio-migrate-report")}`);
+  return lines.join("\n");
+}
+
+export function buildIAMCommand(input: {
+  sourceUrl: string;
+  targetUrl: string;
+  tenant: string;
+  keepKeys: boolean;
+  reportDir: string;
+}): string {
+  const lines = [
+    "storage-cli migrate from-minio iam \\",
+    `  --source ${shellQuote(input.sourceUrl.trim() || "http://minio.example:9000")} \\`,
+    `  --source-key "$SOURCE_ACCESS_KEY" \\`,
+    `  --source-secret "$SOURCE_SECRET_KEY" \\`,
+    `  --target ${shellQuote(input.targetUrl.trim() || "http://127.0.0.1:9000")} \\`,
+    `  --target-admin-user "$TARGET_ADMIN_USER" \\`,
+    `  --target-admin-password "$TARGET_ADMIN_PASSWORD" \\`,
+  ];
+  if (input.tenant.trim()) {
+    lines.push(`  --tenant ${shellQuote(input.tenant.trim())} \\`);
+  }
+  if (input.keepKeys) {
+    lines.push(`  --keep-access-keys "$KEEP_ACCESS_KEYS_FILE" \\`);
+  }
+  lines.push(`  --keys-file ${shellQuote("./minio-iam-keys.json")} \\`);
+  lines.push(`  --report ${shellQuote(input.reportDir.trim() || "./minio-iam-report")}`);
   return lines.join("\n");
 }
 
@@ -143,6 +171,9 @@ export function MigrateSettingsPage() {
   const [verifySample, setVerifySample] = useState("10");
   const [stateDir, setStateDir] = useState("./.minio-migrate-state");
   const [reportDir, setReportDir] = useState("./minio-migrate-report");
+  const [tenant, setTenant] = useState("");
+  const [keepKeys, setKeepKeys] = useState(false);
+  const [iamReport, setIamReport] = useState("./minio-iam-report");
   const [copied, setCopied] = useState(false);
   const [evidence, setEvidence] = useState<EvidenceFile | null>(null);
   const [evidenceError, setEvidenceError] = useState("");
@@ -163,6 +194,10 @@ export function MigrateSettingsPage() {
   const powershell = useMemo(
     () => buildMigratePowerShell(commandInput),
     [sourceUrl, targetUrl, buckets, sse, kmsKey, concurrency, partSize, verifySample, stateDir, reportDir],
+  );
+  const iamCommand = useMemo(
+    () => buildIAMCommand({ sourceUrl, targetUrl, tenant, keepKeys, reportDir: iamReport }),
+    [sourceUrl, targetUrl, tenant, keepKeys, iamReport],
   );
 
   return (
@@ -255,6 +290,36 @@ export function MigrateSettingsPage() {
       </Card>
       <Card>
         <CardHeader>
+          <CardTitle>{t("iamTitle")}</CardTitle>
+          <CardDescription>{t("iamHint")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="migrate-tenant">{t("tenant")}</Label>
+              <Input id="migrate-tenant" data-testid="migrate-tenant" value={tenant} onChange={(e) => setTenant(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="migrate-iam-report">{t("iamReport")}</Label>
+              <Input id="migrate-iam-report" data-testid="migrate-iam-report" value={iamReport} onChange={(e) => setIamReport(e.target.value)} />
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              data-testid="migrate-keep-keys"
+              checked={keepKeys}
+              onChange={(e) => setKeepKeys(e.target.checked)}
+            />
+            {t("keepKeys")}
+          </label>
+          <pre data-testid="migrate-iam-command" className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
+            {iamCommand}
+          </pre>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
           <CardTitle>{t("evidenceTitle")}</CardTitle>
           <CardDescription>{t("evidenceHint")}</CardDescription>
         </CardHeader>
@@ -299,6 +364,13 @@ export function MigrateSettingsPage() {
                     {name}: {evidence.verdicts?.[name] ?? "—"}
                   </li>
                 ))}
+                {Object.keys(evidence.verdicts ?? {})
+                  .filter((name) => !verdictNames.includes(name as (typeof verdictNames)[number]))
+                  .map((name) => (
+                    <li key={name} data-testid={`migrate-verdict-${name}`}>
+                      {name}: {evidence.verdicts?.[name]}
+                    </li>
+                  ))}
               </ul>
               {(evidence.buckets?.length ?? 0) > 0 && (
                 <div>

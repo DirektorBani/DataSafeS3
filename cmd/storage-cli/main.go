@@ -136,6 +136,7 @@ Commands:
   cat s3://bucket/key       Print object to stdout
   migrate checklist [minio] Print MinIO → DataSafeS3 cutover checklist
   migrate from-minio        Copy buckets from a MinIO-compatible source
+  migrate from-minio iam    Import MinIO users, groups, and policies
 
 Environment:
   DATASAFE_ENDPOINT    Default http://127.0.0.1:9000 (alias: S3FORK_ENDPOINT)
@@ -152,10 +153,12 @@ func runMigrate(args []string) error {
 Usage:
   storage-cli migrate checklist [minio]
   storage-cli migrate from-minio --source URL --target URL [flags]
+  storage-cli migrate from-minio iam --source URL --target URL [flags]
 
 checklist prints the MinIO → DataSafeS3 cutover checklist.
-from-minio copies buckets over S3. Keys stay in the flags you pass; the
-console command builder does not store them. See
+from-minio copies buckets over S3. from-minio iam imports users, groups,
+and canned policies. MinIO secrets are not copied. Keys stay in the flags
+you pass; the console command builder does not store them. See
 docs/operations-guide/en/migrate-from-minio.md
 `)
 		return nil
@@ -179,6 +182,9 @@ docs/operations-guide/en/migrate-from-minio.md
 }
 
 func runFromMinIO(args []string) error {
+	if len(args) > 0 && args[0] == "iam" {
+		return runFromMinIOIAM(args[1:])
+	}
 	opt, err := migrate.ParseFromMinIO(args)
 	if err != nil {
 		return err
@@ -195,6 +201,22 @@ func runFromMinIO(args []string) error {
 		return err
 	}
 	fmt.Printf("report %s\n", opt.ReportDir)
+	return nil
+}
+
+func runFromMinIOIAM(args []string) error {
+	opt, err := migrate.ParseIAM(args)
+	if err != nil {
+		return err
+	}
+	opt.Stderr = os.Stderr
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	rep, err := migrate.RunIAM(ctx, opt)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("report %s users %d groups %d policies %d\n", opt.ReportDir, rep.UsersTransferred, rep.GroupsTransferred, rep.PoliciesTransferred)
 	return nil
 }
 

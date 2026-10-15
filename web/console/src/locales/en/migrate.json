@@ -27,5 +27,10 @@
   "verdicts": "Verdicts",
   "interrupted": "Interrupted",
   "warnings": "Warnings",
-  "errors": "Errors"
+  "errors": "Errors",
+  "iamTitle": "IAM import",
+  "iamHint": "Imports MinIO users, groups, and policies. MinIO secrets are not copied. New keys are written to a file on the machine that runs the command. LDAP and OIDC users are listed as warnings. This page does not send credentials.",
+  "tenant": "Tenant id",
+  "iamReport": "IAM report directory",
+  "keepKeys": "Use access keys from $KEEP_ACCESS_KEYS_FILE instead of generating them"
 }

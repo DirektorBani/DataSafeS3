@@ -4,13 +4,13 @@ English | **[Русский](../ru/migrate-from-minio.md)**
 
 Operator runbook for moving object data from a **MinIO-compatible** S3 endpoint to **DataSafeS3** Community Edition.
 
-> **Honesty:** This is not a drop-in binary replacement and not a claim of 100% MinIO API parity. Object bytes move with standard S3 sync tools. MinIO IAM users, groups, and server-side policies are **not** imported automatically — remap them to DataSafe users, teams, tenants, and bucket policies.
+> **Honesty:** This is not a drop-in binary replacement and not a claim of 100% MinIO API parity. Object bytes move with standard S3 sync tools. `storage-cli migrate from-minio iam` imports builtin users, groups, and canned policies. MinIO user secrets are not available and are not copied. LDAP and OIDC identities are warnings with a recommendation, not accounts.
 
 Architecture: [ADR 0001](../../architecture/adr/0001-migration-kit.md) · [ADR 0007](../../architecture/adr/0007-minio-s3-copier.md) · Checklist source: `internal/migrate`.
 
 ## Embedded copier
 
-`storage-cli migrate from-minio` copies buckets over the S3 API. rclone and the checklist below remain the DIY path. IAM users and groups are not imported.
+`storage-cli migrate from-minio` copies buckets over the S3 API. rclone and the checklist below remain the DIY path. IAM is a separate command, below.
 
 The copier writes, in order: bucket, versioning, Object Lock configuration, lifecycle, and bucket policy. Lifecycle keeps a prefix expiration in days (`Filter/Prefix`, `Filter/And/Prefix`, or the legacy `Prefix`). A transition, noncurrent action, tag filter, or date expiration is not stored and the run fails; the rule is not widened to the whole bucket. A policy condition other than `aws:SourceIp` or `aws:SecureTransport` is omitted and named in the report. Object versions and delete markers are copied in chronological order, so a delete marker stays between the versions it separates. Tags, user metadata, content-type, retention mode and date, and legal hold are copied with the version.
 
@@ -34,7 +34,27 @@ storage-cli migrate from-minio \
   --verify-sample 10
 ```
 
-**Settings → Migrate** in the console prints this command and can open a local `evidence.json`. It does not send or store source credentials.
+**Settings → Migrate** in the console prints this command and the IAM command, and can open a local `evidence.json`. It does not send or store source credentials.
+
+## IAM
+
+`storage-cli migrate from-minio iam` reads the MinIO admin API (`/minio/admin/v3/`, the same calls as `mc admin`) with the source admin keys. It creates DataSafe users, teams, and bucket policies. `--tenant` sets the tenant id. A bucket that does not already exist is named in the report and its policy is not stored.
+
+MinIO does not return a usable user secret for this import. The command generates a password and an access key, and writes them to `--keys-file` (default `./minio-iam-keys.json`, mode 0600). `--keep-access-keys FILE` imports `username`, `access_key`, and `secret_key` from that operator file instead of generating the key. A service account secret is not available; the report says so and a new key is issued for the parent user. A condition other than `aws:SourceIp` or `aws:SecureTransport` is omitted and named as WARN. A policy for every bucket (`*`) is not copied. LDAP and OIDC users are WARN only: configure those providers on DataSafe. Group policies are expanded to member users, because a DataSafe bucket policy has no group principal. The import also adds a read grant on each bucket whose policy allows `s3:ListBucket`, so the new key can list it. An existing grant list on that bucket is replaced.
+
+Several `--target` values are checked with `GET /healthz`. Writes that return HTTP 503 `not cluster leader` are retried against the leader. The target login is `--target-admin-user` and `--target-admin-password` (or `TARGET_ADMIN_USER` / `TARGET_ADMIN_PASSWORD`). The report directory (`--report`, default `./minio-iam-report`) contains `summary.md` and `evidence.json`. Verdicts are users, groups, policies, and access. Access is a signed `ListBucket` with the new key.
+
+```bash
+storage-cli migrate from-minio iam \
+  --source http://minio.example:9000 \
+  --source-key "$SOURCE_ACCESS_KEY" \
+  --source-secret "$SOURCE_SECRET_KEY" \
+  --target http://datasafe.example:9000 \
+  --target-admin-user "$TARGET_ADMIN_USER" \
+  --target-admin-password "$TARGET_ADMIN_PASSWORD" \
+  --keys-file ./minio-iam-keys.json \
+  --report ./minio-iam-report
+```
 
 ---
 

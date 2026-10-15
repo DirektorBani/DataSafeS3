@@ -4,13 +4,13 @@
 
 Runbook для переноса объектов с **MinIO-совместимого** S3 endpoint на **DataSafeS3** Community Edition.
 
-> **Честно:** это не drop-in замена бинарника и не заявление о 100% совместимости API MinIO. Байты объектов переносятся стандартными S3 sync-инструментами. Пользователи IAM MinIO, группы и server-side policies **не** импортируются автоматически — перенесите их в пользователей, teams, tenants и bucket policies DataSafe.
+> **Честно:** это не drop-in замена бинарника и не заявление о 100% совместимости API MinIO. Байты объектов переносятся стандартными S3 sync-инструментами. `storage-cli migrate from-minio iam` переносит встроенных пользователей, группы и canned-политики. Секреты пользователей MinIO недоступны и не копируются. Учётные записи LDAP и OIDC — это предупреждения с рекомендацией, а не импорт.
 
 Архитектура: [ADR 0001](../../architecture/adr/0001-migration-kit.md) · [ADR 0007](../../architecture/adr/0007-minio-s3-copier.md) · Чеклист: `internal/migrate`.
 
 ## Встроенное копирование
 
-`storage-cli migrate from-minio` копирует бакеты по S3 API. rclone и чеклист ниже остаются ручным путём. Пользователи и группы IAM не импортируются.
+`storage-cli migrate from-minio` копирует бакеты по S3 API. rclone и чеклист ниже остаются ручным путём. IAM — отдельная команда ниже.
 
 Порядок: бакет, versioning, конфигурация Object Lock, lifecycle и bucket policy. Lifecycle сохраняет expiration по префиксу в днях (`Filter/Prefix`, `Filter/And/Prefix` или старый `Prefix`). Transition, noncurrent, фильтр по тегу или expiration по дате не сохраняются, и прогон завершается с FAIL; правило не расширяется на весь бакет. Условие кроме `aws:SourceIp` и `aws:SecureTransport` отбрасывается и называется в отчёте. Версии и delete marker копируются в хронологическом порядке, поэтому marker остаётся между версиями. С версией копируются теги, user metadata, content-type, режим и дата retention и legal hold.
 
@@ -34,7 +34,27 @@ storage-cli migrate from-minio \
   --verify-sample 10
 ```
 
-**Настройки → Миграция** в консоли печатает эту команду и открывает локальный `evidence.json`. Учётные данные источника туда не отправляются и не сохраняются.
+**Настройки → Миграция** в консоли печатает эту команду и команду IAM и открывает локальный `evidence.json`. Учётные данные источника туда не отправляются и не сохраняются.
+
+## IAM
+
+`storage-cli migrate from-minio iam` читает admin API MinIO (`/minio/admin/v3/`, те же вызовы, что у `mc admin`) ключами администратора источника. Создаются пользователи DataSafe, teams и bucket policies. `--tenant` задаёт тенант. Бакет, которого ещё нет, называется в отчёте, и политика на него не пишется.
+
+MinIO не отдаёт секрет пользователя, пригодный для этого импорта. Команда генерирует пароль и ключ доступа и пишет их в `--keys-file` (по умолчанию `./minio-iam-keys.json`, режим 0600). `--keep-access-keys FILE` берёт `username`, `access_key` и `secret_key` из файла оператора. Секрет service account недоступен: отчёт так и говорит, и для родительского пользователя выпускается новый ключ. Условие кроме `aws:SourceIp` и `aws:SecureTransport` отбрасывается и помечается WARN. Политика на все бакеты (`*`) не копируется. Пользователи LDAP и OIDC — только WARN: эти провайдеры настраиваются на DataSafe отдельно. Политика группы разворачивается на участников, потому что у bucket policy DataSafe нет principal группы. Импорт добавляет право чтения на каждый бакет, чья политика разрешает `s3:ListBucket`, чтобы новый ключ мог его перечислить. Прежний список прав на этот бакет заменяется.
+
+Несколько `--target` проверяются через `GET /healthz`. Запись с HTTP 503 `not cluster leader` повторяется на лидере. Вход на цель — `--target-admin-user` и `--target-admin-password` (или `TARGET_ADMIN_USER` / `TARGET_ADMIN_PASSWORD`). Каталог отчёта (`--report`, по умолчанию `./minio-iam-report`) содержит `summary.md` и `evidence.json`. Вердикты: users, groups, policies, access. Access — подписанный `ListBucket` новым ключом.
+
+```bash
+storage-cli migrate from-minio iam \
+  --source http://minio.example:9000 \
+  --source-key "$SOURCE_ACCESS_KEY" \
+  --source-secret "$SOURCE_SECRET_KEY" \
+  --target http://datasafe.example:9000 \
+  --target-admin-user "$TARGET_ADMIN_USER" \
+  --target-admin-password "$TARGET_ADMIN_PASSWORD" \
+  --keys-file ./minio-iam-keys.json \
+  --report ./minio-iam-report
+```
 
 ---
 
