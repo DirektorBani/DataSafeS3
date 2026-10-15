@@ -498,7 +498,17 @@ func (s *Service) prepareObjectEncryption(ctx context.Context, bucket metadata.B
 		meta := *spec.Forced
 		return enc, c, &meta, nil
 	}
-	if s.clusterUpgradeInProgress() && s.Local != nil {
+	algo, keyID := s.resolveAlgo(ctx, bucket)
+	if algo == "" {
+		return r, nil, &metadata.ObjectEncryption{Plaintext: true}, nil
+	}
+	if algo != kms.SSEAlgorithmAES256 && algo != kms.SSEAlgorithmKMS {
+		return nil, nil, nil, metadata.ErrInvalidArgument
+	}
+	// A 1.5.0 peer cannot read format 1. SSE-S3 requested during the roll is
+	// format 0, which that peer can read when it has the same server key.
+	// A write with no encryption header stays plaintext. SSE-KMS stays 409.
+	if s.clusterUpgradeInProgress() && s.Local != nil && algo == kms.SSEAlgorithmAES256 {
 		plain, err := io.ReadAll(r)
 		if err != nil {
 			return nil, nil, nil, err
@@ -513,13 +523,6 @@ func (s *Service) prepareObjectEncryption(ctx context.Context, bucket metadata.B
 			Alg: "AES-256-GCM", SSEAlgorithm: kms.SSEAlgorithmAES256, PlainSize: int64(len(plain)),
 		}
 		return bytes.NewReader(ct), c, meta, nil
-	}
-	algo, keyID := s.resolveAlgo(ctx, bucket)
-	if algo == "" {
-		return r, nil, &metadata.ObjectEncryption{Plaintext: true}, nil
-	}
-	if algo != kms.SSEAlgorithmAES256 && algo != kms.SSEAlgorithmKMS {
-		return nil, nil, nil, metadata.ErrInvalidArgument
 	}
 	if algo == kms.SSEAlgorithmKMS && s.clusterUpgradeInProgress() {
 		return nil, nil, nil, ErrClusterUpgrade

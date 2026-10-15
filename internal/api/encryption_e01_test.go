@@ -742,6 +742,38 @@ func TestE01ClusterRegistry15HealthzBlocks(t *testing.T) {
 	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), s3.MsgClusterUpgrade) {
 		t.Fatalf("registry 1.5 %d %s", rec.Code, rec.Body.String())
 	}
+	put := s3Call(t, s, http.MethodPut, "/regbox/plain.txt", []byte("still-plain"), nil)
+	if put.Code != http.StatusOK {
+		t.Fatalf("mixed put %d %s", put.Code, put.Body.String())
+	}
+	got := s3Call(t, s, http.MethodGet, "/regbox/plain.txt", nil, nil)
+	if got.Code != http.StatusOK || got.Body.String() != "still-plain" {
+		t.Fatalf("mixed get %d %q", got.Code, got.Body.String())
+	}
+	meta, err := s.Meta().GetObject(storageKeyOf(t, s, "regbox"), "plain.txt")
+	if err != nil || meta.Encryption == nil || !meta.Encryption.Plaintext {
+		t.Fatalf("mixed object sealed %+v %v", meta.Encryption, err)
+	}
+	aes := s3Call(t, s, http.MethodPut, "/regbox/aes.txt", []byte("format-zero"), map[string]string{
+		"x-amz-server-side-encryption": "AES256",
+	})
+	if aes.Code != http.StatusOK {
+		t.Fatalf("mixed aes %d %s", aes.Code, aes.Body.String())
+	}
+	aesMeta, err := s.Meta().GetObject(storageKeyOf(t, s, "regbox"), "aes.txt")
+	if err != nil || aesMeta.Encryption == nil || aesMeta.Encryption.FormatVersion != 0 {
+		t.Fatalf("mixed aes meta %+v %v", aesMeta.Encryption, err)
+	}
+	aesGet := s3Call(t, s, http.MethodGet, "/regbox/aes.txt", nil, nil)
+	if aesGet.Code != http.StatusOK || aesGet.Body.String() != "format-zero" {
+		t.Fatalf("mixed aes get %d %q", aesGet.Code, aesGet.Body.String())
+	}
+	kmsPut := s3Call(t, s, http.MethodPut, "/regbox/kms.txt", []byte("no-kms"), map[string]string{
+		"x-amz-server-side-encryption": "aws:kms",
+	})
+	if kmsPut.Code != http.StatusConflict || !strings.Contains(kmsPut.Body.String(), s3.MsgClusterUpgrade) {
+		t.Fatalf("mixed kms %d %s", kmsPut.Code, kmsPut.Body.String())
+	}
 	version.Store("1.6.0")
 	rec = doJSON(t, s.Handler(), http.MethodPut, "/api/v1/buckets/regbox/encryption", tok, []byte(`{"enabled":true}`), "")
 	if rec.Code != http.StatusOK {
