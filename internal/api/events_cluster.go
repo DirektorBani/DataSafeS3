@@ -165,6 +165,7 @@ func (s *Server) wireEventSinks() error {
 		SinkRemoved: observability.ClearEventsSinkDegraded,
 		Status:      s.noteEventSinkStatus,
 	})
+	s.eventDisp.SetBeforePoll(s.withBackgroundDB)
 	if err := s.syncKafkaSink(); err != nil {
 		return err
 	}
@@ -262,6 +263,7 @@ func (s *Server) noteOutboxDropped(n int) {
 type clusterMonitor struct {
 	meta   metadata.MetadataStore
 	mu     sync.RWMutex
+	dbMu   *sync.Mutex
 	nodes  []metadata.ClusterNode
 	status string
 }
@@ -285,7 +287,7 @@ func (c *clusterMonitor) Run(ctx context.Context) {
 }
 
 func (c *clusterMonitor) probe() {
-	cfg, err := c.meta.GetSystemConfig()
+	cfg, err := c.systemConfig()
 	if err != nil {
 		return
 	}
@@ -326,6 +328,14 @@ func (c *clusterMonitor) probe() {
 	c.status = overall
 	c.mu.Unlock()
 	observability.SetClusterNodeStatuses(overall, samples)
+}
+
+func (c *clusterMonitor) systemConfig() (metadata.SystemConfig, error) {
+	if c.dbMu != nil {
+		c.dbMu.Lock()
+		defer c.dbMu.Unlock()
+	}
+	return c.meta.GetSystemConfig()
 }
 
 func (c *clusterMonitor) checkNode(address string) string {

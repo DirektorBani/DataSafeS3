@@ -77,6 +77,21 @@ type Server struct {
 	vaultMu               sync.Mutex
 	vaultFP               string
 	vaultProbeSeq         uint64
+	// bgMu keeps idle background polls from opening a second Postgres session.
+	// A second session faults enough executable pages to exceed the single-node
+	// RSS budget. Request handlers do not take this lock.
+	bgMu sync.Mutex
+}
+
+// withBackgroundDB runs one idle poll at a time so a quiet Postgres node keeps
+// a single connection.
+func (s *Server) withBackgroundDB(fn func()) {
+	if s == nil || fn == nil {
+		return
+	}
+	s.bgMu.Lock()
+	defer s.bgMu.Unlock()
+	fn()
 }
 
 var corsAllowedOrigins []string
@@ -240,6 +255,7 @@ func NewServer(cfg Config) (*Server, error) {
 		return nil, err
 	}
 	s.cluster = newClusterMonitor(s.meta)
+	s.cluster.dbMu = &s.bgMu
 	haCfg := ha.ConfigFromEnv()
 	if haCfg.Enabled {
 		if pg, ok := meta.(*pgmeta.Store); ok {
@@ -299,7 +315,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 	// or HA node still advertises 1.6.0 so a 1.5.0 leader lease is not mistaken
 	// for this process.
 	if s.advertiseClusterVersion() {
-		s.writeClusterHeartbeat()
+		s.withBackgroundDB(func() { s.writeClusterHeartbeat() })
 		go s.runKMSHeartbeat(ctx)
 	}
 	// Classification exits when the unmarked set is done. An empty key does
@@ -327,7 +343,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 	// Vault stays off unless provider and address are set. This read does not
 	// open a client when they are empty. A shared metadata node polls for a
 	// console save from another node; a single Bolt node does not.
-	s.refreshVaultFromMeta()
+	s.withBackgroundDB(func() { s.refreshVaultFromMeta() })
 	if _, ok := s.meta.(*pgmeta.Store); ok {
 		go s.watchVaultConfig(ctx)
 	}
@@ -344,14 +360,14 @@ func (s *Server) runEventSinkRefresh(ctx context.Context) {
 	for {
 		leader := s.isEventLeader(ctx)
 		if leader && !wasLeader {
-			s.syncEventSinks()
+			s.withBackgroundDB(func() { s.syncEventSinks() })
 		}
 		wasLeader = leader
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.syncEventSinks()
+			s.withBackgroundDB(func() { s.syncEventSinks() })
 		}
 	}
 }
@@ -377,7 +393,7 @@ func (s *Server) runTrashPurgeWorker(ctx context.Context) {
 }
 
 func (s *Server) runActivityRetentionWorker(ctx context.Context) {
-	s.purgeActivityOnce()
+	s.withBackgroundDB(func() { s.purgeActivityOnce() })
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 	for {
@@ -385,7 +401,7 @@ func (s *Server) runActivityRetentionWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.purgeActivityOnce()
+			s.withBackgroundDB(func() { s.purgeActivityOnce() })
 		}
 	}
 }

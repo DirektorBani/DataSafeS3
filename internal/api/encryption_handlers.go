@@ -239,8 +239,10 @@ func advertiseURL() string {
 
 func (s *Server) runKMSHeartbeat(ctx context.Context) {
 	beat := func() {
-		s.writeClusterHeartbeat()
-		s.refreshVaultFromMeta()
+		s.withBackgroundDB(func() {
+			s.writeClusterHeartbeat()
+			s.refreshVaultFromMeta()
+		})
 	}
 	beat()
 	tick := time.NewTicker(30 * time.Second)

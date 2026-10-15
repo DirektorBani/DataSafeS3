@@ -76,15 +76,27 @@ type Dispatcher struct {
 	obs        Observer
 	purgeEvery time.Duration
 
-	mu        sync.Mutex
-	sinks     []EventSink
-	byName    map[string]EventSink
-	reported  map[string]bool // sink name -> a real failure is open
-	lastPurge time.Time
-	cancel    context.CancelFunc
-	closed    bool
-	fenced    bool
-	onFence   func()
+	mu         sync.Mutex
+	sinks      []EventSink
+	byName     map[string]EventSink
+	reported   map[string]bool // sink name -> a real failure is open
+	lastPurge  time.Time
+	cancel     context.CancelFunc
+	closed     bool
+	fenced     bool
+	onFence    func()
+	beforePoll func(func())
+}
+
+// SetBeforePoll runs each outbox poll inside fn. The server uses it so idle
+// polls share one Postgres session with the other background workers.
+func (d *Dispatcher) SetBeforePoll(fn func(func())) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	d.beforePoll = fn
+	d.mu.Unlock()
 }
 
 // NewDispatcher builds a dispatcher. store may be nil only in tests that never tick.
@@ -267,7 +279,7 @@ func (d *Dispatcher) Run(ctx context.Context) {
 	defer cancel()
 	ticker := time.NewTicker(PollInterval)
 	defer ticker.Stop()
-	if errors.Is(d.ProcessOnce(ctx, time.Now().UTC()), ErrStoreFenced) {
+	if d.poll(ctx) {
 		return
 	}
 	for {
@@ -275,11 +287,28 @@ func (d *Dispatcher) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if errors.Is(d.ProcessOnce(ctx, time.Now().UTC()), ErrStoreFenced) {
+			if d.poll(ctx) {
 				return
 			}
 		}
 	}
+}
+
+// poll runs one outbox pass. It reports whether the store fenced this node.
+func (d *Dispatcher) poll(ctx context.Context) bool {
+	var fenced bool
+	run := func() {
+		fenced = errors.Is(d.ProcessOnce(ctx, time.Now().UTC()), ErrStoreFenced)
+	}
+	d.mu.Lock()
+	before := d.beforePoll
+	d.mu.Unlock()
+	if before != nil {
+		before(run)
+	} else {
+		run()
+	}
+	return fenced
 }
 
 // Close stops the loop and closes sinks.

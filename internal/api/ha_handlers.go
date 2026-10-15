@@ -161,6 +161,17 @@ func isReadOnlyExempt(method, path string) bool {
 	return false
 }
 
+// replicationLag reads the standby delay without opening a second Postgres
+// session while a background poll still holds the idle one.
+func (s *Server) replicationLag() (float64, bool) {
+	var lag float64
+	var ok bool
+	s.withBackgroundDB(func() {
+		lag, ok = s.meta.ReplicationLagSeconds()
+	})
+	return lag, ok
+}
+
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{
 		"status":         "ok",
@@ -186,7 +197,8 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	}
 	kmsProvider, kmsAvailable := s.kmsHealth()
 	resp["kms"] = map[string]any{"provider": kmsProvider, "available": kmsAvailable}
-	if lag, ok := s.meta.ReplicationLagSeconds(); ok {
+	lag, lagOK := s.replicationLag()
+	if lagOK {
 		resp["postgres_ok"] = true
 		resp["replication_lag_s"] = lag
 		observability.SetPostgresReplicationLag(lag)

@@ -45,7 +45,7 @@ func (s *Store) putUser(rec metadata.UserRecord, evs []events.OutboxRecord) (int
 		return userAlreadyExists(err)
 	}
 	if len(evs) == 0 {
-		return 0, run(s.pool)
+		return 0, run(s.queryExec())
 	}
 	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error { return run(tx) })
 }
@@ -150,6 +150,6 @@ func (s *Store) ListUsers() ([]metadata.UserRecord, error) {
 
 func (s *Store) CountUsers() (int, error) {
 	var n int
-	err := s.pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM users`).Scan(&n)
+	err := s.queryExec().QueryRow(context.Background(), `SELECT COUNT(*) FROM users`).Scan(&n)
 	return n, err
 }

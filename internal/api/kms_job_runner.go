@@ -28,9 +28,32 @@ func (s *Server) runKMSJobs(ctx context.Context) {
 			if !s.kmsJobLeader(ctx) {
 				continue
 			}
+			// The idle poll shares the single Postgres session. A job that has
+			// work runs outside the lock so a long rewrap does not stall
+			// heartbeats or the outbox.
+			if !s.kmsJobPending() {
+				continue
+			}
 			s.stepKMSJobs(ctx)
 		}
 	}
+}
+
+func (s *Server) kmsJobPending() bool {
+	var jobs []metadata.KMSJob
+	var err error
+	s.withBackgroundDB(func() {
+		jobs, err = s.meta.ListKMSJobs()
+	})
+	if err != nil {
+		return false
+	}
+	for _, job := range jobs {
+		if job.Status == kms.JobPending || job.Status == kms.JobRunning {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) kmsJobLeader(ctx context.Context) bool {

@@ -81,7 +81,7 @@ func (s *Server) WatchVaultConfig(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			s.refreshVaultFromMeta()
+			s.withBackgroundDB(func() { s.refreshVaultFromMeta() })
 		}
 	}
 }
