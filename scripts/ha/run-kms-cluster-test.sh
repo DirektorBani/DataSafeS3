@@ -394,23 +394,36 @@ else
   verdict kms_get_all FAIL
 fi
 
-docker network disconnect datasafe-kms-cluster_default ds-kms-vault || true
-sleep 2
-s3_get "$LB/kmsbox/a.txt"
-kms_down="$HTTP_CODE"
-s3_get "$LB/plainbox/a.txt"
-plain_up="$HTTP_CODE"
-docker network connect datasafe-kms-cluster_default ds-kms-vault || true
-if [ "$kms_down" = "503" ] && [ "$plain_up" = "200" ]; then
-  verdict vault_down PASS
-else
-  echo "vault down kms=$kms_down plain=$plain_up" >&2
+# A DEK already unwrapped stays readable while Vault is down (cache TTL).
+# fresh.txt is written and never read, so its GET is a cache miss and must be 503.
+s3_put "$LB/kmsbox/fresh.txt" "fresh-body" -H "x-amz-server-side-encryption: aws:kms"
+if [ "$HTTP_CODE" != "200" ]; then
+  echo "fresh put $HTTP_CODE $(cat "$STATE/body.txt")" >&2
   verdict vault_down FAIL
+else
+  docker network disconnect datasafe-kms-cluster_default ds-kms-vault || true
+  sleep 2
+  s3_get "$LB/kmsbox/a.txt"
+  cached="$HTTP_CODE"
+  s3_get "$LB/kmsbox/fresh.txt"
+  kms_down="$HTTP_CODE"
+  s3_get "$LB/plainbox/a.txt"
+  plain_up="$HTTP_CODE"
+  docker network connect datasafe-kms-cluster_default ds-kms-vault || true
+  if [ "$kms_down" = "503" ] && [ "$plain_up" = "200" ]; then
+    verdict vault_down PASS
+  else
+    echo "vault down miss=$kms_down cached=$cached plain=$plain_up" >&2
+    verdict vault_down FAIL
+  fi
 fi
+# Wait on the cache miss. A cached GET is 200 before Vault is actually back,
+# and the next rotate would then be 503.
 i=0
-until s3_get "$LB/kmsbox/a.txt"; [ "$HTTP_CODE" = "200" ]; do
+until s3_get "$LB/kmsbox/fresh.txt"; [ "$HTTP_CODE" = "200" ] && cmp -s "$STATE/got.bin" <(printf '%s' 'fresh-body'); do
   i=$((i + 1))
   if [ "$i" -gt 30 ]; then
+    echo "vault back fresh=$HTTP_CODE" >&2
     verdict vault_back FAIL
     break
   fi
