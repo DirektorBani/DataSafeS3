@@ -1051,11 +1051,7 @@ func (h *Handler) notePublicRead(r *http.Request, logicalBucket, key, result str
 			ver = rec.Encryption.KeyVersion
 		}
 	}
-	ip := r.RemoteAddr
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		ip = strings.TrimSpace(strings.Split(fwd, ",")[0])
-	}
-	h.OnPublicRead(r.Context(), ip, logicalBucket, key, result, keyID, ver)
+	h.OnPublicRead(r.Context(), requestSourceIP(r), logicalBucket, key, result, keyID, ver)
 }
 
 func (h *Handler) emitActivity(r *http.Request, accessKey, action, resourceType, resourceName string) {

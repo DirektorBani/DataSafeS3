@@ -227,6 +227,9 @@ func (s *Server) handlePublicShareInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rec, err := s.svc.HeadObject(r.Context(), link.Bucket, link.Key, "")
+	if err == nil {
+		err = s.svc.ProbeSealedObject(rec)
+	}
 	if err != nil {
 		if errors.Is(err, s3.ErrKeyDestroyed) {
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": s3.MsgKeyDestroyed})

@@ -288,6 +288,10 @@ type MetadataStore interface {
 	// holder is holder_id. ok is false when the row is missing, expired, or
 	// this store has no lease table (Bolt).
 	LiveLeader() (holder string, ok bool, err error)
+	// ListRecentLeaderAttempts is every holder_id that ran the lease INSERT
+	// since, including a follower whose ON CONFLICT WHERE did not change the
+	// row. Bolt has no lease table and returns nil.
+	ListRecentLeaderAttempts(since time.Time) ([]string, error)
 
 	// Field encryption KEK registry
 	ListEncryptionKeys(ctx context.Context) ([]EncryptionKeyRecord, error)

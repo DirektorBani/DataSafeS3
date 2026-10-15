@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Three storage nodes on one Postgres and one shared object volume.
-# Replace 1.5.0 with 1.6.0 one node at a time. While a 1.5.0 peer is still
-# answering /healthz, bucket encryption on a 1.6.0 leader is HTTP 409.
+# Replace 1.5.0 with 1.6.0 one node at a time. While a healthy 1.5.0 peer is
+# still retrying the HA lease, bucket encryption on a 1.6.0 leader is HTTP 409.
+# The old nodes are not written into system_config.cluster.nodes.
 # After the last node is 1.6.0, aws:kms bucket encryption succeeds.
 # Reads of plaintext objects keep working on every node (shared disk).
 #
@@ -153,23 +154,6 @@ get_everywhere() {
   done
 }
 
-register_old_peers() {
-  local nodes="["
-  local first=1 name
-  for name in e06a e06b e06c; do
-    if is_15 "$name"; then
-      if [ "$first" -eq 0 ]; then
-        nodes+=","
-      fi
-      first=0
-      nodes+="{\"id\":\"${name}\",\"address\":\"http://${name}:9000\",\"role\":\"primary\",\"status\":\"healthy\"}"
-    fi
-  done
-  nodes+="]"
-  docker exec "$PG" psql -U datasafe -d datasafe -c \
-    "UPDATE system_config SET data = jsonb_set(data, '{cluster}', COALESCE(data->'cluster','{}'::jsonb) || jsonb_build_object('nodes', '${nodes}'::jsonb), true) WHERE id='system'" >/dev/null
-}
-
 clear_peers() {
   docker exec "$PG" psql -U datasafe -d datasafe -c \
     "UPDATE system_config SET data = jsonb_set(data, '{cluster,nodes}', '[]'::jsonb, true) WHERE id='system'" >/dev/null
@@ -179,6 +163,37 @@ encryption_xml() {
   cat <<'EOF'
 <ServerSideEncryptionConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Rule><ApplyServerSideEncryptionByDefault><SSEAlgorithm>aws:kms</SSEAlgorithm></ApplyServerSideEncryptionByDefault></Rule></ServerSideEncryptionConfiguration>
 EOF
+}
+
+assert_peers_unregistered() {
+  local raw
+  raw="$(docker exec "$PG" psql -U datasafe -d datasafe -tAc \
+    "SELECT COALESCE(data#>'{cluster,nodes}','[]'::jsonb)::text FROM system_config WHERE id='system'" \
+    | tr -d '[:space:]')"
+  case "$raw" in
+    ""|"[]"|"null") return 0 ;;
+  esac
+  if printf '%s' "$raw" | grep -q 'e06'; then
+    echo "cluster.nodes lists storage peers (${raw}); the gate must not depend on that list" >&2
+    return 1
+  fi
+}
+
+wait_old_attempt() {
+  local deadline=$((SECONDS + 30)) name ids
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    ids="$(docker exec "$PG" psql -U datasafe -d datasafe -tAc \
+      "SELECT COALESCE(string_agg(holder_id, ','), '') FROM ha_leader_attempts WHERE attempted_at > NOW() - INTERVAL '2 minutes'" \
+      | tr -d '[:space:]')"
+    for name in "$@"; do
+      case ",${ids}," in
+        *,"${name}",*) return 0 ;;
+      esac
+    done
+    sleep 1
+  done
+  echo "no recent lease attempt from a live 1.5.0 node (ids=${ids})" >&2
+  return 1
 }
 
 assert_mixed_409() {
@@ -194,6 +209,8 @@ assert_mixed_409() {
   if [ "${#old_nodes[@]}" -lt 1 ] || [ "${#old_nodes[@]}" -eq 3 ]; then
     return 0
   fi
+  # Pause only long enough for a 1.6.0 node to hold the lease. The assertion
+  # itself runs after the 1.5.0 nodes are healthy again.
   local paused=()
   for name in "${old_nodes[@]}"; do
     docker pause "$name" >/dev/null
@@ -226,8 +243,12 @@ assert_mixed_409() {
     echo "mixed cluster did not elect a 1.6.0 leader (holder=${holder})" >&2
     return 1
   fi
-  sleep 1
-  register_old_peers
+  for name in "${old_nodes[@]}"; do
+    wait_health "http://127.0.0.1:$(port_of "$name")/healthz" "$name"
+    is_15 "$name" || { echo "$name is not 1.5.0 during the mixed assertion" >&2; return 1; }
+  done
+  wait_old_attempt "${old_nodes[@]}"
+  assert_peers_unregistered
   local port
   port="$(port_of "$holder")"
   s3_code PUT "http://127.0.0.1:${port}/rollbox?encryption" "$(encryption_xml)" "application/xml"
@@ -235,12 +256,47 @@ assert_mixed_409() {
     echo "mixed encryption HTTP $S3_CODE $S3_BODY" >&2
     return 1
   fi
+  local console_code console_body
+  console_body="$(curl -sS -X PUT "http://127.0.0.1:${port}/api/v1/buckets/rollbox/encryption" \
+    -H "Authorization: Bearer ${tok}" -H 'Content-Type: application/json' \
+    -d '{"enabled":true}' -w '\n%{http_code}' || true)"
+  console_code="$(printf '%s' "$console_body" | tail -n 1)"
+  console_body="$(printf '%s' "$console_body" | sed '$d')"
+  if [ "$console_code" != "409" ] || ! printf '%s' "$console_body" | grep -q "cluster_upgrade"; then
+    echo "mixed console encryption HTTP $console_code $console_body" >&2
+    return 1
+  fi
   SEEN_409=1
-  echo "mixed cluster: aws:kms bucket encryption is 409 while a 1.5.0 peer is live"
+  echo "mixed cluster: aws:kms bucket encryption is 409 while healthy 1.5.0 peers are live"
   get_everywhere "/rollbox/a.txt" "rolling-plain"
   s3_code PUT "http://127.0.0.1:${port}/rollbox/b.txt" "during-mix"
   [ "$S3_CODE" = "200" ] || { echo "mixed put $S3_CODE $S3_BODY" >&2; return 1; }
   get_everywhere "/rollbox/b.txt" "during-mix"
+  local sse_out sse_code
+  sse_out="$(curl --aws-sigv4 "aws:amz:us-east-1:s3" --user "datasafe:datasafesecret" \
+    -sS -w '\n%{http_code}' -X PUT \
+    -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" \
+    -H "x-amz-server-side-encryption: AES256" \
+    --data-binary "format-zero" \
+    "http://127.0.0.1:${port}/rollbox/sse-mix.txt" || true)"
+  sse_code="$(printf '%s' "$sse_out" | tail -n 1)"
+  if [ "$sse_code" != "200" ]; then
+    echo "mixed sse-s3 HTTP $sse_code $(printf '%s' "$sse_out" | sed '$d')" >&2
+    return 1
+  fi
+  s3_code GET "http://127.0.0.1:${port}/rollbox/sse-mix.txt" ""
+  if [ "$S3_CODE" != "200" ] || [ "$S3_BODY" != "format-zero" ]; then
+    echo "mixed sse-s3 get HTTP $S3_CODE $(printf '%q' "$S3_BODY")" >&2
+    return 1
+  fi
+  local fmt
+  fmt="$(docker exec "$PG" psql -U datasafe -d datasafe -tAc \
+    "SELECT COALESCE(encryption->>'enc_format_version','') || ':' || COALESCE(encryption->>'sse_algorithm','') FROM objects WHERE key='sse-mix.txt' AND is_latest ORDER BY last_modified DESC LIMIT 1" \
+    | tr -d '[:space:]')"
+  if [ "$fmt" != "0:AES256" ]; then
+    echo "mixed sse-s3 stored as ${fmt}, want format 0" >&2
+    return 1
+  fi
 }
 
 load_loop() {

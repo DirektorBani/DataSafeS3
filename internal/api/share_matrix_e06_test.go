@@ -182,6 +182,17 @@ func runE06ShareMatrix(t *testing.T, s *api.Server) {
 		e06Outbox(t, s, "ObjectDownloaded", col.name, "kms_public", false)
 	}
 	down := cols[3]
+	downInfo := httptest.NewRecorder()
+	s.Handler().ServeHTTP(downInfo, httptest.NewRequest(http.MethodGet, "/api/v1/public/share/"+down.token, nil))
+	e06HTTP(t, downInfo, http.StatusServiceUnavailable, "KMS unavailable", "vault down share info")
+	for _, col := range cols {
+		if col.kind == "kms" {
+			continue
+		}
+		info := httptest.NewRecorder()
+		s.Handler().ServeHTTP(info, httptest.NewRequest(http.MethodGet, "/api/v1/public/share/"+col.token, nil))
+		e06HTTP(t, info, http.StatusOK, `"filename"`, col.name+" share info while vault down")
+	}
 	downShare := httptest.NewRecorder()
 	s.Handler().ServeHTTP(downShare, httptest.NewRequest(http.MethodGet, "/api/v1/public/share/"+down.token+"/download", nil))
 	e06HTTP(t, downShare, http.StatusServiceUnavailable, "KMS unavailable", "vault down share")

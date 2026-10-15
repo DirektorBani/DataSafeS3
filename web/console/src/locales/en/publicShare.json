@@ -7,7 +7,8 @@
     "blocked": "File sharing for this bucket is disabled by an administrator",
     "passwordRequired": "This link is protected by a password",
     "invalidPassword": "Wrong password",
-    "unavailable": "This file is temporarily unavailable. Try again later."
+    "unavailable": "This file is temporarily unavailable. Try again later.",
+    "destroyed": "The encryption key was destroyed. This file is gone for good."
   },
   "brand": "DataSafeS3",
   "title": {

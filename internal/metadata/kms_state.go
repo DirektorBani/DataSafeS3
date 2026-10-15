@@ -208,6 +208,11 @@ func (s *Store) LiveLeader() (string, bool, error) {
 	return "", false, nil
 }
 
+// ListRecentLeaderAttempts is unused on Bolt. The lease trigger is Postgres-only.
+func (s *Store) ListRecentLeaderAttempts(time.Time) ([]string, error) {
+	return nil, nil
+}
+
 func (s *Store) UpsertNodeHeartbeat(nodeID, version string, at time.Time) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		b, err := s.kmsBucket(tx, "cluster_node_heartbeats")

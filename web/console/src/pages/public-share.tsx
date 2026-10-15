@@ -67,8 +67,13 @@ function classifyShareError(
   t: (key: string) => string
 ): ShareError {
   const blob = `${code} ${human}`.toLowerCase();
-  if (code.includes("Ключ шифрования уничтожен") || human.includes("Ключ шифрования уничтожен")) {
-    return { kind: "destroyed", message: human || code };
+  if (
+    code.includes("Ключ шифрования уничтожен") ||
+    human.includes("Ключ шифрования уничтожен") ||
+    blob.includes("key destroyed") ||
+    blob.includes("key_destroyed")
+  ) {
+    return { kind: "destroyed", message: t("error.destroyed") };
   }
   if (status === 404 || blob.includes("not found")) {
     return { kind: "not_found", message: t("error.notFound") };

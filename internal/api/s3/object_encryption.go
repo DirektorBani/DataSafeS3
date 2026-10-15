@@ -216,6 +216,20 @@ func versionBelow160(v string) bool {
 	return nums[1] < 6
 }
 
+// versionKnown160 is true when v parses as 1.6.0 or newer.
+// Empty, dev, and unparseable strings are unknown. An unknown peer is old.
+func versionKnown160(v string) bool {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	if v == "" || strings.EqualFold(v, "dev") {
+		return false
+	}
+	if versionBelow160(v) {
+		return false
+	}
+	major, err := strconv.Atoi(strings.Split(v, ".")[0])
+	return err == nil && major >= 1
+}
+
 // HeartbeatVersion is the version this process writes for the upgrade gate.
 // The encryption code in this binary is 1.6.0. The image build still stamps
 // buildinfo.Version from the VERSION file (1.5.0) when the Docker arg is dev,
@@ -234,27 +248,39 @@ func (s *Service) EncryptionChangesBlocked() bool {
 }
 
 func (s *Service) clusterUpgradeInProgress() bool {
-	fresh := map[string]struct{}{}
+	known := map[string]struct{}{}
 	beats, err := s.Meta.ListNodeHeartbeats(time.Now().Add(-2 * time.Minute))
 	if err == nil {
 		for _, b := range beats {
-			if versionBelow160(b.Version) {
+			// RegisterNodeAddress can leave version blank. That row is an
+			// address, not a peer version. A non-blank version that is not
+			// 1.6.0 or newer is an old or unknown peer.
+			if strings.TrimSpace(b.Version) == "" {
+				continue
+			}
+			if !versionKnown160(b.Version) {
 				return true
 			}
-			fresh[b.NodeID] = struct{}{}
+			known[b.NodeID] = struct{}{}
 		}
 	}
 	// 1.5.0 does not write cluster_node_heartbeats. A live leader still renews
-	// ha_leader_lock (lock_id storage-server, holder_id, acquired_at, expires_at).
-	// A follower only retries that same INSERT. The WHERE clause does not match
-	// while the lease is held, so the row is unchanged and the follower's
-	// holder_id is not stored. There is no lease history. The migration advisory
-	// lock is released after startup. pg_stat_activity shows the retry with an
-	// empty application_name, the same as any other client, and the query text
-	// has no version. That session is not a reliable 1.5.0 signal.
+	// ha_leader_lock. A follower retries the same INSERT. The ON CONFLICT WHERE
+	// does not match while the lease is held, so the row stays with the leader.
+	// Migration 030 records NEW.holder_id in ha_leader_attempts from a BEFORE
+	// INSERT trigger, which runs even when that WHERE skips the update.
+	// A recent attempt with no 1.6.0 heartbeat has an unknown version and is
+	// treated as 1.5.0. A stopped node leaves the two-minute window.
 	if holder, ok, err := s.Meta.LiveLeader(); err == nil && ok && holder != "" {
-		if _, seen := fresh[holder]; !seen {
+		if _, seen := known[holder]; !seen {
 			return true
+		}
+	}
+	if attempts, err := s.Meta.ListRecentLeaderAttempts(time.Now().Add(-2 * time.Minute)); err == nil {
+		for _, id := range attempts {
+			if _, seen := known[id]; !seen {
+				return true
+			}
 		}
 	}
 	return s.peerPre160()
@@ -480,6 +506,27 @@ func (s *Service) unwrapDEK(enc *metadata.ObjectEncryption) ([]byte, error) {
 	return s.Local.Unwrap(context.Background(), enc.KeyID, ver, raw)
 }
 
+// ProbeSealedObject reports whether a share page can offer this object.
+// SSE-KMS whose data key cannot be unwrapped is unavailable. A destroyed key
+// is refused. Plaintext and SSE-S3 do not call Vault.
+func (s *Service) ProbeSealedObject(rec metadata.ObjectRecord) error {
+	enc := rec.Encryption
+	if enc == nil || !enc.Sealed() {
+		return nil
+	}
+	if enc.KeyID != "" {
+		key, err := s.Meta.GetKMSKey(enc.KeyID)
+		if err == nil && key.Status == "destroyed" {
+			return ErrKeyDestroyed
+		}
+	}
+	if enc.Provider != kms.ProviderVault {
+		return nil
+	}
+	_, err := s.unwrapDEK(enc)
+	return err
+}
+
 // prepareObjectEncryption decides how to seal the next write.
 // The returned reader is what the backend stores. counter is non-nil when the
 // plaintext length is known only after the reader is consumed.
@@ -643,9 +690,30 @@ func (s *Service) openDecrypted(rc io.ReadCloser, rec metadata.ObjectRecord) (io
 
 // openUnmarked serves an object that 1.5.0 stored with no encryption metadata.
 // A format-1 body (DSSE, version 1) is not format 0 and is not returned as
-// plaintext. Anything else is the original bytes: GCM is not attempted, because
-// a failed authentication used to become HTTP 500 for every plaintext object.
+// plaintext. When the server key is set, a format-0 blob that authenticates
+// is returned as plaintext. A failed authentication returns the original
+// bytes, so unmarked plaintext stays plaintext. Ciphertext this key can open
+// is never returned as the body.
 func (s *Service) openUnmarked(rc io.ReadCloser, rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {
+	if s.Local == nil {
+		return s.openUnmarkedRaw(rc, rec)
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, rec, err
+	}
+	if unmarkedDSSE(data) {
+		return nil, rec, errors.New("object envelope is missing encryption metadata")
+	}
+	if plain, err := s.Local.DecryptFormat0(data); err == nil {
+		rec.Size = int64(len(plain))
+		return io.NopCloser(bytes.NewReader(plain)), rec, nil
+	}
+	return io.NopCloser(bytes.NewReader(data)), rec, nil
+}
+
+func (s *Service) openUnmarkedRaw(rc io.ReadCloser, rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {
 	var hdr [5]byte
 	n, err := io.ReadFull(rc, hdr[:])
 	if err == io.EOF || err == io.ErrUnexpectedEOF {
@@ -655,7 +723,7 @@ func (s *Service) openUnmarked(rc io.ReadCloser, rec metadata.ObjectRecord) (io.
 		rc.Close()
 		return nil, rec, err
 	}
-	if bytes.Equal(hdr[:4], []byte{'D', 'S', 'S', 'E'}) && hdr[4] == 1 {
+	if unmarkedDSSE(hdr[:n]) {
 		rc.Close()
 		return nil, rec, errors.New("object envelope is missing encryption metadata")
 	}
@@ -663,6 +731,10 @@ func (s *Service) openUnmarked(rc io.ReadCloser, rec metadata.ObjectRecord) (io.
 		io.Reader
 		io.Closer
 	}{Reader: io.MultiReader(bytes.NewReader(hdr[:n]), rc), Closer: rc}, rec, nil
+}
+
+func unmarkedDSSE(b []byte) bool {
+	return len(b) >= 5 && bytes.Equal(b[:4], []byte{'D', 'S', 'S', 'E'}) && b[4] == 1
 }
 
 func (s *Service) openFormat0(rc io.ReadCloser, rec metadata.ObjectRecord) (io.ReadCloser, metadata.ObjectRecord, error) {

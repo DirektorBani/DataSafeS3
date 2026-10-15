@@ -571,6 +571,40 @@ func TestE01PlaintextUpgradeFrom15Postgres(t *testing.T) {
 	assertUpgradePlaintext(t, s, "pgup", "old.txt", "pg-plain")
 }
 
+func TestE01UnmarkedFormat0WithoutFlag(t *testing.T) {
+	t.Setenv("STORAGE_SSE_LEGACY_FORMAT0", "")
+	const key = "legacy-key"
+	dir := t.TempDir()
+	meta, err := metadata.Open(metadata.Config{Backend: metadata.BackendBolt, DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cipher, err := storage.NewSSECipher(key)
+	if err != nil || cipher == nil {
+		t.Fatal(err)
+	}
+	plain := []byte("from-15-chunked")
+	ct, err := cipher.Encrypt(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plantUnmarkedObject(t, meta, dir, "legbox", "old.bin", ct)
+	_ = meta.Close()
+
+	s := newKeyedServer(t, dir, key)
+	st, err := s.Meta().GetKMSState()
+	if err != nil || st.LegacySSEObjects {
+		t.Fatalf("flag must stay off: %+v %v", st, err)
+	}
+	got := s3Call(t, s, http.MethodGet, "/legbox/old.bin", nil, nil)
+	if got.Code != http.StatusOK || got.Body.String() != string(plain) {
+		t.Fatalf("legacy get %d %q", got.Code, got.Body.String())
+	}
+	if bytes.Equal(got.Body.Bytes(), ct) {
+		t.Fatal("returned ciphertext")
+	}
+}
+
 func TestE01LegacyFormat0AndFingerprint(t *testing.T) {
 	t.Setenv("STORAGE_SSE_LEGACY_FORMAT0", "true")
 	dir := t.TempDir()
@@ -859,12 +893,19 @@ func TestE01Live15LeaderLeaseBlocksEncryption(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec = doJSON(t, s.Handler(), http.MethodPut, "/api/v1/buckets/leasebox/encryption", tok, []byte(`{"enabled":true}`), "")
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), s3.MsgClusterUpgrade) {
+		t.Fatalf("fresh lease attempt after expiry %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := pool.Exec(ctx, `UPDATE ha_leader_attempts SET attempted_at = NOW() - INTERVAL '3 minutes'`); err != nil {
+		t.Fatal(err)
+	}
+	rec = doJSON(t, s.Handler(), http.MethodPut, "/api/v1/buckets/leasebox/encryption", tok, []byte(`{"enabled":true}`), "")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expired lease %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("stale lease attempt %d %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestE01FollowerLeaseAttemptDoesNotBlock(t *testing.T) {
+func TestE01FollowerLeaseAttemptBlocksUntilKnown(t *testing.T) {
 	dsn := os.Getenv("TEST_POSTGRES_DSN")
 	if dsn == "" {
 		t.Skip("TEST_POSTGRES_DSN not set — skipping postgres integration test")
@@ -984,9 +1025,106 @@ func TestE01FollowerLeaseAttemptDoesNotBlock(t *testing.T) {
 	if view.Code != http.StatusOK || !strings.Contains(view.Body.String(), `"metadata_backend":"postgres"`) || !strings.Contains(view.Body.String(), `"ha_enabled":false`) {
 		t.Fatalf("view %d %s", view.Code, view.Body.String())
 	}
+	var sawOld bool
+	attempts, err := s.Meta().ListRecentLeaderAttempts(time.Now().Add(-2 * time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range attempts {
+		if id == "node-15" {
+			sawOld = true
+		}
+	}
+	if !sawOld {
+		t.Fatal("follower INSERT was not recorded")
+	}
 	rec := doJSON(t, s.Handler(), http.MethodPut, "/api/v1/buckets/folbox/encryption", tok, []byte(`{"enabled":true}`), "")
-	if rec.Code != http.StatusOK {
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), s3.MsgClusterUpgrade) {
 		t.Fatalf("unregistered follower %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := pool.Exec(ctx, `UPDATE ha_leader_attempts SET attempted_at = NOW() - INTERVAL '3 minutes'`); err != nil {
+		t.Fatal(err)
+	}
+	rec = doJSON(t, s.Handler(), http.MethodPut, "/api/v1/buckets/folbox/encryption", tok, []byte(`{"enabled":true}`), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stale follower %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := follower.Exec(ctx, `
+		INSERT INTO ha_leader_lock (lock_id, holder_id, acquired_at, expires_at)
+		VALUES ('storage-server', $1, $2, $3)
+		ON CONFLICT (lock_id) DO UPDATE SET
+			holder_id = EXCLUDED.holder_id,
+			acquired_at = EXCLUDED.acquired_at,
+			expires_at = EXCLUDED.expires_at
+		WHERE ha_leader_lock.expires_at < $2 OR ha_leader_lock.holder_id = $1`,
+		"node-15", time.Now().UTC(), time.Now().UTC().Add(30*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	rec = doJSON(t, s.Handler(), http.MethodPut, "/api/v1/buckets/folbox/encryption", tok, []byte(`{"enabled":true}`), "")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("fresh follower again %d %s", rec.Code, rec.Body.String())
+	}
+	if err := s.Meta().UpsertNodeHeartbeat("node-15", "1.6.0", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	rec = doJSON(t, s.Handler(), http.MethodPut, "/api/v1/buckets/folbox/encryption", tok, []byte(`{"enabled":true}`), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("follower at 1.6.0 %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestE06PublicReadIgnoresSpoofedForwardedFor(t *testing.T) {
+	t.Setenv("STORAGE_TRUSTED_PROXIES", "")
+	s := testServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+	createBucket(t, s, tok, "pubread", []byte(`{"visibility":"public-read"}`))
+	put := s3Call(t, s, http.MethodPut, "/pubread/a.txt", []byte("public-body"), nil)
+	if put.Code != http.StatusOK {
+		t.Fatalf("put %d %s", put.Code, put.Body.String())
+	}
+	req := httptest.NewRequest(http.MethodGet, "/pubread/a.txt", nil)
+	req.RemoteAddr = "203.0.113.9:1234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.2")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "public-body" {
+		t.Fatalf("anon %d %q", rec.Code, rec.Body.String())
+	}
+	list, err := s.Meta().ListActivity(metadata.ActivityFilter{Action: metadata.ActionObjectDownloaded, Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ip string
+	for _, ev := range list.Events {
+		if ev.User == "public" && strings.Contains(ev.ResourceName, "pubread/a.txt") {
+			ip = ev.IPAddress
+		}
+	}
+	if ip != "203.0.113.9" {
+		t.Fatalf("audit ip %q", ip)
+	}
+
+	t.Setenv("STORAGE_TRUSTED_PROXIES", "203.0.113.9/32")
+	req = httptest.NewRequest(http.MethodGet, "/pubread/a.txt", nil)
+	req.RemoteAddr = "203.0.113.9:1234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.2")
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("trusted %d", rec.Code)
+	}
+	list, err = s.Meta().ListActivity(metadata.ActivityFilter{Action: metadata.ActionObjectDownloaded, Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ip = ""
+	for _, ev := range list.Events {
+		if ev.User == "public" && ev.IPAddress == "198.51.100.2" {
+			ip = ev.IPAddress
+		}
+	}
+	if ip != "198.51.100.2" {
+		t.Fatal("trusted proxy did not supply the client address")
 	}
 }
 
