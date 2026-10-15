@@ -238,6 +238,7 @@ export function PublicSharePage() {
                     : t("ready")}
           </CardDescription>
         </CardHeader>
+        {error?.kind === "destroyed" && !loading ? null : (
         <CardContent>
           {loading && (
             <div className="flex justify-center py-4">
@@ -245,7 +246,7 @@ export function PublicSharePage() {
             </div>
           )}
 
-          {!loading && error && error.kind !== "invalid_password" && (
+          {!loading && error && error.kind !== "invalid_password" && error.kind !== "destroyed" && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-center text-sm text-muted-foreground">
               {error.kind === "limit_reached" && <p>{t("hint.limitReached")}</p>}
               {error.kind === "expired" && <p>{t("hint.expired")}</p>}
@@ -316,6 +317,7 @@ export function PublicSharePage() {
             </div>
           )}
         </CardContent>
+        )}
       </Card>
     </div>
   );

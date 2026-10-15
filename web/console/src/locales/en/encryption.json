@@ -44,6 +44,7 @@
   "jobErrors": "Errors: {{count}}",
   "jobEta": "About {{seconds}} s left",
   "jobDone": "Finished",
+  "jobDoneWithErrors": "Finished with errors",
   "jobReport": "Download report",
   "destroy": "Destroy key",
   "destroyTitle": "Destroy the key?",

@@ -560,22 +560,22 @@ func (c *Client) privilegedToken(ctx context.Context) (string, error) {
 	return resp.Auth.ClientToken, nil
 }
 
-// TestLoginEncrypt checks login plus encrypt and decrypt, then deletes the
-// temporary Transit key so a connection test does not leave datasafe-connection-test.
-func (c *Client) TestLoginEncrypt(ctx context.Context) (err error) {
-	if err = c.EnsureKey(ctx, connectionTestKey); err != nil {
+// TestLoginEncrypt checks login plus encrypt and decrypt.
+// A configured probe key is used as-is. Otherwise the test creates
+// datasafe-connection-test when it is missing and does not delete it.
+// Delete permission is not required.
+func (c *Client) TestLoginEncrypt(ctx context.Context) error {
+	name := connectionTestKey
+	if configured := strings.TrimSpace(c.cfg.ProbeKey); configured != "" {
+		name = configured
+	} else if err := c.ensureProbeKey(ctx, name); err != nil {
 		return err
 	}
-	defer func() {
-		if delErr := c.DeleteKey(ctx, connectionTestKey); delErr != nil && err == nil {
-			err = delErr
-		}
-	}()
-	ct, _, encErr := c.Encrypt(ctx, connectionTestKey, []byte("datasafe"))
+	ct, _, encErr := c.Encrypt(ctx, name, []byte("datasafe"))
 	if encErr != nil {
 		return encErr
 	}
-	plain, decErr := c.Decrypt(ctx, connectionTestKey, ct)
+	plain, decErr := c.Decrypt(ctx, name, ct)
 	if decErr != nil {
 		return decErr
 	}
@@ -583,6 +583,24 @@ func (c *Client) TestLoginEncrypt(ctx context.Context) (err error) {
 		return c.fail("decrypt", 200, "transit decrypt mismatch")
 	}
 	return nil
+}
+
+// ensureProbeKey creates the connection-test key without deletion_allowed and without delete.
+func (c *Client) ensureProbeKey(ctx context.Context, name string) error {
+	tok, err := c.ensureToken(ctx)
+	if err != nil {
+		return err
+	}
+	path := c.mountPath("keys/" + url.PathEscape(name))
+	err = c.do(ctx, http.MethodPost, path, "create", map[string]string{"type": "aes256-gcm96"}, nil, tok)
+	if err == nil {
+		return nil
+	}
+	var se *StatusError
+	if !errors.As(err, &se) || (se.Status != http.StatusNoContent && se.Status != http.StatusBadRequest) {
+		return err
+	}
+	return c.do(ctx, http.MethodGet, path, "read", nil, &struct{}{}, tok)
 }
 
 func cipherVersion(ct string) int {

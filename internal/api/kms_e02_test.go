@@ -157,8 +157,8 @@ func TestE02SettingsNeverReturnSecrets(t *testing.T) {
 	fake.mu.Lock()
 	deleted := fake.deletes
 	fake.mu.Unlock()
-	if deleted < 1 {
-		t.Fatal("connection test left datasafe-connection-test")
+	if deleted != 0 {
+		t.Fatalf("connection test deleted a key: %d", deleted)
 	}
 	assertNoKMSSecret(t, s, tok, secret, token)
 	stored, err := s.Meta().GetSystemConfig()

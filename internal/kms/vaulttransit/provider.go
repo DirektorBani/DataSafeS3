@@ -217,7 +217,7 @@ func (p *Provider) Health(ctx context.Context) error {
 	return err
 }
 
-// Test logs in and encrypts a fixed string on datasafe-connection-test.
+// Test logs in and encrypts a fixed string. It does not delete a Transit key.
 func (p *Provider) Test(ctx context.Context) error {
 	start := time.Now()
 	err := p.client.TestLoginEncrypt(ctx)

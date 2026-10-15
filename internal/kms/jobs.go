@@ -8,11 +8,21 @@ const (
 )
 
 const (
-	JobPending   = "pending"
-	JobRunning   = "running"
-	JobCompleted = "completed"
-	JobFailed    = "failed"
+	JobPending             = "pending"
+	JobRunning             = "running"
+	JobCompleted           = "completed"
+	JobCompletedWithErrors = "completed_with_errors"
+	JobFailed              = "failed"
 )
+
+// FinishStatus is the status after the walk reaches the last object.
+// A positive error count is completed_with_errors.
+func FinishStatus(errors int) string {
+	if errors > 0 {
+		return JobCompletedWithErrors
+	}
+	return JobCompleted
+}
 
 const (
 	ActSkip    = "skip"

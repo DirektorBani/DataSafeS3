@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/api/s3"
@@ -99,7 +100,7 @@ func (s *Server) kmsJobView(job metadata.KMSJob) map[string]any {
 }
 
 func kmsJobETA(job metadata.KMSJob) int {
-	if job.Status == kms.JobCompleted || job.Status == kms.JobFailed {
+	if job.Status == kms.JobCompleted || job.Status == kms.JobCompletedWithErrors || job.Status == kms.JobFailed {
 		return 0
 	}
 	if job.Done <= 0 || job.Total <= job.Done || job.StartedAt.IsZero() {
@@ -272,7 +273,7 @@ func (s *Server) handleDestroyBucketKey(w http.ResponseWriter, r *http.Request) 
 		if v == nil {
 			vaultDelete = "vault is not configured"
 		} else if derr := v.Destroy(r.Context(), key.ID); derr != nil {
-			vaultDelete = derr.Error()
+			vaultDelete = vaultDeleteMessage(derr)
 		}
 	}
 	key.Status = "destroyed"
@@ -299,7 +300,8 @@ func (s *Server) handleDestroyBucketKey(w http.ResponseWriter, r *http.Request) 
 	job, err := s.startKMSJob(rec, key, kms.JobCryptoShred, info.Username)
 	if vaultDelete != "" {
 		job.VaultDeleteError = vaultDelete
-		s.noteKMSJobError(&job, "vault delete: "+vaultDelete)
+		job.Errors++
+		s.noteKMSJobError(&job, vaultDelete)
 		if putErr := s.meta.PutKMSJob(job); putErr != nil && err == nil {
 			err = putErr
 		}
@@ -314,6 +316,19 @@ func (s *Server) handleDestroyBucketKey(w http.ResponseWriter, r *http.Request) 
 	body := s.kmsJobView(job)
 	body["key_status"] = "destroyed"
 	writeJSON(w, http.StatusAccepted, body)
+}
+
+// vaultDeleteMessage keeps a single "vault delete:" prefix.
+func vaultDeleteMessage(err error) string {
+	msg := strings.TrimSpace(err.Error())
+	const prefix = "vault delete:"
+	for strings.HasPrefix(strings.ToLower(msg), prefix) {
+		msg = strings.TrimSpace(msg[len(prefix):])
+	}
+	if msg == "" {
+		return prefix
+	}
+	return prefix + " " + msg
 }
 
 func (s *Server) cryptoShredOr403(w http.ResponseWriter, r *http.Request) (auth.TokenInfo, metadata.BucketRecord, bool) {

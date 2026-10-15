@@ -23,7 +23,8 @@ SSE-S3 (`AES256`) всегда использует `STORAGE_SSE_MASTER_KEY` и 
 | `STORAGE_KMS_VAULT_SECRET_ID` или `_SECRET_ID_FILE` | пусто | Secret ID. Значение узла перекрывает секрет из общих метаданных. |
 | `STORAGE_KMS_VAULT_TOKEN_FILE` | пусто | Файл токена вместо AppRole. Консоль может хранить токен; из окружения читается файл. Токен, который Vault не продлевает (корневой токен dev-режима отвечает 400 `token not renewable`), всё равно используется. HTTP 403 и любой другой 400 токен отклоняют. |
 | `STORAGE_KMS_VAULT_ADMIN_ROLE_ID` / `_SECRET_ID` / `_SECRET_ID_FILE` | пусто | Отдельный AppRole для rotate и delete. |
-| `STORAGE_KMS_DEFAULT_KEY` | `datasafe-<tenant>-<bucket>` | Имя ключа по умолчанию. |
+| `STORAGE_KMS_DEFAULT_KEY` | `datasafe-<tenant>-<bucket>` | Имя ключа по умолчанию. Если `STORAGE_KMS_PROBE_KEY` пуст, проверка подключения шифрует этот ключ и не создаёт `datasafe-connection-test`. |
+| `STORAGE_KMS_PROBE_KEY` | пусто | Существующий ключ Transit для **Проверить подключение**. Только encrypt и decrypt. Delete не нужен. |
 | `STORAGE_KMS_KEY_ALLOWLIST` | `datasafe-*` | Имена, которые может запросить клиент. |
 | `STORAGE_KMS_DEK_CACHE_TTL` | `5m` | Сколько развёрнутый ключ данных живёт в памяти. |
 | `STORAGE_KMS_POLL_INTERVAL` | `2s` | Как часто узел читает `kms_keys.generation`, опрашивает Vault и перечитывает общие настройки. Последователь на Postgres видит сохранение из консоли не позже чем через 2 секунды. |
@@ -31,13 +32,13 @@ SSE-S3 (`AES256`) всегда использует `STORAGE_SSE_MASTER_KEY` и 
 
 Клиент — `net/http`. SDK Vault в сервер не входит. Узел звонит в Vault только когда заданы и провайдер, и адрес. Общие настройки лежат в метаданных (`system_config.kms`). Secret ID и токен запечатаны на диске даже если `STORAGE_FIELD_ENCRYPTION_ENABLED` выключен: AES-GCM с префиксом `kse:v1`, ключ выводится из `STORAGE_SSE_MASTER_KEY`, а если он пуст — из `STORAGE_JWT_SECRET`. Когда шифрование полей включено, эти два поля хранятся как `enc:v1`. `GET /api/v1/settings/system`, `GET /api/v1/kms/settings`, выгрузка Activity, `/healthz` и журналы их не возвращают. Копия `metadata.db` или строки Postgres `system_config` не содержит открытый текст. Сохранённый секрет показан как заданный; поле принимает только замену.
 
-`PUT /api/v1/kms/settings` перед записью шифрует и расшифровывает одно значение. Неудачная проверка — HTTP 400, или HTTP 408 если Vault не ответил; прежние настройки остаются. Очистка адреса проверку не вызывает. В консоли **Сохранить** неактивна, пока **Проверить подключение** не прошло для текущей формы. Проверка создаёт ключ Transit `datasafe-connection-test` и удаляет его. `deploy/vault/policies/datasafe-kms.hcl` разрешает delete только для этого ключа; без этого пути проверка завершается ошибкой, и ключ не остаётся.
+`PUT /api/v1/kms/settings` перед записью шифрует и расшифровывает одно значение. Неудачная проверка — HTTP 400, или HTTP 408 если Vault не ответил; прежние настройки остаются. Очистка адреса проверку не вызывает. В консоли **Сохранить** неактивна, пока **Проверить подключение** не прошло для текущей формы. **Проверить подключение** шифрует и расшифровывает одно значение. Берётся `STORAGE_KMS_PROBE_KEY`, а если он пуст — `STORAGE_KMS_DEFAULT_KEY`. Если не задан ни один, проверка создаёт `datasafe-connection-test`, когда ключа нет, и не удаляет его. Политике узла delete на этот ключ не нужен. Delete остаётся в политике администратора, которой пользуется crypto-shred.
 
 Узел Postgres перечитывает общие настройки Vault на двухсекундном опросе (или чаще, если `STORAGE_KMS_POLL_INTERVAL` короче). Один узел на Bolt применяет сохранение сразу и этот опрос не запускает.
 
 У каждого узла может быть свой AppRole в окружении. Этот секрет обратно в общую конфигурацию не пишется.
 
-Лабораторный оверлей (dev-режим, корневой токен, не для production): `deploy/compose/docker-compose.vault-kms.yml`. Политики: `deploy/vault/policies/datasafe-kms.hcl` (encrypt, decrypt, rewrap, создание и чтение `datasafe-*`, delete только для `datasafe-connection-test`) и `datasafe-kms-admin.hcl` (rotate, delete и `deletion_allowed`). Ключ, который создаёт этот сервер, получает `deletion_allowed` сразу. Без этого флага Vault не удаляет ключ, и crypto-shred записывает ошибку в задачу.
+Лабораторный оверлей (dev-режим, корневой токен, не для production): `deploy/compose/docker-compose.vault-kms.yml`. Политики: `deploy/vault/policies/datasafe-kms.hcl` (encrypt, decrypt, rewrap, создание и чтение `datasafe-*`; delete нет) и `datasafe-kms-admin.hcl` (rotate, delete и `deletion_allowed`). Ключ, который создаёт этот сервер, получает `deletion_allowed` сразу. Без этого флага Vault не удаляет ключ, и crypto-shred записывает ошибку в задачу.
 
 ## Когда Vault недоступен
 

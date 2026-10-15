@@ -237,6 +237,44 @@ func TestTransitBadSecretPermissionAndTimeout(t *testing.T) {
 	}
 }
 
+func TestConnectionProbeUsesConfiguredKey(t *testing.T) {
+	var deletes, creates int
+	var encrypted string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/auth/token/renew-self":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"errors":["token not renewable"]}`))
+		case r.Method == http.MethodDelete:
+			deletes++
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/keys/"):
+			creates++
+			w.WriteHeader(http.StatusNoContent)
+		case strings.Contains(r.URL.Path, "/encrypt/"):
+			encrypted = r.URL.Path
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"ciphertext": "vault:v1:YQ==", "key_version": 1}})
+		case strings.Contains(r.URL.Path, "/decrypt/"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"plaintext": base64.StdEncoding.EncodeToString([]byte("datasafe"))}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	p, err := Open(Config{
+		Provider: kms.ProviderVault, Addr: srv.URL, Token: "root", Timeout: time.Second, ProbeKey: "datasafe-box",
+	})
+	if err != nil || p == nil {
+		t.Fatal(err)
+	}
+	if err := p.Test(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if deletes != 0 || creates != 0 || !strings.Contains(encrypted, "datasafe-box") || strings.Contains(encrypted, connectionTestKey) {
+		t.Fatalf("deletes %d creates %d path %s", deletes, creates, encrypted)
+	}
+}
+
 func TestStaticTokenKeptWhenNotRenewable(t *testing.T) {
 	var deletes int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -265,8 +303,8 @@ func TestStaticTokenKeptWhenNotRenewable(t *testing.T) {
 	if err := p.Test(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if deletes != 1 {
-		t.Fatalf("connection-test key deletes %d", deletes)
+	if deletes != 0 {
+		t.Fatalf("connection test deleted a key: %d", deletes)
 	}
 
 	var calls int

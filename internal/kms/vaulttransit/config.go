@@ -41,6 +41,10 @@ type Config struct {
 	CacheTTL          time.Duration
 	PollInterval      time.Duration
 	CacheMax          int
+	// ProbeKey is an existing Transit key for the connection test.
+	// STORAGE_KMS_PROBE_KEY wins. STORAGE_KMS_DEFAULT_KEY is the fallback.
+	// Empty means the test creates datasafe-connection-test and does not delete it.
+	ProbeKey string
 }
 
 // EnvLocks marks fields the environment set. The console must not edit them.
@@ -67,7 +71,7 @@ func (c Config) Fingerprint() string {
 	parts := []string{
 		c.Provider, c.Addr, c.Namespace, c.Mount, c.CACert, c.RoleID, c.SecretID, c.SecretIDFile,
 		c.Token, c.TokenFile, c.AdminRoleID, c.AdminSecretID, c.AdminSecretIDFile,
-		c.Timeout.String(), c.CacheTTL.String(), c.PollInterval.String(),
+		c.ProbeKey, c.Timeout.String(), c.CacheTTL.String(), c.PollInterval.String(),
 	}
 	for _, p := range parts {
 		h.Write([]byte(p))
@@ -96,6 +100,7 @@ func LoadEnv() (Config, EnvLocks) {
 		CacheTTL:          durEnv("STORAGE_KMS_DEK_CACHE_TTL", defaultCacheTTL),
 		PollInterval:      durEnv("STORAGE_KMS_POLL_INTERVAL", defaultPoll),
 		CacheMax:          defaultCacheMax,
+		ProbeKey:          probeKeyFromEnv(),
 	}
 	cfg.SecretID = strings.TrimSpace(cfg.SecretID)
 	cfg.SecretIDFile = strings.TrimSpace(cfg.SecretIDFile)
@@ -163,6 +168,13 @@ func (c *Config) applyDefaults() {
 		c.CacheMax = defaultCacheMax
 	}
 	c.Addr = normalizeAddr(c.Addr)
+}
+
+func probeKeyFromEnv() string {
+	if v := strings.TrimSpace(os.Getenv("STORAGE_KMS_PROBE_KEY")); v != "" {
+		return v
+	}
+	return strings.TrimSpace(os.Getenv("STORAGE_KMS_DEFAULT_KEY"))
 }
 
 func getenv(key string, locked *bool) string {

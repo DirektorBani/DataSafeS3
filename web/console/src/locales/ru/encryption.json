@@ -44,6 +44,7 @@
   "jobErrors": "Ошибки: {{count}}",
   "jobEta": "Осталось около {{seconds}} с",
   "jobDone": "Готово",
+  "jobDoneWithErrors": "Завершено с ошибками",
   "jobReport": "Скачать отчёт",
   "destroy": "Уничтожить ключ",
   "destroyTitle": "Уничтожить ключ?",

@@ -347,7 +347,7 @@ func runE03Jobs(t *testing.T, s *Server) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if finished.Errors < 1 || !strings.Contains(strings.Join(finished.Samples, "\n"), "c.txt") {
+	if finished.Status != kms.JobCompletedWithErrors || finished.Errors < 1 || !strings.Contains(strings.Join(finished.Samples, "\n"), "c.txt") {
 		t.Fatalf("error sample missing %+v", finished)
 	}
 	kjobActivityUser(t, s, metadata.ActionKMSJobFailed, "bucket=resume", "admin")
@@ -586,8 +586,19 @@ func TestE03VaultDeleteErrorIsStored(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &job); err != nil {
 		t.Fatal(err)
 	}
-	if job.VaultDeleteError == "" || !strings.Contains(strings.Join(job.Samples, "\n"), "deletion is not allowed") {
-		t.Fatalf("job did not keep the vault error %+v", job)
+	if job.Errors < 1 || job.VaultDeleteError == "" || strings.Contains(job.VaultDeleteError, "vault delete: vault delete:") {
+		t.Fatalf("destroy response did not count the vault error %+v", job)
+	}
+	if !strings.Contains(strings.Join(job.Samples, "\n"), "deletion is not allowed") || strings.Count(job.VaultDeleteError, "vault delete:") != 1 {
+		t.Fatalf("job did not keep a single vault prefix %+v", job)
+	}
+	kjobDrain(t, s)
+	finished, err := s.Meta().GetKMSJob(job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finished.Errors < 1 || finished.Status == kms.JobCompleted || strings.Contains(finished.VaultDeleteError, "vault delete: vault delete:") {
+		t.Fatalf("stored job %+v", finished)
 	}
 	stored, err := s.Meta().GetKMSKey(key.ID)
 	if err != nil || stored.Status != "destroyed" {

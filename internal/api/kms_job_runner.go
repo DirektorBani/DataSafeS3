@@ -99,7 +99,7 @@ func (s *Server) stepOneKMSJob(ctx context.Context, job metadata.KMSJob) error {
 	}
 	if len(batch) == 0 {
 		now := time.Now().UTC()
-		job.Status = kms.JobCompleted
+		job.Status = kms.FinishStatus(job.Errors)
 		job.FinishedAt = &now
 		job.UpdatedAt = now
 		if err := s.meta.PutKMSJob(job); err != nil {

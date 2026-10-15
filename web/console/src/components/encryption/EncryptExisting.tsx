@@ -10,9 +10,13 @@ function errorText(err: Error): string {
   return err.message;
 }
 
+function terminal(status: string | undefined): boolean {
+  return status === "completed" || status === "completed_with_errors" || status === "failed";
+}
+
 function percent(job: KMSJob | undefined): number {
   if (!job) return 0;
-  if (job.status === "completed" || job.status === "failed") return 100;
+  if (terminal(job.status)) return 100;
   if (job.total > 0) return Math.min(100, Math.round((job.done / job.total) * 100));
   return 0;
 }
@@ -101,13 +105,15 @@ export function EncryptExisting({
           <p className="text-xs text-muted-foreground" data-testid="encryption-job-counts">
             {t("jobProgress", { done: view.done, total: view.total })}
             {view.errors > 0 ? ` · ${t("jobErrors", { count: view.errors })}` : ""}
-            {view.status === "completed" || view.status === "failed"
-              ? ` · ${t("jobDone")}`
-              : view.eta_seconds > 0
-                ? ` · ${t("jobEta", { seconds: view.eta_seconds })}`
-                : ""}
+            {view.status === "completed_with_errors"
+              ? ` · ${t("jobDoneWithErrors")}`
+              : terminal(view.status)
+                ? ` · ${t("jobDone")}`
+                : view.eta_seconds > 0
+                  ? ` · ${t("jobEta", { seconds: view.eta_seconds })}`
+                  : ""}
           </p>
-          {(view.status === "completed" || view.status === "failed") && (
+          {terminal(view.status) && (
             <Button size="sm" variant="link" className="h-auto px-0" data-testid="encryption-job-report" onClick={() => void downloadReport()}>
               {t("jobReport")}
             </Button>

@@ -17,11 +17,6 @@ path "transit/keys/datasafe-*" {
   capabilities = ["create", "read", "update"]
 }
 
-# The connection test creates this key and deletes it before it returns.
-path "transit/keys/datasafe-connection-test" {
-  capabilities = ["create", "read", "update", "delete"]
-}
-
-path "transit/keys/datasafe-connection-test/config" {
-  capabilities = ["read", "update"]
-}
+# The connection test creates datasafe-connection-test when STORAGE_KMS_PROBE_KEY
+# and STORAGE_KMS_DEFAULT_KEY are empty. It does not delete that key.
+# Delete stays on the admin policy, which crypto-shred uses.
