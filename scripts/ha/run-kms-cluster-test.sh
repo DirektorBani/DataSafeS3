@@ -177,7 +177,10 @@ http_code() {
 }
 
 json_field() {
-  sed -n "s/.*\"$1\":\"\\([^\"]*\\)\".*/\\1/p" "$STATE/body.txt" | head -n 1
+  # encoding/json writes '&' as \u0026. A presigned URL still has to be fetched
+  # with the separators the signature was computed over.
+  sed -n "s/.*\"$1\":\"\\([^\"]*\\)\".*/\\1/p" "$STATE/body.txt" | head -n 1 \
+    | sed -e 's/\\u0026/\&/g' -e 's/\\u003c/</g' -e 's/\\u003e/>/g'
 }
 
 token_for() {

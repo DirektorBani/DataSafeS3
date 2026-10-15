@@ -112,6 +112,11 @@ services:
       STORAGE_KMS_VAULT_ADMIN_SECRET_ID: kms-admin-secret
       STORAGE_KMS_POLL_INTERVAL: 1s
       STORAGE_NATS_URL: nats://nats:4222
+    # Followers answer GET from their own disk and do not proxy the read.
+    # One volume is the object tree the leader wrote, so any node can read it
+    # after that leader is killed.
+    volumes:
+      - kms-objects:/data/objects
     ports:
       - "127.0.0.1:${KMS_NODE1_PORT:-19111}:9000"
     depends_on:
@@ -131,6 +136,8 @@ services:
       STORAGE_ADVERTISE_URL: http://storage-2:9000
       STORAGE_KMS_VAULT_ROLE_ID: node2-role-id
       STORAGE_KMS_VAULT_SECRET_ID: node2-secret-id
+    volumes:
+      - kms-objects:/data/objects
     ports:
       - "127.0.0.1:${KMS_NODE2_PORT:-19112}:9000"
 
@@ -143,5 +150,10 @@ services:
       STORAGE_ADVERTISE_URL: http://storage-3:9000
       STORAGE_KMS_VAULT_ROLE_ID: node3-role-id
       STORAGE_KMS_VAULT_SECRET_ID: node3-secret-id
+    volumes:
+      - kms-objects:/data/objects
     ports:
       - "127.0.0.1:${KMS_NODE3_PORT:-19113}:9000"
+
+volumes:
+  kms-objects:
