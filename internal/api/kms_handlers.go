@@ -22,8 +22,8 @@ func (s *Server) notePresignDecrypt(ctx context.Context, user, ip, bucket, key, 
 	if keyID != "" {
 		resource += " key_id=" + keyID + " key_version=" + strconv.Itoa(keyVersion)
 	}
-	if result == "key_destroyed" {
-		resource += " result=key_destroyed"
+	if result != "" && result != "ok" {
+		resource += " result=" + result
 	}
 	s.logActivityAs(user, ip, metadata.ActionObjectDownloaded, "object", resource)
 	payload := map[string]any{
@@ -35,6 +35,42 @@ func (s *Server) notePresignDecrypt(ctx context.Context, user, ip, bucket, key, 
 		payload["key_version"] = keyVersion
 	}
 	s.publishEvent(ctx, "ShareDownloaded", bucket, key, "", tenant, payload)
+}
+
+func (s *Server) notePublicRead(ctx context.Context, ip, bucket, key, result, keyID string, keyVersion int) {
+	resource := bucket + "/" + key
+	if keyID != "" {
+		resource += " key_id=" + keyID + " key_version=" + strconv.Itoa(keyVersion)
+	}
+	if result != "" && result != "ok" {
+		resource += " result=" + result
+	}
+	s.logActivityAs("public", ip, metadata.ActionObjectDownloaded, "object", resource)
+	tenant := ""
+	if b, err := s.meta.GetBucket(bucket); err == nil {
+		tenant = b.EffectiveTenantID()
+	}
+	payload := map[string]any{
+		"actor": "public", "client_ip": ip,
+		"bucket": bucket, "key": key, "result": result,
+	}
+	if keyID != "" {
+		payload["key_id"] = keyID
+		payload["key_version"] = keyVersion
+	}
+	s.publishEvent(ctx, "ObjectDownloaded", bucket, key, "", tenant, payload)
+}
+
+func (s *Server) notePresignBlocked(ctx context.Context, accessKey, ip, bucket, reason string) {
+	s.logActivityAs(accessKey, ip, metadata.ActionShareBlocked, "share", bucket+" result=presign_blocked")
+	tenant := ""
+	if b, err := s.meta.GetBucket(bucket); err == nil {
+		tenant = b.EffectiveTenantID()
+	}
+	s.publishEvent(ctx, "ShareBlocked", bucket, "", "", tenant, map[string]any{
+		"actor": accessKey, "access_key": accessKey, "client_ip": ip,
+		"bucket": bucket, "result": "presign_blocked", "reason": reason,
+	})
 }
 
 func (s *Server) activeKMSJob(bucketKey string) (metadata.KMSJob, bool) {

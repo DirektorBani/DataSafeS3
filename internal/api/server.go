@@ -215,6 +215,8 @@ func NewServer(cfg Config) (*Server, error) {
 		s.logActivityAs(user, ip, action, resourceType, resourceName)
 	}
 	s3h.OnPresignDecrypt = s.notePresignDecrypt
+	s3h.OnPublicRead = s.notePublicRead
+	s3h.OnPresignBlocked = s.notePresignBlocked
 	initCORSFromEnv()
 	if err := s.seedAdminUser(); err != nil {
 		meta.Close()
@@ -1276,6 +1278,7 @@ func (s *Server) handlePresign(w http.ResponseWriter, r *http.Request) {
 	}
 	eff := s.effectiveSharingForRecord(brec)
 	if !eff.ShareLinksAllowed {
+		s.noteShareDenied(r, req.Bucket, "presign_blocked")
 		writeJSON(w, http.StatusForbidden, sharingDisabledBody())
 		return
 	}

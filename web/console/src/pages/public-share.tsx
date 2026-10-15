@@ -40,56 +40,77 @@ type ShareError = {
   message: string;
 };
 
+type ShareErrBody = { error?: string; message?: string; message_ru?: string };
+
+function shareFailureText(text: string, language: string): { code: string; human: string } {
+  let code = "";
+  let human = text || "";
+  try {
+    const json = JSON.parse(text) as ShareErrBody;
+    code = (json.error ?? "").trim();
+    const en = (json.message ?? "").trim();
+    const ru = (json.message_ru ?? "").trim();
+    if (language.toLowerCase().startsWith("ru") && ru) human = ru;
+    else if (en) human = en;
+    else if (ru) human = ru;
+    else if (code) human = code;
+  } catch {
+    /* raw text */
+  }
+  return { code, human };
+}
+
 function classifyShareError(
   status: number,
-  message: string,
+  code: string,
+  human: string,
   t: (key: string) => string
 ): ShareError {
-  const lower = message.toLowerCase();
-  if (message.includes("Ключ шифрования уничтожен")) {
-    return { kind: "destroyed", message };
+  const blob = `${code} ${human}`.toLowerCase();
+  if (code.includes("Ключ шифрования уничтожен") || human.includes("Ключ шифрования уничтожен")) {
+    return { kind: "destroyed", message: human || code };
   }
-  if (status === 404 || lower.includes("not found")) {
+  if (status === 404 || blob.includes("not found")) {
     return { kind: "not_found", message: t("error.notFound") };
   }
-  if (status === 410 || lower.includes("expired")) {
+  if (status === 410 || blob.includes("expired")) {
     return { kind: "expired", message: t("error.expired") };
   }
-  if (status === 403 && (lower.includes("sharing_disabled") || lower.includes("disabled") || lower.includes("отключ"))) {
-    return { kind: "blocked", message: t("error.blocked") };
+  if (status === 403 && (code === "sharing_disabled" || blob.includes("disabled") || blob.includes("отключ"))) {
+    const message = human && human !== "sharing_disabled" ? human : t("error.blocked");
+    return { kind: "blocked", message };
   }
-  if (status === 403 && (lower.includes("limit") || lower.includes("download"))) {
+  if (status === 403 && (blob.includes("limit") || blob.includes("download"))) {
     return { kind: "limit_reached", message: t("error.limitReached") };
   }
-  if (lower.includes("invalid_password")) {
+  if (blob.includes("invalid_password")) {
     return { kind: "invalid_password", message: t("error.invalidPassword") };
   }
-  if (status === 401 || lower.includes("password_required")) {
+  if (status === 401 || blob.includes("password_required")) {
     return { kind: "invalid_password", message: t("error.passwordRequired") };
   }
-  if (status === 503 || lower.includes("kms unavailable") || lower.includes("временно недоступен")) {
+  if (status === 503 || blob.includes("kms unavailable") || blob.includes("временно недоступен")) {
     return { kind: "unavailable", message: t("error.unavailable") };
   }
   return {
     kind: "generic",
-    message: message || t("error.generic"),
+    message: human || t("error.generic"),
   };
 }
 
-async function fetchShareInfo(token: string, t: (key: string) => string, password?: string): Promise<ShareInfo> {
+async function fetchShareInfo(
+  token: string,
+  t: (key: string) => string,
+  language: string,
+  password?: string
+): Promise<ShareInfo> {
   const headers: Record<string, string> = {};
   if (password) headers["X-DataSafe-Share-Password"] = password;
   const res = await fetch(`/api/v1/public/share/${encodeURIComponent(token)}`, { headers });
   const text = await res.text();
-  let message = text || res.statusText;
-  try {
-    const json = JSON.parse(text) as { error?: string };
-    if (json.error) message = json.error;
-  } catch {
-    /* use raw text */
-  }
   if (!res.ok) {
-    throw classifyShareError(res.status, message, t);
+    const { code, human } = shareFailureText(text || res.statusText, language);
+    throw classifyShareError(res.status, code, human, t);
   }
   return JSON.parse(text) as ShareInfo;
 }
@@ -127,7 +148,7 @@ export function PublicSharePage() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchShareInfo(token, t)
+    fetchShareInfo(token, t, i18n.language)
       .then((data) => {
         if (cancelled) return;
         if (data.password_required && !data.filename) {
@@ -147,13 +168,13 @@ export function PublicSharePage() {
     return () => {
       cancelled = true;
     };
-  }, [token, t]);
+  }, [token, t, i18n.language]);
 
   const unlock = useCallback(async () => {
     if (!token) return;
     setError(null);
     try {
-      const data = await fetchShareInfo(token, t, password);
+      const data = await fetchShareInfo(token, t, i18n.language, password);
       if (data.password_required && !data.filename) {
         setError({ kind: "generic", message: t("error.invalidPassword") });
         return;
@@ -163,7 +184,7 @@ export function PublicSharePage() {
     } catch (err) {
       setError(err as ShareError);
     }
-  }, [password, t, token]);
+  }, [i18n.language, password, t, token]);
 
   const handleDownload = useCallback(async () => {
     if (!token) return;
@@ -174,14 +195,8 @@ export function PublicSharePage() {
       const res = await fetch(`/api/v1/public/share/${encodeURIComponent(token)}/download`, { headers });
       if (!res.ok) {
         const text = await res.text();
-        let message = text;
-        try {
-          const json = JSON.parse(text) as { error?: string };
-          if (json.error) message = json.error;
-        } catch {
-          /* raw */
-        }
-        setError(classifyShareError(res.status, message, t));
+        const { code, human } = shareFailureText(text, i18n.language);
+        setError(classifyShareError(res.status, code, human, t));
         return;
       }
       const blob = await res.blob();
@@ -196,7 +211,7 @@ export function PublicSharePage() {
     } finally {
       window.setTimeout(() => setDownloading(false), 400);
     }
-  }, [info?.filename, password, t, token]);
+  }, [i18n.language, info?.filename, password, t, token]);
 
   const downloadsRemaining =
     info && info.max_downloads > 0

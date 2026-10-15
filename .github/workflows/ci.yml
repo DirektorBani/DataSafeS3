@@ -141,6 +141,8 @@ jobs:
         run: bash scripts/single-node-gate.sh all
       - name: Postgres resource budget versus v1.5.0
         run: bash scripts/single-node-gate.sh measure-postgres
+      - name: v1.5.0 chunked SSE object is readable
+        run: bash scripts/single-node-gate.sh legacy-sse
       - name: Build console image for the installer pin
         run: docker build -t ghcr.io/direktorbani/datasafe-console:v1.5.0 -f deploy/docker/Dockerfile.console .
       - name: Install core profile (non-interactive)
@@ -287,6 +289,7 @@ jobs:
           e2e/share.spec.ts
           e2e/security-mfa.spec.ts
           e2e/sharing-security.spec.ts
+          e2e/share-matrix-messages.spec.ts
           e2e/mfa-stepup.spec.ts
           e2e/encryption-toggle.spec.ts
           e2e/encryption-jobs.spec.ts
@@ -454,6 +457,33 @@ jobs:
           /tmp/bin/mc --version
       - name: Compare bucket listings
         run: bash scripts/list-buckets-clients.sh
+
+  # 1.5.0 → 1.6.0 on bolt and Postgres, and a 3-node rolling upgrade.
+  # Resource budgets stay in single-node-gate; this job does not sample RSS.
+  upgrade-16:
+    needs: [docker-build]
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: storage-server-image
+      - name: Load this build
+        run: gzip -dc datasafe-storage-server-ci.tar.gz | docker load
+      - name: Log in to GHCR
+        if: github.token != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
+        continue-on-error: true
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Pull v1.5.0 baseline
+        run: docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+      - name: Upgrade bolt and Postgres
+        run: bash scripts/ci/upgrade-15-to-16.sh
+      - name: Rolling upgrade
+        run: bash scripts/ci/rolling-upgrade.sh
 
   # Postgres primary + replica, two storage-server nodes, webhook traffic
   # across a scripted promote. Ports stay off :9000 and :9001.

@@ -88,6 +88,7 @@ func (s *Server) handleCreateSharedLink(w http.ResponseWriter, r *http.Request) 
 	bucket := r.PathValue("bucket")
 	info, _ := authFrom(r)
 	if !s.canWriteBucket(info, bucket) {
+		s.noteShareDenied(r, bucket, "forbidden")
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}
@@ -102,6 +103,7 @@ func (s *Server) handleCreateSharedLink(w http.ResponseWriter, r *http.Request) 
 	}
 	eff := s.effectiveSharingForRecord(brec)
 	if !eff.ShareLinksAllowed {
+		s.noteShareDenied(r, bucket, "sharing_disabled")
 		writeJSON(w, http.StatusForbidden, sharingDisabledBody())
 		return
 	}
@@ -301,6 +303,19 @@ func (s *Server) handlePublicShareDownload(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if errors.Is(err, s3.ErrKMSUnavailable) {
+			resource := link.ID + " result=kms_unavailable"
+			payload := map[string]any{
+				"link_id": link.ID, "actor": "anonymous", "client_ip": clientIP(r),
+				"user_agent": r.UserAgent(), "bucket": brec.Name, "key": link.Key,
+				"result": "kms_unavailable",
+			}
+			if rec.Encryption != nil && rec.Encryption.KeyID != "" {
+				resource = link.ID + " key_id=" + rec.Encryption.KeyID + " key_version=" + strconv.Itoa(rec.Encryption.KeyVersion) + " result=kms_unavailable"
+				payload["key_id"] = rec.Encryption.KeyID
+				payload["key_version"] = rec.Encryption.KeyVersion
+			}
+			s.logActivityAs("public", clientIP(r), metadata.ActionShareDownloaded, "share", resource)
+			s.publishEvent(r.Context(), "ShareDownloaded", brec.Name, link.Key, "", brec.EffectiveTenantID(), payload)
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 				"error":   "KMS unavailable",
 				"message": "Файл временно недоступен, попробуйте позже",

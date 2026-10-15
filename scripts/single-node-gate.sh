@@ -49,7 +49,8 @@ env_value() {
 }
 
 cleanup_lone() {
-  docker rm -f -v gate-measure gate-smoke gate-postgres >/dev/null 2>&1 || true
+  docker rm -f -v gate-measure gate-smoke gate-postgres gate-legacy-sse >/dev/null 2>&1 || true
+  docker volume rm gate-legacy-sse-data >/dev/null 2>&1 || true
   docker network rm gate-pg >/dev/null 2>&1 || true
 }
 trap cleanup_lone EXIT
@@ -480,15 +481,107 @@ cmd_smoke_installed() {
   smoke_body "$cid" "$api" "$s3"
 }
 
+# legacy-sse is not part of the RSS or startup sample. v1.5.0 stores an SSE
+# object only on a chunked PUT (Content-Length writes hit the size-mismatch
+# bug). 1.6.0 reads that unmarked blob only with STORAGE_SSE_LEGACY_FORMAT0.
+cmd_legacy_sse() {
+  local port="${GATE_LEGACY_PORT:-19080}"
+  local name="gate-legacy-sse"
+  local vol="gate-legacy-sse-data"
+  local key="legacy-sse-master-key-0123456789abcdef"
+  local bucket="legacybox"
+  local obj="kept.txt"
+  local payload="legacy-sse-payload-v15"
+  local ak="datasafe"
+  local sk="datasafesecret"
+  docker rm -f -v "$name" >/dev/null 2>&1 || true
+  docker volume rm "$vol" >/dev/null 2>&1 || true
+  docker volume create "$vol" >/dev/null
+  echo "legacy-sse: write with $BASE_IMAGE"
+  docker run -d --name "$name" \
+    -p "127.0.0.1:${port}:9000" \
+    -v "${vol}:/data" \
+    -e STORAGE_ADDR=:9000 \
+    -e STORAGE_DEV=true \
+    -e STORAGE_LOG_LEVEL=info \
+    -e STORAGE_DATA_DIR=/data \
+    -e STORAGE_REGION=us-east-1 \
+    -e STORAGE_ACCESS_KEY="$ak" \
+    -e STORAGE_SECRET_KEY="$sk" \
+    -e STORAGE_ADMIN_USER=admin \
+    -e STORAGE_ADMIN_PASSWORD=admin \
+    -e STORAGE_JWT_SECRET=legacy-jwt-secret \
+    -e STORAGE_AUTO_HOME_BUCKET=false \
+    -e STORAGE_SSE_MASTER_KEY="$key" \
+    "$BASE_IMAGE" >/dev/null
+  wait_health "http://127.0.0.1:${port}/healthz" "$name"
+  local code
+  code="$(curl --aws-sigv4 "aws:amz:us-east-1:s3" --user "${ak}:${sk}" \
+    -sS -o /dev/null -w '%{http_code}' -X PUT \
+    -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" \
+    "http://127.0.0.1:${port}/${bucket}")"
+  if [ "$code" != "200" ]; then
+    echo "legacy-sse create bucket HTTP $code" >&2
+    docker logs "$name" >&2 || true
+    return 1
+  fi
+  # -T - is chunked: curl does not set Content-Length. A sized PUT on 1.5.0
+  # with STORAGE_SSE_MASTER_KEY returns a size mismatch and stores nothing.
+  code="$(printf '%s' "$payload" | curl --http1.1 --aws-sigv4 "aws:amz:us-east-1:s3" --user "${ak}:${sk}" \
+    -sS -o /tmp/gate-legacy-put.txt -w '%{http_code}' -T - \
+    -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" \
+    "http://127.0.0.1:${port}/${bucket}/${obj}")"
+  if [ "$code" != "200" ]; then
+    echo "legacy-sse chunked put HTTP $code" >&2
+    cat /tmp/gate-legacy-put.txt >&2 || true
+    docker logs "$name" >&2 || true
+    return 1
+  fi
+  docker stop "$name" >/dev/null
+  docker rm "$name" >/dev/null
+  echo "legacy-sse: read with $PR_IMAGE"
+  docker run -d --name "$name" \
+    -p "127.0.0.1:${port}:9000" \
+    -v "${vol}:/data" \
+    -e STORAGE_ADDR=:9000 \
+    -e STORAGE_DEV=true \
+    -e STORAGE_LOG_LEVEL=info \
+    -e STORAGE_DATA_DIR=/data \
+    -e STORAGE_REGION=us-east-1 \
+    -e STORAGE_ACCESS_KEY="$ak" \
+    -e STORAGE_SECRET_KEY="$sk" \
+    -e STORAGE_ADMIN_USER=admin \
+    -e STORAGE_ADMIN_PASSWORD=admin \
+    -e STORAGE_JWT_SECRET=legacy-jwt-secret \
+    -e STORAGE_AUTO_HOME_BUCKET=false \
+    -e STORAGE_SSE_MASTER_KEY="$key" \
+    -e STORAGE_SSE_LEGACY_FORMAT0=true \
+    "$PR_IMAGE" >/dev/null
+  wait_health "http://127.0.0.1:${port}/healthz" "$name"
+  local got
+  got="$(curl --aws-sigv4 "aws:amz:us-east-1:s3" --user "${ak}:${sk}" \
+    -fsS -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" \
+    "http://127.0.0.1:${port}/${bucket}/${obj}")"
+  if [ "$got" != "$payload" ]; then
+    echo "legacy-sse read mismatch: $(printf '%q' "$got")" >&2
+    docker logs "$name" >&2 || true
+    return 1
+  fi
+  docker rm -f -v "$name" >/dev/null
+  docker volume rm "$vol" >/dev/null
+  echo "legacy-sse: v1.5.0 chunked SSE object is readable on this image"
+}
+
 usage() {
   cat <<EOF
-Usage: bash scripts/single-node-gate.sh <measure|measure-postgres|smoke|all|smoke-installed>
+Usage: bash scripts/single-node-gate.sh <measure|measure-postgres|smoke|all|smoke-installed|legacy-sse>
 
   measure           interleaved Bolt idle RSS and startup vs \$BASE_IMAGE (default $BASE_IMAGE)
   measure-postgres  interleaved Postgres idle RSS and startup, same images, fresh DB each run
   smoke             run only \$PR_IMAGE (default $PR_IMAGE) and smoke it
   all               measure, then smoke
   smoke-installed   smoke the core compose project (default datasafe-gate) using .env
+  legacy-sse        v1.5.0 chunked SSE object, then read it with \$PR_IMAGE (not part of the budget)
 
 Env: GATE_RUNS ($RUNS), GATE_WARMUP_SEC ($WARMUP), GITHUB_STEP_SUMMARY, GATE_SAMPLES_OUT
 EOF
@@ -502,6 +595,7 @@ main() {
     smoke) cmd_smoke_pr ;;
     all) cmd_measure; cmd_smoke_pr ;;
     smoke-installed) cmd_smoke_installed ;;
+    legacy-sse) cmd_legacy_sse ;;
     -h|--help|help|"") usage ;;
     *) echo "unknown command: $cmd" >&2; usage; return 1 ;;
   esac

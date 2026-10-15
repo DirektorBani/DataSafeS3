@@ -64,6 +64,10 @@ Windows, from the repo root (Docker Desktop running):
 
 `-Yes` skips the menu, the data-root prompt, and the confirm prompt. Profile `core` leaves Postgres, monitoring, host data volumes, the identity lab, and dev mode off. If the console edge is not healthy (`/healthz` and `GET /` with `id="root"`), `-Yes` exits with an error.
 
+## Legacy SSE object from 1.5.0
+
+`bash scripts/single-node-gate.sh legacy-sse` is a separate step. It is not part of the idle RSS or startup sample, and it does not change the +10% or +1s limits. The published v1.5.0 image writes one object with `STORAGE_SSE_MASTER_KEY` using a chunked PUT (a Content-Length PUT on 1.5.x hits the size-mismatch bug and stores nothing). This image reads that object back with the same key and `STORAGE_SSE_LEGACY_FORMAT0=true`. No `STORAGE_KMS_*` variable is set.
+
 ## Honesty
 
 - Outbox emptiness is the Prometheus series, not a count of Bolt keys. The pending gauge is registered at process start, so a quiet server still reports 0.

@@ -368,6 +368,8 @@ Pull the `v1.5.0` server and console images. Do not `docker compose build` for t
 
 Finish the rolling upgrade of every storage node before you turn bucket encryption on. A 1.5.0 process cannot read a format-1 object (`DSSE`). Upgrade every node first. Upgrading the leader last is not enough: a 1.5.0 leader runs 1.5.0 code and accepts `PutBucketEncryption` itself. That process has no 409 gate.
 
+## Mixed cluster
+
 HTTP 409 `cluster_upgrade` (`cluster upgrade in progress`) is guaranteed only for these live 1.5.0 peers, and only when the call reaches a 1.6.0 node:
 
 | What is visible | 409 |

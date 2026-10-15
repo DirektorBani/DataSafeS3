@@ -22,13 +22,22 @@ import (
 type ActivityHook func(user, ip, action, resourceType, resourceName string)
 
 // PresignDecryptHook records a presigned GET that decrypted or refused a sealed object.
-// result is "ok" or "key_destroyed".
+// result is "ok", "key_destroyed", or "kms_unavailable".
 type PresignDecryptHook func(ctx context.Context, user, ip, bucket, key, keyID, tenant, result string, keyVersion int)
+
+// PublicReadHook records an anonymous GET (plaintext, SSE-S3, or a KMS refusal).
+// result is "ok", "public_blocked", or "kms_public".
+type PublicReadHook func(ctx context.Context, ip, bucket, key, result, keyID string, keyVersion int)
+
+// PresignBlockedHook records a presigned GET refused because sharing is off.
+type PresignBlockedHook func(ctx context.Context, accessKey, ip, bucket, reason string)
 
 type Handler struct {
 	Svc              *Service
 	OnActivity       ActivityHook
 	OnPresignDecrypt PresignDecryptHook
+	OnPublicRead     PublicReadHook
+	OnPresignBlocked PresignBlockedHook
 }
 
 func NewHandler(svc *Service) *Handler {
@@ -806,6 +815,7 @@ func (h *Handler) serveAnonymousGet(w http.ResponseWriter, r *http.Request, logi
 	rec, err := h.Svc.ResolvePublicRead(logicalBucket, tenantHint(r), requestSourceIP(r), r.TLS != nil, key)
 	if err != nil {
 		if errors.Is(err, ErrPublicBlocked) {
+			h.notePublicRead(r, logicalBucket, key, "public_blocked")
 			writeError(w, r, http.StatusForbidden, "AccessDenied", "public access is blocked by policy")
 			return true
 		}
@@ -815,9 +825,10 @@ func (h *Handler) serveAnonymousGet(w http.ResponseWriter, r *http.Request, logi
 		}
 		return false
 	}
-	if h.rejectAnonymousKMS(w, r, rec.EffectiveStorageKey(), key) {
+	if h.rejectAnonymousKMS(w, r, rec.EffectiveStorageKey(), logicalBucket, key) {
 		return true
 	}
+	h.notePublicRead(r, logicalBucket, key, "ok")
 	h.serveObject(w, r, rec.EffectiveStorageKey(), key)
 	return true
 }
@@ -835,7 +846,7 @@ func (h *Handler) serveAnonymousHead(w http.ResponseWriter, r *http.Request, log
 		}
 		return false
 	}
-	if h.rejectAnonymousKMS(w, r, rec.EffectiveStorageKey(), key) {
+	if h.rejectAnonymousKMS(w, r, rec.EffectiveStorageKey(), logicalBucket, key) {
 		return true
 	}
 	h.serveHeadObject(w, r, rec.EffectiveStorageKey(), key)
@@ -847,6 +858,9 @@ func (h *Handler) rejectBlockedPresign(w http.ResponseWriter, r *http.Request, c
 		return false
 	}
 	if msg := h.Svc.PresignBlockReason(creds.AccessKey, bucket); msg != "" {
+		if h.OnPresignBlocked != nil {
+			h.OnPresignBlocked(r.Context(), creds.AccessKey, r.RemoteAddr, bucket, msg)
+		}
 		writeError(w, r, http.StatusForbidden, "AccessDenied", msg)
 		return true
 	}
@@ -859,6 +873,9 @@ func (h *Handler) serveObject(w http.ResponseWriter, r *http.Request, storageBuc
 	if err != nil {
 		if errors.Is(err, ErrKeyDestroyed) {
 			h.notePresignDecrypt(r, storageBucket, key, rec, "key_destroyed")
+		}
+		if errors.Is(err, ErrKMSUnavailable) {
+			h.notePresignDecrypt(r, storageBucket, key, rec, "kms_unavailable")
 		}
 		mapErr(w, r, err)
 		return
@@ -1020,6 +1037,25 @@ func (h *Handler) notePresignDecrypt(r *http.Request, storageBucket, key string,
 		ip = strings.TrimSpace(strings.Split(fwd, ",")[0])
 	}
 	h.OnPresignDecrypt(r.Context(), user, ip, logical, objectKey, keyID, tenant, result, ver)
+}
+
+func (h *Handler) notePublicRead(r *http.Request, logicalBucket, key, result string) {
+	if h.OnPublicRead == nil {
+		return
+	}
+	keyID := ""
+	ver := 0
+	if b, err := h.Svc.Meta.GetBucket(logicalBucket); err == nil {
+		if rec, err := h.Svc.Meta.GetObject(b.EffectiveStorageKey(), key); err == nil && rec.Encryption != nil {
+			keyID = rec.Encryption.KeyID
+			ver = rec.Encryption.KeyVersion
+		}
+	}
+	ip := r.RemoteAddr
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		ip = strings.TrimSpace(strings.Split(fwd, ",")[0])
+	}
+	h.OnPublicRead(r.Context(), ip, logicalBucket, key, result, keyID, ver)
 }
 
 func (h *Handler) emitActivity(r *http.Request, accessKey, action, resourceType, resourceName string) {

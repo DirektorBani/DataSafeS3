@@ -150,11 +150,12 @@ func applySSEHeaders(w http.ResponseWriter, rec metadata.ObjectRecord) {
 	}
 }
 
-func (h *Handler) rejectAnonymousKMS(w http.ResponseWriter, r *http.Request, bucket, key string) bool {
-	rec, err := h.Svc.Meta.GetObject(bucket, key)
+func (h *Handler) rejectAnonymousKMS(w http.ResponseWriter, r *http.Request, storageBucket, logical, key string) bool {
+	rec, err := h.Svc.Meta.GetObject(storageBucket, key)
 	if err != nil || rec.Encryption == nil || !rec.Encryption.KMS() {
 		return false
 	}
+	h.notePublicRead(r, logical, key, "kms_public")
 	writeError(w, r, http.StatusForbidden, "AccessDenied", MsgKMSPublic)
 	return true
 }

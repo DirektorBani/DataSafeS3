@@ -273,6 +273,23 @@ func (s *Server) publishEvent(ctx context.Context, eventType, bucket, key, versi
 	}
 }
 
+func (s *Server) noteShareDenied(r *http.Request, bucket, result string) {
+	name := bucket
+	tenant := ""
+	if b, err := s.meta.GetBucket(bucket); err == nil {
+		tenant = b.EffectiveTenantID()
+		if b.Name != "" {
+			name = b.Name
+		}
+	}
+	s.logActivity(r, metadata.ActionShareBlocked, "share", name+" result="+result)
+	info, _ := authFrom(r)
+	s.publishEvent(r.Context(), "ShareBlocked", name, "", "", tenant, map[string]any{
+		"actor": info.Username, "client_ip": clientIP(r),
+		"bucket": name, "result": result,
+	})
+}
+
 func (s *Server) publishShareEvent(r *http.Request, eventType string, rec metadata.BucketRecord, link metadata.SharedLinkRecord, actor string) {
 	payload := map[string]any{
 		"link_id":    link.ID,
