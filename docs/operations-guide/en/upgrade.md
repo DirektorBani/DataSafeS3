@@ -366,6 +366,8 @@ Pull the `v1.5.0` server and console images. Do not `docker compose build` for t
 
 ## Upgrading to v1.6.0
 
+`VERSION`, the installers, Compose, and Helm are **1.6.0**. Images `ghcr.io/direktorbani/datasafe-storage-server:v1.6.0` and `datasafe-console:v1.6.0` appear when `release.yml` runs on the git tag. This commit does not push that tag. A Docker build with no `VERSION` argument reads the `VERSION` file.
+
 **Fixed, and it was in v1.5.0.** An unversioned object overwrite on Postgres ran `DELETE FROM objects` and `INSERT` as two autocommit statements. A crash between them deleted the metadata row and left the file on disk. 1.6.0 runs both statements in one transaction. The previous row remains. A rewrap job whose present count is short of the count taken at the start finishes `completed_with_errors`, not `completed`.
 
 **Tracked, not fixed.** S3 `GET` of a file that is already on this node's disk does not compare the bytes with the stored ETag. A corrupted local copy is HTTP 200. Peer intake checks the ETag. See [encryption.md](encryption.md).

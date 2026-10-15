@@ -2,7 +2,9 @@
 
 All notable changes to DataSafeS3 are documented in this file.
 
-## [1.6.0]
+## [1.6.0] - 2026-10-15
+
+`VERSION` is **1.6.0**. This commit does not push the git tag. Images are published when `release.yml` runs on `v1.6.0`.
 
 ### Added
 
@@ -416,6 +418,7 @@ First public **DataSafeS3 Community Edition** release.
 
 Container images: `ghcr.io/direktorbani/datasafe-storage-server:v1.0.0`, `ghcr.io/direktorbani/datasafe-console:v1.0.0`.
 
+[1.6.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.6.0
 [1.5.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.5.0
 [1.4.1]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.4.1
 [1.4.0]: https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.4.0

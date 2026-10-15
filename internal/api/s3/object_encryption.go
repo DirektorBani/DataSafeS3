@@ -239,9 +239,10 @@ func versionKnown160(v string) bool {
 }
 
 // HeartbeatVersion is the version this process writes for the upgrade gate.
-// The encryption code in this binary is 1.6.0. The image build still stamps
-// buildinfo.Version from the VERSION file (1.5.0) when the Docker arg is dev,
-// and that stamp must not make the node refuse its own bucket-encryption change.
+// The encryption code in this binary is 1.6.0. A Docker build with no VERSION
+// argument reads the VERSION file. That file is the release pin. A stamp
+// below 1.6.0, or an empty or dev stamp, is still advertised as 1.6.0 so this
+// binary is not treated as a 1.5.0 peer.
 func HeartbeatVersion(build string) string {
 	build = strings.TrimSpace(build)
 	if build == "" || strings.EqualFold(build, "dev") || versionBelow160(build) {

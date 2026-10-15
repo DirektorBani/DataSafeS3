@@ -2,7 +2,7 @@
 
 **[English](docs/en/README.md)** · **[Русский](docs/ru/README.md)** · **[Documentation](docs/README.md)**
 
-**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.5.0](CHANGELOG.md#150---2026-10-12)
+**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.6.0](CHANGELOG.md#160---2026-10-15)
 
 ---
 
@@ -94,12 +94,21 @@ Kafka is an opt-in event sink. A default install does not set `STORAGE_KAFKA_BRO
 
 ---
 
+## v1.6.0
+
+- SSE-S3 and optional SSE-KMS (Vault Transit). A single node with no Vault does not open a KMS connection.
+- Key rotation, rewrap, and crypto-shred. Finish the rolling upgrade of every node before enabling encryption.
+- `storage-cli migrate from-minio` copies objects and IAM. **Settings → Migrate** prints the commands and opens a local evidence file. It does not store source credentials.
+- An unversioned Postgres overwrite is one transaction. v1.5.0 could drop the metadata row if the process died between `DELETE` and `INSERT`.
+- The resource budget compares this build with the published v1.5.0 image. This commit does not push the git tag.
+
+Upgrade: [EN](docs/operations-guide/en/upgrade.md#upgrading-to-v160) · [RU](docs/operations-guide/ru/upgrade.md#обновление-до-v160)
+
 ## v1.5.0
 
 - Durable outbox: at-least-once delivery, per-object order per sink, and a dead-letter row after retries are exhausted.
 - Webhooks, NATS JetStream, and optional Kafka (`STORAGE_KAFKA_BROKERS`, sidecar `/usr/lib/datasafe/datasafe-kafka-bridge`) are an external event feed. They are not how storage nodes talk to each other.
 - Console page **Settings → Event delivery**, a Grafana **Event delivery** row, and example alerts.
-- CI job `single-node-gate` keeps the default single-node install from growing a broker connection. The resource budget still compares with the published v1.4.1 image.
 - Scripted Postgres promote and a DR evidence pack. A follower takes the storage leader lease after it expires. Takeover time is about that lease.
 - A gateway replication rule can set its own sync schedule. Erasure and site-A lab ports no longer share the HA ports. Delete an old `.env.erasure` or `.env.site-a` so the new ports apply.
 
@@ -131,9 +140,9 @@ copy .env.example .env
 docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml up -d
 ```
 
-The default Compose stack serves the console from `DATASAFE_CONSOLE_IMAGE` (`ghcr.io/direktorbani/datasafe-console:v1.5.0`); a host `web/console/dist` is not required. To serve a local production build, add `-f deploy/compose/docker-compose.local-console.yml`. For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
+The default Compose stack serves the console from `DATASAFE_CONSOLE_IMAGE` (`ghcr.io/direktorbani/datasafe-console:v1.6.0`); a host `web/console/dist` is not required. To serve a local production build, add `-f deploy/compose/docker-compose.local-console.yml`. For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
 
-Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0` and `ghcr.io/direktorbani/datasafe-console:v1.5.0`.
+Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.6.0` and `ghcr.io/direktorbani/datasafe-console:v1.6.0`.
 
 Default Compose install is production-safe: `STORAGE_DEV` is off unless you pass installer `-Dev` / `--dev` (or profile `dev`). The installer generates `STORAGE_METRICS_TOKEN` and wires Prometheus. First login is still `admin` / `admin`, then the setup wizard.
 

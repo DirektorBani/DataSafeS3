@@ -9,8 +9,8 @@
 #
 # Core installer (after the PR image is tagged as the pin the installer writes).
 # The resource baseline is the published v1.5.0 image, compared per backend.
-# Pull it before the installer retag below. The installer default tag is v1.5.0.
-#   docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+# Pull it before the installer retag below. The installer default tag is v1.6.0.
+#   docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.6.0
 #   ./install.sh --yes --profiles core --project datasafe-gate --data-root /tmp/datasafe-gate
 #   bash scripts/single-node-gate.sh smoke-installed
 #
