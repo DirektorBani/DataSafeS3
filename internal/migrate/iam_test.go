@@ -32,6 +32,13 @@ func TestDecryptAdminRoundTrip(t *testing.T) {
 	if err != nil || string(asJSON) != string(plain) {
 		t.Fatalf("plaintext %s %v", asJSON, err)
 	}
+	// A madmin salt is random and can begin with '{' or '['. That body is not JSON.
+	bogus := make([]byte, 64)
+	bogus[0] = '{'
+	bogus[32] = 0x02
+	if _, err := migrate.DecryptAdmin("minioadmin", bogus); err == nil {
+		t.Fatal("ciphertext starting with '{' was treated as JSON")
+	}
 }
 
 func TestMapBucketPoliciesWarnsInsteadOfDroppingQuietly(t *testing.T) {

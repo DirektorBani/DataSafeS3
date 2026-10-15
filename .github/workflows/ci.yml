@@ -447,7 +447,7 @@ jobs:
           curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
           unzip -q /tmp/awscliv2.zip -d /tmp
           /tmp/aws/install -i /tmp/aws-cli -b /tmp/bin
-          curl -fsSL -o /tmp/bin/mc https://dl.min.io/client/mc/release/linux-amd64/mc
+          curl -fsSL -o /tmp/bin/mc https://github.com/minio/mc/releases/download/RELEASE.2025-08-13T08-35-41Z/mc.linux-amd64.RELEASE.2025-08-13T08-35-41Z
           chmod +x /tmp/bin/mc
           echo "/tmp/bin" >> "$GITHUB_PATH"
           /tmp/bin/aws --version

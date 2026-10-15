@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"io"
 
@@ -21,11 +22,13 @@ const (
 	iamPBKDF2Cost  = 8192
 )
 
-// DecryptAdmin opens a madmin ciphertext. A JSON body is returned as-is so a
-// server that does not encrypt the admin API still works.
+// DecryptAdmin opens a madmin ciphertext. A body that is valid JSON is returned
+// as-is so a server that does not encrypt the admin API still works. The
+// ciphertext starts with a random salt, which can itself be '{' or '[', so the
+// first byte is not enough to tell those apart.
 func DecryptAdmin(password string, data []byte) ([]byte, error) {
 	trimmed := bytes.TrimSpace(data)
-	if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
+	if json.Valid(trimmed) {
 		return trimmed, nil
 	}
 	if len(data) < 32+1+8 {
