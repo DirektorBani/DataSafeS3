@@ -10,22 +10,24 @@ import (
 // KMSJob is one leader-owned encryption job. The cursor is the last object
 // the leader finished. A new leader continues from that cursor.
 type KMSJob struct {
-	ID            string     `json:"id"`
-	Type          string     `json:"type"`
-	BucketKey     string     `json:"bucket_key"`
-	Bucket        string     `json:"bucket"`
-	KeyID         string     `json:"key_id"`
-	TargetVersion int        `json:"target_version"`
-	Cursor        string     `json:"cursor"`
-	Status        string     `json:"status"`
-	Total         int        `json:"total"`
-	Done          int        `json:"done"`
-	Errors        int        `json:"errors"`
-	Samples       []string   `json:"samples,omitempty"`
-	StartedAt     time.Time  `json:"started_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	FinishedAt    *time.Time `json:"finished_at,omitempty"`
-	HolderID      string     `json:"holder_id,omitempty"`
+	ID               string     `json:"id"`
+	Type             string     `json:"type"`
+	BucketKey        string     `json:"bucket_key"`
+	Bucket           string     `json:"bucket"`
+	KeyID            string     `json:"key_id"`
+	TargetVersion    int        `json:"target_version"`
+	Cursor           string     `json:"cursor"`
+	Status           string     `json:"status"`
+	Total            int        `json:"total"`
+	Done             int        `json:"done"`
+	Errors           int        `json:"errors"`
+	Samples          []string   `json:"samples,omitempty"`
+	StartedAt        time.Time  `json:"started_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	FinishedAt       *time.Time `json:"finished_at,omitempty"`
+	HolderID         string     `json:"holder_id,omitempty"`
+	StartedBy        string     `json:"started_by,omitempty"`
+	VaultDeleteError string     `json:"vault_delete_error,omitempty"`
 }
 
 func (s *Store) PutKMSJob(rec KMSJob) error {

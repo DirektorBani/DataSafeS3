@@ -138,6 +138,9 @@ export type KMSJob = {
   errors: number;
   eta_seconds: number;
   samples?: string[];
+  holder_id?: string;
+  started_by?: string;
+  vault_delete_error?: string;
 };
 
 export type BucketEncryption = {

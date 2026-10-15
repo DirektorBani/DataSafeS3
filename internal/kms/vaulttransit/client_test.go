@@ -1,6 +1,7 @@
 package vaulttransit
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -18,19 +19,21 @@ import (
 )
 
 type fakeVault struct {
-	mu       sync.Mutex
-	secret   string
-	token    string
-	down     bool
-	forbid   bool
-	echo     bool
-	plain    map[string][]byte
-	decrypts int
+	mu              sync.Mutex
+	secret          string
+	token           string
+	down            bool
+	forbid          bool
+	echo            bool
+	rejectDelete    bool
+	deletionAllowed bool
+	plain           map[string][]byte
+	decrypts        int
 }
 
 func (f *fakeVault) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
-	down, forbid, echo, secret, token := f.down, f.forbid, f.echo, f.secret, f.token
+	down, forbid, echo, secret, token, rejectDelete := f.down, f.forbid, f.echo, f.secret, f.token, f.rejectDelete
 	f.mu.Unlock()
 	if down {
 		http.Error(w, "down", http.StatusServiceUnavailable)
@@ -105,6 +108,16 @@ func (f *fakeVault) serve(w http.ResponseWriter, r *http.Request) {
 		f.plain[ct] = raw
 		f.mu.Unlock()
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"ciphertext": ct, "key_version": 2}})
+	case strings.Contains(r.URL.Path, "/keys/") && strings.HasSuffix(r.URL.Path, "/config"):
+		if bytes.Contains(body, []byte(`"deletion_allowed":true`)) {
+			f.mu.Lock()
+			f.deletionAllowed = true
+			f.mu.Unlock()
+		}
+		w.WriteHeader(http.StatusNoContent)
+	case strings.Contains(r.URL.Path, "/keys/") && r.Method == http.MethodDelete && rejectDelete:
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"errors":["deletion is not allowed"]}`))
 	case strings.Contains(r.URL.Path, "/keys/"):
 		w.WriteHeader(http.StatusNoContent)
 	default:
@@ -139,6 +152,12 @@ func TestTransitRoundTripCacheAndScrub(t *testing.T) {
 	wrapped, ver, err := p.Wrap(ctx, "datasafe-default-box", []byte("dek-bytes-0123456789abcdef0123"))
 	if err != nil || ver != 1 || !strings.HasPrefix(string(wrapped), "vault:v1:") {
 		t.Fatalf("wrap %q ver %d err %v", wrapped, ver, err)
+	}
+	fake.mu.Lock()
+	allowed := fake.deletionAllowed
+	fake.mu.Unlock()
+	if !allowed {
+		t.Fatal("creating a transit key did not set deletion_allowed")
 	}
 	dek, err := p.UnwrapDEK(ctx, "datasafe-default-box", ver, 1, wrapped)
 	if err != nil || string(dek) != "dek-bytes-0123456789abcdef0123" {
@@ -306,6 +325,17 @@ func TestHealthAcceptsStandby(t *testing.T) {
 	}
 	if err := p.Health(t.Context()); err == nil {
 		t.Fatal("sealed vault was available")
+	}
+}
+
+func TestDestroySurfacesDeletionError(t *testing.T) {
+	fake := &fakeVault{secret: "good-secret", token: "tok", rejectDelete: true, plain: map[string][]byte{}}
+	srv := httptest.NewServer(http.HandlerFunc(fake.serve))
+	t.Cleanup(srv.Close)
+	p := testProvider(t, srv, "good-secret", time.Hour)
+	err := p.Destroy(t.Context(), "datasafe-box")
+	if err == nil || !strings.Contains(err.Error(), "deletion is not allowed") {
+		t.Fatalf("destroy error %v", err)
 	}
 }
 

@@ -27,13 +27,20 @@ export function DestroyKey({ bucket, disabled }: { bucket: string; disabled?: bo
   const [confirm, setConfirm] = useState(false);
   const [name, setName] = useState("");
   const [mismatch, setMismatch] = useState(false);
+  const [vaultError, setVaultError] = useState("");
 
   const destroy = useMutation({
     mutationFn: () => api.destroyBucketKey(bucket, name),
-    onSuccess: () => {
+    onSuccess: (job) => {
       queryClient.invalidateQueries({ queryKey: ["bucket-encryption", bucket] });
       queryClient.invalidateQueries({ queryKey: ["buckets"] });
-      toast.success(t("destroyed"));
+      if (job.vault_delete_error) {
+        setVaultError(job.vault_delete_error);
+        toast.error(t("vaultDeleteFailed"));
+      } else {
+        setVaultError("");
+        toast.success(t("destroyed"));
+      }
       setConfirm(false);
       setName("");
     },
@@ -65,12 +72,20 @@ export function DestroyKey({ bucket, disabled }: { bucket: string; disabled?: bo
       >
         {t("destroy")}
       </Button>
+      {vaultError && (
+        <p className="text-sm text-destructive" data-testid="encryption-vault-delete-error">
+          {t("vaultDeleteFailed")} {vaultError}
+        </p>
+      )}
       <Dialog open={explain} onOpenChange={setExplain}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("destroyTitle")}</DialogTitle>
             <DialogDescription>{t("destroyBody")}</DialogDescription>
           </DialogHeader>
+          <p className="text-sm text-muted-foreground" data-testid="encryption-destroy-backup">
+            {t("destroyBackup")}
+          </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setExplain(false)}>
               {t("cancel")}

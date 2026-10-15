@@ -46,6 +46,9 @@ function classifyShareError(
   t: (key: string) => string
 ): ShareError {
   const lower = message.toLowerCase();
+  if (message.includes("Ключ шифрования уничтожен")) {
+    return { kind: "destroyed", message };
+  }
   if (status === 404 || lower.includes("not found")) {
     return { kind: "not_found", message: t("error.notFound") };
   }
@@ -66,9 +69,6 @@ function classifyShareError(
   }
   if (status === 503 || lower.includes("kms unavailable") || lower.includes("временно недоступен")) {
     return { kind: "unavailable", message: t("error.unavailable") };
-  }
-  if (message.includes("Ключ шифрования уничтожен")) {
-    return { kind: "destroyed", message };
   }
   return {
     kind: "generic",

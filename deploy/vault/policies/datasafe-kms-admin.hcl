@@ -1,5 +1,6 @@
-# Operator role for rotate and delete. Crypto-shred jobs are a later step.
-# deletion_allowed is a POST to the key config path.
+# Operator role for rotate and delete.
+# The server sets deletion_allowed when it creates a Transit key. DELETE is
+# refused until that flag is set. deletion_allowed is a POST to the key config path.
 
 path "transit/keys/datasafe-*" {
   capabilities = ["read", "update", "delete"]

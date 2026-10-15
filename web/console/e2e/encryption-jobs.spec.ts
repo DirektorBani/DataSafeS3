@@ -49,6 +49,7 @@ test("rotate key, job progress, and destroy requires the bucket name", async ({ 
 
   await page.getByTestId("encryption-destroy").click();
   await expect(page.getByText(/unreadable forever|нечитаемыми навсегда/i)).toBeVisible();
+  await expect(page.getByTestId("encryption-destroy-backup")).toBeVisible();
   await page.getByTestId("encryption-destroy-next").click();
   await page.getByTestId("encryption-destroy-name").fill("wrong-name");
   await page.getByTestId("encryption-destroy-confirm").click();

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/observability"
 	"github.com/DirektorBani/datasafe/internal/storage"
@@ -385,8 +386,8 @@ func (h *Handler) createBucket(w http.ResponseWriter, r *http.Request, bucket st
 		return
 	}
 	if _, brec, err := h.Svc.ResolveBucketKey(creds.AccessKey, bucket); err == nil {
+		changed := false
 		if ak, aerr := h.Svc.Meta.GetAccessKey(creds.AccessKey); aerr == nil {
-			changed := false
 			if brec.OwnerID == "" && ak.OwnerID != "" {
 				brec.OwnerID = ak.OwnerID
 				changed = true
@@ -407,13 +408,25 @@ func (h *Handler) createBucket(w http.ResponseWriter, r *http.Request, bucket st
 					}
 				}
 			}
-			if changed {
-				_ = h.Svc.Meta.UpdateBucket(brec)
-			}
+		}
+		// x-amz-bucket-object-lock-enabled is only honored at creation. AWS then
+		// keeps versioning Enabled; a later PutObjectLockConfiguration is not required.
+		if objectLockHeaderOn(r) {
+			brec.ObjectLock = true
+			brec.Versioning = true
+			brec.VersioningSuspended = false
+			changed = true
+		}
+		if changed {
+			_ = h.Svc.Meta.UpdateBucket(brec)
 		}
 	}
 	w.Header().Set("Location", "/"+bucket)
 	w.WriteHeader(http.StatusOK)
+}
+
+func objectLockHeaderOn(r *http.Request) bool {
+	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Amz-Bucket-Object-Lock-Enabled")), "true")
 }
 
 func (h *Handler) deleteBucket(w http.ResponseWriter, r *http.Request, bucket string) {
@@ -1398,6 +1411,49 @@ func mapErr(w http.ResponseWriter, r *http.Request, err error) {
 	case auth.ErrMalformedChunk, auth.ErrDecodedLength:
 		writeError(w, r, http.StatusBadRequest, "IncompleteBody", err.Error())
 	default:
+		// A leader kill leaves in-flight writes on a session Postgres has already
+		// made read-only (SQLSTATE 25006) or drops the connection (57P01, 08006,
+		// reset). Those were HTTP 500 InternalError. Clients retry 503
+		// ServiceUnavailable with this message; the body is already consumed, so
+		// this process does not replay the PUT. A follower that cannot dial the
+		// previous holder answers the same 503 from leaderGuard.
+		if retryableClusterWrite(err) {
+			w.Header().Set("Retry-After", "1")
+			writeError(w, r, http.StatusServiceUnavailable, "ServiceUnavailable", "not cluster leader")
+			return
+		}
 		writeError(w, r, http.StatusInternalServerError, "InternalError", err.Error())
 	}
+}
+
+func retryableClusterWrite(err error) bool {
+	if err == nil {
+		return false
+	}
+	if events.StoreFenced(err) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	for _, n := range []string{
+		"sqlstate 57p01",
+		"sqlstate 57p02",
+		"sqlstate 57p03",
+		"sqlstate 08000",
+		"sqlstate 08001",
+		"sqlstate 08003",
+		"sqlstate 08006",
+		"sqlstate 40001",
+		"sqlstate 40p01",
+		"connection refused",
+		"connection reset",
+		"broken pipe",
+		"server closed the connection",
+		"conn closed",
+		"terminating connection",
+	} {
+		if strings.Contains(msg, n) {
+			return true
+		}
+	}
+	return false
 }

@@ -2,6 +2,7 @@ package vaulttransit
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -204,7 +205,7 @@ func (p *Provider) Destroy(ctx context.Context, keyID string) error {
 	err := p.client.DeleteKey(ctx, keyID)
 	p.observe("destroy", err, start)
 	if err != nil {
-		return kms.ErrUnavailable
+		return fmt.Errorf("vault delete: %s", err.Error())
 	}
 	return nil
 }

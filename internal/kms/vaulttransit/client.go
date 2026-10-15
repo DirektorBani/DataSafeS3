@@ -412,16 +412,18 @@ func (c *Client) EnsureKey(ctx context.Context, name string) error {
 	}
 	path := c.mountPath("keys/" + url.PathEscape(name))
 	err = c.do(ctx, http.MethodPost, path, "create", map[string]string{"type": "aes256-gcm96"}, nil, tok)
-	if err == nil {
-		return nil
-	}
-	var se *StatusError
-	if errors.As(err, &se) && (se.Status == http.StatusNoContent || se.Status == http.StatusBadRequest) {
-		if gerr := c.do(ctx, http.MethodGet, path, "read", nil, &struct{}{}, tok); gerr == nil {
-			return nil
+	if err != nil {
+		var se *StatusError
+		if !errors.As(err, &se) || (se.Status != http.StatusNoContent && se.Status != http.StatusBadRequest) {
+			return err
+		}
+		if gerr := c.do(ctx, http.MethodGet, path, "read", nil, &struct{}{}, tok); gerr != nil {
+			return err
 		}
 	}
-	return err
+	// Transit refuses DELETE until deletion_allowed is set. Set it when the key
+	// is created so crypto-shred can remove the key with the admin role.
+	return c.do(ctx, http.MethodPost, path+"/config", "config", map[string]bool{"deletion_allowed": true}, nil, tok)
 }
 
 // Encrypt seals plaintext and returns the Transit ciphertext.
@@ -522,8 +524,15 @@ func (c *Client) DeleteKey(ctx context.Context, name string) error {
 		return err
 	}
 	path := c.mountPath("keys/" + url.PathEscape(name))
-	_ = c.do(ctx, http.MethodPost, path+"/config", "delete", map[string]bool{"deletion_allowed": true}, nil, tok)
-	return c.do(ctx, http.MethodDelete, path, "delete", nil, nil, tok)
+	cfgErr := c.do(ctx, http.MethodPost, path+"/config", "config", map[string]bool{"deletion_allowed": true}, nil, tok)
+	delErr := c.do(ctx, http.MethodDelete, path, "delete", nil, nil, tok)
+	if delErr != nil {
+		if cfgErr != nil {
+			return c.fail("delete", 0, delErr.Error()+"; deletion_allowed: "+cfgErr.Error())
+		}
+		return delErr
+	}
+	return nil
 }
 
 func (c *Client) privilegedToken(ctx context.Context) (string, error) {

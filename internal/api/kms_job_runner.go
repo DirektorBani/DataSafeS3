@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -42,10 +41,7 @@ func (s *Server) kmsJobLeader(ctx context.Context) bool {
 }
 
 func (s *Server) kmsJobHolder() string {
-	if s.cfg.NodeID != "" {
-		return s.cfg.NodeID
-	}
-	return "local"
+	return s.clusterNodeID()
 }
 
 func (s *Server) stepKMSJobs(ctx context.Context) {
@@ -106,7 +102,11 @@ func (s *Server) stepOneKMSJob(ctx context.Context, job metadata.KMSJob) error {
 		job.Status = kms.JobCompleted
 		job.FinishedAt = &now
 		job.UpdatedAt = now
-		return s.meta.PutKMSJob(job)
+		if err := s.meta.PutKMSJob(job); err != nil {
+			return err
+		}
+		s.noteKMSJobTerminal(job)
+		return nil
 	}
 	for _, it := range batch {
 		if !s.kmsJobLeader(ctx) {
@@ -254,11 +254,7 @@ func (s *Server) encryptObjectInPlace(ctx context.Context, rec *metadata.ObjectR
 	if err != nil {
 		return err
 	}
-	plain, err := io.ReadAll(rc)
-	rc.Close()
-	if err != nil {
-		return err
-	}
+	defer rc.Close()
 	dek, err := kms.NewDEK()
 	if err != nil {
 		return err
@@ -289,19 +285,18 @@ func (s *Server) encryptObjectInPlace(ctx context.Context, rec *metadata.ObjectR
 	if err != nil {
 		return err
 	}
-	body, err := kms.EncryptReader(dek, bytes.NewReader(plain), kms.DefaultChunk)
+	plain := &countingReader{r: rc}
+	body, err := kms.EncryptReader(dek, plain, kms.DefaultChunk)
 	if err != nil {
 		return err
 	}
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, body); err != nil {
-		return err
-	}
+	// size -1: the ciphertext length is not known up front. The backend copies
+	// the stream and does not require the plaintext and ciphertext to sit in RAM.
 	var etag string
 	if rec.VersionID != "" {
-		etag, err = s.backend.PutObjectVersion(ctx, job.BucketKey, rec.Key, rec.VersionID, bytes.NewReader(buf.Bytes()), int64(buf.Len()), rec.ContentType)
+		etag, err = s.backend.PutObjectVersion(ctx, job.BucketKey, rec.Key, rec.VersionID, body, -1, rec.ContentType)
 	} else {
-		etag, err = s.backend.PutObject(ctx, job.BucketKey, rec.Key, bytes.NewReader(buf.Bytes()), int64(buf.Len()), rec.ContentType)
+		etag, err = s.backend.PutObject(ctx, job.BucketKey, rec.Key, body, -1, rec.ContentType)
 	}
 	if err != nil {
 		return err
@@ -311,7 +306,7 @@ func (s *Server) encryptObjectInPlace(ctx context.Context, rec *metadata.ObjectR
 		algo = "aws:kms"
 	}
 	rec.ETag = etag
-	rec.Size = int64(len(plain))
+	rec.Size = plain.n
 	rec.Encryption = &metadata.ObjectEncryption{
 		FormatVersion: 1,
 		Provider:      key.Provider,
@@ -320,9 +315,20 @@ func (s *Server) encryptObjectInPlace(ctx context.Context, rec *metadata.ObjectR
 		WrappedDEK:    base64.StdEncoding.EncodeToString(wrapped),
 		Alg:           "AES-256-GCM",
 		SSEAlgorithm:  algo,
-		PlainSize:     int64(len(plain)),
+		PlainSize:     plain.n,
 	}
 	return nil
+}
+
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
 }
 
 type kmsJobError string

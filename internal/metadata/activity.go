@@ -63,6 +63,11 @@ const (
 	ActionEventsSinkRecovered = "events_sink_recovered"
 	ActionKMSKeyRotated       = "kms_key_rotated"
 	ActionKMSKeyDestroyed     = "kms_key_destroyed"
+	// Encrypt-existing job. The resource names the bucket and, on finish or
+	// fail, done/total/errors. One row per transition, not per object.
+	ActionKMSJobStarted  = "kms_job_started"
+	ActionKMSJobFinished = "kms_job_finished"
+	ActionKMSJobFailed   = "kms_job_failed"
 )
 
 type ActivityRecord struct {

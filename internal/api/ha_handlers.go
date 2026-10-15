@@ -2,6 +2,7 @@ package api
 
 import (
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -119,7 +120,7 @@ func proxyToLeader(w http.ResponseWriter, r *http.Request, leaderBase string) bo
 	req.Header.Set("X-DataSafe-Forwarded", "1")
 	req.Host = r.Host
 	req.ContentLength = r.ContentLength
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := leaderForwardClient.Do(req)
 	if err != nil {
 		return false
 	}
@@ -132,6 +133,22 @@ func proxyToLeader(w http.ResponseWriter, r *http.Request, leaderBase string) bo
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
 	return true
+}
+
+// leaderForwardClient dials the previous holder quickly and then leaves the
+// body alone. A dead leader fails the dial inside 2s and leaderGuard answers
+// HTTP 503. A large PUT is not cut off by a response timeout.
+var leaderForwardClient = &http.Client{
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   2 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2: true,
+		MaxIdleConns:      20,
+		IdleConnTimeout:   90 * time.Second,
+	},
 }
 
 func isReadOnlyExempt(method, path string) bool {

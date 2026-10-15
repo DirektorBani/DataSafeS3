@@ -185,6 +185,24 @@ func (s *Server) isBucketAdmin(info auth.TokenInfo, rec metadata.BucketRecord) b
 	return auth.GrantIsAdmin(s.grantsForRBAC(s.bucketGrantsFor(rec)), info.UserID)
 }
 
+// canCryptoShred is destroy-key. Cluster admin, a tenant admin of this bucket,
+// and an explicit bucket-admin grant may destroy the key. Owning the bucket
+// does not: a role user who created it, and an operator, are refused.
+// Step-up is allowDangerous(ActionCryptoShred). When the MFA policy is on,
+// that asks for a fresh action token. There is no separate password re-entry.
+func (s *Server) canCryptoShred(info auth.TokenInfo, rec metadata.BucketRecord) bool {
+	if auth.IsAdmin(info.Role) {
+		return true
+	}
+	if info.Role == auth.RoleOperator {
+		return false
+	}
+	if s.isTenantAdmin(info, rec.EffectiveTenantID()) {
+		return true
+	}
+	return auth.GrantIsAdmin(s.grantsForRBAC(s.bucketGrantsFor(rec)), info.UserID)
+}
+
 func (s *Server) isTenantAdmin(info auth.TokenInfo, tenantID string) bool {
 	return auth.CanManageTenant(info.Role, s.userTenantMemberships(info.UserID), tenantID)
 }

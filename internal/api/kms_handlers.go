@@ -76,23 +76,25 @@ func (s *Server) rejectClusterUpgrade(w http.ResponseWriter) bool {
 
 func (s *Server) kmsJobView(job metadata.KMSJob) map[string]any {
 	return map[string]any{
-		"id":             job.ID,
-		"type":           job.Type,
-		"bucket":         job.Bucket,
-		"bucket_key":     job.BucketKey,
-		"key_id":         job.KeyID,
-		"target_version": job.TargetVersion,
-		"cursor":         job.Cursor,
-		"status":         job.Status,
-		"total":          job.Total,
-		"done":           job.Done,
-		"errors":         job.Errors,
-		"samples":        job.Samples,
-		"eta_seconds":    kmsJobETA(job),
-		"started_at":     job.StartedAt,
-		"updated_at":     job.UpdatedAt,
-		"finished_at":    job.FinishedAt,
-		"holder_id":      job.HolderID,
+		"id":                 job.ID,
+		"type":               job.Type,
+		"bucket":             job.Bucket,
+		"bucket_key":         job.BucketKey,
+		"key_id":             job.KeyID,
+		"target_version":     job.TargetVersion,
+		"cursor":             job.Cursor,
+		"status":             job.Status,
+		"total":              job.Total,
+		"done":               job.Done,
+		"errors":             job.Errors,
+		"samples":            job.Samples,
+		"eta_seconds":        kmsJobETA(job),
+		"started_at":         job.StartedAt,
+		"updated_at":         job.UpdatedAt,
+		"finished_at":        job.FinishedAt,
+		"holder_id":          job.HolderID,
+		"started_by":         job.StartedBy,
+		"vault_delete_error": job.VaultDeleteError,
 	}
 }
 
@@ -213,7 +215,7 @@ func (s *Server) handleRewrapBucket(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "key_destroyed", "message": s3.MsgKeyDestroyed})
 		return
 	}
-	job, err := s.startKMSJob(rec, key, kms.JobEncryptExisting)
+	job, err := s.startKMSJob(rec, key, kms.JobEncryptExisting, info.Username)
 	if errors.Is(err, errKMSJobActive) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "job_active", "job_id": job.ID})
 		return
@@ -222,12 +224,12 @@ func (s *Server) handleRewrapBucket(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	_ = info
+	s.logActivity(r, metadata.ActionKMSJobStarted, "kms_job", "bucket="+rec.Name+" type="+job.Type)
 	writeJSON(w, http.StatusAccepted, s.kmsJobView(job))
 }
 
 func (s *Server) handleDestroyBucketKey(w http.ResponseWriter, r *http.Request) {
-	_, rec, ok := s.bucketAdminOr403(w, r)
+	info, rec, ok := s.cryptoShredOr403(w, r)
 	if !ok {
 		return
 	}
@@ -264,9 +266,13 @@ func (s *Server) handleDestroyBucketKey(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "key_destroyed", "message": s3.MsgKeyDestroyed})
 		return
 	}
+	vaultDelete := ""
 	if key.Provider == kms.ProviderVault {
-		if v := s.svc.VaultKMS(); v != nil {
-			_ = v.Destroy(r.Context(), key.ID)
+		v := s.svc.VaultKMS()
+		if v == nil {
+			vaultDelete = "vault is not configured"
+		} else if derr := v.Destroy(r.Context(), key.ID); derr != nil {
+			vaultDelete = derr.Error()
 		}
 	}
 	key.Status = "destroyed"
@@ -290,15 +296,35 @@ func (s *Server) handleDestroyBucketKey(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	job, err := s.startKMSJob(rec, key, kms.JobCryptoShred)
+	job, err := s.startKMSJob(rec, key, kms.JobCryptoShred, info.Username)
+	if vaultDelete != "" {
+		job.VaultDeleteError = vaultDelete
+		s.noteKMSJobError(&job, "vault delete: "+vaultDelete)
+		if putErr := s.meta.PutKMSJob(job); putErr != nil && err == nil {
+			err = putErr
+		}
+	}
 	if err != nil && !errors.Is(err, errKMSJobActive) {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": err.Error(), "key_status": "destroyed", "vault_delete_error": vaultDelete,
+		})
 		return
 	}
 	s.logActivity(r, metadata.ActionKMSKeyDestroyed, "kms_key", key.ID)
 	body := s.kmsJobView(job)
 	body["key_status"] = "destroyed"
 	writeJSON(w, http.StatusAccepted, body)
+}
+
+func (s *Server) cryptoShredOr403(w http.ResponseWriter, r *http.Request) (auth.TokenInfo, metadata.BucketRecord, bool) {
+	bucket := r.PathValue("bucket")
+	info, _ := authFrom(r)
+	rec, err := s.resolveBucketForUser(info, bucket)
+	if err != nil || !s.canCryptoShred(info, rec) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+		return info, rec, false
+	}
+	return info, rec, true
 }
 
 func (s *Server) bucketAdminOr403(w http.ResponseWriter, r *http.Request) (auth.TokenInfo, metadata.BucketRecord, bool) {
@@ -312,7 +338,7 @@ func (s *Server) bucketAdminOr403(w http.ResponseWriter, r *http.Request) (auth.
 	return info, rec, true
 }
 
-func (s *Server) startKMSJob(rec metadata.BucketRecord, key metadata.KMSKeyRecord, jobType string) (metadata.KMSJob, error) {
+func (s *Server) startKMSJob(rec metadata.BucketRecord, key metadata.KMSKeyRecord, jobType, actor string) (metadata.KMSJob, error) {
 	if existing, ok := s.activeKMSJob(rec.EffectiveStorageKey()); ok {
 		return existing, errKMSJobActive
 	}
@@ -325,11 +351,32 @@ func (s *Server) startKMSJob(rec metadata.BucketRecord, key metadata.KMSKeyRecor
 		TargetVersion: key.Version,
 		Status:        kms.JobPending,
 		UpdatedAt:     time.Now().UTC(),
+		HolderID:      s.kmsJobHolder(),
+		StartedBy:     actor,
 	}
 	if err := s.meta.PutKMSJob(job); err != nil {
 		return job, err
 	}
 	return job, nil
+}
+
+func (s *Server) noteKMSJobTerminal(job metadata.KMSJob) {
+	if job.Type != kms.JobEncryptExisting {
+		return
+	}
+	action := metadata.ActionKMSJobFinished
+	if job.Errors > 0 || job.Status == kms.JobFailed {
+		action = metadata.ActionKMSJobFailed
+	}
+	who := job.StartedBy
+	if who == "" {
+		who = "system"
+	}
+	resource := "bucket=" + job.Bucket +
+		" done=" + strconv.Itoa(job.Done) +
+		" total=" + strconv.Itoa(job.Total) +
+		" errors=" + strconv.Itoa(job.Errors)
+	s.logActivityAs(who, "", action, "kms_job", resource)
 }
 
 func (s *Server) handleListKMSJobs(w http.ResponseWriter, r *http.Request) {
