@@ -80,7 +80,9 @@ type Server struct {
 	// bgMu keeps idle background polls from opening a second Postgres session.
 	// A second session faults enough executable pages to exceed the single-node
 	// RSS budget. Request handlers do not take this lock.
-	bgMu sync.Mutex
+	bgMu             sync.Mutex
+	replicaNonceOnce sync.Once
+	replicaSeen      *replicaNonces
 }
 
 // withBackgroundDB runs one idle poll at a time so a quiet Postgres node keeps
@@ -463,10 +465,6 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		path := r.URL.Path
-		if path == "/api/v1/ha/object-replica" {
-			s.handleObjectReplica(w, r)
-			return
-		}
 		if path == "/healthz" || strings.HasPrefix(path, "/api/") || path == "/metrics" {
 			if s.readOnlyGuard(w, r) {
 				return

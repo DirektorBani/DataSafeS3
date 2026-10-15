@@ -98,12 +98,31 @@ func main() {
 		}
 	}()
 
+	var internalSrv *http.Server
+	if internalAddr := strings.TrimSpace(os.Getenv("STORAGE_INTERNAL_ADDR")); internalAddr != "" {
+		internalSrv = &http.Server{
+			Addr:              internalAddr,
+			Handler:           srv.InternalHandler(),
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		go func() {
+			logger.Info("internal peer listener", "addr", internalAddr)
+			if err := internalSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Error("internal peer listener", "err", err)
+				os.Exit(1)
+			}
+		}()
+	}
+
 	<-ctx.Done()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	logger.Info("shutting down")
 	_ = httpSrv.Shutdown(shutdownCtx)
+	if internalSrv != nil {
+		_ = internalSrv.Shutdown(shutdownCtx)
+	}
 }
 
 func withRequestLogging(logger *slog.Logger, next http.Handler) http.Handler {

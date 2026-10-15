@@ -10,7 +10,9 @@ The lab layout and ports are in the [2-node reference](reference-deployment-2nod
 
 With `STORAGE_HA_ENABLED=true` and the Postgres metadata backend, a follower rejects writes with **503** and body `not cluster leader` (`Retry-After: 30`). A follower proxies `GET` and `HEAD` of an object to the leader and keeps the original `Host`, so SigV4 still matches. If that dial fails, the follower serves the copy on its own disk. Bucket listings, `/healthz`, `/metrics`, and `/api/v1/health` are answered locally.
 
-A local read whose metadata row is present and whose file is missing copies the stored bytes from a peer that has them, then opens that copy on this node. Public share download uses that path. The bytes copied are the bytes already stored, including ciphertext.
+A local read whose metadata row is present and whose file is missing copies the stored bytes from a peer that has them, then opens that copy on this node. Public share download uses that path. The bytes copied are the bytes already stored, including ciphertext. When no peer can supply the file, that read is HTTP 503. The copy is accepted only when the size and stored ETag match the metadata row.
+
+Peer copies use `PUT` and `GET /api/v1/ha/object-replica` on `STORAGE_INTERNAL_ADDR` (lab port 9002). The public listener and the load balancer do not serve that path. Each request is an HMAC of the method, path, body hash, expiry, nonce, and destination node id, using the shared JWT secret. A code lasts at most 30 seconds and cannot be replayed.
 
 The same 503 applies to v1.6 sharing and access-security writes: global, tenant, and bucket sharing policy, creating and revoking share links, and presign. Public share GET and download stay on followers. See [Access model](access-model.md).
 

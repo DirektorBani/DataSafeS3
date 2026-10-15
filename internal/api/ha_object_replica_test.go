@@ -2,6 +2,11 @@ package api
 
 import (
 	"context"
+	"crypto/md5"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,29 +16,29 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 )
 
 func TestHandleObjectReplicaWritesStoredBytes(t *testing.T) {
-	t.Setenv("STORAGE_HA_ENABLED", "false")
-	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
-	s, err := NewServer(Config{
-		DataDir: t.TempDir(), AdminUser: "admin", AdminPassword: "admin", JWTSecret: "replica-secret",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
-
+	holder := newReplicaLab(t, "holder")
 	body := "stored-bytes"
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/ha/object-replica?bucket=box&key=a.txt", strings.NewReader(body))
-	req.Header.Set("X-DataSafe-Replica", replicaMAC("replica-secret", "box", "a.txt", ""))
+	notePlain(t, holder, "box", "a.txt", "", body)
+
+	pub := authedReplica(t, http.MethodPut, "replica-secret", "holder", "box", "a.txt", "", body)
 	rr := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rr, req)
+	holder.Handler().ServeHTTP(rr, pub)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("public listener %d %s", rr.Code, rr.Body.String())
+	}
+
+	req := authedReplica(t, http.MethodPut, "replica-secret", "holder", "box", "a.txt", "", body)
+	rr = httptest.NewRecorder()
+	holder.InternalHandler().ServeHTTP(rr, req)
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("replica %d %s", rr.Code, rr.Body.String())
 	}
-	rc, _, err := s.backend.GetObject(context.Background(), "box", "a.txt")
+	rc, _, err := holder.backend.GetObject(context.Background(), "box", "a.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,66 +48,120 @@ func TestHandleObjectReplicaWritesStoredBytes(t *testing.T) {
 		t.Fatalf("stored %q", got)
 	}
 
-	bad := httptest.NewRequest(http.MethodPut, "/api/v1/ha/object-replica?bucket=box&key=a.txt", strings.NewReader("nope"))
-	bad.Header.Set("X-DataSafe-Replica", replicaMAC("other", "box", "a.txt", ""))
+	again := cloneReplica(req, body)
 	rr = httptest.NewRecorder()
-	s.Handler().ServeHTTP(rr, bad)
+	holder.InternalHandler().ServeHTTP(rr, again)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("replay %d", rr.Code)
+	}
+
+	bad := authedReplica(t, http.MethodPut, "other", "holder", "box", "a.txt", "", body)
+	rr = httptest.NewRecorder()
+	holder.InternalHandler().ServeHTTP(rr, bad)
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("bad mac %d", rr.Code)
 	}
 }
 
-func TestGetObjectPullsMissingBytesFromPeer(t *testing.T) {
-	t.Setenv("STORAGE_HA_ENABLED", "false")
-	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
-	holder := newReplicaLab(t)
-	empty := newReplicaLab(t)
-	reader := newReplicaLab(t)
+func TestReplicaRejectsReplayedReadAndTamperedBody(t *testing.T) {
+	holder := newReplicaLab(t, "holder")
 	body := "stored-bytes"
+	notePlain(t, holder, "box", "a.txt", "", body)
+	put := authedReplica(t, http.MethodPut, "replica-secret", "holder", "box", "a.txt", "", body)
+	rr := httptest.NewRecorder()
+	holder.InternalHandler().ServeHTTP(rr, put)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("put %d %s", rr.Code, rr.Body.String())
+	}
+
+	get := authedReplica(t, http.MethodGet, "replica-secret", "holder", "box", "a.txt", "", "")
+	asPut := cloneReplica(get, "TAMPERED")
+	asPut.Method = http.MethodPut
+	rr = httptest.NewRecorder()
+	holder.InternalHandler().ServeHTTP(rr, asPut)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("get replayed as put %d %s", rr.Code, rr.Body.String())
+	}
+	rc, _, err := holder.backend.GetObject(context.Background(), "box", "a.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+	got, _ := io.ReadAll(rc)
+	if string(got) != body {
+		t.Fatalf("file changed to %q", got)
+	}
+
+	tampered := authedReplica(t, http.MethodPut, "replica-secret", "holder", "box", "a.txt", "", body)
+	tampered.Body = io.NopCloser(strings.NewReader("TAMPERED"))
+	tampered.ContentLength = int64(len("TAMPERED"))
+	rr = httptest.NewRecorder()
+	holder.InternalHandler().ServeHTTP(rr, tampered)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("tampered body with the old code %d", rr.Code)
+	}
+
+	signedBad := authedReplica(t, http.MethodPut, "replica-secret", "holder", "box", "a.txt", "", "TAMPERED")
+	rr = httptest.NewRecorder()
+	holder.InternalHandler().ServeHTTP(rr, signedBad)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("bytes that do not match metadata %d", rr.Code)
+	}
+
+	wrong := authedReplica(t, http.MethodPut, "replica-secret", "other-node", "box", "a.txt", "", body)
+	rr = httptest.NewRecorder()
+	holder.InternalHandler().ServeHTTP(rr, wrong)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("wrong node %d", rr.Code)
+	}
+
+	expired := authedReplica(t, http.MethodGet, "replica-secret", "holder", "box", "a.txt", "", "")
+	past := strconv.FormatInt(time.Now().Add(-time.Hour).Unix(), 10)
+	sum := sha256.Sum256(nil)
+	hash := hex.EncodeToString(sum[:])
+	nonce := expired.Header.Get("X-DataSafe-Replica-Nonce")
+	canon := replicaCanon(http.MethodGet, hash, past, nonce, "holder", "box", "a.txt", "")
+	expired.Header.Set("X-DataSafe-Replica-Expires", past)
+	expired.Header.Set("X-DataSafe-Replica", replicaSign("replica-secret", canon))
+	rr = httptest.NewRecorder()
+	holder.InternalHandler().ServeHTTP(rr, expired)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expired %d", rr.Code)
+	}
+}
+
+func TestGetObjectPullsMissingBytesFromPeer(t *testing.T) {
+	holder := newReplicaLab(t, "holder")
+	empty := newReplicaLab(t, "empty")
+	reader := newReplicaLab(t, "reader")
+	body := "stored-bytes"
+	notePlain(t, holder, "box", "a.txt", "", body)
+	notePlain(t, holder, "box", "b.txt", "v1", "versioned-bytes")
 	putReplica(t, holder, "box", "a.txt", "", body)
 	putReplica(t, holder, "box", "b.txt", "v1", "versioned-bytes")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/ha/object-replica?bucket=box&key=a.txt", nil)
-	req.Header.Set("X-DataSafe-Replica", replicaMAC("replica-secret", "box", "a.txt", ""))
+	req := authedReplica(t, http.MethodGet, "replica-secret", "holder", "box", "a.txt", "", "")
 	rr := httptest.NewRecorder()
-	holder.Handler().ServeHTTP(rr, req)
+	holder.InternalHandler().ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK || rr.Body.String() != body {
 		t.Fatalf("get %d %q", rr.Code, rr.Body.String())
 	}
 	if rr.Header().Get("Content-Length") != strconv.Itoa(len(body)) {
 		t.Fatalf("content-length %s", rr.Header().Get("Content-Length"))
 	}
-	bad := httptest.NewRequest(http.MethodGet, "/api/v1/ha/object-replica?bucket=box&key=a.txt", nil)
-	bad.Header.Set("X-DataSafe-Replica", replicaMAC("other", "box", "a.txt", ""))
-	rr = httptest.NewRecorder()
-	holder.Handler().ServeHTTP(rr, bad)
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("bad mac %d", rr.Code)
-	}
-	miss := httptest.NewRequest(http.MethodGet, "/api/v1/ha/object-replica?bucket=box&key=missing.txt", nil)
-	miss.Header.Set("X-DataSafe-Replica", replicaMAC("replica-secret", "box", "missing.txt", ""))
-	rr = httptest.NewRecorder()
-	holder.Handler().ServeHTTP(rr, miss)
-	if rr.Code != http.StatusNotFound {
-		t.Fatalf("missing %d", rr.Code)
-	}
 
-	holderSrv := httptest.NewServer(holder.Handler())
+	holderSrv := httptest.NewServer(holder.InternalHandler())
 	t.Cleanup(holderSrv.Close)
-	emptySrv := httptest.NewServer(empty.Handler())
+	emptySrv := httptest.NewServer(empty.InternalHandler())
 	t.Cleanup(emptySrv.Close)
 
-	if err := reader.meta.PutBucket(metadata.BucketRecord{Name: "box", CreatedAt: time.Now().UTC()}); err != nil {
-		t.Fatal(err)
-	}
-	if err := reader.meta.PutObject(metadata.ObjectRecord{
-		Bucket: "box", Key: "a.txt", Size: int64(len(body)),
-		Encryption: &metadata.ObjectEncryption{Plaintext: true},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	notePlain(t, reader, "box", "a.txt", "", body)
+	notePlain(t, reader, "box", "b.txt", "v1", "versioned-bytes")
 	reader.svc.FetchStoredObject = func(ctx context.Context, bucket, key, versionID string) error {
-		return reader.pullFromPeers(ctx, []string{emptySrv.URL, holderSrv.URL}, bucket, key, versionID)
+		return reader.pullFromPeers(ctx, []replicaPeer{
+			{ID: "empty", Addr: emptySrv.URL},
+			{ID: "holder", Addr: holderSrv.URL},
+		}, bucket, key, versionID)
 	}
 	rc, _, err := reader.svc.GetObject(context.Background(), "box", "a.txt", "")
 	if err != nil {
@@ -113,7 +172,7 @@ func TestGetObjectPullsMissingBytesFromPeer(t *testing.T) {
 	if string(got) != body {
 		t.Fatalf("pulled %q", got)
 	}
-	if err := reader.pullObjectReplica(context.Background(), holderSrv.URL, "box", "b.txt", "v1"); err != nil {
+	if err := reader.pullObjectReplica(context.Background(), replicaPeer{ID: "holder", Addr: holderSrv.URL}, "box", "b.txt", "v1"); err != nil {
 		t.Fatal(err)
 	}
 	rc, _, err = reader.backend.GetObjectVersion(context.Background(), "box", "b.txt", "v1")
@@ -127,30 +186,22 @@ func TestGetObjectPullsMissingBytesFromPeer(t *testing.T) {
 	}
 }
 
-func newReplicaLab(t *testing.T) *Server {
-	t.Helper()
-	s, err := NewServer(Config{
-		DataDir: t.TempDir(), AdminUser: "admin", AdminPassword: "admin", JWTSecret: "replica-secret",
-	})
-	if err != nil {
-		t.Fatal(err)
+func TestGetObjectUnavailableWhenPeersDown(t *testing.T) {
+	reader := newReplicaLab(t, "reader")
+	notePlain(t, reader, "box", "a.txt", "", "stored-bytes")
+	reader.svc.FetchStoredObject = func(context.Context, string, string, string) error {
+		return errors.New("all peers down")
 	}
-	t.Cleanup(func() { _ = s.Close() })
-	return s
+	_, _, err := reader.svc.GetObject(context.Background(), "box", "a.txt", "")
+	if !errors.Is(err, s3.ErrObjectUnavailable) {
+		t.Fatalf("err %v", err)
+	}
 }
 
-func putReplica(t *testing.T, s *Server, bucket, key, version, body string) {
-	t.Helper()
-	u := "/api/v1/ha/object-replica?bucket=" + url.QueryEscape(bucket) + "&key=" + url.QueryEscape(key)
-	if version != "" {
-		u += "&version=" + url.QueryEscape(version)
-	}
-	req := httptest.NewRequest(http.MethodPut, u, strings.NewReader(body))
-	req.Header.Set("X-DataSafe-Replica", replicaMAC(s.cfg.JWTSecret, bucket, key, version))
-	rr := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rr, req)
-	if rr.Code != http.StatusNoContent {
-		t.Fatalf("put %s %d %s", key, rr.Code, rr.Body.String())
+func TestReplicaPeerPortRewrites(t *testing.T) {
+	t.Setenv("STORAGE_INTERNAL_PORT", "9002")
+	if got := replicaPeerAddr("http://storage-2:9000"); got != "http://storage-2:9002" {
+		t.Fatalf("addr %s", got)
 	}
 }
 
@@ -167,4 +218,91 @@ func TestIsHAObjectRead(t *testing.T) {
 	if isHAObjectRead(httptest.NewRequest(http.MethodPut, "/box/a.txt", nil)) {
 		t.Fatal("put is a write")
 	}
+}
+
+func newReplicaLab(t *testing.T, node string) *Server {
+	t.Helper()
+	t.Setenv("STORAGE_HA_ENABLED", "false")
+	t.Setenv("STORAGE_AUTO_HOME_BUCKET", "false")
+	s, err := NewServer(Config{
+		DataDir: t.TempDir(), AdminUser: "admin", AdminPassword: "admin",
+		JWTSecret: "replica-secret", NodeID: node,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
+
+func notePlain(t *testing.T, s *Server, bucket, key, version, body string) {
+	t.Helper()
+	if _, err := s.meta.GetBucket(bucket); err != nil {
+		if err := s.meta.PutBucket(metadata.BucketRecord{Name: bucket, CreatedAt: time.Now().UTC()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sum := md5.Sum([]byte(body))
+	rec := metadata.ObjectRecord{
+		Bucket: bucket, Key: key, VersionID: version,
+		Size: int64(len(body)), ETag: `"` + hex.EncodeToString(sum[:]) + `"`,
+		Encryption:   &metadata.ObjectEncryption{Plaintext: true},
+		LastModified: time.Now().UTC(),
+	}
+	var err error
+	if version != "" {
+		err = s.meta.PutObjectVersioned(rec)
+	} else {
+		err = s.meta.PutObject(rec)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func putReplica(t *testing.T, s *Server, bucket, key, version, body string) {
+	t.Helper()
+	req := authedReplica(t, http.MethodPut, s.cfg.JWTSecret, s.clusterNodeID(), bucket, key, version, body)
+	rr := httptest.NewRecorder()
+	s.InternalHandler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("put %s %d %s", key, rr.Code, rr.Body.String())
+	}
+}
+
+func authedReplica(t *testing.T, method, secret, node, bucket, key, version, body string) *http.Request {
+	t.Helper()
+	raw := []byte(body)
+	var rdr io.Reader
+	if method == http.MethodPut {
+		rdr = strings.NewReader(body)
+	} else {
+		raw = nil
+	}
+	sum := sha256.Sum256(raw)
+	hash := hex.EncodeToString(sum[:])
+	exp := strconv.FormatInt(time.Now().Add(20*time.Second).Unix(), 10)
+	var nb [8]byte
+	_, _ = rand.Read(nb[:])
+	nonce := hex.EncodeToString(nb[:])
+	u := replicaPath + "?bucket=" + url.QueryEscape(bucket) + "&key=" + url.QueryEscape(key)
+	if version != "" {
+		u += "&version=" + url.QueryEscape(version)
+	}
+	req := httptest.NewRequest(method, u, rdr)
+	canon := replicaCanon(method, hash, exp, nonce, node, bucket, key, version)
+	req.Header.Set("X-DataSafe-Replica", replicaSign(secret, canon))
+	req.Header.Set("X-DataSafe-Replica-Expires", exp)
+	req.Header.Set("X-DataSafe-Replica-Nonce", nonce)
+	req.Header.Set("X-DataSafe-Replica-Node", node)
+	req.Header.Set("X-DataSafe-Replica-SHA256", hash)
+	return req
+}
+
+func cloneReplica(req *http.Request, body string) *http.Request {
+	out := req.Clone(req.Context())
+	out.Body = io.NopCloser(strings.NewReader(body))
+	out.ContentLength = int64(len(body))
+	out.Header = req.Header.Clone()
+	return out
 }

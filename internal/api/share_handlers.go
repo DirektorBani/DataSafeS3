@@ -305,6 +305,13 @@ func (s *Server) handlePublicShareDownload(w http.ResponseWriter, r *http.Reques
 			writeJSON(w, http.StatusForbidden, map[string]any{"error": s3.MsgKeyDestroyed})
 			return
 		}
+		if errors.Is(err, s3.ErrObjectUnavailable) {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"error":   "object unavailable",
+				"message": "Файл временно недоступен, попробуйте позже",
+			})
+			return
+		}
 		if errors.Is(err, s3.ErrKMSUnavailable) {
 			resource := link.ID + " result=kms_unavailable"
 			payload := map[string]any{

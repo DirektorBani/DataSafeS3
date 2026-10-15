@@ -2,6 +2,21 @@ package kms
 
 import "testing"
 
+func TestTerminalStatusRefusesMissingObjects(t *testing.T) {
+	status, errs := TerminalStatus(59, 60, 0, 59)
+	if status != JobCompletedWithErrors || errs != 1 {
+		t.Fatalf("missing row %s %d", status, errs)
+	}
+	status, errs = TerminalStatus(59, 60, 0, 60)
+	if status != JobCompletedWithErrors || errs != 1 {
+		t.Fatalf("short done %s %d", status, errs)
+	}
+	status, errs = TerminalStatus(60, 60, 0, 60)
+	if status != JobCompleted || errs != 0 {
+		t.Fatalf("complete %s %d", status, errs)
+	}
+}
+
 func TestJobCursorAndIdempotentDecide(t *testing.T) {
 	items := []WorkItem{
 		{Key: "a", VersionID: "1"},

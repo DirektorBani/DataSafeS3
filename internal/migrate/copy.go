@@ -529,7 +529,10 @@ func (r *runner) copyGroups(ctx context.Context, groups [][]ObjectVersion) error
 
 func (r *runner) copyVersion(ctx context.Context, v ObjectVersion) error {
 	id := versionIdentity(v)
-	if r.state.Has(v.Bucket, v.Key, id) {
+	// The journal is not enough. A run that recorded "copied" and then lost
+	// the target row (leader kill during the put) must write the object again.
+	// primeTarget has already indexed what the target still has.
+	if r.state.Has(v.Bucket, v.Key, id) && (r.lookupSource(v.Bucket, v.Key, id) != "" || r.lookupETag(v) != "") {
 		r.progress(v, "skipped")
 		return nil
 	}

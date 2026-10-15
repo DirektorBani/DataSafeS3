@@ -96,11 +96,28 @@ func (s *Store) putObject(rec metadata.ObjectRecord, versioned bool, evs []event
 	rec.Bucket = s.normalizeObjectBucket(rec.Bucket)
 	ctx := context.Background()
 	if len(evs) == 0 {
-		return 0, s.putObjectQ(ctx, s.pool, rec, versioned)
+		return 0, s.withMetaTx(ctx, func(tx pgx.Tx) error {
+			return s.putObjectQ(ctx, tx, rec, versioned)
+		})
 	}
 	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error {
 		return s.putObjectQ(ctx, tx, rec, versioned)
 	})
+}
+
+// withMetaTx commits the replace as one transaction. An unversioned put used
+// to DELETE and then INSERT on the pool, so a killed leader left the row gone
+// and the file on disk.
+func (s *Store) withMetaTx(ctx context.Context, fn func(tx pgx.Tx) error) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 type pgExec interface {
@@ -165,13 +182,13 @@ func (s *Store) putObjectQ(ctx context.Context, q pgExec, rec metadata.ObjectRec
 			timestamptzPtr(rec.RetentionUntil), rec.StorageClass, meta, tags, rec.CreatedAt, encryptionArg(rec.Encryption))
 		return err
 	}
-	_, err := q.Exec(ctx, `DELETE FROM objects WHERE bucket=$1 AND key=$2`, rec.Bucket, rec.Key)
-	if err != nil {
+	// Delete and insert share the caller's transaction. A separate autocommit
+	// for each statement let a killed leader commit the delete and lose the
+	// row, while the file stayed on disk. The resumed job then reported success.
+	if _, err := q.Exec(ctx, `DELETE FROM objects WHERE bucket=$1 AND key=$2`, rec.Bucket, rec.Key); err != nil {
 		return err
 	}
-	// Last commit wins. A plain INSERT races with another writer of the same
-	// unversioned key (23505 objects_pkey). ON CONFLICT updates that row.
-	_, err = q.Exec(ctx, `
+	_, err := q.Exec(ctx, `
 		INSERT INTO objects (bucket, key, version_id, size, etag, content_type, last_modified,
 			scheduled_delete_at, is_delete_marker, legal_hold, retention_until, storage_class,
 			metadata, tags, created_at, is_latest, encryption)
@@ -258,7 +275,7 @@ func (s *Store) deleteObjectVersion(bucket, key, versionID string, versioningEna
 		return s.deleteObjectVersionQ(ctx, q, bucket, key, versionID, versioningEnabled)
 	}
 	if len(evs) == 0 {
-		return 0, run(s.pool)
+		return 0, s.withMetaTx(ctx, func(tx pgx.Tx) error { return run(tx) })
 	}
 	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error { return run(tx) })
 }

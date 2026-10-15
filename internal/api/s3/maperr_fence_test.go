@@ -8,6 +8,18 @@ import (
 	"testing"
 )
 
+func TestMissingObjectBytesAreServiceUnavailable(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/b/k", nil)
+	rec := httptest.NewRecorder()
+	mapErr(rec, req, ErrObjectUnavailable)
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "ServiceUnavailable") {
+		t.Fatalf("unavailable %d %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "NoSuchKey") {
+		t.Fatal("missing bytes were reported as NoSuchKey")
+	}
+}
+
 func TestFencedPutIsServiceUnavailable(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPut, "/b/k", nil)
 	rec := httptest.NewRecorder()

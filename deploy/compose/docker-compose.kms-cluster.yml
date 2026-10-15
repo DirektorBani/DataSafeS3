@@ -87,6 +87,8 @@ services:
     image: ${KMS_CLUSTER_IMAGE:-datasafe-storage-server:ci}
     environment: &storage_env
       STORAGE_ADDR: ":9000"
+      STORAGE_INTERNAL_ADDR: ":9002"
+      STORAGE_INTERNAL_PORT: "9002"
       STORAGE_DEV: "true"
       STORAGE_LOG_LEVEL: info
       STORAGE_DATA_DIR: /data

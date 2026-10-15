@@ -1433,6 +1433,9 @@ func mapErr(w http.ResponseWriter, r *http.Request, err error) {
 		writeError(w, r, http.StatusForbidden, "AccessDenied", MsgKeyDestroyed)
 	case ErrKMSUnavailable:
 		writeError(w, r, http.StatusServiceUnavailable, "ServiceUnavailable", "KMS unavailable")
+	case ErrObjectUnavailable:
+		w.Header().Set("Retry-After", "1")
+		writeError(w, r, http.StatusServiceUnavailable, "ServiceUnavailable", ErrObjectUnavailable.Error())
 	case errObjectLockVersioning:
 		writeError(w, r, http.StatusConflict, "InvalidBucketState", errObjectLockVersioning.Error())
 	case metadata.ErrLegalHold:

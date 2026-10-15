@@ -41,12 +41,13 @@ const (
 )
 
 var (
-	ErrSSEKeyMissing  = errors.New("STORAGE_SSE_MASTER_KEY is not configured")
-	ErrPublicKMS      = errors.New("public access with aws:kms is not allowed")
-	ErrClusterUpgrade = errors.New("cluster upgrade in progress")
-	ErrKeyNotAllowed  = errors.New("kms key id is not in the allow list")
-	ErrKeyDestroyed   = errors.New("key destroyed")
-	ErrKMSUnavailable = errors.New("KMS unavailable")
+	ErrSSEKeyMissing     = errors.New("STORAGE_SSE_MASTER_KEY is not configured")
+	ErrPublicKMS         = errors.New("public access with aws:kms is not allowed")
+	ErrClusterUpgrade    = errors.New("cluster upgrade in progress")
+	ErrKeyNotAllowed     = errors.New("kms key id is not in the allow list")
+	ErrKeyDestroyed      = errors.New("key destroyed")
+	ErrKMSUnavailable    = errors.New("KMS unavailable")
+	ErrObjectUnavailable = errors.New("object bytes are unavailable")
 )
 
 type sseSpec struct {

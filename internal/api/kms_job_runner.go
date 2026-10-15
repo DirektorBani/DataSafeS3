@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"sort"
 	"time"
@@ -121,8 +122,19 @@ func (s *Server) stepOneKMSJob(ctx context.Context, job metadata.KMSJob) error {
 		}
 	}
 	if len(batch) == 0 {
+		present := 0
+		for _, it := range items {
+			if !it.DeleteMarker {
+				present++
+			}
+		}
+		status, errs := kms.TerminalStatus(job.Done, job.Total, job.Errors, present)
+		if errs > job.Errors {
+			s.noteKMSJobError(&job, fmt.Sprintf("metadata has %d objects, job counted %d and finished %d", present, job.Total, job.Done))
+		}
+		job.Errors = errs
 		now := time.Now().UTC()
-		job.Status = kms.FinishStatus(job.Errors)
+		job.Status = status
 		job.FinishedAt = &now
 		job.UpdatedAt = now
 		if err := s.meta.PutKMSJob(job); err != nil {
@@ -208,6 +220,11 @@ func (s *Server) applyKMSWork(ctx context.Context, job *metadata.KMSJob, it kms.
 	if err := saveObjectRecord(s.meta, rec); err != nil {
 		s.noteKMSJobError(job, it.Key+": "+err.Error())
 		return "error"
+	}
+	// Metadata is committed before peers see the new ciphertext. A copy that
+	// races the row would be refused because the stored ETag would not match.
+	if action == kms.ActEncrypt {
+		s.replicateStoredObject(ctx, job.BucketKey, rec.Key, rec.VersionID)
 	}
 	return action
 }
@@ -324,7 +341,6 @@ func (s *Server) encryptObjectInPlace(ctx context.Context, rec *metadata.ObjectR
 	if err != nil {
 		return err
 	}
-	s.replicateStoredObject(ctx, job.BucketKey, rec.Key, rec.VersionID)
 	algo := "AES256"
 	if key.Provider == kms.ProviderVault {
 		algo = "aws:kms"

@@ -805,8 +805,13 @@ func (s *Service) GetObject(ctx context.Context, bucket, key, versionID string) 
 	vid := rec.VersionID
 	rc, _, err := s.Backend.GetObjectVersion(ctx, bucket, key, vid)
 	if errors.Is(err, storage.ErrNotFound) && s.FetchStoredObject != nil {
+		// Metadata names the object. A missing file with no reachable peer
+		// is 503, not NoSuchKey: the row is still there.
 		if ferr := s.FetchStoredObject(ctx, bucket, key, vid); ferr == nil {
 			rc, _, err = s.Backend.GetObjectVersion(ctx, bucket, key, vid)
+		}
+		if err != nil {
+			return nil, rec, ErrObjectUnavailable
 		}
 	}
 	if err != nil {

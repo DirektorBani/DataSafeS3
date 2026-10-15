@@ -170,6 +170,34 @@ func TestFromMinIOInterruptThenResume(t *testing.T) {
 	}
 }
 
+func TestResumeCopiesWhenJournalIsAheadOfTarget(t *testing.T) {
+	srcURL, srcCreds, _ := startNode(t)
+	dstURL, dstCreds, _ := startNode(t)
+	bucket := "ahead"
+	mustStatus(t, srcURL, srcCreds, http.MethodPut, "/"+bucket, "", nil, http.StatusOK)
+	mustStatus(t, srcURL, srcCreds, http.MethodPut, "/"+bucket+"/blob.bin", "payload", nil, http.StatusOK)
+	mustStatus(t, dstURL, dstCreds, http.MethodPut, "/"+bucket, "", nil, http.StatusOK)
+
+	opt := options(t, srcURL, srcCreds, dstURL, dstCreds, bucket)
+	st, err := migrate.OpenState(opt.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Mark(bucket, "blob.bin", "null", "copied", "deadbeef", 7); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ev, err := migrate.Run(context.Background(), opt)
+	if err != nil || !ev.OK() {
+		t.Fatalf("resume: %v %#v %v", err, ev.Verdicts, ev.Errors)
+	}
+	if got := getBody(t, dstURL, dstCreds, "/"+bucket+"/blob.bin"); got != "payload" {
+		t.Fatalf("journal skipped a missing object: %q", got)
+	}
+}
+
 func TestFromMinIORetriesNotLeader(t *testing.T) {
 	_, creds, _ := startNode(t)
 	dst, dstCreds := newNode(t)

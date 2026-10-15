@@ -409,7 +409,7 @@ else
   kms_down="$HTTP_CODE"
   s3_get "$LB/plainbox/a.txt"
   plain_up="$HTTP_CODE"
-  docker network connect datasafe-kms-cluster_default ds-kms-vault || true
+  docker network connect --alias vault datasafe-kms-cluster_default ds-kms-vault || true
   if [ "$kms_down" = "503" ] && [ "$plain_up" = "200" ]; then
     verdict vault_down PASS
   else
@@ -433,51 +433,127 @@ if [ "$i" -le 30 ]; then
   verdict vault_back PASS
 fi
 
-s3_put "$LB/rewrapbox" ""
-if enable_kms rewrapbox; then
+port_of() {
+  local want="$1" item
+  for item in "${NODES[@]}"; do
+    if [ "${item%%|*}" = "$want" ]; then
+      echo "${item##*|}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+restore_node() {
+  local name="$1" port found=0 l
+  docker start "$name" >/dev/null
+  port="$(port_of "$name")"
+  wait_health "http://127.0.0.1:${port}/healthz" "$name"
+  for l in "${LIVE[@]}"; do
+    [ "$l" = "$name" ] && found=1
+  done
+  if [ "$found" -eq 0 ]; then
+    LIVE+=("$name")
+  fi
+  reload_lb
+}
+
+# Kill the leader as soon as rewrap starts, several times. Every object that
+# was written must still be readable, and the job must not say completed
+# unless done equals total and errors is 0.
+rewrap_ok=1
+REWRAP_ROUNDS="${KMS_REWRAP_ROUNDS:-3}"
+REWRAP_OBJECTS=20
+round=1
+while [ "$round" -le "$REWRAP_ROUNDS" ]; do
+  bucket="rewrap${round}"
+  s3_put "$LB/${bucket}" ""
+  if ! enable_kms "$bucket"; then
+    echo "rewrap round $round enable failed" >&2
+    rewrap_ok=0
+    break
+  fi
   n=0
-  while [ "$n" -lt 40 ]; do
-    s3_put "$LB/rewrapbox/o$n.txt" "rewrap-$n"
+  while [ "$n" -lt "$REWRAP_OBJECTS" ]; do
+    s3_put "$LB/${bucket}/o${n}.txt" "rewrap-$n"
+    if [ "$HTTP_CODE" != "200" ]; then
+      echo "rewrap round $round put o$n $HTTP_CODE" >&2
+      rewrap_ok=0
+      break
+    fi
     n=$((n + 1))
   done
-  api GET /api/v1/buckets/rewrapbox/encryption "$TOK"
+  [ "$rewrap_ok" -eq 1 ] || break
+  if ! wait_one_leader; then
+    rewrap_ok=0
+    break
+  fi
+  api GET "/api/v1/buckets/${bucket}/encryption" "$TOK"
   KEY_ID="$(json_field key_id)"
   api POST "/api/v1/kms/keys/${KEY_ID}/rotate" "$TOK"
   if [ "$HTTP_CODE" != "200" ]; then
-    echo "rotate $HTTP_CODE $(cat "$STATE/body.txt")" >&2
-    verdict rewrap FAIL
-  else
-    api POST /api/v1/buckets/rewrapbox/encryption/rewrap "$TOK"
-    JOB_ID="$(json_field id)"
-    if [ "$HTTP_CODE" != "202" ] || [ -z "$JOB_ID" ]; then
-      echo "rewrap $HTTP_CODE $(cat "$STATE/body.txt")" >&2
-      verdict rewrap FAIL
-    else
-      docker kill "$LEADER_NAME" >/dev/null
-      drop_node "$LEADER_NAME"
-      if wait_one_leader; then
-        deadline=$((SECONDS + 90))
-        status=""
-        while [ "$SECONDS" -lt "$deadline" ]; do
-          api GET "/api/v1/kms/jobs/${JOB_ID}" "$TOK"
-          status="$(json_field status)"
-          if [ "$status" = "completed" ]; then
-            break
-          fi
-          sleep 0.5
-        done
-        s3_get "$LB/rewrapbox/o0.txt"
-        if [ "$status" = "completed" ] && [ "$HTTP_CODE" = "200" ] && cmp -s "$STATE/got.bin" <(printf '%s' 'rewrap-0'); then
-          verdict rewrap PASS
-        else
-          echo "rewrap status=$status get=$HTTP_CODE" >&2
-          verdict rewrap FAIL
-        fi
-      else
-        verdict rewrap FAIL
-      fi
-    fi
+    echo "rewrap round $round rotate $HTTP_CODE $(cat "$STATE/body.txt")" >&2
+    rewrap_ok=0
+    break
   fi
+  api POST "/api/v1/buckets/${bucket}/encryption/rewrap" "$TOK"
+  JOB_ID="$(json_field id)"
+  if [ "$HTTP_CODE" != "202" ] || [ -z "$JOB_ID" ]; then
+    echo "rewrap round $round start $HTTP_CODE $(cat "$STATE/body.txt")" >&2
+    rewrap_ok=0
+    break
+  fi
+  killed="$LEADER_NAME"
+  docker kill "$killed" >/dev/null
+  drop_node "$killed"
+  if ! wait_one_leader; then
+    rewrap_ok=0
+    break
+  fi
+  deadline=$((SECONDS + 90))
+  status=""
+  done_n=""
+  total_n=""
+  err_n=""
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    api GET "/api/v1/kms/jobs/${JOB_ID}" "$TOK"
+    status="$(json_field status)"
+    done_n="$(sed -n 's/.*"done":\([0-9]*\).*/\1/p' "$STATE/body.txt" | head -n 1)"
+    total_n="$(sed -n 's/.*"total":\([0-9]*\).*/\1/p' "$STATE/body.txt" | head -n 1)"
+    err_n="$(sed -n 's/.*"errors":\([0-9]*\).*/\1/p' "$STATE/body.txt" | head -n 1)"
+    case "$status" in
+      completed|completed_with_errors|failed) break ;;
+    esac
+    sleep 0.5
+  done
+  if [ "$status" != "completed" ] || [ "$done_n" != "$total_n" ] || [ "$err_n" != "0" ] || [ "$total_n" != "$REWRAP_OBJECTS" ]; then
+    echo "rewrap round $round status=$status done=$done_n total=$total_n errors=$err_n" >&2
+    rewrap_ok=0
+    break
+  fi
+  s3_get "$LB/${bucket}?list-type=2&max-keys=1000"
+  listed="$( { grep -o '<Key>' "$STATE/got.bin" || true; } | wc -l | tr -d ' ')"
+  if [ "$listed" != "$REWRAP_OBJECTS" ]; then
+    echo "rewrap round $round list=$listed" >&2
+    rewrap_ok=0
+    break
+  fi
+  n=0
+  while [ "$n" -lt "$REWRAP_OBJECTS" ]; do
+    s3_get "$LB/${bucket}/o${n}.txt"
+    if [ "$HTTP_CODE" != "200" ] || ! cmp -s "$STATE/got.bin" <(printf '%s' "rewrap-$n"); then
+      echo "rewrap round $round get o$n $HTTP_CODE" >&2
+      rewrap_ok=0
+      break
+    fi
+    n=$((n + 1))
+  done
+  [ "$rewrap_ok" -eq 1 ] || break
+  restore_node "$killed"
+  round=$((round + 1))
+done
+if [ "$rewrap_ok" -eq 1 ]; then
+  verdict rewrap PASS
 else
   verdict rewrap FAIL
 fi

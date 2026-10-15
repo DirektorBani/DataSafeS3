@@ -24,6 +24,19 @@ func FinishStatus(errors int) string {
 	return JobCompleted
 }
 
+// TerminalStatus is the status when nothing remains after the cursor.
+// Fewer metadata rows than the count taken at the start, or fewer finished
+// rows than that count, is not a success: the job must not report completed
+// while an object it started with is gone.
+func TerminalStatus(done, total, errors, present int) (string, int) {
+	if total > 0 && present < total {
+		errors += total - present
+	} else if done < total {
+		errors++
+	}
+	return FinishStatus(errors), errors
+}
+
 const (
 	ActSkip    = "skip"
 	ActRewrap  = "rewrap"
