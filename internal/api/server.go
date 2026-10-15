@@ -263,6 +263,7 @@ func NewServer(cfg Config) (*Server, error) {
 				haCfg.NodeID = cfg.NodeID
 			}
 			s.haLeader = ha.New(haCfg, pg)
+			s.svc.ReplicateObject = s.replicateStoredObject
 			if s.eventDisp != nil {
 				s.eventDisp.SetOnFence(s.haLeader.Resign)
 				s.haLeader.SetOnAcquired(s.syncEventSinks)
@@ -461,6 +462,10 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		path := r.URL.Path
+		if path == "/api/v1/ha/object-replica" {
+			s.handleObjectReplica(w, r)
+			return
+		}
 		if path == "/healthz" || strings.HasPrefix(path, "/api/") || path == "/metrics" {
 			if s.readOnlyGuard(w, r) {
 				return
@@ -469,6 +474,9 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		if s.readOnlyGuard(w, r) {
+			return
+		}
+		if s.proxyObjectRead(w, r) {
 			return
 		}
 		s.s3.ServeHTTP(w, r)

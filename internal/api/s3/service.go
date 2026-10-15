@@ -48,6 +48,9 @@ type Service struct {
 	ObjectOutbox func(ctx context.Context, bucket metadata.BucketRecord, obj metadata.ObjectRecord, kind string) []events.OutboxRecord
 	// OnOutboxDropped reports rows the pending cap marked dropped inside the commit.
 	OnOutboxDropped func(n int)
+	// ReplicateObject copies the stored bytes to other HA nodes after a local write.
+	// Nil when this process is not in an HA group. The copy is the ciphertext on disk.
+	ReplicateObject func(ctx context.Context, bucket, key, versionID string)
 	// putStripes serializes writers of one key on this process so the file,
 	// etag, and metadata row belong to the same last writer.
 	putStripes [64]sync.Mutex
@@ -738,6 +741,9 @@ func (s *Service) putObject(ctx context.Context, bucket, key string, r io.Reader
 	s.noteDropped(dropped)
 	if s.OnObjectEvent != nil {
 		s.OnObjectEvent(metadata.ReplEventPut, bucket, key)
+	}
+	if s.ReplicateObject != nil {
+		s.ReplicateObject(ctx, bucket, key, versionID)
 	}
 	return rec, dropped, nil
 }

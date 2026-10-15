@@ -324,6 +324,7 @@ func (s *Server) encryptObjectInPlace(ctx context.Context, rec *metadata.ObjectR
 	if err != nil {
 		return err
 	}
+	s.replicateStoredObject(ctx, job.BucketKey, rec.Key, rec.VersionID)
 	algo := "AES256"
 	if key.Provider == kms.ProviderVault {
 		algo = "aws:kms"

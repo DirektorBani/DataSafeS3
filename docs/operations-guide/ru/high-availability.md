@@ -2,13 +2,13 @@
 
 # Высокая доступность
 
-Community Edition запускает несколько процессов storage-server на одной базе Postgres и общем томе объектов. Один процесс держит аренду лидера. Это не автоматический failover между зонами доступности и не выбор нового primary Postgres.
+Community Edition запускает несколько процессов storage-server на одной базе Postgres. У каждого процесса свой каталог объектов. После записи лидер копирует байты на диске остальным узлам, которые объявили адрес. Один процесс держит аренду лидера. Это не автоматический failover между зонами доступности и не выбор нового primary Postgres. Файловая система, смонтированная на всех узлах, — это старый read-only standby; новые установки используют диски узлов или erasure-шарды ([эталон на 2 узла](reference-deployment-2node.md)).
 
 Схема лаборатории и порты: [эталон на 2 узла](reference-deployment-2node.md). Команды promote и пакет доказательств: [аварийное восстановление](disaster-recovery.md).
 
 ## Пишет только лидер
 
-При `STORAGE_HA_ENABLED=true` и метаданных в Postgres follower отвергает запись с **503** и телом `not cluster leader` (`Retry-After: 30`). `GET`, `HEAD` и `OPTIONS` проходят, как и `/healthz`, `/metrics` и `/api/v1/health`.
+При `STORAGE_HA_ENABLED=true` и метаданных в Postgres follower отвергает запись с **503** и телом `not cluster leader` (`Retry-After: 30`). `GET` и `HEAD` объекта follower проксирует на лидера и сохраняет исходный `Host`, чтобы SigV4 сходился. Если дозвон не удался, follower отдаёт копию со своего диска. Список бакета, `/healthz`, `/metrics` и `/api/v1/health` отвечаются локально.
 
 Тот же 503 относится к записи обмена и безопасности доступа в 1.6: политика обмена (глобально, тенант, бакет), создание и отзыв ссылок, presign. Публичный GET ссылки и скачивание на follower остаются. См. [Модель доступа](access-model.md).
 
@@ -30,4 +30,4 @@ Community Edition запускает несколько процессов stora
 
 `scripts/collect-dr-evidence.sh` пишет каталог, `summary.md`, `evidence.json` и zip: время, лаг, healthz, запись и чтение объекта, счётчики outbox, диспетчер на новом лидере, потери и дубли at-least-once. `bash scripts/ha/run-promote-drill.sh` — лаборатория одной командой.
 
-В этом дереве никто сам не выбирает новый primary Postgres. Байты объекта остаются на узле, который их записал, пока вы не реплицируете их отдельно.
+В этом дереве никто сам не выбирает новый primary Postgres. Лидер копирует байты объектов на остальные узлы. Лаборатория read-only standby по-прежнему копирует диски через `object-replicator` (`deploy/compose/docker-compose.ha-local.yml`).
