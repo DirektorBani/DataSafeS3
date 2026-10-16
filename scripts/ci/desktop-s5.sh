@@ -1,7 +1,7 @@
 #!/bin/sh
 # S5 for the Desktop 1.0 shell: CSP default-src 'self', connect-src is only
-# Tauri IPC, capabilities name permissions and do not grant shell:default,
-# and the shell does not put a secret on a process argument.
+# Tauri IPC, capabilities list each permission by name (no default set,
+# no shell plugin), and the shell does not put a secret on a process argument.
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
@@ -29,16 +29,26 @@ extra = [token for token in connect if token not in allowed]
 if not connect or extra:
     raise SystemExit(f"connect-src must be only Tauri IPC, got {connect!r}")
 caps = json.loads(pathlib.Path(sys.argv[2]).read_text())
-permissions = caps.get("permissions") or []
-if not isinstance(permissions, list) or not permissions:
-    raise SystemExit("capabilities must name permissions")
+permissions = caps.get("permissions")
+if not isinstance(permissions, list):
+    raise SystemExit("capabilities permissions must be a list")
 if not all(isinstance(item, str) for item in permissions):
     raise SystemExit("permissions must be names")
+sets = [item for item in permissions if item == "core:default" or item.endswith(":default")]
+if sets:
+    raise SystemExit(f"capabilities must name each permission, not a default set: {sets}")
 granted = [item for item in permissions if item == "shell:default" or item.startswith("shell:")]
 if granted:
     raise SystemExit(f"capabilities grant shell: {granted}")
-print("S5 config: ok")
+print(f"S5 config: ok ({len(permissions)} named permissions)")
 PY
+
+hook=$app/src-tauri/windows/installer-hooks.nsh
+if ! grep -F 'Software\datasafe\DataSafeS3 Desktop' "$hook" >/dev/null; then
+  echo "S5: NSIS hook must remove HKCU\\Software\\datasafe\\DataSafeS3 Desktop" >&2
+  exit 1
+fi
+echo "S5 nsis hook: ok"
 
 if grep -R -n --include='*.rs' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.json' -e '--password' -e 'shell:default' "$app" >/dev/null; then
   echo "S5: secret argument or shell:default found under $app" >&2

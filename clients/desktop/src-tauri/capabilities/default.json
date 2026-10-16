@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Desktop 1.0 shell. Each later command and sidecar is added by name. The shell plugin is not granted.",
+  "description": "Desktop 1.0 shell. No IPC permission is granted until a command exists. Each later command is added here by its own permission name.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": []
 }
