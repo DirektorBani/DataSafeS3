@@ -35,6 +35,7 @@ LICENSE.local
 
 # Rust
 clients/desktop/src-tauri/target/
+clients/desktop/src-tauri/gen/
 
 # Node (stay at canonical paths — see _local/README.md)
 node_modules/
