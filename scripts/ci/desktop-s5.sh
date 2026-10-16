@@ -40,6 +40,21 @@ if sets:
 granted = [item for item in permissions if item == "shell:default" or item.startswith("shell:")]
 if granted:
     raise SystemExit(f"capabilities grant shell: {granted}")
+windows = conf["app"]["windows"]
+if not windows:
+    raise SystemExit("a window is required")
+args = windows[0].get("additionalBrowserArgs") or ""
+required = [
+    "--disable-background-networking",
+    "--disable-component-update",
+    "msWebOOUI",
+    "msPdfOOUI",
+    "msSmartScreenProtection",
+    "ComponentUpdater",
+]
+missing = [item for item in required if item not in args]
+if missing:
+    raise SystemExit(f"Windows WebView args missing {missing}")
 print(f"S5 config: ok ({len(permissions)} named permissions)")
 PY
 

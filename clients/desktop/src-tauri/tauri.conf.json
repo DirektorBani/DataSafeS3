@@ -16,7 +16,8 @@
         "title": "DataSafeS3 Desktop",
         "width": 960,
         "height": 640,
-        "resizable": true
+        "resizable": true,
+        "additionalBrowserArgs": "--disable-background-networking --disable-component-update --disable-domain-reliability --disable-sync --disable-client-side-phishing-detection --no-pings --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,ComponentUpdater,AutofillServerCommunication,OptimizationHints,Translate"
       }
     ],
     "security": {
@@ -32,6 +33,9 @@
       "icons/128x128@2x.png",
       "icons/icon.ico"
     ],
+    "resources": {
+      "binaries/": "binaries/"
+    },
     "windows": {
       "nsis": {
         "installerHooks": "windows/installer-hooks.nsh"

@@ -1,5 +1,247 @@
+mod agent;
+mod keyring;
+mod profiles;
+
+use agent::Agent;
+use keyring::SecretStore;
+use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::Mutex;
+use tauri::{Manager, State};
+
+struct MemorySession {
+    token: String,
+    mfa_token: String,
+}
+
+struct Desktop {
+    agent: Mutex<Agent>,
+    secrets: SecretStore,
+    memory: Mutex<HashMap<String, MemorySession>>,
+}
+
+fn call(state: &Desktop, method: &str, params: Value) -> Result<Value, String> {
+    state.agent.lock().map_err(|err| err.to_string())?.call(method, params)
+}
+
+fn session_mut(state: &Desktop) -> Result<std::sync::MutexGuard<'_, HashMap<String, MemorySession>>, String> {
+    state.memory.lock().map_err(|err| err.to_string())
+}
+
+fn remember_token(state: &Desktop, id: &str, token: &str) -> bool {
+    if token.is_empty() {
+        return true;
+    }
+    if let Ok(mut memory) = session_mut(state) {
+        let entry = memory.entry(id.to_string()).or_insert(MemorySession {
+            token: String::new(),
+            mfa_token: String::new(),
+        });
+        entry.token = token.to_string();
+    }
+    state.secrets.set(id, "token", token).is_ok()
+}
+
+fn token_for(state: &Desktop, id: &str) -> String {
+    if let Ok(memory) = state.memory.lock() {
+        if let Some(session) = memory.get(id) {
+            if !session.token.is_empty() {
+                return session.token.clone();
+            }
+        }
+    }
+    state.secrets.get(id, "token").ok().flatten().unwrap_or_default()
+}
+
+fn take_secrets(value: &mut Value) -> (String, String) {
+    let Some(obj) = value.as_object_mut() else {
+        return (String::new(), String::new());
+    };
+    let token = obj.remove("token").and_then(|item| item.as_str().map(str::to_string)).unwrap_or_default();
+    let mfa = obj.remove("mfa_token").and_then(|item| item.as_str().map(str::to_string)).unwrap_or_default();
+    (token, mfa)
+}
+
+fn store_login(state: &Desktop, id: &str, mut result: Value, persist_token: bool) -> Result<Value, String> {
+    let (token, mfa) = take_secrets(&mut result);
+    if !mfa.is_empty() {
+        if let Ok(mut memory) = session_mut(state) {
+            let entry = memory.entry(id.to_string()).or_insert(MemorySession {
+                token: String::new(),
+                mfa_token: String::new(),
+            });
+            entry.mfa_token = mfa;
+        }
+    }
+    let persisted = if token.is_empty() || !persist_token {
+        true
+    } else {
+        remember_token(state, id, &token)
+    };
+    if !token.is_empty() && !persist_token {
+        if let Ok(mut memory) = session_mut(state) {
+            let entry = memory.entry(id.to_string()).or_insert(MemorySession {
+                token: String::new(),
+                mfa_token: String::new(),
+            });
+            entry.token = token;
+        }
+    }
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert("secrets_persisted".into(), Value::Bool(persisted));
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+fn profile_list(state: State<Desktop>) -> Result<Value, String> {
+    let mut result = call(&state, "profile.list", json!({}))?;
+    if let Some(items) = result.get_mut("profiles").and_then(Value::as_array_mut) {
+        for item in items {
+            let id = item.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+            let session = item.get("session").and_then(Value::as_str).unwrap_or("");
+            if session == "signed_in" && token_for(&state, &id).is_empty() {
+                if let Some(obj) = item.as_object_mut() {
+                    obj.insert("session".into(), Value::String("reauth".into()));
+                }
+            }
+        }
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+fn profile_save(state: State<Desktop>, profile: Value) -> Result<Value, String> {
+    call(&state, "profile.put", json!({ "profile": profile }))
+}
+
+#[tauri::command]
+fn profile_forget(state: State<Desktop>, id: String) -> Result<Value, String> {
+    let result = call(&state, "profile.delete", json!({ "id": id }))?;
+    state.secrets.delete_profile(&id)?;
+    if let Ok(mut memory) = session_mut(&state) {
+        memory.remove(&id);
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+fn server_info(state: State<Desktop>, id: String) -> Result<Value, String> {
+    let token = token_for(&state, &id);
+    call(&state, "server.info", json!({ "id": id, "token": token }))
+}
+
+#[tauri::command]
+fn auth_login(state: State<Desktop>, id: String, username: String, password: String, remember: bool) -> Result<Value, String> {
+    let password = if password.is_empty() {
+        state.secrets.get(&id, "password")?.filter(|value| !value.is_empty()).ok_or("password is required")?
+    } else {
+        password
+    };
+    let result = call(&state, "auth.login", json!({ "id": id, "username": username, "password": password }))?;
+    if remember {
+        let _ = state.secrets.set(&id, "password", &password);
+    } else {
+        let _ = state.secrets.delete(&id, "password");
+    }
+    store_login(&state, &id, result, true)
+}
+
+#[tauri::command]
+fn auth_mfa(state: State<Desktop>, id: String, code: String) -> Result<Value, String> {
+    let mfa_token = session_mut(&state)?.get(&id).map(|session| session.mfa_token.clone()).unwrap_or_default();
+    if mfa_token.is_empty() {
+        return Err("sign in again before the verification code".into());
+    }
+    let result = call(&state, "auth.mfa", json!({ "id": id, "mfa_token": mfa_token, "mfa_code": code }))?;
+    if let Ok(mut memory) = session_mut(&state) {
+        if let Some(session) = memory.get_mut(&id) {
+            session.mfa_token.clear();
+        }
+    }
+    store_login(&state, &id, result, true)
+}
+
+#[tauri::command]
+fn auth_logout(state: State<Desktop>, id: String) -> Result<Value, String> {
+    let token = token_for(&state, &id);
+    let result = call(&state, "auth.logout", json!({ "id": id, "token": token }))?;
+    let _ = state.secrets.delete(&id, "token");
+    if let Ok(mut memory) = session_mut(&state) {
+        memory.remove(&id);
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+fn auth_oidc_password(state: State<Desktop>, id: String, username: String, password: String, remember: bool) -> Result<Value, String> {
+    let result = call(&state, "auth.oidc", json!({ "id": id, "username": username, "password": password }))?;
+    if remember {
+        let _ = state.secrets.set(&id, "password", &password);
+    } else {
+        let _ = state.secrets.delete(&id, "password");
+    }
+    store_login(&state, &id, result, true)
+}
+
+#[tauri::command]
+fn auth_oidc_exchange(state: State<Desktop>, id: String, exchange_code: String) -> Result<Value, String> {
+    let result = call(&state, "auth.oidc_exchange", json!({ "id": id, "exchange_code": exchange_code }))?;
+    store_login(&state, &id, result, true)
+}
+
+#[tauri::command]
+fn auth_api_token(state: State<Desktop>, id: String, token: String) -> Result<Value, String> {
+    let saved = state.secrets.set(&id, "api_token", &token).is_ok();
+    if let Ok(mut memory) = session_mut(&state) {
+        memory.insert(id.clone(), MemorySession { token: token.clone(), mfa_token: String::new() });
+    }
+    let result = call(&state, "auth.token", json!({ "id": id, "token": token }))?;
+    let mut view = store_login(&state, &id, result, true)?;
+    if let Some(obj) = view.as_object_mut() {
+        obj.insert("secrets_persisted".into(), Value::Bool(saved));
+    }
+    Ok(view)
+}
+
+#[tauri::command]
+fn auth_access_key(state: State<Desktop>, id: String, secret: String) -> Result<Value, String> {
+    let saved = state.secrets.set(&id, "access_secret", &secret).is_ok();
+    let info = call(&state, "server.info", json!({ "id": id }))?;
+    Ok(json!({
+        "status": "credentials_saved",
+        "secrets_persisted": saved,
+        "server": info.get("server").cloned().unwrap_or(Value::Null),
+    }))
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            let dir = profiles::data_dir();
+            let _ = std::fs::create_dir_all(&dir);
+            let resources = app.path().resource_dir().ok();
+            app.manage(Desktop {
+                agent: Mutex::new(Agent::open(dir, resources)),
+                secrets: SecretStore,
+                memory: Mutex::new(HashMap::new()),
+            });
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            profile_list,
+            profile_save,
+            profile_forget,
+            server_info,
+            auth_login,
+            auth_mfa,
+            auth_logout,
+            auth_oidc_password,
+            auth_oidc_exchange,
+            auth_api_token,
+            auth_access_key
+        ])
         .run(tauri::generate_context!())
         .expect("error while running DataSafeS3 Desktop");
 }

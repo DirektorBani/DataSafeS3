@@ -2,5 +2,17 @@
   "identifier": "default",
   "description": "Desktop 1.0 shell. No IPC permission is granted until a command exists. Each later command is added here by its own permission name.",
   "windows": ["main"],
-  "permissions": []
+  "permissions": [
+    "allow-profile-list",
+    "allow-profile-save",
+    "allow-profile-forget",
+    "allow-server-info",
+    "allow-auth-login",
+    "allow-auth-mfa",
+    "allow-auth-logout",
+    "allow-auth-oidc-password",
+    "allow-auth-oidc-exchange",
+    "allow-auth-api-token",
+    "allow-auth-access-key"
+  ]
 }

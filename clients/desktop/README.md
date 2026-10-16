@@ -1,6 +1,13 @@
 # DataSafeS3 Desktop 1.0
 
-Tauri 2 shell for Windows and Linux. This scaffold is version `1.0.0-dev`: Russian and English, light and dark theme, no sign-in yet. The window does not call the DataSafe API. On Windows, WebView2 can still hold a loopback connection to `[::1]:80`; [ADR-0008](../../docs/architecture/adr/0008-desktop-client.md) explains why that is the `tauri.localhost` rewrite and why it stays. Folder sync remains the `datasafe-sync` CLI; it is not this app.
+Tauri 2 shell for Windows and Linux, version `1.0.0-dev`. Profiles and sign-in go through the Go agent `datasafe-agent` on stdin. The window does not call the DataSafe API. Build the agent before the shell:
+
+```bash
+mkdir -p clients/desktop/src-tauri/binaries
+go build -o clients/desktop/src-tauri/binaries/datasafe-agent ./cmd/datasafe-agent
+```
+
+On Windows, add `-ldflags "-H windowsgui"` and the `.exe` suffix. [ADR-0008](../../docs/architecture/adr/0008-desktop-client.md) records the WebView2 loopback connection, the browser arguments that stop component updates, and the Edge Update service those arguments cannot stop.
 
 The bundle id is `com.datasafe.desktop`.
 
@@ -31,7 +38,7 @@ A release bundle:
 npm run tauri -w datasafe-desktop -- build --bundles nsis
 ```
 
-The installer is under `clients/desktop/src-tauri/target/release/bundle/nsis/`. A release build does not open a console window. Uninstall removes `HKCU\Software\datasafe\DataSafeS3 Desktop`. App data is removed only if the uninstaller's "delete app data" checkbox is checked. CI uploads the installer and writes its byte size to the `datasafe-desktop-nsis` artifact (`nsis-size.txt`). Idle memory is still measured on a Windows PC; see [BASELINE.md](BASELINE.md).
+The installer is under `clients/desktop/src-tauri/target/release/bundle/nsis/`. A release build does not open a console window. Uninstall removes `HKCU\Software\datasafe\DataSafeS3 Desktop`. App data is removed only if the uninstaller's "delete app data" checkbox is checked. CI uploads the installer as `datasafe-desktop-nsis` and writes the byte size and SHA256 into that artifact (`nsis-size.txt`) and the job summary. The E00 baseline is in [BASELINE.md](BASELINE.md).
 
 ## Linux
 

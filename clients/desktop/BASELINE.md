@@ -6,7 +6,7 @@ The Windows installer is built by the `windows-build` job in `.github/workflows/
 
 | | Windows NSIS | Idle working set |
 |---|---|---|
-| `1.0.0-dev` (E00) | see `desktop-ci` artifact `nsis-size.txt` | _not measured yet_ |
+| `1.0.0-dev` (E00, `e60002e`) | 1,953,694 bytes | idle app 27 MB; process tree about 334 MB |
 
 A Linux amd64 `.deb` built from this tree is 3,076,194 bytes (2.93 MiB). That is not the Windows baseline.
 

@@ -27,15 +27,23 @@ The window does not talk to the network. Rust starts `datasafe-agent` and speaks
 
 ### IPC and the WebView
 
-`tauri.conf.json` sets a CSP of `default-src 'self'` with `connect-src` limited to Tauri IPC (`ipc:` and `http://ipc.localhost`). Capabilities list each permission by name. The scaffold grants none: the window does not call a Tauri command. A later step adds the permission for each new command in `capabilities/default.json`. The core permission set and the shell plugin are not granted. `scripts/ci/desktop-s5.sh` fails the build if the CSP regresses, if a permission is a default set, or if the shell plugin is granted.
-
-The current scaffold has no commands and no sidecar. E01 adds the agent and the named commands.
+`tauri.conf.json` sets a CSP of `default-src 'self'` with `connect-src` limited to Tauri IPC (`ipc:` and `http://ipc.localhost`). Capabilities list each permission by name. E01 grants one permission per command (`allow-profile-list`, `allow-auth-login`, and the other profile and auth commands). A later step adds the next command the same way. The core permission set and the shell plugin are not granted. `scripts/ci/desktop-s5.sh` fails the build if the CSP regresses, if a permission is a default set, if the WebView arguments drop the updater lock, or if the shell plugin is granted.
 
 ### Windows WebView and loopback port 80
 
 On Windows, Tauri 2.12 (wry 0.57) does not navigate the WebView2 control to `tauri://localhost`. WebView2's custom-scheme support is incomplete, so wry rewrites the asset URL to `http://tauri.localhost` and the IPC URL to `http://ipc.localhost`, then answers those requests inside the `WebResourceRequested` handler. `app.windows[].useHttpsScheme` only changes that rewrite to `https://…localhost`. It does not switch the control to a scheme that never touches the network stack, and it would move the same connection from port 80 to port 443. This shell leaves the default http rewrite in place.
 
 Names that end in `.localhost` are loopback names. WebView2's network process sometimes opens a TCP connection to the default HTTP port before, or beside, the in-process handler. Windows `http.sys` owns port 80, so that connection shows up as the WebView2 process holding `[::1]:80`. The peer is the local HTTP driver. The shell does not send the DataSafe API, credentials, or any other application byte on that socket. Linux uses `tauri://localhost` and does not do this.
+
+A separate WebView2 process was observed calling `edge.microsoft.com:443` while the window was idle. That is the runtime's component updater and SmartScreen, not the page. Setting `additionalBrowserArgs` replaces wry's defaults, so the main window repeats `msWebOOUI`, `msPdfOOUI`, and `msSmartScreenProtection` and adds `--disable-background-networking`, `--disable-component-update`, `--disable-domain-reliability`, `--disable-sync`, `--disable-client-side-phishing-detection`, `--no-pings`, and `ComponentUpdater`. Those flags apply to the app's WebView2 browser process.
+
+What remains: the Windows **Microsoft Edge Update** service can still contact `edge.microsoft.com` for the Evergreen runtime. It is not started by the page, it is not the DataSafe API, and browser arguments cannot turn that service off. The check on a Windows PC is the `msedgewebview2.exe` command line for this app: it should contain `--disable-component-update`.
+
+### E01 agent
+
+`cmd/datasafe-agent` speaks newline-delimited JSON-RPC on stdin and stdout. Rust starts it with only `--data-dir`. Passwords, tokens, and codes travel in that pipe and are not process arguments or environment variables. Rust stores them in the OS credential store under `datasafe-desktop/<profile_id>/<kind>` (`password`, `token`, `api_token`, `access_secret`). The WebView receives status only. `profiles.json` has no secrets. Without Secret Service, Rust keeps the secret in memory for the process and says so.
+
+The agent classifies 1.5.0 (stamped and `dev` without `kms`), 1.6.0, and 1.6.1. A public capabilities body without `features` falls through to `/healthz`. An authenticated body with `features` replaces that column. `1.0.0-dev` satisfies `min_supported` `1.0.0`; a higher floor still warns, and `min_required` with reason `security` blocks the profile while the list cache stays. OIDC in this step is the resource-owner password grant and the one-time exchange code. The system-browser redirect waits on the deep-link decision.
 
 ### Secrets
 
