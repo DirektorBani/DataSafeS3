@@ -168,6 +168,62 @@ func TestRejectOldServerAndBlockFloor(t *testing.T) {
 	}
 }
 
+func TestRejectVersionless141(t *testing.T) {
+	var loginCalled bool
+	old := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/healthz":
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		case "/api/v1/auth/login-options":
+			http.NotFound(w, r)
+		case "/api/v1/admin/login":
+			loginCalled = true
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"token":"should-not-issue","expires_in":60}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer old.Close()
+	app := &App{dataDir: t.TempDir()}
+	profile, err := app.putProfile(Profile{Name: "Old", ServerURL: old.URL, AuthMethod: "password", Username: "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := app.loginPassword(profile, "a", "secret")
+	if err != nil || got.Status != "rejected" || got.Token != "" || got.Server.BrowseAllowed {
+		t.Fatalf("versionless 1.4.1 %+v %v", got, err)
+	}
+	if loginCalled {
+		t.Fatal("sign-in must not run against a server older than 1.5.0")
+	}
+
+	unknown := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/healthz":
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		case "/api/v1/auth/login-options":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"local_login_enabled":true}`))
+		case "/api/v1/admin/login":
+			_ = json.NewEncoder(w).Encode(map[string]any{"token": "jwt-unknown", "expires_in": 86400, "username": "a"})
+		case "/api/v1/capabilities":
+			_, _ = w.Write([]byte(`{"api":"v1","login_methods":["password"]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer unknown.Close()
+	profile, err = app.putProfile(Profile{Name: "Unknown", ServerURL: unknown.URL, AuthMethod: "password", Username: "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = app.loginPassword(profile, "a", "secret")
+	if err != nil || got.Status != "signed_in" || got.Token != "jwt-unknown" || got.Server.Profile != "basic" || !got.Server.BrowseAllowed {
+		t.Fatalf("unknown newer server should stay basic and allow sign-in: %+v %v", got, err)
+	}
+}
+
 func TestMFAAndEchoedSecret(t *testing.T) {
 	password := "echo-me-not"
 	var sawLogin bool

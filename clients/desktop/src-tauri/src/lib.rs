@@ -62,6 +62,14 @@ fn take_secrets(value: &mut Value) -> (String, String) {
     (token, mfa)
 }
 
+fn remember_password(state: &Desktop, id: &str, password: &str, remember: bool) -> bool {
+    if remember {
+        return state.secrets.set(id, "password", password).is_ok();
+    }
+    let _ = state.secrets.delete(id, "password");
+    true
+}
+
 fn store_login(state: &Desktop, id: &str, mut result: Value, persist_token: bool) -> Result<Value, String> {
     let (token, mfa) = take_secrets(&mut result);
     if !mfa.is_empty() {
@@ -117,12 +125,19 @@ fn profile_save(state: State<Desktop>, profile: Value) -> Result<Value, String> 
 
 #[tauri::command]
 fn profile_forget(state: State<Desktop>, id: String) -> Result<Value, String> {
-    let result = call(&state, "profile.delete", json!({ "id": id }))?;
-    state.secrets.delete_profile(&id)?;
+    // Credential entries go first. A missing entry is success. If the OS
+    // store cannot be opened, nothing was persisted there; the profile
+    // still goes. Any other delete error leaves the profile so Forget can
+    // be retried.
+    if let Err(err) = state.secrets.delete_profile(&id) {
+        if !err.contains("Couldn't access platform secure storage") {
+            return Err(err);
+        }
+    }
     if let Ok(mut memory) = session_mut(&state) {
         memory.remove(&id);
     }
-    Ok(result)
+    call(&state, "profile.delete", json!({ "id": id }))
 }
 
 #[tauri::command]
@@ -139,12 +154,13 @@ fn auth_login(state: State<Desktop>, id: String, username: String, password: Str
         password
     };
     let result = call(&state, "auth.login", json!({ "id": id, "username": username, "password": password }))?;
-    if remember {
-        let _ = state.secrets.set(&id, "password", &password);
-    } else {
-        let _ = state.secrets.delete(&id, "password");
+    let mut view = store_login(&state, &id, result, true)?;
+    if !remember_password(&state, &id, &password, remember) {
+        if let Some(obj) = view.as_object_mut() {
+            obj.insert("secrets_persisted".into(), Value::Bool(false));
+        }
     }
-    store_login(&state, &id, result, true)
+    Ok(view)
 }
 
 #[tauri::command]
@@ -176,12 +192,13 @@ fn auth_logout(state: State<Desktop>, id: String) -> Result<Value, String> {
 #[tauri::command]
 fn auth_oidc_password(state: State<Desktop>, id: String, username: String, password: String, remember: bool) -> Result<Value, String> {
     let result = call(&state, "auth.oidc", json!({ "id": id, "username": username, "password": password }))?;
-    if remember {
-        let _ = state.secrets.set(&id, "password", &password);
-    } else {
-        let _ = state.secrets.delete(&id, "password");
+    let mut view = store_login(&state, &id, result, true)?;
+    if !remember_password(&state, &id, &password, remember) {
+        if let Some(obj) = view.as_object_mut() {
+            obj.insert("secrets_persisted".into(), Value::Bool(false));
+        }
     }
-    store_login(&state, &id, result, true)
+    Ok(view)
 }
 
 #[tauri::command]
@@ -219,6 +236,7 @@ fn auth_access_key(state: State<Desktop>, id: String, secret: String) -> Result<
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            SecretStore::require_native()?;
             let dir = profiles::data_dir();
             let _ = std::fs::create_dir_all(&dir);
             let resources = app.path().resource_dir().ok();
