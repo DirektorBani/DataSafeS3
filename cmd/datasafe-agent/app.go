@@ -133,10 +133,6 @@ func (a *App) readHealth(client *Client) (healthInfo, bool) {
 			}
 		}
 	}
-	if health.Reached && strings.TrimSpace(health.Version) == "" {
-		opt, err := client.do(http.MethodGet, "/api/v1/auth/login-options", nil)
-		health.LoginOptionsNotFound = err == nil && opt.Status == http.StatusNotFound
-	}
 	me, err := client.do(http.MethodGet, "/api/v1/me", nil)
 	meReached := err == nil && me.Status != 0
 	return health, meReached

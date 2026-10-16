@@ -86,17 +86,16 @@ func TestDetectVersions(t *testing.T) {
 			reject:  true,
 		},
 		{
-			name:    "v1.4.1 healthz without version and login-options 404 is rejected",
-			health:  healthInfo{Reached: true, LoginOptionsNotFound: true},
+			name:    "reachable healthz with no version is older than 1.5.0",
+			health:  healthInfo{Reached: true},
 			profile: "rejected",
 			reject:  true,
 		},
 		{
-			name:    "missing version with login-options present is basic",
-			health:  healthInfo{Reached: true},
-			profile: "basic",
-			warn:    true,
-			feature: "objects.multipart",
+			name:    "reachable healthz with a blank version is older than 1.5.0",
+			health:  healthInfo{Reached: true, Version: "  "},
+			profile: "rejected",
+			reject:  true,
 		},
 		{
 			name:    "unknown version is basic",

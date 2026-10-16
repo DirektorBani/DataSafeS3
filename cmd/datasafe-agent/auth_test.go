@@ -132,12 +132,23 @@ func TestLoginRetryForgetAndSecrets(t *testing.T) {
 }
 
 func TestRejectOldServerAndBlockFloor(t *testing.T) {
+	var loginCalled bool
 	old := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/healthz" {
-			_, _ = w.Write([]byte(`{"status":"ok","version":"1.4.1"}`))
-			return
+		switch r.URL.Path {
+		case "/healthz":
+			_, _ = w.Write(healthzV141)
+		case "/api/v1/auth/login-options":
+			// Present on v1.4.1 and returns 200. Not a version signal.
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"local_login_enabled":true}`))
+		case "/api/v1/events/delivery":
+			http.NotFound(w, r)
+		case "/api/v1/admin/login":
+			loginCalled = true
+			_, _ = w.Write([]byte(`{"token":"should-not-issue","expires_in":60}`))
+		default:
+			http.NotFound(w, r)
 		}
-		http.NotFound(w, r)
 	}))
 	defer old.Close()
 	app := &App{dataDir: t.TempDir()}
@@ -146,8 +157,11 @@ func TestRejectOldServerAndBlockFloor(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := app.loginPassword(profile, "a", "secret")
-	if err != nil || got.Status != "rejected" || got.Token != "" {
+	if err != nil || got.Status != "rejected" || got.Token != "" || got.Server.BrowseAllowed {
 		t.Fatalf("1.4.1 %+v %v", got, err)
+	}
+	if loginCalled {
+		t.Fatal("sign-in must not run against a server older than 1.5.0")
 	}
 
 	blocked := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -168,47 +182,54 @@ func TestRejectOldServerAndBlockFloor(t *testing.T) {
 	}
 }
 
-func TestRejectVersionless141(t *testing.T) {
-	var loginCalled bool
-	old := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestHealthzFixturesFromTags(t *testing.T) {
+	var v141 map[string]any
+	if err := json.Unmarshal(healthzV141, &v141); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := v141["version"]; ok {
+		t.Fatal("v1.4.1 fixture must omit version")
+	}
+	var v150 map[string]any
+	if err := json.Unmarshal(healthzV150, &v150); err != nil {
+		t.Fatal(err)
+	}
+	version, _ := v150["version"].(string)
+	commit, _ := v150["commit"].(string)
+	if version == "" || commit == "" {
+		t.Fatalf("v1.5.0 fixture must match TestHealthReportsVersionAndCommit: %#v", v150)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/healthz":
-			_, _ = w.Write([]byte(`{"status":"ok"}`))
-		case "/api/v1/auth/login-options":
-			http.NotFound(w, r)
+			_, _ = w.Write(healthzV150)
+		case "/api/v1/events/delivery":
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
 		case "/api/v1/admin/login":
-			loginCalled = true
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"token":"should-not-issue","expires_in":60}`))
+			_ = json.NewEncoder(w).Encode(map[string]any{"token": "jwt-150", "expires_in": 86400, "username": "a"})
 		default:
 			http.NotFound(w, r)
 		}
 	}))
-	defer old.Close()
+	defer srv.Close()
 	app := &App{dataDir: t.TempDir()}
-	profile, err := app.putProfile(Profile{Name: "Old", ServerURL: old.URL, AuthMethod: "password", Username: "a"})
+	profile, err := app.putProfile(Profile{Name: "150", ServerURL: srv.URL, AuthMethod: "password", Username: "a"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, err := app.loginPassword(profile, "a", "secret")
-	if err != nil || got.Status != "rejected" || got.Token != "" || got.Server.BrowseAllowed {
-		t.Fatalf("versionless 1.4.1 %+v %v", got, err)
-	}
-	if loginCalled {
-		t.Fatal("sign-in must not run against a server older than 1.5.0")
+	if err != nil || got.Status != "signed_in" || got.Token != "jwt-150" || got.Server.Profile != "1.5.0" {
+		t.Fatalf("v1.5.0 fixture %+v %v", got, err)
 	}
 
 	unknown := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/healthz":
-			_, _ = w.Write([]byte(`{"status":"ok"}`))
-		case "/api/v1/auth/login-options":
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"local_login_enabled":true}`))
+			_, _ = w.Write(healthzUnknown)
 		case "/api/v1/admin/login":
 			_ = json.NewEncoder(w).Encode(map[string]any{"token": "jwt-unknown", "expires_in": 86400, "username": "a"})
-		case "/api/v1/capabilities":
-			_, _ = w.Write([]byte(`{"api":"v1","login_methods":["password"]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -220,7 +241,27 @@ func TestRejectVersionless141(t *testing.T) {
 	}
 	got, err = app.loginPassword(profile, "a", "secret")
 	if err != nil || got.Status != "signed_in" || got.Token != "jwt-unknown" || got.Server.Profile != "basic" || !got.Server.BrowseAllowed {
-		t.Fatalf("unknown newer server should stay basic and allow sign-in: %+v %v", got, err)
+		t.Fatalf("present but unknown version should stay basic: %+v %v", got, err)
+	}
+
+	blank := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			_, _ = w.Write(healthzBlankVersion)
+			return
+		}
+		if r.URL.Path == "/api/v1/admin/login" {
+			t.Error("blank version must not receive credentials")
+		}
+		http.NotFound(w, r)
+	}))
+	defer blank.Close()
+	profile, err = app.putProfile(Profile{Name: "Blank", ServerURL: blank.URL, AuthMethod: "password", Username: "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = app.loginPassword(profile, "a", "secret")
+	if err != nil || got.Status != "rejected" || got.Token != "" {
+		t.Fatalf("blank version %+v %v", got, err)
 	}
 }
 

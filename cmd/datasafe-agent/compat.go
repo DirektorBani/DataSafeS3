@@ -52,11 +52,6 @@ type healthInfo struct {
 	Version string
 	HasKMS  bool
 	Reached bool
-	// LoginOptionsNotFound is set when /healthz has no version and
-	// GET /api/v1/auth/login-options is 404. That route arrived in 1.5.0,
-	// so a real 1.4.1 (whose /healthz has no version field) is refused.
-	// A missing version with any other login-options result stays basic.
-	LoginOptionsNotFound bool
 }
 
 type capsInfo struct {
@@ -130,13 +125,11 @@ func classifyHealth(card *ServerCard, health healthInfo, meReached bool) {
 	version := strings.TrimSpace(health.Version)
 	card.ServerVersion = version
 	switch {
-	case isSemver(version) && versionLT(version, "1.5.0"):
-		card.Profile = "rejected"
-		card.Rejected = true
-		card.Warning = "server is older than 1.5.0"
-	case version == "" && health.LoginOptionsNotFound:
-		// v1.4.1 /healthz is {"status":"ok"} with no version field, and
-		// /api/v1/auth/login-options does not exist yet.
+	case version == "" || (isSemver(version) && versionLT(version, "1.5.0")):
+		// v1.5.0+ always sends a non-empty version (tag v1.5.0,
+		// TestHealthReportsVersionAndCommit). A reachable /healthz with
+		// the field missing or blank is older than 1.5.0. v1.4.1's
+		// handler does not write the field at all.
 		card.Profile = "rejected"
 		card.Rejected = true
 		card.Warning = "server is older than 1.5.0"
