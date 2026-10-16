@@ -80,7 +80,7 @@ func (s *Server) runReplicationWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.processReplicationQueueOnce(ctx)
+			s.withBackgroundDB(func() { s.processReplicationQueueOnce(ctx) })
 		}
 	}
 }

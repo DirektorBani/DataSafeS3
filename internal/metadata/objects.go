@@ -38,6 +38,53 @@ func (s *Store) PutObject(rec ObjectRecord) error {
 	return err
 }
 
+// SetObjectEncryptionIfAbsent writes enc onto an unmarked object. The rest of
+// the record stays as stored. A second call does not replace a marker.
+func (s *Store) SetObjectEncryptionIfAbsent(bucket, key, versionID string, enc *ObjectEncryption) (bool, error) {
+	bucket = s.normalizeObjectBucket(bucket)
+	var applied bool
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		objects := tx.Bucket([]byte("objects"))
+		latest := tx.Bucket([]byte("object_latest"))
+		vid := versionID
+		var data []byte
+		if vid == "" {
+			if raw := latest.Get(latestIndexKey(bucket, key)); raw != nil {
+				vid = string(raw)
+			}
+		}
+		if vid != "" {
+			data = objects.Get(versionObjectKey(bucket, key, vid))
+		}
+		flat := false
+		if data == nil {
+			data = objects.Get(objectKey(bucket, key))
+			flat = true
+		}
+		if data == nil {
+			return nil
+		}
+		var rec ObjectRecord
+		if err := json.Unmarshal(data, &rec); err != nil {
+			return err
+		}
+		if rec.Encryption != nil && (rec.Encryption.Plaintext || rec.Encryption.Sealed()) {
+			return nil
+		}
+		rec.Encryption = enc
+		out, err := json.Marshal(rec)
+		if err != nil {
+			return err
+		}
+		applied = true
+		if !flat && rec.VersionID != "" {
+			return objects.Put(versionObjectKey(rec.Bucket, rec.Key, rec.VersionID), out)
+		}
+		return objects.Put(objectKey(rec.Bucket, rec.Key), out)
+	})
+	return applied, err
+}
+
 // PutObjectVersioned appends a new version and updates the latest pointer.
 func (s *Store) PutObjectVersioned(rec ObjectRecord) error {
 	_, err := s.putObject(rec, true, nil)
@@ -79,8 +126,15 @@ func (s *Store) putObjectTx(tx *bolt.Tx, rec ObjectRecord, versioned bool) error
 		if rec.VersionID == "" {
 			return ErrNotFound
 		}
-		if err := objects.Put(versionObjectKey(rec.Bucket, rec.Key, rec.VersionID), data); err != nil {
+		vk := versionObjectKey(rec.Bucket, rec.Key, rec.VersionID)
+		existed := objects.Get(vk) != nil
+		if err := objects.Put(vk, data); err != nil {
 			return err
+		}
+		// A retention or legal-hold rewrite of an older version must not
+		// become the latest and hide a newer delete marker.
+		if existed {
+			return nil
 		}
 		return latest.Put(latestIndexKey(rec.Bucket, rec.Key), []byte(rec.VersionID))
 	}
@@ -336,7 +390,7 @@ func (s *Store) ListObjectVersions(bucket, prefix string, maxKeys int) ([]Object
 		}
 		return nil
 	})
-	sort.Slice(out, func(i, j int) bool {
+	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Key != out[j].Key {
 			return out[i].Key < out[j].Key
 		}

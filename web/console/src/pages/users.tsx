@@ -42,6 +42,8 @@ export function UsersPage() {
   const [quotaUnit, setQuotaUnit] = useState<StorageQuotaUnit>("GB");
   const [quotaObjects, setQuotaObjects] = useState("0");
   const [newPassword, setNewPassword] = useState("");
+  const [mfaResetTarget, setMfaResetTarget] = useState<ConsoleUser | null>(null);
+  const [mfaResetReason, setMfaResetReason] = useState("");
   const [form, setForm] = useState({
     username: "",
     email: "",
@@ -82,6 +84,18 @@ export function UsersPage() {
       setResetTarget(null);
       setNewPassword("");
       toast.success(t("users:toast.passwordReset"));
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const resetMfaMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => api.resetMFA(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["mfa-policy"] });
+      setMfaResetTarget(null);
+      setMfaResetReason("");
+      toast.success(t("users:toast.mfaReset"));
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -182,6 +196,16 @@ export function UsersPage() {
           <Button
             variant="ghost"
             size="sm"
+            onClick={() => {
+              setMfaResetTarget(row.original);
+              setMfaResetReason("");
+            }}
+          >
+            {t("users:actions.resetMfa")}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             className="text-destructive"
             onClick={() => setDeleteTarget(row.original)}
           >
@@ -277,6 +301,38 @@ export function UsersPage() {
               disabled={!newPassword || resetMutation.isPending}
             >
               {t("users:reset.action")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!mfaResetTarget} onOpenChange={(o) => !o && setMfaResetTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("users:mfaReset.title")}</DialogTitle>
+            <DialogDescription>
+              {t("users:mfaReset.description", { username: mfaResetTarget?.username ?? "" })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="mfa-reset-reason">{t("users:mfaReset.reason")}</Label>
+            <Input
+              id="mfa-reset-reason"
+              data-testid="mfa-reset-reason"
+              value={mfaResetReason}
+              onChange={(e) => setMfaResetReason(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMfaResetTarget(null)}>{t("common:cancel")}</Button>
+            <Button
+              onClick={() =>
+                mfaResetTarget &&
+                resetMfaMutation.mutate({ id: mfaResetTarget.id, reason: mfaResetReason.trim() })
+              }
+              disabled={!mfaResetReason.trim() || resetMfaMutation.isPending}
+            >
+              {t("users:mfaReset.action")}
             </Button>
           </DialogFooter>
         </DialogContent>

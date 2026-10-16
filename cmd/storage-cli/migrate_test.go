@@ -38,6 +38,13 @@ func TestRunMigrateChecklistUnsupported(t *testing.T) {
 	}
 }
 
+func TestRunMigrateFromMinIORequiresSource(t *testing.T) {
+	err := runMigrate([]string{"from-minio"})
+	if err == nil || !strings.Contains(err.Error(), "--source") {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestRunMigrateUnknownSubcommand(t *testing.T) {
 	err := runMigrate([]string{"import"})
 	if err == nil {

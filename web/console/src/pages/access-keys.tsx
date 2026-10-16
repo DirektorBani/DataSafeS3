@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/page-header";
 import { DataTable } from "@/components/data-table";
 import { CopyButton } from "@/components/copy-button";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -81,6 +82,20 @@ export function AccessKeysPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const reissueMutation = useMutation({
+    mutationFn: async (key: AccessKey) => {
+      const created = await api.createKey(key.label || "reissued");
+      await api.deleteKey(key.access_key);
+      return created;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["keys"] });
+      setCreatedKey(data);
+      toast.success(t("access:toast.keyReissued"));
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (accessKey: string) => api.deleteKey(accessKey),
     onSuccess: () => {
@@ -121,17 +136,40 @@ export function AccessKeysPage() {
       cell: ({ row }) => formatDate(row.original.created_at, i18n.language),
     },
     {
+      id: "mfa",
+      header: t("access:columns.mfa"),
+      cell: ({ row }) =>
+        row.original.created_with_mfa ? null : (
+          <Badge variant="warning" data-testid="access-key-without-mfa">
+            {t("access:createdWithoutMfa")}
+          </Badge>
+        ),
+    },
+    {
       id: "actions",
       header: "",
       cell: ({ row }) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-destructive hover:text-destructive"
-          onClick={() => setDeleteTarget(row.original)}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <div className="flex gap-1">
+          {!row.original.created_with_mfa && (
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="access-key-reissue"
+              onClick={() => reissueMutation.mutate(row.original)}
+              disabled={reissueMutation.isPending}
+            >
+              {t("access:actions.reissue")}
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setDeleteTarget(row.original)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       ),
     },
   ];

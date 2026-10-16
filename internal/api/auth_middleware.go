@@ -64,7 +64,10 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			}
 		}
 		if !mfaSetupExemptPath(r.URL.Path) {
-			if blocked, msg := s.adminMFASetupRequired(info); blocked {
+			if blocked, msg := s.adminMFASetupRequired(info); blocked || s.mfaResetEnrollmentRequired(info) {
+				if msg == "" {
+					msg = "mfa_setup_required"
+				}
 				writeJSON(w, http.StatusForbidden, map[string]any{"error": msg, "mfa_setup_required": true})
 				return
 			}
@@ -80,6 +83,7 @@ func mfaSetupExemptPath(path string) bool {
 		"/api/v1/me/password",
 		"/api/v1/admin/logout",
 		"/api/v1/mfa/",
+		"/api/v1/auth/step-up",
 		"/api/v1/me/mfa/webauthn/",
 		"/api/v1/setup",
 	}
@@ -103,10 +107,18 @@ func (s *Server) adminMFASetupRequired(info auth.TokenInfo) (bool, string) {
 	if err != nil {
 		return false, ""
 	}
-	if user.MFAEnabled || user.WebAuthnCredentials != "" {
+	if user.MFAEnabled || userHasWebAuthn(user) {
 		return false, ""
 	}
 	return true, "mfa_setup_required"
+}
+
+func (s *Server) mfaResetEnrollmentRequired(info auth.TokenInfo) bool {
+	user, err := s.meta.GetUser(info.UserID)
+	if err != nil || !user.MFAResetRequired {
+		return false
+	}
+	return !user.MFAEnabled && !userHasWebAuthn(user)
 }
 
 func (s *Server) requireRole(roles ...string) func(http.HandlerFunc) http.HandlerFunc {

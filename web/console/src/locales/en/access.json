@@ -2,6 +2,7 @@
   "toast": {
     "keyCreated": "Access key created",
     "keyDeleted": "Access key deleted",
+    "keyReissued": "Access key reissued",
     "tokenCreated": "API token created",
     "tokenDeleted": "API token deleted"
   },
@@ -13,12 +14,14 @@
   },
   "actions": {
     "createKey": "Create key",
+    "reissue": "Reissue",
     "createToken": "Create token"
   },
   "loading": {
     "keys": "Loading keys...",
     "tokens": "Loading tokens..."
   },
+  "createdWithoutMfa": "created without 2FA",
   "searchPlaceholder": "Search access keys...",
   "empty": {
     "keys": "No access keys yet. Create one for S3 API access.",
@@ -29,6 +32,7 @@
     "label": "Label",
     "owner": "Owner",
     "created": "Created",
+    "mfa": "2FA",
     "name": "Name",
     "user": "User",
     "scopes": "Scopes",

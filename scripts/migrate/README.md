@@ -1,6 +1,6 @@
 # scripts/migrate — MinIO cutover helpers
 
-Smoke verification after syncing a bucket from a MinIO-compatible source to DataSafeS3.
+`storage-cli migrate from-minio` copies buckets (versions, Object Lock, tags, metadata) and writes `evidence.json`. This directory is the smoke check for the rclone path and for that report. Source credentials belong in the command flags or environment, not in the console.
 
 See ops guide: [migrate-from-minio.md](../../docs/operations-guide/en/migrate-from-minio.md) (EN) · [RU](../../docs/operations-guide/ru/migrate-from-minio.md).
 

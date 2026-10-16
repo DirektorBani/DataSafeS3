@@ -34,6 +34,17 @@ const (
 	ActionShareDownloaded       = "share.downloaded"
 	ActionShareLimitReached     = "share.limit_reached"
 	ActionShareExpired          = "share.expired"
+	ActionShareRevoked          = "share.revoked"
+	ActionShareBlocked          = "share.blocked"
+	ActionPresignIssued         = "presign_issued"
+	ActionSharingPolicyChanged  = "sharing_policy_changed"
+	ActionOperatorWriteAll      = "operator_write_all_enabled"
+	ActionMFAPolicyChanged      = "mfa_policy_changed"
+	ActionMFARequiredDenied     = "mfa_required_denied"
+	ActionMFAStepUpRequired     = "mfa_step_up_required"
+	ActionMFAStepUpVerified     = "mfa_step_up_verified"
+	ActionMFAReset              = "mfa_reset"
+	ActionMFAStepUpLocked       = "mfa_step_up_locked"
 	// Governance Evidence Pack (v1.4)
 	ActionObjectLockChanged   = "object_lock_changed"
 	ActionObjectRetentionSet  = "object_retention_set"
@@ -50,6 +61,13 @@ const (
 	// Retries of the same failure do not write another row.
 	ActionEventsSinkDegraded  = "events_sink_degraded"
 	ActionEventsSinkRecovered = "events_sink_recovered"
+	ActionKMSKeyRotated       = "kms_key_rotated"
+	ActionKMSKeyDestroyed     = "kms_key_destroyed"
+	// Encrypt-existing job. The resource names the bucket and, on finish or
+	// fail, done/total/errors. One row per transition, not per object.
+	ActionKMSJobStarted  = "kms_job_started"
+	ActionKMSJobFinished = "kms_job_finished"
+	ActionKMSJobFailed   = "kms_job_failed"
 )
 
 type ActivityRecord struct {

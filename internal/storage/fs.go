@@ -327,6 +327,19 @@ func (b *FSBackend) CompleteMultipartUpload(_ context.Context, bucket, key, uplo
 	return etag, nil
 }
 
+// OpenPart opens one uploaded part before CompleteMultipartUpload deletes it.
+func (b *FSBackend) OpenPart(_ context.Context, bucket, key, uploadID string, partNumber int) (io.ReadCloser, error) {
+	path := filepath.Join(b.multipartDir(bucket, key, uploadID), fmt.Sprintf("part.%05d", partNumber))
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return f, nil
+}
+
 func (b *FSBackend) AbortMultipartUpload(_ context.Context, bucket, key, uploadID string) error {
 	dir := b.multipartDir(bucket, key, uploadID)
 	if err := os.RemoveAll(dir); err != nil && !os.IsNotExist(err) {

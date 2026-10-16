@@ -49,6 +49,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.9"
+      - name: Install AWS CLI v2
+        run: |
+          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+          unzip -q /tmp/awscliv2.zip -d /tmp
+          /tmp/aws/install -i /tmp/aws-cli -b /tmp/bin
+          echo "/tmp/bin" >> "$GITHUB_PATH"
+          /tmp/bin/aws --version
       - name: go test
         env:
           TEST_POSTGRES_DSN: postgres://datasafe:datasafe@localhost:5432/datasafe?sslmode=disable
@@ -102,10 +109,10 @@ jobs:
           retention-days: 1
           path: datasafe-storage-server-ci.tar.gz
 
-  # Prod bolt container, resource budget vs the published v1.4.1 image, and
-  # install.sh --yes --profiles core. PRs into main and pushes to main.
+  # Prod bolt container, resource budget vs the published v1.5.0 image
+  # (Bolt and Postgres separately), and install.sh --yes --profiles core.
   single-node-gate:
-    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -115,13 +122,13 @@ jobs:
       - name: Gate assertions self-test
         run: python3 scripts/single-node-gate.py self-test
       - name: Log in to GHCR
-        # The v1.4.1 package is public. Fork PRs do not receive secrets, and a
+        # The v1.5.0 package is public. Fork PRs do not receive secrets, and a
         # failed login must not fail the gate.
         if: github.token != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
         continue-on-error: true
         run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-      - name: Pull v1.4.1 baseline
-        run: docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
+      - name: Pull v1.5.0 baseline
+        run: docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
       - name: Build PR storage-server image
         run: |
           docker build -t datasafe-storage-server:gate -f deploy/docker/Dockerfile \
@@ -129,12 +136,18 @@ jobs:
             --build-arg GIT_COMMIT="${GITHUB_SHA}" \
             .
       - name: Budget and lone-container smoke
+        env:
+          GATE_SAMPLES_OUT: ${{ runner.temp }}/bolt-samples.json
         run: bash scripts/single-node-gate.sh all
+      - name: Postgres resource budget versus v1.5.0
+        run: bash scripts/single-node-gate.sh measure-postgres
+      - name: v1.5.0 chunked SSE object is readable
+        run: bash scripts/single-node-gate.sh legacy-sse
       - name: Build console image for the installer pin
-        run: docker build -t ghcr.io/direktorbani/datasafe-console:v1.5.0 -f deploy/docker/Dockerfile.console .
+        run: docker build -t ghcr.io/direktorbani/datasafe-console:v1.6.0 -f deploy/docker/Dockerfile.console .
       - name: Install core profile (non-interactive)
         run: |
-          docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+          docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.6.0
           bash install.sh --yes --profiles core --project datasafe-gate --data-root "${{ runner.temp }}/datasafe-gate"
       - name: Smoke the core install
         run: bash scripts/single-node-gate.sh smoke-installed
@@ -173,7 +186,7 @@ jobs:
 
   # Syntax only. A full Windows Docker install is not part of this job.
   install-ps1-syntax:
-    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -236,6 +249,8 @@ jobs:
           DATASAFE_DATA_ROOT: ${{ github.workspace }}/.datasafe-data-ci
           # Dev stack: login rate limit is 200 (production default is 10) and outbound HTTP stays open for the lab.
           STORAGE_DEV: "true"
+          # The encryption-toggle spec enables the card only when this key is set.
+          STORAGE_SSE_MASTER_KEY: ci-e2e-sse-master-key
         run: |
           mkdir -p "$DATASAFE_DATA_ROOT/storage" "$DATASAFE_DATA_ROOT/postgres"
           docker compose -p datasafe-ci \
@@ -266,13 +281,20 @@ jobs:
       - name: E2E regression
         working-directory: web/console
         run: >
-          npx playwright test
+          npx playwright test --workers=1
           e2e/smoke.spec.ts
           e2e/buckets.spec.ts
           e2e/settings.spec.ts
           e2e/files.spec.ts
           e2e/share.spec.ts
           e2e/security-mfa.spec.ts
+          e2e/sharing-security.spec.ts
+          e2e/share-matrix-messages.spec.ts
+          e2e/mfa-stepup.spec.ts
+          e2e/encryption-toggle.spec.ts
+          e2e/encryption-jobs.spec.ts
+          e2e/kms-settings.spec.ts
+          e2e/migrate-from-minio.spec.ts
           e2e/teams.spec.ts
           e2e/gateway.spec.ts
       - name: Tear down
@@ -341,6 +363,128 @@ jobs:
           STORAGE_KAFKA_BROKERS: localhost:9092
         run: go test -count=1 -timeout 12m ./internal/api -run TestKafkaBrokerIntegration
 
+  # Dev-mode Vault. The default test job skips TestVaultDevTransit (no VAULT_ADDR).
+  # GitHub service containers do not reliably replace the image command, so this
+  # job starts `vault server -dev` with docker run.
+  vault-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+      - name: Start Vault dev
+        run: |
+          docker run -d --name datasafe-vault \
+            -p 8200:8200 \
+            -e VAULT_DEV_ROOT_TOKEN_ID=root \
+            -e VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
+            hashicorp/vault:1.18.5 server -dev
+          for i in $(seq 1 40); do
+            if curl -sf http://127.0.0.1:8200/v1/sys/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs datasafe-vault || true
+          exit 1
+      - name: Transit encrypt and decrypt
+        env:
+          VAULT_ADDR: http://127.0.0.1:8200
+          VAULT_TOKEN: root
+        run: go test -count=1 -timeout 5m ./internal/kms/vaulttransit/ -run TestVaultDevTransit
+
+  # Optional MinIO-compatible source. The default test job skips TestFromMinIOLive.
+  minio-migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+      - name: Start MinIO-compatible source
+        run: |
+          docker run -d --name datasafe-minio \
+            -p 19090:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data --console-address ":9001"
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:19090/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs datasafe-minio || true
+          exit 1
+      - name: Copy one object
+        env:
+          MINIO_ENDPOINT: http://127.0.0.1:19090
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+        run: go test -count=1 -timeout 10m ./internal/migrate/ -run TestFromMinIOLive
+
+  # Console keys: aws s3 ls and mc ls on v1.5.0 and this image must agree.
+  list-buckets-clients:
+    needs: [docker-build]
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: storage-server-image
+      - name: Load this build
+        run: gzip -dc datasafe-storage-server-ci.tar.gz | docker load
+      - name: Log in to GHCR
+        if: github.token != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
+        continue-on-error: true
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Pull v1.5.0 baseline
+        run: docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+      - name: Install AWS CLI v2 and mc
+        run: |
+          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+          unzip -q /tmp/awscliv2.zip -d /tmp
+          /tmp/aws/install -i /tmp/aws-cli -b /tmp/bin
+          curl -fsSL -o /tmp/bin/mc https://github.com/minio/mc/releases/download/RELEASE.2025-08-13T08-35-41Z/mc.linux-amd64.RELEASE.2025-08-13T08-35-41Z
+          chmod +x /tmp/bin/mc
+          echo "/tmp/bin" >> "$GITHUB_PATH"
+          /tmp/bin/aws --version
+          /tmp/bin/mc --version
+      - name: Compare bucket listings
+        run: bash scripts/list-buckets-clients.sh
+
+  # 1.5.0 → 1.6.0 on bolt and Postgres, and a 3-node rolling upgrade.
+  # Resource budgets stay in single-node-gate; this job does not sample RSS.
+  upgrade-16:
+    needs: [docker-build]
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: storage-server-image
+      - name: Load this build
+        run: gzip -dc datasafe-storage-server-ci.tar.gz | docker load
+      - name: Log in to GHCR
+        if: github.token != '' && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork)
+        continue-on-error: true
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Pull v1.5.0 baseline
+        run: docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+      - name: Upgrade bolt and Postgres
+        run: bash scripts/ci/upgrade-15-to-16.sh
+      - name: Rolling upgrade
+        run: bash scripts/ci/rolling-upgrade.sh
+
   # Postgres primary + replica, two storage-server nodes, webhook traffic
   # across a scripted promote. Ports stay off :9000 and :9001.
   # The image is the docker-build artifact, the same Dockerfile output.
@@ -374,3 +518,46 @@ jobs:
             /tmp/datasafe-promote-drill/storage-b.log
             /tmp/datasafe-promote-drill/postgres-a.log
             /tmp/datasafe-promote-drill/postgres-b.log
+
+  # Postgres, three storage nodes, Vault dev, MinIO, webhook. Ports stay off
+  # :9000 and :9001. Resource budgets stay in single-node-gate.
+  cluster-kms-gate:
+    needs: [docker-build]
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/console/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+      - uses: actions/download-artifact@v4
+        with:
+          name: storage-server-image
+      - name: Load this build
+        run: gzip -dc datasafe-storage-server-ci.tar.gz | docker load
+      - name: Cluster KMS gate
+        env:
+          KMS_CLUSTER_IMAGE: datasafe-storage-server:ci
+          KMS_CLUSTER_SKIP_BUILD: "1"
+        run: bash scripts/ha/run-kms-cluster-test.sh
+      - name: Evidence pack
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-kms-evidence
+          if-no-files-found: ignore
+          path: |
+            /tmp/datasafe-kms-cluster/evidence/summary.md
+            /tmp/datasafe-kms-cluster/evidence/evidence.json
+            /tmp/datasafe-kms-cluster/migrate-first.log
+            /tmp/datasafe-kms-cluster/migrate-second.log
+            /tmp/datasafe-kms-cluster/vite.log

@@ -38,3 +38,15 @@ groups:
         annotations:
           summary: Event deliveries are being dropped ({{ $labels.reason }})
           description: The pending cap dropped outbox rows during the last 10 minutes. Object writes were not failed.
+
+  - name: datasafe.kms
+    rules:
+      # The gauge exists only while Vault Transit is enabled on the scraped node.
+      - alert: DataSafeKMSUnavailable
+        expr: datasafe_kms_available == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Vault Transit is unreachable from this node
+          description: datasafe_kms_available has been 0 for 1 minute. The series is published only while Vault is enabled. Unencrypted buckets keep working. New SSE-KMS writes return 503 until Vault answers or a cached key still covers the read.

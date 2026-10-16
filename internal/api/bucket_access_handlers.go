@@ -79,11 +79,15 @@ func (s *Server) servePutBucketAccess(w http.ResponseWriter, r *http.Request, lo
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}
+	if !s.allowDangerous(w, r, auth.ActionGrantsChange, logicalBucket) {
+		return
+	}
 	var req struct {
 		Grants []struct {
 			UserID   string `json:"user_id"`
 			CanRead  bool   `json:"can_read"`
 			CanWrite bool   `json:"can_write"`
+			Level    string `json:"level"`
 		} `json:"grants"`
 		PrefixGrants []struct {
 			UserID   string `json:"user_id"`
@@ -112,8 +116,9 @@ func (s *Server) servePutBucketAccess(w http.ResponseWriter, r *http.Request, lo
 		grants = append(grants, metadata.BucketAccessGrant{
 			BucketKey: bucketKey,
 			UserID:    g.UserID,
-			CanRead:   g.CanRead || g.CanWrite,
-			CanWrite:  g.CanWrite,
+			CanRead:   g.CanRead || g.CanWrite || g.Level == metadata.GrantLevelAdmin || g.Level == metadata.GrantLevelWrite,
+			CanWrite:  g.CanWrite || g.Level == metadata.GrantLevelAdmin || g.Level == metadata.GrantLevelWrite,
+			Level:     g.Level,
 		})
 	}
 	var prefixGrants []metadata.BucketPrefixAccessGrant
@@ -140,6 +145,11 @@ func (s *Server) servePutBucketAccess(w http.ResponseWriter, r *http.Request, lo
 	if err := s.replaceBucketPrefixAccessGrants(rec, prefixGrants); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
+	}
+	for _, g := range grants {
+		if g.Level == metadata.GrantLevelAdmin {
+			s.noteBucketAdmin(g.UserID)
+		}
 	}
 	s.notifyBucketSharedDiff(info, logicalBucket, oldGrants, oldPrefixGrants, grants, prefixGrants)
 	s.logActivity(r, metadata.ActionSettingsChanged, "bucket_access", logicalBucket)
@@ -172,6 +182,9 @@ func (s *Server) serveDeleteBucketAccess(w http.ResponseWriter, r *http.Request,
 	}
 	if !s.canWriteBucket(info, logicalBucket) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+		return
+	}
+	if !s.allowDangerous(w, r, auth.ActionGrantsChange, logicalBucket) {
 		return
 	}
 	_ = s.meta.DeleteBucketAccessGrant(rec.EffectiveStorageKey(), userID)

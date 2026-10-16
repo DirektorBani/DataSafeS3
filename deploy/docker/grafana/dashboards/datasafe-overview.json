@@ -380,6 +380,63 @@
       ],
       "title": "Event bridge restarts",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 69 },
+      "id": 104,
+      "title": "KMS",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 70 },
+      "id": 50,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "datasafe_kms_available", "legendFormat": "{{instance}}", "refId": "A" }
+      ],
+      "title": "KMS available",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 10, "x": 6, "y": 70 },
+      "id": 51,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le, op, provider, instance) (rate(datasafe_kms_request_duration_seconds_bucket[5m])))", "legendFormat": "p50 {{instance}} {{op}} {{provider}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (le, op, provider, instance) (rate(datasafe_kms_request_duration_seconds_bucket[5m])))", "legendFormat": "p95 {{instance}} {{op}} {{provider}}", "refId": "B" }
+      ],
+      "title": "KMS latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 70 },
+      "id": 52,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "rate(datasafe_kms_dek_cache_hits_total[5m])", "legendFormat": "hits {{instance}}", "refId": "A" },
+        { "expr": "rate(datasafe_kms_dek_cache_misses_total[5m])", "legendFormat": "misses {{instance}}", "refId": "B" }
+      ],
+      "title": "DEK cache",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 78 },
+      "id": 53,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        { "expr": "sum by (job, result, instance) (rate(datasafe_kms_jobs_objects_total[5m]))", "legendFormat": "{{instance}} {{job}} {{result}}", "refId": "A" }
+      ],
+      "title": "KMS jobs",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",
@@ -391,5 +448,5 @@
   "timezone": "browser",
   "title": "Датасейф S3 — обзор системы / DataSafeS3 System Overview",
   "uid": "datasafe-overview",
-  "version": 7
+  "version": 8
 }

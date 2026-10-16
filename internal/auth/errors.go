@@ -8,4 +8,5 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrSignatureMismatch  = errors.New("signature does not match")
 	ErrExpired            = errors.New("presigned url expired")
+	ErrUnsignedHeaders    = errors.New("unsigned headers")
 )

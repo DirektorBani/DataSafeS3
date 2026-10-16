@@ -51,6 +51,10 @@ type BucketRecord struct {
 	StorageClass        string            `json:"storage_class,omitempty"`
 	TenantID            string            `json:"tenant_id,omitempty"`
 	Visibility          string            `json:"visibility,omitempty"` // private, public-read
+	DefaultEncryption   string            `json:"default_encryption,omitempty"`
+	KMSMasterKeyID      string            `json:"kms_master_key_id,omitempty"`
+	EncryptionProvider  string            `json:"encryption_provider,omitempty"`
+	KMSKeyStatus        string            `json:"kms_key_status,omitempty"`
 	MaxSizeBytes        int64             `json:"max_size_bytes,omitempty"`
 	MaxObjects          int64             `json:"max_objects,omitempty"`
 	Tags                map[string]string `json:"tags,omitempty"`
@@ -68,33 +72,67 @@ type ObjectRecord struct {
 	IsDeleteMarker    bool              `json:"is_delete_marker,omitempty"`
 	LegalHold         bool              `json:"legal_hold,omitempty"`
 	RetentionUntil    *time.Time        `json:"retention_until,omitempty"`
+	RetentionMode     string            `json:"retention_mode,omitempty"` // GOVERNANCE | COMPLIANCE
 	StorageClass      string            `json:"storage_class,omitempty"`
 	Metadata          map[string]string `json:"metadata,omitempty"`
 	Tags              map[string]string `json:"tags,omitempty"`
 	CreatedAt         time.Time         `json:"created_at,omitempty"`
+	Encryption        *ObjectEncryption `json:"encryption,omitempty"`
+}
+
+// ObjectEncryption is the wrapped-DEK record stored with an object or version.
+// Format 0 (1.5.0 SSE-S3) has no wrapped DEK. See ADR-0006.
+type ObjectEncryption struct {
+	FormatVersion int    `json:"enc_format_version"`
+	Provider      string `json:"key_provider,omitempty"`
+	KeyID         string `json:"key_id,omitempty"`
+	KeyVersion    int    `json:"key_version,omitempty"`
+	WrappedDEK    string `json:"wrapped_dek,omitempty"`
+	Alg           string `json:"alg,omitempty"`
+	SSEAlgorithm  string `json:"sse_algorithm,omitempty"`
+	PlainSize     int64  `json:"plain_size,omitempty"`
+	Plaintext     bool   `json:"plaintext,omitempty"`
+}
+
+// Sealed reports whether the payload is ciphertext.
+func (e *ObjectEncryption) Sealed() bool {
+	if e == nil || e.Plaintext {
+		return false
+	}
+	return e.FormatVersion > 0 || e.SSEAlgorithm != "" || e.Provider != ""
+}
+
+// KMS reports SSE-KMS, which anonymous callers cannot read.
+func (e *ObjectEncryption) KMS() bool {
+	return e != nil && e.SSEAlgorithm == "aws:kms"
 }
 
 type MultipartRecord struct {
-	UploadID  string    `json:"upload_id"`
-	Bucket    string    `json:"bucket"`
-	Key       string    `json:"key"`
-	Initiated time.Time `json:"initiated"`
+	UploadID    string            `json:"upload_id"`
+	Bucket      string            `json:"bucket"`
+	Key         string            `json:"key"`
+	Initiated   time.Time         `json:"initiated"`
+	ContentType string            `json:"content_type,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	Encryption  *ObjectEncryption `json:"encryption,omitempty"`
 }
 
 type AccessKeyRecord struct {
-	AccessKey    string     `json:"access_key"`
-	SecretKey    string     `json:"secret_key"`
-	SessionToken string     `json:"session_token,omitempty"`
-	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
-	Label        string     `json:"label"`
-	OwnerID      string     `json:"owner_id,omitempty"`
-	Owner        string     `json:"owner,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
+	AccessKey      string     `json:"access_key"`
+	SecretKey      string     `json:"secret_key"`
+	SessionToken   string     `json:"session_token,omitempty"`
+	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
+	Label          string     `json:"label"`
+	OwnerID        string     `json:"owner_id,omitempty"`
+	Owner          string     `json:"owner,omitempty"`
+	CreatedWithMFA bool       `json:"created_with_mfa,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 type Store struct {
 	db               *bolt.DB
 	fieldenc         *fieldenc.Service
+	kmsSealKey       []byte
 	outboxMaxPending int
 	outboxMaxSet     bool
 }
@@ -116,6 +154,9 @@ func (s *Store) init() error {
 			"config", "trash", "api_tokens", "webhooks", "favorites", "webhook_deliveries",
 			"user_notifications", "recent_items",
 			"event_outbox", "event_outbox_due",
+			"sharing_policies",
+			"mfa_action_tokens", "mfa_denied_events", "mfa_stepup_failures",
+			"kms_jobs",
 		} {
 			if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
 				return err

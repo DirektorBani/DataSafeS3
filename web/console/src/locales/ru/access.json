@@ -2,6 +2,7 @@
   "toast": {
     "keyCreated": "Ключ доступа создан",
     "keyDeleted": "Ключ доступа удалён",
+    "keyReissued": "Ключ доступа перевыпущен",
     "tokenCreated": "API-токен создан",
     "tokenDeleted": "API-токен удалён"
   },
@@ -13,12 +14,14 @@
   },
   "actions": {
     "createKey": "Создать ключ",
+    "reissue": "Перевыпустить",
     "createToken": "Создать токен"
   },
   "loading": {
     "keys": "Загрузка ключей...",
     "tokens": "Загрузка токенов..."
   },
+  "createdWithoutMfa": "создан без 2FA",
   "searchPlaceholder": "Поиск ключей доступа...",
   "empty": {
     "keys": "Ключей доступа пока нет. Создайте для доступа к S3 API.",
@@ -29,6 +32,7 @@
     "label": "Метка",
     "owner": "Владелец",
     "created": "Создан",
+    "mfa": "2FA",
     "name": "Имя",
     "user": "Пользователь",
     "scopes": "Области",

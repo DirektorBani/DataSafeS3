@@ -23,6 +23,8 @@ func (s *Server) handleGetSystemConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+	cfg.KMS.SecretID = ""
+	cfg.KMS.Token = ""
 	writeJSON(w, http.StatusOK, cfg)
 }
 
@@ -53,9 +55,12 @@ func (s *Server) handlePutSystemConfig(w http.ResponseWriter, r *http.Request) {
 		cfg.InitialSetupCompleted = existing.InitialSetupCompleted
 		cfg.AdminFirstLoginCompleted = existing.AdminFirstLoginCompleted
 		cfg.AdminPasswordChanged = existing.AdminPasswordChanged
+		cfg.MFA = metadata.NormalizeMFA(cfg.MFA, existing.MFA)
 		if cfg.ExternalS3.Endpoint == "" && cfg.ExternalS3.Bucket == "" {
 			cfg.ExternalS3 = existing.ExternalS3
 		}
+		// Vault credentials are saved only by PUT /api/v1/kms/settings.
+		cfg.KMS = existing.KMS
 	}
 	if err := s.meta.PutSystemConfig(cfg); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
@@ -94,7 +99,7 @@ func (s *Server) handleRestoreTrash(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 		return
 	}
-	if !s.canAccessBucket(info, tr.OriginalBucket) {
+	if !s.canWriteBucket(info, tr.OriginalBucket) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}
@@ -117,8 +122,12 @@ func (s *Server) handlePurgeTrash(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 		return
 	}
-	if !s.canAccessBucket(info, tr.OriginalBucket) {
+	brec, berr := s.bucketByStoredName(tr.OriginalBucket)
+	if berr != nil || !s.isBucketAdmin(info, brec) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+		return
+	}
+	if !s.allowDangerous(w, r, auth.ActionTrashPurge, tr.OriginalBucket) {
 		return
 	}
 	if err := s.svc.PurgeTrashItem(r.Context(), id); err != nil {

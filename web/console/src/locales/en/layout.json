@@ -1,10 +1,40 @@
 {
   "securityBanner": {
     "message": "Default secrets detected ({{vars}}). Rotate before production use.",
+    "operatorWriteAll": "Legacy operator write mode is enabled and will be removed in 1.7.0.",
     "learnMore": "Security hardening guide"
   },
   "mfaSetupBanner": {
     "message": "Administrator MFA is required. Enable TOTP or add a passkey before using the console.",
     "action": "Set up MFA"
+  },
+  "mfaPolicyBanner": {
+    "message": "Turn on two-factor authentication to administer buckets.",
+    "action": "Set up 2FA"
+  },
+  "mfaStepUp": {
+    "title": "Confirm this action with a 2FA code",
+    "description": "{{action}} — {{target}}",
+    "code": "Authentication code",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "useKey": "Use a security key",
+    "invalid": "Invalid code",
+    "cancelled": "Confirmation cancelled",
+    "noTarget": "this action",
+    "actions": {
+      "crypto_shred": "Destroy a KMS key",
+      "key_rotate": "Rotate a KMS key",
+      "trash_purge": "Purge trash",
+      "sharing_policy_change": "Change the sharing policy",
+      "grants_change": "Change bucket grants",
+      "encryption_disable": "Turn bucket encryption off",
+      "object_lock_config": "Change Object Lock",
+      "compliance_retention": "Change COMPLIANCE retention",
+      "bucket_delete": "Delete a bucket",
+      "mfa_reset": "Reset a user's 2FA",
+      "revoke_all_shares": "Revoke every share link",
+      "access_key_create": "Create an access key"
+    }
   }
 }

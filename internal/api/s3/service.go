@@ -9,14 +9,18 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/federation"
+	"github.com/DirektorBani/datasafe/internal/kms"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/policy"
 	"github.com/DirektorBani/datasafe/internal/storage"
@@ -29,6 +33,8 @@ type Service struct {
 	Region   string
 	OwnerKey string
 	SSE      *storage.SSECipher
+	Local    *kms.Local
+	vault    atomic.Value // vaultSlot
 	// FederationPeers lists registered peer clusters for cross-node GetObject.
 	FederationPeers func() ([]metadata.FederationCluster, error)
 	// OnObjectEvent is called after successful put/delete/copy (event: put|delete|copy).
@@ -42,19 +48,48 @@ type Service struct {
 	ObjectOutbox func(ctx context.Context, bucket metadata.BucketRecord, obj metadata.ObjectRecord, kind string) []events.OutboxRecord
 	// OnOutboxDropped reports rows the pending cap marked dropped inside the commit.
 	OnOutboxDropped func(n int)
+	// ReplicateObject copies the stored bytes to other HA nodes after a local write.
+	// Nil when this process is not in an HA group. The copy is the ciphertext on disk.
+	ReplicateObject func(ctx context.Context, bucket, key, versionID string)
+	// FetchStoredObject copies stored bytes onto this disk when metadata names
+	// the object and the local file is missing. Nil outside an HA group.
+	FetchStoredObject func(ctx context.Context, bucket, key, versionID string) error
 	// putStripes serializes writers of one key on this process so the file,
 	// etag, and metadata row belong to the same last writer.
 	putStripes [64]sync.Mutex
 }
 
+type vaultSlot struct {
+	src kms.DEKSource
+}
+
 func NewService(backend storage.ObjectBackend, meta metadata.MetadataStore, signer *auth.Signer, region, ownerKey string) *Service {
-	return &Service{
+	s := &Service{
 		Backend:  backend,
 		Meta:     meta,
 		Signer:   signer,
 		Region:   region,
 		OwnerKey: ownerKey,
 	}
+	s.vault.Store(vaultSlot{})
+	return s
+}
+
+// SetVaultKMS installs or clears the Transit provider. Nil keeps SSE-KMS on the local key.
+func (s *Service) SetVaultKMS(src kms.DEKSource) {
+	if s == nil {
+		return
+	}
+	s.vault.Store(vaultSlot{src: src})
+}
+
+// VaultKMS is the Transit provider, or nil when Vault is not enabled.
+func (s *Service) VaultKMS() kms.DEKSource {
+	if s == nil {
+		return nil
+	}
+	v, _ := s.vault.Load().(vaultSlot)
+	return v.src
 }
 
 // SetSSE enables SSE-S3 encryption for object payloads.
@@ -93,6 +128,15 @@ func (s *Service) publicReadStorageKey(logicalBucket string) (string, error) {
 }
 
 func (s *Service) Authorize(logicalBucket, key, action, principal string) bool {
+	return s.AuthorizeRequest(logicalBucket, key, action, principal, "", false)
+}
+
+// AuthorizeRequest is Authorize with the caller address. A bucket policy that
+// names this access key is the only allow for that key: a bucket grant cannot
+// widen it. ListAllMyBuckets is allowed when the key's owner owns a bucket,
+// holds a grant, is an administrator or operator, or a policy allows that
+// action. A key with none of those is HTTP 403, not an empty 200.
+func (s *Service) AuthorizeRequest(logicalBucket, key, action, principal, sourceIP string, secure bool) bool {
 	if principal == "" {
 		return false
 	}
@@ -100,35 +144,136 @@ func (s *Service) Authorize(logicalBucket, key, action, principal string) bool {
 		return true
 	}
 	if logicalBucket == "" {
-		return true
+		return s.allowListAllMyBuckets(principal)
 	}
 	_, rec, err := s.ResolveBucketKey(principal, logicalBucket)
 	if err != nil {
 		return false
 	}
-	if ak, err := s.Meta.GetAccessKey(principal); err == nil {
-		if !s.bucketVisibleToAccessKey(ak, rec) {
-			return false
-		}
-		if auth.IsS3WriteAction(action) {
-			if key != "" {
-				return s.objectWritableByAccessKey(ak, rec, key)
-			}
-			return s.bucketWritableByAccessKey(ak, rec)
-		}
-		if key != "" {
-			return s.objectVisibleToAccessKey(ak, rec, key)
-		}
-		return true
-	}
-	if rec.Owner == principal {
-		return true
-	}
 	resource := policy.BucketARN(logicalBucket)
 	if key != "" {
 		resource = policy.ObjectARN(logicalBucket, key)
 	}
-	return policy.Evaluate(rec.Policy, action, resource, principal)
+	if ak, err := s.Meta.GetAccessKey(principal); err == nil {
+		if policyBindsAccessKey(rec.Policy, ak.AccessKey) {
+			return policy.EvaluateContext(rec.Policy, policy.EvalContext{
+				Action:          action,
+				Resource:        resource,
+				Principals:      []string{ak.AccessKey, policy.AccessKeyARN(ak.AccessKey)},
+				SourceIP:        sourceIP,
+				SecureTransport: secure,
+			})
+		}
+		if !s.bucketVisibleToAccessKey(ak, rec) {
+			return false
+		}
+		var allowed bool
+		if auth.IsS3WriteAction(action) {
+			if key != "" {
+				allowed = s.objectWritableByAccessKey(ak, rec, key)
+			} else {
+				allowed = s.bucketWritableByAccessKey(ak, rec)
+			}
+		} else if key != "" {
+			allowed = s.objectVisibleToAccessKey(ak, rec, key)
+		} else {
+			allowed = true
+		}
+		if !allowed || s.policyDenies(rec, action, key, principal, &ak, sourceIP, secure) {
+			return false
+		}
+		return true
+	}
+	if rec.Owner == principal {
+		return !s.policyDenies(rec, action, key, principal, nil, sourceIP, secure)
+	}
+	return policy.EvaluateContext(rec.Policy, policy.EvalContext{
+		Action: action, Resource: resource,
+		Principals:      []string{principal, policy.UserARN(principal), policy.AccessKeyARN(principal)},
+		SourceIP:        sourceIP,
+		SecureTransport: secure,
+	})
+}
+
+func (s *Service) allowListAllMyBuckets(principal string) bool {
+	if principal == s.OwnerKey {
+		return true
+	}
+	ak, err := s.Meta.GetAccessKey(principal)
+	if err != nil {
+		return false
+	}
+	role, userID, username, _ := s.accessKeyIdentity(ak)
+	if auth.CanSeeAllBuckets(role) {
+		return true
+	}
+	buckets, err := s.Meta.ListBuckets()
+	if err != nil {
+		return false
+	}
+	if accessKeyOwnsOrGranted(userID, username, buckets, s.grantBucketKeysForUser(userID)) {
+		return true
+	}
+	for _, b := range buckets {
+		if strings.TrimSpace(b.Policy) == "" {
+			continue
+		}
+		for _, resource := range []string{"*", "arn:aws:s3:::*", policy.BucketARN(b.Name)} {
+			if policy.EvaluateContext(b.Policy, policy.EvalContext{
+				Action:     "s3:ListAllMyBuckets",
+				Resource:   resource,
+				Principals: []string{ak.AccessKey, policy.AccessKeyARN(ak.AccessKey)},
+			}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// accessKeyOwnsOrGranted is ownership or an explicit bucket grant. Tenant
+// membership alone does not count: an imported user with no bucket of their
+// own must not receive an empty 200.
+func accessKeyOwnsOrGranted(userID, username string, buckets []metadata.BucketRecord, grants map[string]struct{}) bool {
+	for _, b := range buckets {
+		if userID != "" && b.OwnerID == userID {
+			return true
+		}
+		if username != "" && b.Owner == username {
+			return true
+		}
+		if _, ok := grants[b.EffectiveStorageKey()]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// policyVisibleToAccessKey reports a bucket a policy lets this key read or
+// list. An empty policy does not count, and a policy that does not name the
+// key does not count.
+func policyVisibleToAccessKey(policyJSON, accessKey, bucket string) bool {
+	if !policyBindsAccessKey(policyJSON, accessKey) {
+		return false
+	}
+	principals := []string{accessKey, policy.AccessKeyARN(accessKey)}
+	checks := []struct{ action, resource string }{
+		{"s3:ListBucket", policy.BucketARN(bucket)},
+		{"s3:ListBucket", "*"},
+		{"s3:ListAllMyBuckets", policy.BucketARN(bucket)},
+		{"s3:ListAllMyBuckets", "*"},
+		{"s3:GetBucketLocation", policy.BucketARN(bucket)},
+		{"s3:GetObject", policy.ObjectARN(bucket, "object")},
+		{"s3:GetObject", "*"},
+	}
+	for _, c := range checks {
+		if policy.EvaluateContext(policyJSON, policy.EvalContext{
+			Action: c.action, Resource: c.resource, Principals: principals,
+		}) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) userTenantMemberships(userID string) []auth.TenantMembership {
@@ -199,7 +344,30 @@ func (s *Service) ListBucketsForAccessKey(ctx context.Context, accessKey string)
 		filter.UserID = userID
 		filter.Username = username
 	}
-	return s.Meta.ListBucketsFiltered(filter)
+	listed, err := s.Meta.ListBucketsFiltered(filter)
+	if err != nil || filter.Unfiltered {
+		return listed, err
+	}
+	seen := map[string]struct{}{}
+	for _, b := range listed {
+		seen[b.EffectiveStorageKey()] = struct{}{}
+	}
+	all, err := s.Meta.ListBuckets()
+	if err != nil {
+		return listed, nil
+	}
+	for _, b := range all {
+		key := b.EffectiveStorageKey()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		if !policyVisibleToAccessKey(b.Policy, ak.AccessKey, b.Name) {
+			continue
+		}
+		listed = append(listed, b)
+		seen[key] = struct{}{}
+	}
+	return listed, nil
 }
 
 func (s *Service) bucketScopeForPrincipal(principal string) metadata.BucketScope {
@@ -313,7 +481,49 @@ func (s *Service) CreateBucketNotifying(ctx context.Context, name, owner string,
 	return s.createBucket(ctx, name, owner, evs)
 }
 
+// callerOwnsBucket reports a logical name this caller already owns.
+// A second CreateBucket must not insert another row: that row has no
+// encryption, and name resolution then serves it in place of the original.
+func (s *Service) callerOwnsBucket(principal, name string) bool {
+	if principal == s.OwnerKey {
+		if _, rec, err := s.ResolveBucketKey(principal, name); err == nil && rec.Name == name {
+			return true
+		}
+		return false
+	}
+	ownerName, ownerID, _, _ := s.resolveBucketOwner(principal)
+	scope := s.bucketScopeForPrincipal(principal)
+	if rec, err := s.Meta.ResolveBucket(scope, name); err == nil && rec.Name == name {
+		return true
+	}
+	if ownerID != "" && scope.Kind != metadata.ScopeOwner {
+		ownerScope := metadata.BucketScope{Kind: metadata.ScopeOwner, OwnerID: ownerID}
+		if rec, err := s.Meta.ResolveBucket(ownerScope, name); err == nil && rec.Name == name {
+			return true
+		}
+	}
+	buckets, err := s.Meta.ListBuckets()
+	if err != nil {
+		return false
+	}
+	for _, b := range buckets {
+		if b.Name != name {
+			continue
+		}
+		if ownerID != "" && b.OwnerID == ownerID {
+			return true
+		}
+		if ownerName != "" && b.Owner == ownerName {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) createBucket(ctx context.Context, name, owner string, evs []events.OutboxRecord) (int, error) {
+	if s.callerOwnsBucket(owner, name) {
+		return 0, metadata.ErrBucketExists
+	}
 	ownerName, ownerID, teamID, tenantID := s.resolveBucketOwner(owner)
 	scope := s.bucketScopeForPrincipal(owner)
 	if scope.Kind == metadata.ScopeOwner && ownerID == "" {
@@ -403,7 +613,17 @@ func (s *Service) bucketVersioningSuspended(bucket string) bool {
 }
 
 func (s *Service) versioningActive(bucket string) bool {
-	return s.bucketVersioning(bucket) && !s.bucketVersioningSuspended(bucket)
+	bucket = s.normalizeBucketKey(bucket)
+	rec, err := s.Meta.GetBucketByKey(bucket)
+	if err != nil {
+		return false
+	}
+	// Object Lock requires versioning to stay enabled. A stored Suspended
+	// flag does not turn it off.
+	if rec.ObjectLock {
+		return true
+	}
+	return rec.Versioning && !rec.VersioningSuspended
 }
 
 func (s *Service) PutObject(ctx context.Context, bucket, key string, r io.Reader, size int64, contentType string, userMeta map[string]string) (metadata.ObjectRecord, error) {
@@ -441,12 +661,13 @@ func (s *Service) putObject(ctx context.Context, bucket, key string, r io.Reader
 	if err := s.checkQuota(bucketRec, bucket, key, size); err != nil {
 		return metadata.ObjectRecord{}, 0, err
 	}
-	if s.SSE != nil {
-		encReader, err := s.SSE.EncryptReader(r)
-		if err != nil {
-			return metadata.ObjectRecord{}, 0, err
-		}
-		r = encReader
+	body, counter, encMeta, err := s.prepareObjectEncryption(ctx, bucketRec, r)
+	if err != nil {
+		return metadata.ObjectRecord{}, 0, err
+	}
+	r = body
+	if counter != nil {
+		size = -1
 	}
 	versionID := newVersionID()
 	var etag string
@@ -488,9 +709,16 @@ func (s *Service) putObject(ctx context.Context, bucket, key string, r io.Reader
 		ETag:         etag,
 		ContentType:  contentType,
 		VersionID:    versionID,
-		LastModified: info.LastModified,
+		LastModified: time.Now().UTC(),
 		Metadata:     userMeta,
 		CreatedAt:    info.LastModified,
+		Encryption:   encMeta,
+	}
+	if counter != nil {
+		rec.Size = counter.n
+		if rec.Encryption != nil {
+			rec.Encryption.PlainSize = counter.n
+		}
 	}
 	if bucketRec.StorageClass != "" {
 		rec.StorageClass = bucketRec.StorageClass
@@ -516,6 +744,9 @@ func (s *Service) putObject(ctx context.Context, bucket, key string, r io.Reader
 	s.noteDropped(dropped)
 	if s.OnObjectEvent != nil {
 		s.OnObjectEvent(metadata.ReplEventPut, bucket, key)
+	}
+	if s.ReplicateObject != nil {
+		s.ReplicateObject(ctx, bucket, key, versionID)
 	}
 	return rec, dropped, nil
 }
@@ -547,6 +778,15 @@ func (s *Service) purgeObjectData(ctx context.Context, bucket, key string) {
 
 func (s *Service) GetObject(ctx context.Context, bucket, key, versionID string) (io.ReadCloser, metadata.ObjectRecord, error) {
 	bucket = s.normalizeBucketKey(bucket)
+	if s.bucketKeyDestroyed(bucket) {
+		rec, _ := s.Meta.GetObject(bucket, key)
+		if versionID != "" {
+			if v, verr := s.Meta.GetObjectVersion(bucket, key, versionID); verr == nil {
+				rec = v
+			}
+		}
+		return nil, rec, ErrKeyDestroyed
+	}
 	var rec metadata.ObjectRecord
 	var err error
 	if versionID != "" {
@@ -564,18 +804,23 @@ func (s *Service) GetObject(ctx context.Context, bucket, key, versionID string) 
 	}
 	vid := rec.VersionID
 	rc, _, err := s.Backend.GetObjectVersion(ctx, bucket, key, vid)
+	if errors.Is(err, storage.ErrNotFound) && s.FetchStoredObject != nil {
+		// Metadata names the object. A missing file with no reachable peer
+		// is 503, not NoSuchKey: the row is still there.
+		if ferr := s.FetchStoredObject(ctx, bucket, key, vid); ferr == nil {
+			rc, _, err = s.Backend.GetObjectVersion(ctx, bucket, key, vid)
+		}
+		if err != nil {
+			return nil, rec, ErrObjectUnavailable
+		}
+	}
 	if err != nil {
 		return nil, metadata.ObjectRecord{}, err
 	}
-	if s.SSE != nil {
-		dec, err := s.SSE.DecryptReader(rc)
-		rc.Close()
-		if err != nil {
-			return nil, metadata.ObjectRecord{}, err
-		}
-		return io.NopCloser(dec), rec, nil
-	}
-	return rc, rec, nil
+	// A file already on this disk is returned as stored. This path does not
+	// compare the bytes with the metadata ETag. A corrupted local copy is
+	// still served. Peer intake checks the ETag before it keeps a copy.
+	return s.openDecrypted(rc, rec)
 }
 
 func (s *Service) getObjectFromFederation(ctx context.Context, storageBucket, key string) (io.ReadCloser, metadata.ObjectRecord, error) {
@@ -624,10 +869,20 @@ func peerCanRead(peer metadata.FederationCluster) bool {
 
 func (s *Service) HeadObject(ctx context.Context, bucket, key, versionID string) (metadata.ObjectRecord, error) {
 	bucket = s.normalizeBucketKey(bucket)
-	if versionID != "" {
-		return s.Meta.GetObjectVersion(bucket, key, versionID)
+	if s.bucketKeyDestroyed(bucket) {
+		return metadata.ObjectRecord{}, ErrKeyDestroyed
 	}
-	return s.Meta.GetObject(bucket, key)
+	var rec metadata.ObjectRecord
+	var err error
+	if versionID != "" {
+		rec, err = s.Meta.GetObjectVersion(bucket, key, versionID)
+	} else {
+		rec, err = s.Meta.GetObject(bucket, key)
+	}
+	if err != nil {
+		return rec, err
+	}
+	return displayedSize(rec), nil
 }
 
 func (s *Service) GetObjectTags(ctx context.Context, bucket, key, versionID string) (map[string]string, error) {
@@ -691,9 +946,8 @@ func (s *Service) deleteObject(ctx context.Context, bucket, key, versionID strin
 	if rec, err := s.Meta.GetBucketByKey(bucket); err == nil {
 		bucketRec = rec
 	}
-	versioning := s.bucketVersioning(bucket)
-	suspended := s.bucketVersioningSuspended(bucket)
-	if versioning && !suspended && versionID == "" {
+	versioning := s.versioningActive(bucket)
+	if versioning && versionID == "" {
 		markerID := newVersionID()
 		rec := metadata.ObjectRecord{
 			Bucket:         bucket,
@@ -702,6 +956,7 @@ func (s *Service) deleteObject(ctx context.Context, bucket, key, versionID strin
 			VersionID:      markerID,
 			IsDeleteMarker: true,
 			LastModified:   time.Now().UTC(),
+			Metadata:       userMetadataFrom(ctx),
 		}
 		evs = s.appendObjectOutbox(ctx, bucketRec, rec, "delete", evs)
 		dropped, err := s.commitObjectRecord(rec, true, evs)
@@ -792,12 +1047,7 @@ func (s *Service) mergeFederationList(ctx context.Context, logicalBucket, prefix
 func (s *Service) CopyObject(ctx context.Context, srcBucket, srcKey, dstBucket, dstKey string) (metadata.ObjectRecord, error) {
 	srcBucket = s.normalizeBucketKey(srcBucket)
 	dstBucket = s.normalizeBucketKey(dstBucket)
-	src, err := s.Meta.GetObject(srcBucket, srcKey)
-	if err != nil {
-		return metadata.ObjectRecord{}, err
-	}
-	srcVID := src.VersionID
-	rc, _, err := s.Backend.GetObjectVersion(ctx, srcBucket, srcKey, srcVID)
+	rc, src, err := s.GetObject(ctx, srcBucket, srcKey, "")
 	if err != nil {
 		return metadata.ObjectRecord{}, err
 	}
@@ -818,7 +1068,12 @@ func (s *Service) CopyObject(ctx context.Context, srcBucket, srcKey, dstBucket, 
 
 func (s *Service) CreateMultipartUpload(ctx context.Context, bucket, key string) (string, error) {
 	bucket = s.normalizeBucketKey(bucket)
-	if _, err := s.Meta.GetBucketByKey(bucket); err != nil {
+	bucketRec, err := s.Meta.GetBucketByKey(bucket)
+	if err != nil {
+		return "", err
+	}
+	_, _, encMeta, err := s.prepareObjectEncryption(ctx, bucketRec, bytes.NewReader(nil))
+	if err != nil {
 		return "", err
 	}
 	uploadID := newUploadID()
@@ -826,10 +1081,13 @@ func (s *Service) CreateMultipartUpload(ctx context.Context, bucket, key string)
 		return "", err
 	}
 	rec := metadata.MultipartRecord{
-		UploadID:  uploadID,
-		Bucket:    bucket,
-		Key:       key,
-		Initiated: time.Now().UTC(),
+		UploadID:    uploadID,
+		Bucket:      bucket,
+		Key:         key,
+		Initiated:   time.Now().UTC(),
+		ContentType: contentTypeFrom(ctx),
+		Metadata:    userMetadataFrom(ctx),
+		Encryption:  encMeta,
 	}
 	if err := s.Meta.PutMultipart(rec); err != nil {
 		return "", err
@@ -845,6 +1103,18 @@ func (s *Service) UploadPart(ctx context.Context, bucket, key, uploadID string, 
 	}
 	if mp.Bucket != bucket || mp.Key != key {
 		return "", metadata.ErrNotFound
+	}
+	if mp.Encryption != nil && mp.Encryption.Sealed() && mp.Encryption.FormatVersion == 1 {
+		dek, err := s.unwrapDEK(mp.Encryption)
+		if err != nil {
+			return "", err
+		}
+		enc, err := kms.EncryptReader(dek, r, kms.DefaultChunk)
+		if err != nil {
+			return "", err
+		}
+		r = enc
+		size = -1
 	}
 	return s.Backend.UploadPart(ctx, bucket, key, uploadID, partNumber, r, size)
 }
@@ -869,6 +1139,9 @@ func (s *Service) completeMultipart(ctx context.Context, bucket, key, uploadID s
 	if mp.Bucket != bucket || mp.Key != key {
 		return metadata.ObjectRecord{}, 0, metadata.ErrNotFound
 	}
+	if mp.Encryption != nil && mp.Encryption.Sealed() && mp.Encryption.FormatVersion == 1 {
+		return s.completeEncryptedMultipart(ctx, bucket, key, uploadID, mp, parts, build)
+	}
 	etag, err := s.Backend.CompleteMultipartUpload(ctx, bucket, key, uploadID, parts)
 	if err != nil {
 		return metadata.ObjectRecord{}, 0, err
@@ -890,24 +1163,49 @@ func (s *Service) completeMultipart(ctx context.Context, bucket, key, uploadID s
 		Key:          key,
 		Size:         info.Size,
 		ETag:         etag,
+		ContentType:  mp.ContentType,
 		VersionID:    versionID,
-		LastModified: info.LastModified,
+		LastModified: time.Now().UTC(),
+		Metadata:     mp.Metadata,
 	}
-	versioned := bucketRec.Versioning
+	versioned := bucketRec.ObjectLock || (bucketRec.Versioning && !bucketRec.VersioningSuspended)
 	if versioned {
-		// Move completed object into versioned path.
+		// The completed object is a file at the key path. A version lives at
+		// key/versions/<id>, so the file has to move aside before that directory exists.
 		rc, _, err := s.Backend.GetObject(ctx, bucket, key)
 		if err != nil {
 			return metadata.ObjectRecord{}, 0, err
 		}
-		_, err = s.Backend.PutObjectVersion(ctx, bucket, key, versionID, rc, info.Size, "")
+		tmp, err := os.CreateTemp("", "datasafe-mpu-*")
+		if err != nil {
+			rc.Close()
+			return metadata.ObjectRecord{}, 0, err
+		}
+		_, copyErr := io.Copy(tmp, rc)
 		rc.Close()
+		if copyErr != nil {
+			tmp.Close()
+			os.Remove(tmp.Name())
+			return metadata.ObjectRecord{}, 0, copyErr
+		}
+		if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+			tmp.Close()
+			os.Remove(tmp.Name())
+			return metadata.ObjectRecord{}, 0, err
+		}
+		if err := s.Backend.DeleteObject(ctx, bucket, key); err != nil && err != storage.ErrNotFound {
+			tmp.Close()
+			os.Remove(tmp.Name())
+			return metadata.ObjectRecord{}, 0, err
+		}
+		_, err = s.Backend.PutObjectVersion(ctx, bucket, key, versionID, tmp, info.Size, "")
+		tmp.Close()
+		os.Remove(tmp.Name())
 		if err != nil {
 			return metadata.ObjectRecord{}, 0, err
 		}
-		_ = s.Backend.DeleteObject(ctx, bucket, key)
 		info, _ = s.Backend.StatObjectVersion(ctx, bucket, key, versionID)
-		rec.LastModified = info.LastModified
+		rec.LastModified = time.Now().UTC()
 	} else {
 		rec.VersionID = ""
 	}
@@ -1007,7 +1305,7 @@ func (s *Service) pruneExpired(ctx context.Context) {
 					continue
 				}
 				cutoff := now.Add(-time.Duration(rule.ExpirationDays) * 24 * time.Hour)
-				mps, err := s.Meta.ListMultipart(b.Name)
+				mps, err := s.Meta.ListMultipart(b.EffectiveStorageKey())
 				if err != nil {
 					continue
 				}
@@ -1059,13 +1357,17 @@ func (s *Service) pruneExpired(ctx context.Context) {
 	}
 }
 
+// errObjectLockVersioning is PutBucketVersioning on a bucket that has Object Lock.
+// AWS keeps that versioning state at Enabled.
+var errObjectLockVersioning = errors.New("object lock configuration is present, so versioning cannot be suspended")
+
 func (s *Service) GetBucketVersioning(bucket string) (string, error) {
 	bucket = s.normalizeBucketKey(bucket)
 	rec, err := s.Meta.GetBucketByKey(bucket)
 	if err != nil {
 		return "", err
 	}
-	if rec.Versioning && !rec.VersioningSuspended {
+	if rec.ObjectLock || (rec.Versioning && !rec.VersioningSuspended) {
 		return "Enabled", nil
 	}
 	if rec.Versioning {
@@ -1080,6 +1382,9 @@ func (s *Service) SetBucketVersioning(bucket string, status string) error {
 	if err != nil {
 		return err
 	}
+	if rec.ObjectLock && !strings.EqualFold(status, "enabled") {
+		return errObjectLockVersioning
+	}
 	switch strings.ToLower(status) {
 	case "enabled":
 		rec.Versioning = true
@@ -1092,6 +1397,43 @@ func (s *Service) SetBucketVersioning(bucket string, status string) error {
 		rec.VersioningSuspended = false
 	}
 	return s.Meta.UpdateBucket(rec)
+}
+
+// ListMultipartUploads returns in-progress uploads for a bucket storage key.
+// Rows stored under the logical name are included, so a scoped bucket
+// (storage key o__… / t__…) still lists an upload that was written either way.
+func (s *Service) ListMultipartUploads(bucket string) ([]metadata.MultipartRecord, error) {
+	bucket = s.normalizeBucketKey(bucket)
+	rows, err := s.Meta.ListMultipart(bucket)
+	if err != nil {
+		return nil, err
+	}
+	if rec, gerr := s.Meta.GetBucketByKey(bucket); gerr == nil && rec.Name != "" && rec.Name != bucket {
+		more, merr := s.Meta.ListMultipart(rec.Name)
+		if merr != nil {
+			return nil, merr
+		}
+		rows = append(rows, more...)
+	}
+	seen := make(map[string]struct{}, len(rows))
+	out := make([]metadata.MultipartRecord, 0, len(rows))
+	for _, rec := range rows {
+		if rec.UploadID == "" {
+			continue
+		}
+		if _, ok := seen[rec.UploadID]; ok {
+			continue
+		}
+		seen[rec.UploadID] = struct{}{}
+		out = append(out, rec)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Key == out[j].Key {
+			return out[i].UploadID < out[j].UploadID
+		}
+		return out[i].Key < out[j].Key
+	})
+	return out, nil
 }
 
 func (s *Service) GetBucketLifecycle(bucket string) ([]metadata.LifecycleRule, error) {

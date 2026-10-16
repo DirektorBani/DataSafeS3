@@ -15,4 +15,6 @@ const (
 	PathLoggingWebhookToken   = "system_config.logging.webhook.token"
 	PathClusterPeerSecret     = "trusted_clusters.credential_secret"
 	PathSiteReplSecretKey     = "site_replication_peers.secret_key"
+	PathKMSVaultSecretID      = "system_config.kms.vault.secret_id"
+	PathKMSVaultToken         = "system_config.kms.vault.token"
 )

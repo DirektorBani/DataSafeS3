@@ -45,6 +45,37 @@ func (s *Store) ReleaseLeader(ctx context.Context, holderID string) error {
 	return err
 }
 
+// LiveLeader is the unexpired ha_leader_lock row 1.5.0 renews.
+func (s *Store) LiveLeader() (string, bool, error) {
+	holder, _, ok, err := s.CurrentLeader(context.Background())
+	return holder, ok, err
+}
+
+// ListRecentLeaderAttempts reads holder ids recorded by the BEFORE INSERT
+// trigger on ha_leader_lock, including followers that did not win the row.
+func (s *Store) ListRecentLeaderAttempts(since time.Time) ([]string, error) {
+	if since.IsZero() {
+		since = time.Unix(0, 0).UTC()
+	}
+	rows, err := s.pool.Query(context.Background(), `
+		SELECT holder_id FROM ha_leader_attempts WHERE attempted_at >= $1`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		if id != "" {
+			out = append(out, id)
+		}
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) CurrentLeader(ctx context.Context) (string, time.Time, bool, error) {
 	var holder string
 	var exp time.Time

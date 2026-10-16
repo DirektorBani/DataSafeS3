@@ -43,7 +43,7 @@
   "mfa": {
     "title": "MFA policy",
     "requireAdmin": "Require MFA for administrators",
-    "hint": "Personal MFA enrollment is in Profile."
+    "hint": "Same switch as “Apply to global administrators” on Settings → Security. Bucket-admin 2FA is configured there. Personal enrollment is in Profile."
   },
   "cluster": {
     "title": "Cluster (MVP)",

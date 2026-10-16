@@ -2,11 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"sort"
 	"strings"
 
+	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 )
 
@@ -141,6 +143,22 @@ func (s *Server) handleDownloadObjectJSON(w http.ResponseWriter, r *http.Request
 	versionID := r.URL.Query().Get("versionId")
 	rc, rec, err := s.svc.GetObject(r.Context(), sk, key, versionID)
 	if err != nil {
+		if errors.Is(err, s3.ErrKeyDestroyed) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": s3.MsgKeyDestroyed})
+			return
+		}
+		if errors.Is(err, s3.ErrKMSUnavailable) {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"error":   "KMS unavailable",
+				"message": s3.MsgKMSDown,
+			})
+			return
+		}
+		if strings.Contains(err.Error(), "message authentication failed") {
+			w.Header().Set("Connection", "close")
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 		return
 	}
@@ -457,8 +475,8 @@ func (s *Server) handleGetBucketSettingsJSON(w http.ResponseWriter, r *http.Requ
 		"owner":                rec.Owner,
 		"owner_id":             rec.OwnerID,
 		"description":          rec.Description,
-		"versioning_enabled":   rec.Versioning,
-		"versioning_suspended": rec.VersioningSuspended,
+		"versioning_enabled":   versioningEnabledReported(rec),
+		"versioning_suspended": versioningSuspendedReported(rec),
 		"object_lock_enabled":  rec.ObjectLock,
 		"retention_days":       rec.RetentionDays,
 		"retention_mode":       mode,

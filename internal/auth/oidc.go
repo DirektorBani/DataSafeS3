@@ -212,6 +212,50 @@ func ParseOIDCUserFromToken(token *oauth2.Token, userInfoURL string, client *htt
 	return fetchOIDCUserInfo(token.AccessToken, userInfoURL, client)
 }
 
+// TokenFactors reads amr and acr from an ID token or access token JWT payload.
+func TokenFactors(token *oauth2.Token) (amr []string, acr string) {
+	if token == nil {
+		return nil, ""
+	}
+	if id, ok := token.Extra("id_token").(string); ok {
+		if a, c, ok := jwtFactors(id); ok {
+			return a, c
+		}
+	}
+	amr, acr, _ = jwtFactors(token.AccessToken)
+	return amr, acr
+}
+
+func jwtFactors(tokenStr string) ([]string, string, bool) {
+	parts := strings.Split(tokenStr, ".")
+	if len(parts) < 2 {
+		return nil, "", false
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, "", false
+	}
+	var claims map[string]any
+	if json.Unmarshal(payload, &claims) != nil {
+		return nil, "", false
+	}
+	var amr []string
+	switch v := claims["amr"].(type) {
+	case []any:
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				amr = append(amr, s)
+			}
+		}
+	case string:
+		if v != "" {
+			amr = []string{v}
+		}
+	}
+	acr, _ := claims["acr"].(string)
+	return amr, acr, true
+}
+
 func parseOIDCJWTClaims(tokenStr string) (username, email string, err error) {
 	parts := strings.Split(tokenStr, ".")
 	if len(parts) < 2 {

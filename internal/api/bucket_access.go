@@ -90,7 +90,7 @@ func (s *Server) bucketKeyOr404(w http.ResponseWriter, info auth.TokenInfo, logi
 func (s *Server) grantsForRBAC(grants []metadata.BucketAccessGrant) []auth.BucketGrant {
 	out := make([]auth.BucketGrant, 0, len(grants))
 	for _, g := range grants {
-		out = append(out, auth.BucketGrant{UserID: g.UserID, CanRead: g.CanRead, CanWrite: g.CanWrite})
+		out = append(out, auth.BucketGrant{UserID: g.UserID, CanRead: g.CanRead, CanWrite: g.CanWrite, Level: g.Level})
 	}
 	return out
 }
@@ -152,14 +152,55 @@ func (s *Server) canAccessBucket(info auth.TokenInfo, bucketName string) bool {
 }
 
 func (s *Server) canWriteBucket(info auth.TokenInfo, bucketName string) bool {
-	if auth.CanSeeAllBuckets(info.Role) {
+	if auth.CanWriteAllBuckets(info.Role) {
 		return true
 	}
 	rec, err := s.resolveBucketForUser(info, bucketName)
+	if err != nil && auth.CanSeeAllBuckets(info.Role) {
+		rec, err = s.meta.GetBucket(bucketName)
+	}
 	if err != nil {
 		return false
 	}
 	return s.resolveBucketAccess(info, rec, true)
+}
+
+// isBucketAdmin reports whether the caller may change bucket administration:
+// grants, sharing, public visibility after creation, purge, and COMPLIANCE retention.
+// The owner is an implicit bucket administrator. STORAGE_OPERATOR_WRITE_ALL does
+// not grant this role.
+func (s *Server) isBucketAdmin(info auth.TokenInfo, rec metadata.BucketRecord) bool {
+	if auth.IsAdmin(info.Role) {
+		return true
+	}
+	if rec.OwnerID != "" && rec.OwnerID == info.UserID {
+		return true
+	}
+	if rec.Owner != "" && rec.Owner == info.Username {
+		return true
+	}
+	if s.isTenantAdmin(info, rec.EffectiveTenantID()) {
+		return true
+	}
+	return auth.GrantIsAdmin(s.grantsForRBAC(s.bucketGrantsFor(rec)), info.UserID)
+}
+
+// canCryptoShred is destroy-key. Cluster admin, a tenant admin of this bucket,
+// and an explicit bucket-admin grant may destroy the key. Owning the bucket
+// does not: a role user who created it, and an operator, are refused.
+// Step-up is allowDangerous(ActionCryptoShred). When the MFA policy is on,
+// that asks for a fresh action token. There is no separate password re-entry.
+func (s *Server) canCryptoShred(info auth.TokenInfo, rec metadata.BucketRecord) bool {
+	if auth.IsAdmin(info.Role) {
+		return true
+	}
+	if info.Role == auth.RoleOperator {
+		return false
+	}
+	if s.isTenantAdmin(info, rec.EffectiveTenantID()) {
+		return true
+	}
+	return auth.GrantIsAdmin(s.grantsForRBAC(s.bucketGrantsFor(rec)), info.UserID)
 }
 
 func (s *Server) isTenantAdmin(info auth.TokenInfo, tenantID string) bool {

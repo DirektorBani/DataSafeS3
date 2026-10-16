@@ -50,7 +50,8 @@
     "share": "Share",
     "access": "Access",
     "lifecycle": "Lifecycle",
-    "trash": "Trash"
+    "trash": "Trash",
+    "sharing": "File sharing"
   },
   "pin": {
     "pinned": "Pinned",
@@ -125,6 +126,7 @@
     "save": "Save access",
     "read": "Read",
     "write": "Write",
+    "admin": "Administrator",
     "loadError": "Unable to load access rules.",
     "folderTitle": "Folder sharing",
     "folderDescription": "Grant access to a folder prefix inside this bucket (e.g. reports/).",
@@ -165,8 +167,11 @@
     "title": "Share object",
     "description": "Create a public share link for \"{{key}}\" (download counter enforced server-side).",
     "expiration": "Expiration",
-    "customSeconds": "Custom (seconds)",
+    "customSeconds": "Custom (days and hours)",
+    "days": "Days",
+    "hours": "Hours",
     "maxDownloads": "Max downloads (0 = unlimited)",
+    "password": "Password (optional)",
     "downloadsRemaining": "{{remaining}} of {{max}} downloads remaining",
     "url": "URL",
     "createLink": "Create link"

@@ -3,6 +3,7 @@ package s3
 import (
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -37,6 +38,13 @@ func (h *Handler) putBucketObjectLock(w http.ResponseWriter, r *http.Request, bu
 		return
 	}
 	if !h.authorize(w, r, creds, bucket, "", "s3:PutBucketObjectLockConfiguration") {
+		return
+	}
+	if !h.Svc.CallerIsBucketAdmin(creds.AccessKey, bucket) {
+		writeError(w, r, http.StatusForbidden, "AccessDenied", "bucket admin required")
+		return
+	}
+	if h.denyAdminS3WithoutMFA(w, r, creds.AccessKey) {
 		return
 	}
 	var cfg ObjectLockConfiguration
@@ -84,9 +92,28 @@ func (h *Handler) putObjectRetention(w http.ResponseWriter, r *http.Request, buc
 	if !h.authorize(w, r, creds, bucket, key, "s3:PutObjectRetention") {
 		return
 	}
-	var body ObjectLockRetention
-	if err := xml.NewDecoder(r.Body).Decode(&body); err != nil {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
 		writeError(w, r, http.StatusBadRequest, "MalformedXML", "invalid xml")
+		return
+	}
+	body, err := parseRetentionXML(raw)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "MalformedXML", "invalid xml")
+		return
+	}
+	if strings.EqualFold(body.Mode, "COMPLIANCE") && !h.Svc.CallerIsBucketAdmin(creds.AccessKey, bucket) {
+		writeError(w, r, http.StatusForbidden, "AccessDenied", "bucket admin required")
+		return
+	}
+	until, _ := time.Parse(time.RFC3339, body.RetainUntilDate)
+	var existing *time.Time
+	if preview, _, err := h.Svc.ResolveBucketKey(creds.AccessKey, bucket); err == nil {
+		if obj, err := h.Svc.Meta.GetObject(preview, key); err == nil {
+			existing = obj.RetentionUntil
+		}
+	}
+	if complianceOrShorten(body.Mode, existing, until) && h.denyAdminS3WithoutMFA(w, r, creds.AccessKey) {
 		return
 	}
 	sk, ok := h.storageBucket(w, r, creds, bucket)
@@ -247,6 +274,10 @@ func (s *Service) PutObjectLockConfiguration(bucket string, cfg ObjectLockConfig
 		return err
 	}
 	rec.ObjectLock = strings.EqualFold(cfg.ObjectLockEnabled, "Enabled")
+	if rec.ObjectLock {
+		rec.Versioning = true
+		rec.VersioningSuspended = false
+	}
 	if cfg.Rule != nil && cfg.Rule.DefaultRetention != nil {
 		dr := cfg.Rule.DefaultRetention
 		if dr.Days > 0 {
@@ -261,15 +292,56 @@ func (s *Service) PutObjectLockConfiguration(bucket string, cfg ObjectLockConfig
 	return s.Meta.UpdateBucket(rec)
 }
 
+func parseRetentionXML(data []byte) (ObjectLockRetention, error) {
+	dec := xml.NewDecoder(strings.NewReader(string(data)))
+	var ret ObjectLockRetention
+	var stack []string
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return ret, err
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			stack = append(stack, t.Name.Local)
+		case xml.EndElement:
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		case xml.CharData:
+			text := strings.TrimSpace(string(t))
+			if text == "" || len(stack) == 0 {
+				continue
+			}
+			switch stack[len(stack)-1] {
+			case "Mode":
+				ret.Mode = text
+			case "RetainUntilDate":
+				ret.RetainUntilDate = text
+			}
+		}
+	}
+	if ret.Mode == "" && ret.RetainUntilDate == "" {
+		return ret, fmt.Errorf("empty retention")
+	}
+	return ret, nil
+}
+
 func (s *Service) GetObjectRetention(bucket, key, versionID string) (ObjectLockRetention, error) {
 	bucket = s.normalizeBucketKey(bucket)
 	obj, err := s.Meta.GetObjectVersion(bucket, key, versionID)
 	if err != nil {
 		return ObjectLockRetention{}, err
 	}
-	mode := metadata.RetentionGovernance
-	if brec, err := s.Meta.GetBucketByKey(bucket); err == nil && brec.RetentionMode != "" {
-		mode = brec.RetentionMode
+	mode := strings.ToUpper(strings.TrimSpace(obj.RetentionMode))
+	if mode == "" {
+		mode = metadata.RetentionGovernance
+		if brec, err := s.Meta.GetBucketByKey(bucket); err == nil && brec.RetentionMode != "" {
+			mode = brec.RetentionMode
+		}
 	}
 	ret := ObjectLockRetention{Mode: mode}
 	if obj.RetentionUntil != nil {
@@ -291,7 +363,7 @@ func (s *Service) PutObjectRetention(bucket, key, versionID string, body ObjectL
 			return err
 		}
 	}
-	if err := s.Meta.SetObjectRetention(bucket, key, versionID, until); err != nil {
+	if err := s.Meta.SetObjectRetention(bucket, key, versionID, until, body.Mode); err != nil {
 		return err
 	}
 	brec, err := s.Meta.GetBucketByKey(bucket)

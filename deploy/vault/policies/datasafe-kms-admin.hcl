@@ -1,0 +1,15 @@
+# Operator role for rotate and delete.
+# The server sets deletion_allowed when it creates a Transit key. DELETE is
+# refused until that flag is set. deletion_allowed is a POST to the key config path.
+
+path "transit/keys/datasafe-*" {
+  capabilities = ["read", "update", "delete"]
+}
+
+path "transit/keys/datasafe-*/rotate" {
+  capabilities = ["update"]
+}
+
+path "transit/keys/datasafe-*/config" {
+  capabilities = ["read", "update"]
+}

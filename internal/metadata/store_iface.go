@@ -61,7 +61,7 @@ type MetadataStore interface {
 	SetObjectTags(bucket, key, versionID string, tags map[string]string) error
 	UpdateObjectMeta(bucket, key, versionID string, meta map[string]string, contentType string) error
 	SetObjectLegalHold(bucket, key, versionID string, hold bool) error
-	SetObjectRetention(bucket, key, versionID string, until time.Time) error
+	SetObjectRetention(bucket, key, versionID string, until time.Time, mode string) error
 	TotalObjectBytes() (int64, error)
 	CountObjects() (int, error)
 	BucketObjectCount(bucket string) (int, error)
@@ -244,6 +244,59 @@ type MetadataStore interface {
 	PutSiteReplicationTask(rec SiteReplicationTask) error
 	ListDueSiteReplicationTasks(limit int, now time.Time) ([]SiteReplicationTask, error)
 	SiteReplicationStatus() (SiteReplicationStatus, error)
+
+	// Sharing policies (global, tenant, bucket). scope_id is empty for global.
+	PutSharingPolicy(rec SharingPolicy) error
+	GetSharingPolicy(scope, scopeID string) (SharingPolicy, error)
+	TouchSharePasswordFailure(id string, failures int, at *time.Time) error
+	// ClaimShareTerminalEvent marks a share link so ShareExpired or
+	// ShareLimitReached is emitted once. kind is "expired" or "limit".
+	// The bool is true only for the caller that won the claim.
+	ClaimShareTerminalEvent(id, kind string, at time.Time) (bool, error)
+
+	// MFA step-up tokens and replay guards. Shared by every cluster node.
+	PutMFAActionToken(rec MFAActionToken) error
+	ConsumeMFAActionToken(hash string, match MFATokenMatch, now time.Time) (MFAActionToken, error)
+	PurgeMFAActionTokens(now time.Time) error
+	ClaimTOTPStep(userID string, step int64) (bool, error)
+	ClaimMFADeniedSlot(userID, action string, now time.Time) (bool, error)
+	NoteMFAStepUpFailure(userID string, now time.Time) (MFAStepUpState, error)
+	MFAStepUpLocked(userID string, now time.Time) (MFAStepUpState, error)
+	ClearMFAStepUpFailures(userID string) error
+	ResetTOTPStep(userID string) error
+
+	// Object encryption (ADR-0006). Shared by Bolt and Postgres.
+	GetKMSState() (KMSState, error)
+	InitKMSState(st KMSState) (KMSState, error)
+	PutKMSState(st KMSState) error
+	PutKMSKey(rec KMSKeyRecord) error
+	GetKMSKey(id string) (KMSKeyRecord, error)
+	ListKMSKeys() ([]KMSKeyRecord, error)
+	PutKMSJob(rec KMSJob) error
+	GetKMSJob(id string) (KMSJob, error)
+	ListKMSJobs() ([]KMSJob, error)
+	PutBucketEncryption(storageKey string, enc BucketEncryption) error
+	GetBucketEncryption(storageKey string) (BucketEncryption, error)
+	DeleteBucketEncryption(storageKey string) error
+	// SetObjectEncryptionIfAbsent stores enc when the object has no encryption
+	// marker yet. A marker already stored, including plaintext, is left as it
+	// is. applied is false when the row was missing or already marked.
+	// versionID empty updates the latest row.
+	SetObjectEncryptionIfAbsent(bucket, key, versionID string, enc *ObjectEncryption) (applied bool, err error)
+	UpsertNodeHeartbeat(nodeID, version string, at time.Time) error
+	// RegisterNodeAddress records the URL other nodes use to reach nodeID.
+	// Follower write forwarding reads it from this registry.
+	RegisterNodeAddress(nodeID, address string) error
+	UpdateNodeKMSStatus(nodeID string, st NodeKMSStatus) error
+	ListNodeHeartbeats(since time.Time) ([]NodeHeartbeat, error)
+	// LiveLeader is the unexpired HA lease in ha_leader_lock (1.5.0 E07).
+	// holder is holder_id. ok is false when the row is missing, expired, or
+	// this store has no lease table (Bolt).
+	LiveLeader() (holder string, ok bool, err error)
+	// ListRecentLeaderAttempts is every holder_id that ran the lease INSERT
+	// since, including a follower whose ON CONFLICT WHERE did not change the
+	// row. Bolt has no lease table and returns nil.
+	ListRecentLeaderAttempts(since time.Time) ([]string, error)
 
 	// Field encryption KEK registry
 	ListEncryptionKeys(ctx context.Context) ([]EncryptionKeyRecord, error)

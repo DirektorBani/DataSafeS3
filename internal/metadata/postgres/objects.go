@@ -2,8 +2,10 @@ package postgres
 
 import (
 	"context"
+	"strings"
 	"time"
 
+	"encoding/json"
 	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/jackc/pgx/v5"
@@ -16,17 +18,60 @@ func scanObject(row interface {
 }) (metadata.ObjectRecord, error) {
 	var rec metadata.ObjectRecord
 	var sched, ret pgtype.Timestamptz
-	var meta, tags []byte
+	var meta, tags, enc []byte
 	err := row.Scan(&rec.Bucket, &rec.Key, &rec.VersionID, &rec.Size, &rec.ETag, &rec.ContentType,
-		&rec.LastModified, &sched, &rec.IsDeleteMarker, &rec.LegalHold, &ret, &rec.StorageClass, &meta, &tags, &rec.CreatedAt)
+		&rec.LastModified, &sched, &rec.IsDeleteMarker, &rec.LegalHold, &ret, &rec.StorageClass, &meta, &tags, &rec.CreatedAt, &enc)
 	if err != nil {
 		return rec, err
 	}
 	rec.ScheduledDeleteAt = timePtr(sched)
 	rec.RetentionUntil = timePtr(ret)
 	rec.Metadata = jsonMap(meta)
+	if rec.Metadata != nil {
+		if mode := rec.Metadata[retentionModeMeta]; mode != "" {
+			rec.RetentionMode = mode
+		}
+		delete(rec.Metadata, retentionModeMeta)
+		if len(rec.Metadata) == 0 {
+			rec.Metadata = nil
+		}
+	}
 	rec.Tags = jsonMap(tags)
+	if len(enc) > 0 {
+		var oe metadata.ObjectEncryption
+		if json.Unmarshal(enc, &oe) == nil {
+			rec.Encryption = &oe
+		}
+	}
 	return rec, nil
+}
+
+func encryptionArg(e *metadata.ObjectEncryption) any {
+	if e == nil {
+		return nil
+	}
+	b, err := json.Marshal(e)
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
+// SetObjectEncryptionIfAbsent writes enc when encryption IS NULL.
+// A marker that is already stored is not replaced.
+func (s *Store) SetObjectEncryptionIfAbsent(bucket, key, versionID string, enc *metadata.ObjectEncryption) (bool, error) {
+	bucket = s.normalizeObjectBucket(bucket)
+	ctx := context.Background()
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE objects SET encryption=$1
+		WHERE bucket=$2 AND key=$3
+		  AND (($4 <> '' AND version_id=$4) OR ($4 = '' AND is_latest=TRUE))
+		  AND encryption IS NULL`,
+		encryptionArg(enc), bucket, key, versionID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func (s *Store) PutObject(rec metadata.ObjectRecord) error {
@@ -51,11 +96,28 @@ func (s *Store) putObject(rec metadata.ObjectRecord, versioned bool, evs []event
 	rec.Bucket = s.normalizeObjectBucket(rec.Bucket)
 	ctx := context.Background()
 	if len(evs) == 0 {
-		return 0, s.putObjectQ(ctx, s.pool, rec, versioned)
+		return 0, s.withMetaTx(ctx, func(tx pgx.Tx) error {
+			return s.putObjectQ(ctx, tx, rec, versioned)
+		})
 	}
 	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error {
 		return s.putObjectQ(ctx, tx, rec, versioned)
 	})
+}
+
+// withMetaTx commits the replace as one transaction. An unversioned put used
+// to DELETE and then INSERT on the pool, so a killed leader left the row gone
+// and the file on disk.
+func (s *Store) withMetaTx(ctx context.Context, fn func(tx pgx.Tx) error) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 type pgExec interface {
@@ -63,44 +125,74 @@ type pgExec interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+// retentionModeMeta is stored inside the metadata jsonb document. PostgreSQL
+// rejects U+0000 in json text (22P05), so the private key is U+0001.
+const retentionModeMeta = "\x01retention_mode"
+
+func objectMetaArg(rec metadata.ObjectRecord) []byte {
+	meta := map[string]string{}
+	for k, v := range rec.Metadata {
+		k = strings.ReplaceAll(k, "\x00", "")
+		v = strings.ReplaceAll(v, "\x00", "")
+		if k == "" || k == retentionModeMeta {
+			continue
+		}
+		meta[k] = v
+	}
+	if rec.RetentionMode != "" {
+		meta[retentionModeMeta] = rec.RetentionMode
+	}
+	if len(meta) == 0 {
+		return []byte("null")
+	}
+	raw, _ := marshalJSON(meta)
+	return raw
+}
+
 func (s *Store) putObjectQ(ctx context.Context, q pgExec, rec metadata.ObjectRecord, versioned bool) error {
-	meta, _ := marshalJSON(rec.Metadata)
+	meta := objectMetaArg(rec)
 	tags, _ := marshalJSON(rec.Tags)
 	if versioned {
 		if rec.VersionID == "" {
 			return metadata.ErrNotFound
 		}
-		_, err := q.Exec(ctx, `
-			UPDATE objects SET is_latest=FALSE WHERE bucket=$1 AND key=$2`,
-			rec.Bucket, rec.Key)
-		if err != nil {
+		var exists bool
+		if err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM objects WHERE bucket=$1 AND key=$2 AND version_id=$3)`,
+			rec.Bucket, rec.Key, rec.VersionID).Scan(&exists); err != nil {
 			return err
 		}
-		_, err = q.Exec(ctx, `
+		// A new version becomes latest. Rewriting an older version for
+		// retention or legal hold keeps the current latest row.
+		if !exists {
+			if _, err := q.Exec(ctx, `UPDATE objects SET is_latest=FALSE WHERE bucket=$1 AND key=$2`, rec.Bucket, rec.Key); err != nil {
+				return err
+			}
+		}
+		_, err := q.Exec(ctx, `
 			INSERT INTO objects (bucket, key, version_id, size, etag, content_type, last_modified,
 				scheduled_delete_at, is_delete_marker, legal_hold, retention_until, storage_class,
-				metadata, tags, created_at, is_latest)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,TRUE)
+				metadata, tags, created_at, is_latest, encryption)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,TRUE,$16)
 			ON CONFLICT (bucket, key, version_id) DO UPDATE SET
 				size=$4, etag=$5, content_type=$6, last_modified=$7, scheduled_delete_at=$8,
 				is_delete_marker=$9, legal_hold=$10, retention_until=$11, storage_class=$12,
-				metadata=$13, tags=$14, is_latest=TRUE`,
+				metadata=$13, tags=$14, is_latest=objects.is_latest, encryption=$16`,
 			rec.Bucket, rec.Key, rec.VersionID, rec.Size, rec.ETag, rec.ContentType, rec.LastModified,
 			timestamptzPtr(rec.ScheduledDeleteAt), rec.IsDeleteMarker, rec.LegalHold,
-			timestamptzPtr(rec.RetentionUntil), rec.StorageClass, meta, tags, rec.CreatedAt)
+			timestamptzPtr(rec.RetentionUntil), rec.StorageClass, meta, tags, rec.CreatedAt, encryptionArg(rec.Encryption))
 		return err
 	}
-	_, err := q.Exec(ctx, `DELETE FROM objects WHERE bucket=$1 AND key=$2`, rec.Bucket, rec.Key)
-	if err != nil {
+	// Delete and insert share the caller's transaction. A separate autocommit
+	// for each statement let a killed leader commit the delete and lose the
+	// row, while the file stayed on disk. The resumed job then reported success.
+	if _, err := q.Exec(ctx, `DELETE FROM objects WHERE bucket=$1 AND key=$2`, rec.Bucket, rec.Key); err != nil {
 		return err
 	}
-	// Last commit wins. A plain INSERT races with another writer of the same
-	// unversioned key (23505 objects_pkey). ON CONFLICT updates that row.
-	_, err = q.Exec(ctx, `
+	_, err := q.Exec(ctx, `
 		INSERT INTO objects (bucket, key, version_id, size, etag, content_type, last_modified,
 			scheduled_delete_at, is_delete_marker, legal_hold, retention_until, storage_class,
-			metadata, tags, created_at, is_latest)
-		VALUES ($1,$2,'', $3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,TRUE)
+			metadata, tags, created_at, is_latest, encryption)
+		VALUES ($1,$2,'', $3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,TRUE,$15)
 		ON CONFLICT (bucket, key, version_id) DO UPDATE SET
 			size = EXCLUDED.size,
 			etag = EXCLUDED.etag,
@@ -114,10 +206,11 @@ func (s *Store) putObjectQ(ctx context.Context, q pgExec, rec metadata.ObjectRec
 			metadata = EXCLUDED.metadata,
 			tags = EXCLUDED.tags,
 			created_at = EXCLUDED.created_at,
-			is_latest = TRUE`,
+			is_latest = TRUE,
+			encryption = EXCLUDED.encryption`,
 		rec.Bucket, rec.Key, rec.Size, rec.ETag, rec.ContentType, rec.LastModified,
 		timestamptzPtr(rec.ScheduledDeleteAt), rec.IsDeleteMarker, rec.LegalHold,
-		timestamptzPtr(rec.RetentionUntil), rec.StorageClass, meta, tags, rec.CreatedAt)
+		timestamptzPtr(rec.RetentionUntil), rec.StorageClass, meta, tags, rec.CreatedAt, encryptionArg(rec.Encryption))
 	return err
 }
 
@@ -139,7 +232,7 @@ func (s *Store) GetObjectVersion(bucket, key, versionID string) (metadata.Object
 		row := s.pool.QueryRow(ctx, `
 			SELECT bucket, key, version_id, size, COALESCE(etag,''), COALESCE(content_type,''),
 				last_modified, scheduled_delete_at, is_delete_marker, legal_hold, retention_until,
-				COALESCE(storage_class,''), metadata, tags, created_at
+				COALESCE(storage_class,''), metadata, tags, created_at, encryption
 			FROM objects WHERE bucket=$1 AND key=$2 AND is_latest=TRUE`, bucket, key)
 		rec, err := scanObject(row)
 		if err != nil {
@@ -153,7 +246,7 @@ func (s *Store) GetObjectVersion(bucket, key, versionID string) (metadata.Object
 	row := s.pool.QueryRow(ctx, `
 		SELECT bucket, key, version_id, size, COALESCE(etag,''), COALESCE(content_type,''),
 			last_modified, scheduled_delete_at, is_delete_marker, legal_hold, retention_until,
-			COALESCE(storage_class,''), metadata, tags, created_at
+			COALESCE(storage_class,''), metadata, tags, created_at, encryption
 		FROM objects WHERE bucket=$1 AND key=$2 AND version_id=$3`, bucket, key, versionID)
 	rec, err := scanObject(row)
 	if err != nil {
@@ -182,7 +275,7 @@ func (s *Store) deleteObjectVersion(bucket, key, versionID string, versioningEna
 		return s.deleteObjectVersionQ(ctx, q, bucket, key, versionID, versioningEnabled)
 	}
 	if len(evs) == 0 {
-		return 0, run(s.pool)
+		return 0, s.withMetaTx(ctx, func(tx pgx.Tx) error { return run(tx) })
 	}
 	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error { return run(tx) })
 }
@@ -226,7 +319,7 @@ func (s *Store) ListObjectsPage(bucket, prefix, startAfter string, maxKeys int) 
 	rows, err := s.readQueryPool().Query(ctx, `
 		SELECT bucket, key, version_id, size, COALESCE(etag,''), COALESCE(content_type,''),
 			last_modified, scheduled_delete_at, is_delete_marker, legal_hold, retention_until,
-			COALESCE(storage_class,''), metadata, tags, created_at
+			COALESCE(storage_class,''), metadata, tags, created_at, encryption
 		FROM objects WHERE bucket=$1 AND is_latest=TRUE AND is_delete_marker=FALSE
 			AND key LIKE $2 AND ($3 = '' OR key > $3)
 		ORDER BY key LIMIT $4`, bucket, prefix+"%", startAfter, maxKeys+1)
@@ -254,15 +347,18 @@ func (s *Store) ListObjectsPage(bucket, prefix, startAfter string, maxKeys int) 
 }
 
 func (s *Store) ListObjectVersions(bucket, prefix string, maxKeys int) ([]metadata.ObjectRecord, error) {
-	if maxKeys <= 0 {
-		maxKeys = 1000
-	}
-	rows, err := s.pool.Query(context.Background(), `
+	q := `
 		SELECT bucket, key, version_id, size, COALESCE(etag,''), COALESCE(content_type,''),
 			last_modified, scheduled_delete_at, is_delete_marker, legal_hold, retention_until,
-			COALESCE(storage_class,''), metadata, tags, created_at
+			COALESCE(storage_class,''), metadata, tags, created_at, encryption
 		FROM objects WHERE bucket=$1 AND key LIKE $2
-		ORDER BY key, last_modified DESC LIMIT $3`, bucket, prefix+"%", maxKeys)
+		ORDER BY key, last_modified DESC, version_id DESC`
+	args := []any{bucket, prefix + "%"}
+	if maxKeys > 0 {
+		q += ` LIMIT $3`
+		args = append(args, maxKeys)
+	}
+	rows, err := s.pool.Query(context.Background(), q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -336,12 +432,15 @@ func (s *Store) SetObjectLegalHold(bucket, key, versionID string, hold bool) err
 	return s.PutObject(rec)
 }
 
-func (s *Store) SetObjectRetention(bucket, key, versionID string, until time.Time) error {
+func (s *Store) SetObjectRetention(bucket, key, versionID string, until time.Time, mode string) error {
 	rec, err := s.GetObjectVersion(bucket, key, versionID)
 	if err != nil {
 		return err
 	}
 	rec.RetentionUntil = &until
+	if mode = strings.ToUpper(strings.TrimSpace(mode)); mode != "" {
+		rec.RetentionMode = mode
+	}
 	if versionID != "" || rec.VersionID != "" {
 		return s.PutObjectVersioned(rec)
 	}

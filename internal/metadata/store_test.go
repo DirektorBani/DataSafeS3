@@ -18,6 +18,29 @@ func openStore(t *testing.T) *metadata.Store {
 	return s
 }
 
+func TestRegisterNodeAddressRoundTrip(t *testing.T) {
+	s := openStore(t)
+	if err := s.RegisterNodeAddress("node-b", "http://storage-b:9000"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertNodeHeartbeat("node-b", "1.6.0", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	beats, err := s.ListNodeHeartbeats(time.Now().Add(-time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	for _, b := range beats {
+		if b.NodeID == "node-b" {
+			got = b.Address
+		}
+	}
+	if got != "http://storage-b:9000" {
+		t.Fatalf("address %q", got)
+	}
+}
+
 func TestBucketCRUD(t *testing.T) {
 	s := openStore(t)
 	rec := metadata.BucketRecord{Name: "b", CreatedAt: time.Now().UTC(), Owner: "admin"}

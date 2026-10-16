@@ -21,11 +21,13 @@ import (
 	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/ha"
 	"github.com/DirektorBani/datasafe/internal/inventory"
+	"github.com/DirektorBani/datasafe/internal/kms"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	_ "github.com/DirektorBani/datasafe/internal/metadata/postgres"
 	pgmeta "github.com/DirektorBani/datasafe/internal/metadata/postgres"
 	"github.com/DirektorBani/datasafe/internal/observability"
 	"github.com/DirektorBani/datasafe/internal/openapi"
+	"github.com/DirektorBani/datasafe/internal/policy"
 	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
 	"github.com/DirektorBani/datasafe/internal/storage"
 	"github.com/DirektorBani/datasafe/internal/storage/erasure"
@@ -69,6 +71,29 @@ type Server struct {
 	activityRetentionDays int
 	gatewaySyncMu         sync.Mutex
 	gatewaySyncing        map[string]struct{}
+	vaultStop             chan struct{}
+	vaultOnce             sync.Once
+	vaultStopOnce         sync.Once
+	vaultMu               sync.Mutex
+	vaultFP               string
+	vaultProbeSeq         uint64
+	// bgMu keeps idle background polls from opening a second Postgres session.
+	// A second session faults enough executable pages to exceed the single-node
+	// RSS budget. Request handlers do not take this lock.
+	bgMu             sync.Mutex
+	replicaNonceOnce sync.Once
+	replicaSeen      *replicaNonces
+}
+
+// withBackgroundDB runs one idle poll at a time so a quiet Postgres node keeps
+// a single connection.
+func (s *Server) withBackgroundDB(fn func()) {
+	if s == nil || fn == nil {
+		return
+	}
+	s.bgMu.Lock()
+	defer s.bgMu.Unlock()
+	fn()
 }
 
 var corsAllowedOrigins []string
@@ -114,6 +139,11 @@ func NewServer(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	sealWith := strings.TrimSpace(cfg.SSEMasterKey)
+	if sealWith == "" {
+		sealWith = cfg.JWTSecret
+	}
+	metadata.SetKMSSealMaterial(meta, sealWith)
 	if cfg.FieldEncryption != nil {
 		if err := metadata.BootstrapFieldEncryption(context.Background(), cfg.FieldEncryption, meta); err != nil {
 			meta.Close()
@@ -137,6 +167,18 @@ func NewServer(cfg Config) (*Server, error) {
 		if rec.ExpiresAt != nil && time.Now().UTC().After(*rec.ExpiresAt) {
 			return auth.Credentials{}, false
 		}
+		if rec.OwnerID != "" || rec.Owner != "" {
+			var user metadata.UserRecord
+			var uerr error
+			if rec.OwnerID != "" {
+				user, uerr = meta.GetUser(rec.OwnerID)
+			} else {
+				user, uerr = meta.GetUserByUsername(rec.Owner)
+			}
+			if uerr != nil || user.Status != metadata.StatusActive {
+				return auth.Credentials{}, false
+			}
+		}
 		return auth.Credentials{
 			AccessKey:    rec.AccessKey,
 			SecretKey:    rec.SecretKey,
@@ -144,21 +186,31 @@ func NewServer(cfg Config) (*Server, error) {
 		}, true
 	}
 	signer := auth.NewSigner(cfg.Region, lookup)
+	signer.RootAccessKey = cfg.AccessKey
 	_ = meta.PutAccessKey(metadata.AccessKeyRecord{
 		AccessKey: cfg.AccessKey,
 		SecretKey: cfg.SecretKey,
 		Label:     "bootstrap",
 		CreatedAt: time.Now().UTC(),
 	})
+	cfg.SSEMasterKey = strings.TrimSpace(cfg.SSEMasterKey)
+	if err := s3.EnsureLocalKEK(meta, cfg.SSEMasterKey); err != nil {
+		meta.Close()
+		return nil, err
+	}
+	var localKMS *kms.Local
+	if cfg.SSEMasterKey != "" {
+		localKMS, err = kms.NewLocal(cfg.SSEMasterKey)
+		if err != nil {
+			meta.Close()
+			return nil, err
+		}
+	}
 	svc := s3.NewService(backend, meta, signer, cfg.Region, cfg.AccessKey)
 	svc.FederationPeers = func() ([]metadata.FederationCluster, error) {
 		return meta.ListFederationClusters()
 	}
-	if cfg.SSEMasterKey != "" {
-		if cipher, err := storage.NewSSECipher(cfg.SSEMasterKey); err == nil {
-			svc.SetSSE(cipher)
-		}
-	}
+	svc.SetLocalKMS(localKMS)
 	s3h := s3.NewHandler(svc)
 	s := &Server{
 		cfg:                   cfg,
@@ -179,6 +231,9 @@ func NewServer(cfg Config) (*Server, error) {
 	s3h.OnActivity = func(user, ip, action, resourceType, resourceName string) {
 		s.logActivityAs(user, ip, action, resourceType, resourceName)
 	}
+	s3h.OnPresignDecrypt = s.notePresignDecrypt
+	s3h.OnPublicRead = s.notePublicRead
+	s3h.OnPresignBlocked = s.notePresignBlocked
 	initCORSFromEnv()
 	if err := s.seedAdminUser(); err != nil {
 		meta.Close()
@@ -202,6 +257,7 @@ func NewServer(cfg Config) (*Server, error) {
 		return nil, err
 	}
 	s.cluster = newClusterMonitor(s.meta)
+	s.cluster.dbMu = &s.bgMu
 	haCfg := ha.ConfigFromEnv()
 	if haCfg.Enabled {
 		if pg, ok := meta.(*pgmeta.Store); ok {
@@ -209,6 +265,8 @@ func NewServer(cfg Config) (*Server, error) {
 				haCfg.NodeID = cfg.NodeID
 			}
 			s.haLeader = ha.New(haCfg, pg)
+			s.svc.ReplicateObject = s.replicateStoredObject
+			s.svc.FetchStoredObject = s.fetchStoredObject
 			if s.eventDisp != nil {
 				s.eventDisp.SetOnFence(s.haLeader.Resign)
 				s.haLeader.SetOnAcquired(s.syncEventSinks)
@@ -216,10 +274,15 @@ func NewServer(cfg Config) (*Server, error) {
 		}
 	}
 	s.routes()
+	if auth.OperatorWriteAllEnabled() {
+		slog.Warn("STORAGE_OPERATOR_WRITE_ALL is enabled: operators can write every bucket; this compatibility mode is removed in 1.7.0")
+		s.logActivityAs("system", "", metadata.ActionOperatorWriteAll, "config", "STORAGE_OPERATOR_WRITE_ALL")
+	}
 	return s, nil
 }
 
 func (s *Server) Close() error {
+	s.stopVaultLoop()
 	// Drop the process-wide gauges before the pool is closed. The next
 	// server in this process installs its own callback.
 	observability.SetExtendedStats(nil)
@@ -251,6 +314,19 @@ func (s *Server) StartBackground(ctx context.Context) {
 	go s.runTrustedClusterWorker(ctx)
 	go s.runClusterCertRotator(ctx)
 	go s.runLDAPSyncWorker(ctx)
+	go s.runMFATokenPurge(ctx)
+	// Bolt with no master key stays quiet (single-node RSS budget). A Postgres
+	// or HA node still advertises 1.6.0 so a 1.5.0 leader lease is not mistaken
+	// for this process.
+	if s.advertiseClusterVersion() {
+		s.withBackgroundDB(func() { s.writeClusterHeartbeat() })
+		go s.runKMSHeartbeat(ctx)
+	}
+	// Classification exits when the unmarked set is done. An empty key does
+	// not start it: that process has nothing to authenticate.
+	if s.svc.LocalKMSConfigured() {
+		go s.svc.RunLegacyClassify(ctx)
+	}
 	if eb, ok := s.backend.(*erasure.Backend); ok {
 		go erasure.RunHealWorker(ctx, eb, storage.ObjectBackendFromEnv(s.cfg.DataDir, s.cfg.ReadOnly).HealEvery)
 	}
@@ -268,6 +344,14 @@ func (s *Server) StartBackground(ctx context.Context) {
 		go s.runEventSinkRefresh(ctx)
 		go s.eventDisp.Run(ctx)
 	}
+	// Vault stays off unless provider and address are set. This read does not
+	// open a client when they are empty. A shared metadata node polls for a
+	// console save from another node; a single Bolt node does not.
+	s.withBackgroundDB(func() { s.refreshVaultFromMeta() })
+	if _, ok := s.meta.(*pgmeta.Store); ok {
+		go s.watchVaultConfig(ctx)
+	}
+	go s.runKMSJobs(ctx)
 }
 
 // runEventSinkRefresh reloads webhook and bucket-notification sinks from the
@@ -280,14 +364,14 @@ func (s *Server) runEventSinkRefresh(ctx context.Context) {
 	for {
 		leader := s.isEventLeader(ctx)
 		if leader && !wasLeader {
-			s.syncEventSinks()
+			s.withBackgroundDB(func() { s.syncEventSinks() })
 		}
 		wasLeader = leader
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.syncEventSinks()
+			s.withBackgroundDB(func() { s.syncEventSinks() })
 		}
 	}
 }
@@ -313,7 +397,7 @@ func (s *Server) runTrashPurgeWorker(ctx context.Context) {
 }
 
 func (s *Server) runActivityRetentionWorker(ctx context.Context) {
-	s.purgeActivityOnce()
+	s.withBackgroundDB(func() { s.purgeActivityOnce() })
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 	for {
@@ -321,7 +405,7 @@ func (s *Server) runActivityRetentionWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.purgeActivityOnce()
+			s.withBackgroundDB(func() { s.purgeActivityOnce() })
 		}
 	}
 }
@@ -389,6 +473,9 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		if s.readOnlyGuard(w, r) {
+			return
+		}
+		if s.proxyObjectRead(w, r) {
 			return
 		}
 		s.s3.ServeHTTP(w, r)
@@ -512,7 +599,7 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":  "ok",
-			"version": buildinfo.Version,
+			"version": s3.HeartbeatVersion(buildinfo.Version),
 			"commit":  buildinfo.Commit,
 		})
 	})
@@ -590,10 +677,15 @@ func (s *Server) routes() {
 	mux.HandleFunc("PUT /api/v1/users/{id}", adminOnly(s.handleUpdateUser))
 	mux.HandleFunc("DELETE /api/v1/users/{id}", adminOnly(s.handleDeleteUser))
 	mux.HandleFunc("POST /api/v1/users/{id}/reset-password", adminOnly(s.handleResetPassword))
+	mux.HandleFunc("POST /api/v1/users/{id}/access-keys", adminOnly(s.handleImportAccessKey))
 
 	mux.HandleFunc("GET /api/v1/settings/buckets", adminOnly(s.handleListBucketSettings))
 	mux.HandleFunc("PUT /api/v1/settings/buckets/{name}", adminOnly(s.handleUpdateBucketSettings))
 
+	mux.HandleFunc("GET /api/v1/kms/settings", adminOnly(s.handleGetKMSSettings))
+	mux.HandleFunc("PUT /api/v1/kms/settings", adminOnly(s.handlePutKMSSettings))
+	mux.HandleFunc("POST /api/v1/kms/test", adminOnly(s.handleTestKMS))
+	mux.HandleFunc("GET /api/v1/kms/nodes", adminOnly(s.handleGetKMSNodes))
 	mux.HandleFunc("GET /api/v1/settings/system", adminOnly(s.handleGetSystemConfig))
 	mux.HandleFunc("PUT /api/v1/settings/system", adminOnly(s.handlePutSystemConfig))
 
@@ -641,6 +733,12 @@ func (s *Server) routes() {
 	mux.HandleFunc("POST /api/v1/mfa/verify-enroll", authn(s.handleMFAVerifyEnroll))
 	mux.HandleFunc("POST /api/v1/mfa/verify", authn(s.handleMFAVerifyEnroll))
 	mux.HandleFunc("POST /api/v1/mfa/disable", authn(s.handleMFADisable))
+	mux.HandleFunc("GET /api/v1/settings/mfa-policy", adminOnly(s.handleMFAPolicyGet))
+	mux.HandleFunc("PUT /api/v1/settings/mfa-policy", adminOnly(s.handleMFAPolicyPut))
+	mux.HandleFunc("POST /api/v1/auth/step-up", authn(s.handleStepUp))
+	mux.HandleFunc("POST /api/v1/auth/step-up/webauthn/begin", authn(s.handleStepUpWebAuthnBegin))
+	mux.HandleFunc("POST /api/v1/auth/step-up/webauthn/finish", authn(s.handleStepUpWebAuthnFinish))
+	mux.HandleFunc("POST /api/v1/users/{id}/mfa/reset", adminOnly(s.handleMFAReset))
 	mux.HandleFunc("POST /api/v1/me/mfa/webauthn/register/begin", authn(s.handleWebAuthnRegisterBegin))
 	mux.HandleFunc("POST /api/v1/me/mfa/webauthn/register/finish", authn(s.handleWebAuthnRegisterFinish))
 	mux.HandleFunc("POST /api/v1/auth/mfa/webauthn/begin", s.handleWebAuthnLoginBegin)
@@ -716,8 +814,24 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /api/v1/clusters/{id}/replication-rules", adminOnly(s.handleListClusterReplicationRules))
 	mux.HandleFunc("POST /api/v1/clusters/{id}/replication-rules", adminOnly(s.handleCreateClusterReplicationRule))
 	mux.HandleFunc("DELETE /api/v1/clusters/{id}/replication-rules/{ruleId}", adminOnly(s.handleDeleteClusterReplicationRule))
-	mux.HandleFunc("POST /api/v1/clusters/{id}/revoke-notify", s.handleClusterRevokeNotify)
-	mux.HandleFunc("POST /api/v1/clusters/{id}/rotate", s.handleClusterRotate)
+	mux.HandleFunc("POST /api/v1/clusters/{id}/revoke-notify", s.requireClusterPeer(s.handleClusterRevokeNotify))
+	mux.HandleFunc("POST /api/v1/clusters/{id}/rotate", s.requireClusterPeer(s.handleClusterRotate))
+	mux.HandleFunc("GET /api/v1/settings/sharing", adminOnly(s.handleGetGlobalSharing))
+	mux.HandleFunc("PUT /api/v1/settings/sharing", adminOnly(s.handlePutGlobalSharing))
+	mux.HandleFunc("GET /api/v1/tenants/{id}/sharing", allRoles(s.handleGetTenantSharing))
+	mux.HandleFunc("PUT /api/v1/tenants/{id}/sharing", allRoles(s.handlePutTenantSharing))
+	mux.HandleFunc("GET /api/v1/buckets/{bucket}/sharing", allRoles(s.handleGetBucketSharing))
+	mux.HandleFunc("PUT /api/v1/buckets/{bucket}/sharing", allRoles(s.handlePutBucketSharing))
+	mux.HandleFunc("GET /api/v1/buckets/{bucket}/encryption", allRoles(s.handleGetBucketEncryption))
+	mux.HandleFunc("PUT /api/v1/buckets/{bucket}/encryption", allRoles(s.handlePutBucketEncryption))
+	mux.HandleFunc("DELETE /api/v1/buckets/{bucket}/encryption", allRoles(s.handleDeleteBucketEncryption))
+	mux.HandleFunc("POST /api/v1/buckets/{bucket}/encryption/rewrap", allRoles(s.handleRewrapBucket))
+	mux.HandleFunc("POST /api/v1/buckets/{bucket}/encryption/destroy", allRoles(s.handleDestroyBucketKey))
+	mux.HandleFunc("POST /api/v1/kms/keys/{id}/rotate", allRoles(s.handleRotateKMSKey))
+	mux.HandleFunc("GET /api/v1/kms/jobs", allRoles(s.handleListKMSJobs))
+	mux.HandleFunc("GET /api/v1/kms/jobs/{id}/report", allRoles(s.handleKMSJobReport))
+	mux.HandleFunc("GET /api/v1/kms/jobs/{id}", allRoles(s.handleGetKMSJob))
+	mux.HandleFunc("POST /api/v1/buckets/{bucket}/shares/revoke-all", allRoles(s.handleRevokeAllSharedLinks))
 	mux.HandleFunc("POST /api/v1/sts/assume-role", allRoles(s.handleAssumeRole))
 	mux.HandleFunc("POST /api/v1/buckets/{bucket}/objects/transition-storage-class", allRoles(s.handleTransitionStorageClass))
 	mux.HandleFunc("PUT /api/v1/buckets/{bucket}/object-retention", allRoles(s.handlePutObjectRetention))
@@ -777,26 +891,34 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sysCfg, _ := s.meta.GetSystemConfig()
-	needMFA := user.MFAEnabled
+	hasWebAuthn := userHasWebAuthn(user)
+	needMFA := user.MFAEnabled || hasWebAuthn
 	adminNeedsMFASetup := false
 	if sysCfg.MFA.RequireAdminMFA && user.Role == metadata.RoleAdministrator {
-		hasMFA := user.MFAEnabled || user.WebAuthnCredentials != ""
+		hasMFA := user.MFAEnabled || hasWebAuthn
 		if !hasMFA {
 			adminNeedsMFASetup = true
 		} else {
 			needMFA = true
 		}
 	}
-	if needMFA && user.MFAEnabled && !adminNeedsMFASetup {
+	if needMFA && !adminNeedsMFASetup {
 		mfaToken, err := s.jwt.IssueMFAToken(user.ID)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "mfa token issue failed"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		resp := map[string]any{
 			"mfa_required": true,
 			"mfa_token":    mfaToken,
-		})
+		}
+		if hasWebAuthn {
+			resp["webauthn_available"] = true
+		}
+		if !user.MFAEnabled && hasWebAuthn {
+			resp["webauthn_required"] = true
+		}
+		writeJSON(w, http.StatusOK, resp)
 		return
 	}
 	now := time.Now().UTC()
@@ -841,6 +963,20 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 		TeamID     string `json:"team_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
+	vis := req.Visibility
+	if vis == "" {
+		vis = "private"
+	}
+	if vis == "public-read" {
+		if !s.mayCreatePublicRead(info) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "public_read_forbidden"})
+			return
+		}
+		if s.publicAccessBlockedForNewBucket(info) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "public_access_blocked"})
+			return
+		}
+	}
 	var evPtr *events.OutboxRecord
 	if evs := s.outboxRecords(metadata.EventBucketCreated, bucket, "", "", "", map[string]any{"bucket": bucket, "owner": owner}); len(evs) == 1 {
 		evPtr = &evs[0]
@@ -855,14 +991,17 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	s.noteOutboxDropped(dropped)
-	vis := req.Visibility
-	if vis == "" {
-		vis = "private"
-	}
-	if vis == "private" || vis == "public-read" {
-		_ = s.applyBucketVisibilityPolicy(info, bucket, vis)
-	}
 	s.stampBucketOwnership(bucket, info)
+	if vis == "private" || vis == "public-read" {
+		if err := s.applyBucketVisibilityPolicy(info, bucket, vis); err != nil {
+			if errors.Is(err, errPublicKMS) {
+				writeJSON(w, http.StatusConflict, map[string]any{"error": "public_kms_conflict", "message": s3.MsgPublicKMS})
+				return
+			}
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+			return
+		}
+	}
 	if req.TeamID != "" && auth.CanSeeAllBuckets(info.Role) {
 		if rec, err := s.resolveBucketForUser(info, bucket); err == nil {
 			if _, err := s.meta.GetTeam(req.TeamID); err == nil {
@@ -871,6 +1010,9 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
+	if ownerUser, oerr := s.meta.GetUserByUsername(owner); oerr == nil {
+		s.noteBucketAdmin(ownerUser.ID)
+	}
 	s.logActivity(r, metadata.ActionBucketCreated, "bucket", bucket)
 	writeJSON(w, http.StatusCreated, map[string]any{"bucket": bucket, "visibility": vis})
 }
@@ -878,8 +1020,16 @@ func (s *Server) handleCreateBucketJSON(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleDeleteBucketJSON(w http.ResponseWriter, r *http.Request) {
 	bucket := r.PathValue("bucket")
 	info, _ := authFrom(r)
-	if !s.canWriteBucket(info, bucket) {
+	brec, err := s.resolveBucketForUser(info, bucket)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	if !s.isBucketAdmin(info, brec) && !auth.CanWriteAllBuckets(info.Role) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+		return
+	}
+	if !s.allowDangerous(w, r, auth.ActionBucketDelete, bucket) {
 		return
 	}
 	sk, _, err := s.bucketStorageKey(info, bucket)
@@ -927,11 +1077,7 @@ func (s *Server) handleUploadObjectJSON(w http.ResponseWriter, r *http.Request) 
 		return s.outboxRecords(metadata.EventObjectCreated, bucket, key, obj.VersionID, "", objectEventFields(bucket, key, obj, nil))
 	})
 	if err != nil {
-		if err == metadata.ErrQuotaExceeded {
-			writeJSON(w, http.StatusForbidden, map[string]any{"error": "quota exceeded"})
-			return
-		}
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		writeObjectStoreErr(w, err)
 		return
 	}
 	uploadDelta := rec.Size - prevSize
@@ -1115,6 +1261,11 @@ func (s *Server) handleListObjectsJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePresign(w http.ResponseWriter, r *http.Request) {
+	info, ok := authFrom(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+		return
+	}
 	var req struct {
 		Method   string `json:"method"`
 		Bucket   string `json:"bucket"`
@@ -1126,22 +1277,84 @@ func (s *Server) handlePresign(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
 		return
 	}
-	if req.Method == "" {
-		req.Method = http.MethodGet
+	method := strings.ToUpper(strings.TrimSpace(req.Method))
+	if method == "" {
+		method = http.MethodGet
+	}
+	switch method {
+	case http.MethodGet, http.MethodHead:
+		if !s.canAccessBucket(info, req.Bucket) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+			return
+		}
+	case http.MethodPut:
+		if !s.canWriteBucket(info, req.Bucket) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+			return
+		}
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "method not allowed"})
+		return
+	}
+	brec, err := s.resolveBucketForUser(info, req.Bucket)
+	if err != nil && auth.CanSeeAllBuckets(info.Role) {
+		brec, err = s.meta.GetBucket(req.Bucket)
+	}
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	eff := s.effectiveSharingForRecord(brec)
+	if !eff.ShareLinksAllowed {
+		s.noteShareDenied(r, req.Bucket, "presign_blocked")
+		writeJSON(w, http.StatusForbidden, sharingDisabledBody())
+		return
+	}
+	if !eff.PresignAllowed {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "presign_disabled", "message": "Presigned URLs are disabled for this bucket"})
+		return
 	}
 	if req.Expires <= 0 {
 		req.Expires = 3600
 	}
+	maxTTL := eff.MaxPresignTTLSec
+	if maxTTL <= 0 || maxTTL > auth.MaxPresignSeconds {
+		maxTTL = auth.MaxPresignSeconds
+	}
+	if int64(req.Expires) > maxTTL {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "max_presign_ttl", "max_presign_ttl_sec": maxTTL})
+		return
+	}
 	if req.Endpoint == "" {
 		req.Endpoint = "http://" + r.Host
 	}
-	creds := auth.Credentials{AccessKey: s.cfg.AccessKey, SecretKey: s.cfg.SecretKey}
-	url, err := s.svc.Signer.PresignURL(req.Method, req.Endpoint, req.Bucket, req.Key, creds, time.Duration(req.Expires)*time.Second)
+	accessKey := "AKIA" + randomHex(8)
+	secretKey := randomHex(20)
+	exp := time.Now().UTC().Add(time.Duration(req.Expires) * time.Second)
+	if err := s.meta.PutAccessKey(metadata.AccessKeyRecord{
+		AccessKey: accessKey,
+		SecretKey: secretKey,
+		Label:     "presign",
+		OwnerID:   info.UserID,
+		Owner:     info.Username,
+		ExpiresAt: &exp,
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	creds := auth.Credentials{AccessKey: accessKey, SecretKey: secretKey}
+	url, err := s.svc.Signer.PresignURL(method, req.Endpoint, req.Bucket, req.Key, creds, time.Duration(req.Expires)*time.Second)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"url": url})
+	s.logActivity(r, metadata.ActionPresignIssued, "object", req.Bucket+"/"+req.Key)
+	s.publishEvent(r.Context(), "PresignIssued", req.Bucket, req.Key, "", brec.EffectiveTenantID(), map[string]any{
+		"actor": info.Username, "method": method, "expires_seconds": req.Expires,
+		"bucket": req.Bucket, "key": req.Key, "client_ip": clientIP(r),
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"url": url, "expires_at": exp})
 }
 
 func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
@@ -1152,10 +1365,12 @@ func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type safe struct {
-		AccessKey string    `json:"access_key"`
-		Label     string    `json:"label"`
-		Owner     string    `json:"owner,omitempty"`
-		CreatedAt time.Time `json:"created_at"`
+		AccessKey      string     `json:"access_key"`
+		Label          string     `json:"label"`
+		Owner          string     `json:"owner,omitempty"`
+		CreatedAt      time.Time  `json:"created_at"`
+		ExpiresAt      *time.Time `json:"expires_at,omitempty"`
+		CreatedWithMFA bool       `json:"created_with_mfa"`
 	}
 	var out []safe
 	for _, k := range keys {
@@ -1167,13 +1382,16 @@ func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		out = append(out, safe{AccessKey: k.AccessKey, Label: k.Label, Owner: k.Owner, CreatedAt: k.CreatedAt})
+		out = append(out, safe{AccessKey: k.AccessKey, Label: k.Label, Owner: k.Owner, CreatedAt: k.CreatedAt, ExpiresAt: k.ExpiresAt, CreatedWithMFA: k.CreatedWithMFA})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"keys": out})
 }
 
 func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 	info, _ := authFrom(r)
+	if !s.allowDangerous(w, r, auth.ActionAccessKeyCreate, info.UserID) {
+		return
+	}
 	var req struct {
 		Label string `json:"label"`
 	}
@@ -1181,12 +1399,13 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 	accessKey := "AKIA" + randomHex(8)
 	secretKey := randomHex(16)
 	rec := metadata.AccessKeyRecord{
-		AccessKey: accessKey,
-		SecretKey: secretKey,
-		Label:     req.Label,
-		OwnerID:   info.UserID,
-		Owner:     info.Username,
-		CreatedAt: time.Now().UTC(),
+		AccessKey:      accessKey,
+		SecretKey:      secretKey,
+		Label:          req.Label,
+		OwnerID:        info.UserID,
+		Owner:          info.Username,
+		CreatedWithMFA: s.accessKeyMFAFlag(info.UserID),
+		CreatedAt:      time.Now().UTC(),
 	}
 	if err := s.meta.PutAccessKey(rec); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
@@ -1198,6 +1417,68 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 		"secret_key": secretKey,
 		"label":      req.Label,
 	})
+}
+
+func (s *Server) handleImportAccessKey(w http.ResponseWriter, r *http.Request) {
+	info, _ := authFrom(r)
+	id := r.PathValue("id")
+	if !s.allowDangerous(w, r, auth.ActionAccessKeyCreate, id) {
+		return
+	}
+	user, err := s.meta.GetUser(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+		return
+	}
+	var req struct {
+		AccessKey string `json:"access_key"`
+		SecretKey string `json:"secret_key"`
+		Label     string `json:"label"`
+		ExpiresAt string `json:"expires_at"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	req.AccessKey = strings.TrimSpace(req.AccessKey)
+	req.SecretKey = strings.TrimSpace(req.SecretKey)
+	if req.AccessKey == "" || len(req.SecretKey) < 16 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "access_key and secret_key are required"})
+		return
+	}
+	if _, err := s.meta.GetAccessKey(req.AccessKey); err == nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "access key exists"})
+		return
+	}
+	if req.Label == "" {
+		req.Label = "minio-import"
+	}
+	var expires *time.Time
+	if strings.TrimSpace(req.ExpiresAt) != "" {
+		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(req.ExpiresAt))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "expires_at must be RFC3339"})
+			return
+		}
+		parsed = parsed.UTC()
+		expires = &parsed
+	}
+	rec := metadata.AccessKeyRecord{
+		AccessKey:      req.AccessKey,
+		SecretKey:      req.SecretKey,
+		Label:          req.Label,
+		OwnerID:        user.ID,
+		Owner:          user.Username,
+		ExpiresAt:      expires,
+		CreatedWithMFA: s.accessKeyMFAFlag(info.UserID),
+		CreatedAt:      time.Now().UTC(),
+	}
+	if err := s.meta.PutAccessKey(rec); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	s.logActivity(r, metadata.ActionAccessKeyCreated, "access_key", req.AccessKey)
+	writeJSON(w, http.StatusCreated, map[string]any{"access_key": req.AccessKey, "label": req.Label})
 }
 
 func (s *Server) handleDeleteKey(w http.ResponseWriter, r *http.Request) {
@@ -1256,6 +1537,14 @@ func (s *Server) handlePutPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	if err := policy.Validate(req.Policy); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	if s.effectiveSharingForRecord(rec).PublicAccessBlocked && policy.Evaluate(req.Policy, "s3:GetObject", policy.ObjectARN(bucket, "object"), "") {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "public_access_blocked"})
 		return
 	}
 	if err := s.meta.SetBucketPolicy(rec.EffectiveStorageKey(), req.Policy); err != nil {

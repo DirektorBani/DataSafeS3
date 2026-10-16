@@ -1,6 +1,9 @@
 package auth
 
-import "strings"
+import (
+	"os"
+	"strings"
+)
 
 const (
 	RoleAdministrator = "administrator"
@@ -36,6 +39,27 @@ func CanManageSettings(role string) bool {
 
 func CanSeeAllBuckets(role string) bool {
 	return role == RoleAdministrator || role == RoleOperator
+}
+
+// OperatorWriteAllEnabled is the deprecated 1.6 compatibility switch.
+// When true, operators may write every bucket, as in 1.5.0. Removed in 1.7.0.
+func OperatorWriteAllEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("STORAGE_OPERATOR_WRITE_ALL"))) {
+	case "1", "true", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
+// CanWriteAllBuckets reports whether a role may write buckets it does not own
+// without an explicit grant. Operators do so only while STORAGE_OPERATOR_WRITE_ALL
+// is enabled.
+func CanWriteAllBuckets(role string) bool {
+	if role == RoleAdministrator {
+		return true
+	}
+	return role == RoleOperator && OperatorWriteAllEnabled()
 }
 
 func CanSeeAllActivity(role string) bool {
@@ -126,6 +150,7 @@ type BucketGrant struct {
 	UserID   string
 	CanRead  bool
 	CanWrite bool
+	Level    string // read, write, admin; empty derives from CanRead/CanWrite
 }
 
 // PrefixGrant is folder-scoped access within a bucket.
@@ -163,15 +188,42 @@ type TenantBucketAccessInput struct {
 	BucketInTenantGroup bool
 }
 
+// GrantLevel returns read, write or admin. Missing level is derived from flags.
+func GrantLevel(g BucketGrant) string {
+	switch g.Level {
+	case "read", "write", "admin":
+		return g.Level
+	}
+	if g.CanWrite {
+		return "write"
+	}
+	if g.CanRead {
+		return "read"
+	}
+	return ""
+}
+
 func grantAllows(grants []BucketGrant, userID string, write bool) bool {
 	for _, g := range grants {
 		if g.UserID != userID {
 			continue
 		}
-		if write {
-			return g.CanWrite
+		switch GrantLevel(g) {
+		case "admin", "write":
+			return true
+		case "read":
+			return !write
 		}
-		return g.CanRead || g.CanWrite
+	}
+	return false
+}
+
+// GrantIsAdmin reports whether the user holds an admin-level grant.
+func GrantIsAdmin(grants []BucketGrant, userID string) bool {
+	for _, g := range grants {
+		if g.UserID == userID && GrantLevel(g) == "admin" {
+			return true
+		}
 	}
 	return false
 }
@@ -215,7 +267,11 @@ func objectKeyMatchesPrefix(objectKey, prefix string) bool {
 
 // ResolveTenantBucketAccess applies union of grants, groups, and default tenant membership.
 func ResolveTenantBucketAccess(in TenantBucketAccessInput, write bool) bool {
-	if CanSeeAllBuckets(in.Role) {
+	if write {
+		if CanWriteAllBuckets(in.Role) {
+			return true
+		}
+	} else if CanSeeAllBuckets(in.Role) {
 		return true
 	}
 	if in.BucketOwnerID != "" && in.BucketOwnerID == in.UserID {
@@ -284,7 +340,11 @@ func ResolveObjectKeyAccess(in TenantBucketAccessInput, objectKey string, write 
 
 // CanAccessBucketWithGrants applies explicit grants when the bucket has regulated access.
 func CanAccessBucketWithGrants(role, userID, username, bucketOwnerID, bucketOwner, bucketTenantID string, userTenants []TenantMembership, grants []BucketGrant, write bool) bool {
-	if CanSeeAllBuckets(role) {
+	if write {
+		if CanWriteAllBuckets(role) {
+			return true
+		}
+	} else if CanSeeAllBuckets(role) {
 		return true
 	}
 	if bucketOwnerID != "" && bucketOwnerID == userID {
@@ -335,10 +395,10 @@ func CanAccessBucket(role, userID, username string, userTeamIDs []string, bucket
 
 // CanWriteBucket reports whether a principal may modify bucket contents or settings.
 func CanWriteBucket(role, userID, username string, userTeamIDs []string, bucketOwnerID, bucketOwner, bucketTeamID, bucketTenantID string, userTenants []TenantMembership) bool {
-	if !CanAccessBucket(role, userID, username, userTeamIDs, bucketOwnerID, bucketOwner, bucketTeamID, bucketTenantID, userTenants) {
+	if !CanAccessBucket(role, userID, username, userTeamIDs, bucketOwnerID, bucketOwner, bucketTeamID, bucketTenantID, userTenants) && !CanWriteAllBuckets(role) {
 		return false
 	}
-	if CanSeeAllBuckets(role) {
+	if CanWriteAllBuckets(role) {
 		return true
 	}
 	if bucketOwnerID != "" && bucketOwnerID == userID {

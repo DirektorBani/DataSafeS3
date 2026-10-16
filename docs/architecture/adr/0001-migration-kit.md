@@ -1,8 +1,10 @@
 # ADR 0001: MinIO → DataSafeS3 migration kit
 
-**Status:** Accepted  
+**Status:** Superseded in part by [ADR 0007](0007-minio-s3-copier.md)  
 **Date:** 2026-07-10  
 **Release:** v1.1.1  
+
+The checklist, rclone/aws-cli cookbook, and `scripts/migrate/minio-cutover-smoke.ps1` stay in force. Object copy itself is now `storage-cli migrate from-minio` (ADR 0007). IAM import is still out of scope.
 
 ## Context
 
@@ -10,7 +12,7 @@ Operators leaving MinIO-compatible deployments need a documented cutover path to
 
 ## Decision
 
-Ship a **DIY migration kit**: ops guide (EN/RU), rclone/aws-cli cookbook, cutover checklist (`internal/migrate`), and `scripts/migrate/minio-cutover-smoke.ps1`. Object bytes move via standard S3 sync tools; DataSafe does not embed a MinIO protocol importer.
+Ship a **DIY migration kit**: ops guide (EN/RU), rclone/aws-cli cookbook, cutover checklist (`internal/migrate`), and `scripts/migrate/minio-cutover-smoke.ps1`. Object bytes moved via standard S3 sync tools. ADR 0007 adds an embedded S3 copier beside this kit.
 
 ## Consequences
 

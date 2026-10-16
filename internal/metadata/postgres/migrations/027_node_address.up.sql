@@ -1,0 +1,1 @@
+ALTER TABLE cluster_node_heartbeats ADD COLUMN IF NOT EXISTS address TEXT NOT NULL DEFAULT '';

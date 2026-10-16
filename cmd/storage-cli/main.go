@@ -3,12 +3,15 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
@@ -132,6 +135,8 @@ Commands:
   rm s3://bucket/key        Delete object
   cat s3://bucket/key       Print object to stdout
   migrate checklist [minio] Print MinIO → DataSafeS3 cutover checklist
+  migrate from-minio        Copy buckets from a MinIO-compatible source
+  migrate from-minio iam    Import MinIO users, groups, and policies
 
 Environment:
   DATASAFE_ENDPOINT    Default http://127.0.0.1:9000 (alias: S3FORK_ENDPOINT)
@@ -143,13 +148,18 @@ Environment:
 
 func runMigrate(args []string) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
-		fmt.Print(`storage-cli migrate — operator helpers (no network)
+		fmt.Print(`storage-cli migrate — MinIO cutover helpers
 
 Usage:
   storage-cli migrate checklist [minio]
+  storage-cli migrate from-minio --source URL --target URL [flags]
+  storage-cli migrate from-minio iam --source URL --target URL [flags]
 
-Prints the MinIO → DataSafeS3 cutover checklist (same text as internal/migrate).
-See docs/operations-guide/en/migrate-from-minio.md
+checklist prints the MinIO → DataSafeS3 cutover checklist.
+from-minio copies buckets over S3. from-minio iam imports users, groups,
+and canned policies. MinIO secrets are not copied. Keys stay in the flags
+you pass; the console command builder does not store them. See
+docs/operations-guide/en/migrate-from-minio.md
 `)
 		return nil
 	}
@@ -164,9 +174,50 @@ See docs/operations-guide/en/migrate-from-minio.md
 		}
 		fmt.Print(migrate.ChecklistMarkdown())
 		return nil
+	case "from-minio":
+		return runFromMinIO(args[1:])
 	default:
 		return fmt.Errorf("unknown migrate subcommand %q (try: migrate checklist)", args[0])
 	}
+}
+
+func runFromMinIO(args []string) error {
+	if len(args) > 0 && args[0] == "iam" {
+		return runFromMinIOIAM(args[1:])
+	}
+	opt, err := migrate.ParseFromMinIO(args)
+	if err != nil {
+		return err
+	}
+	opt.Stderr = os.Stderr
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	_, err = migrate.Run(ctx, opt)
+	if errors.Is(err, migrate.ErrInterrupted) {
+		fmt.Fprintf(os.Stderr, "interrupted; resume with the same --state %s\n", opt.StateDir)
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Printf("report %s\n", opt.ReportDir)
+	return nil
+}
+
+func runFromMinIOIAM(args []string) error {
+	opt, err := migrate.ParseIAM(args)
+	if err != nil {
+		return err
+	}
+	opt.Stderr = os.Stderr
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	rep, err := migrate.RunIAM(ctx, opt)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("report %s users %d groups %d policies %d\n", opt.ReportDir, rep.UsersTransferred, rep.GroupsTransferred, rep.PoliciesTransferred)
+	return nil
 }
 
 func parseS3URI(uri string) (bucket, key string, err error) {

@@ -1,0 +1,46 @@
+# Opt-in Vault Transit lab. Not included by the default installer profiles.
+# Dev mode, in-memory, root token "root". Do not use this file in production.
+# Apply it next to the main compose file. storage-server then reads the token
+# file and does not put the token in the process environment.
+
+services:
+  vault:
+    image: hashicorp/vault:1.18.5
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: root
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    command: ["server", "-dev"]
+
+  vault-init:
+    image: hashicorp/vault:1.18.5
+    restart: "no"
+    depends_on:
+      vault:
+        condition: service_started
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: root
+      TOKEN_OUT: /token/token
+    volumes:
+      - ../vault/policies:/policies:ro
+      - ../vault/init-dev.sh:/init-dev.sh:ro
+      - vault-kms-token:/token
+    entrypoint: ["/bin/sh", "/init-dev.sh"]
+
+  storage-server:
+    environment:
+      STORAGE_KMS_PROVIDER: vault-transit
+      STORAGE_KMS_VAULT_ADDR: http://vault:8200
+      STORAGE_KMS_VAULT_TOKEN_FILE: /run/vault/token
+    volumes:
+      - vault-kms-token:/run/vault:ro
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+
+volumes:
+  vault-kms-token:

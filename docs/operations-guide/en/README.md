@@ -19,8 +19,11 @@ Run DataSafeS3 in production: backup, upgrades, scaling, and incident response.
 | Event integrations | [../../en/integrations/events.md](../../en/integrations/events.md) |
 | Single-node regression gate | [single-node-gate.md](single-node-gate.md) |
 | Security self-assessment | [security-self-assessment.md](security-self-assessment.md) |
+| Access model | [access-model.md](access-model.md) |
 | Field encryption (metadata) | [field-encryption.md](field-encryption.md) |
+| Object encryption (SSE-S3, SSE-KMS) | [encryption.md](encryption.md) |
 | Vault secrets injection | [secrets-vault.md](secrets-vault.md) |
+| Vault Transit (object keys) | [kms-vault.md](kms-vault.md) |
 | Troubleshooting | [troubleshooting.md](troubleshooting.md) |
 
 Helm: [../../../deploy/helm/datasafe/README.md](../../../deploy/helm/datasafe/README.md)

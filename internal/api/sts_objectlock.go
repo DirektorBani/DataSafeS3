@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/observability"
 )
@@ -33,6 +34,15 @@ func (s *Server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 	if req.DurationSeconds > 43200 {
 		req.DurationSeconds = 43200
 	}
+	if strings.TrimSpace(req.RoleArn) != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "role_arn is not supported; the session inherits the caller's permissions",
+		})
+		return
+	}
+	if !s.allowDangerous(w, r, auth.ActionAccessKeyCreate, info.UserID) {
+		return
+	}
 	sessionName := strings.TrimSpace(req.RoleSessionName)
 	if sessionName == "" {
 		sessionName = info.Username
@@ -42,14 +52,15 @@ func (s *Server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 	sessionToken := "FQoD" + randomHexSTS(16)
 	expiration := time.Now().UTC().Add(time.Duration(req.DurationSeconds) * time.Second)
 	_ = s.meta.PutAccessKey(metadata.AccessKeyRecord{
-		AccessKey:    accessKey,
-		SecretKey:    secretKey,
-		SessionToken: sessionToken,
-		ExpiresAt:    &expiration,
-		Label:        "sts:" + sessionName,
-		Owner:        info.Username,
-		OwnerID:      info.UserID,
-		CreatedAt:    time.Now().UTC(),
+		AccessKey:      accessKey,
+		SecretKey:      secretKey,
+		SessionToken:   sessionToken,
+		ExpiresAt:      &expiration,
+		Label:          "sts:" + sessionName,
+		Owner:          info.Username,
+		OwnerID:        info.UserID,
+		CreatedWithMFA: s.accessKeyMFAFlag(info.UserID),
+		CreatedAt:      time.Now().UTC(),
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"credentials": map[string]any{
@@ -59,7 +70,7 @@ func (s *Server) handleAssumeRole(w http.ResponseWriter, r *http.Request) {
 			"expiration":        expiration.Format(time.RFC3339),
 		},
 		"assumed_role_user": map[string]any{
-			"arn":             req.RoleArn,
+			"arn":             "arn:aws:iam::datasafe:user/" + info.Username,
 			"assumed_role_id": accessKey,
 		},
 	})
@@ -74,7 +85,7 @@ func randomHexSTS(n int) string {
 func (s *Server) handlePutObjectRetention(w http.ResponseWriter, r *http.Request) {
 	bucket := r.PathValue("bucket")
 	info, _ := authFrom(r)
-	if !s.canAccessBucket(info, bucket) {
+	if !s.canWriteBucket(info, bucket) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}
@@ -93,7 +104,17 @@ func (s *Server) handlePutObjectRetention(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid retain_until"})
 		return
 	}
-	if err := s.meta.SetObjectRetention(bucket, req.Key, req.VersionID, until); err != nil {
+	if strings.EqualFold(req.Mode, "COMPLIANCE") {
+		brec, berr := s.resolveBucketForUser(info, bucket)
+		if berr != nil || !s.isBucketAdmin(info, brec) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+			return
+		}
+		if !s.allowDangerous(w, r, auth.ActionComplianceRetention, bucket) {
+			return
+		}
+	}
+	if err := s.meta.SetObjectRetention(bucket, req.Key, req.VersionID, until, req.Mode); err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 		return
 	}

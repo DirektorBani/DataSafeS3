@@ -49,6 +49,38 @@ func TestObjectVersioningMetadata(t *testing.T) {
 	}
 }
 
+func TestRetentionRewriteKeepsDeleteMarkerLatest(t *testing.T) {
+	s := openStore(t)
+	_ = s.PutBucket(metadata.BucketRecord{Name: "b", CreatedAt: time.Now().UTC(), Versioning: true, ObjectLock: true})
+	now := time.Now().UTC()
+	v1 := metadata.ObjectRecord{Bucket: "b", Key: "file.txt", Size: 3, ETag: `"a"`, VersionID: "v1", LastModified: now}
+	marker := metadata.ObjectRecord{
+		Bucket: "b", Key: "file.txt", VersionID: "vm", IsDeleteMarker: true,
+		LastModified: now.Add(time.Second),
+	}
+	if err := s.PutObjectVersioned(v1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutObjectVersioned(marker); err != nil {
+		t.Fatal(err)
+	}
+	until := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	if err := s.SetObjectRetention("b", "file.txt", "v1", until, "COMPLIANCE"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetObjectLegalHold("b", "file.txt", "v1", true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetObjectVersion("b", "file.txt", "v1")
+	if err != nil || got.RetentionMode != "COMPLIANCE" || !got.LegalHold || got.RetentionUntil == nil || !got.RetentionUntil.Equal(until) {
+		t.Fatalf("retention %+v err %v", got, err)
+	}
+	versions, err := s.ListObjectVersions("b", "", 0)
+	if err != nil || len(versions) < 1 || versions[0].VersionID != "vm" || !versions[0].IsDeleteMarker {
+		t.Fatalf("list order %+v err %v", versions, err)
+	}
+}
+
 func TestObjectNonVersionedOverwrite(t *testing.T) {
 	s := openStore(t)
 	_ = s.PutBucket(metadata.BucketRecord{Name: "b", CreatedAt: time.Now().UTC()})

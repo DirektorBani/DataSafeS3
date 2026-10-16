@@ -4,9 +4,59 @@ English | **[Русский](../ru/migrate-from-minio.md)**
 
 Operator runbook for moving object data from a **MinIO-compatible** S3 endpoint to **DataSafeS3** Community Edition.
 
-> **Honesty:** This is not a drop-in binary replacement and not a claim of 100% MinIO API parity. Object bytes move with standard S3 sync tools. MinIO IAM users, groups, and server-side policies are **not** imported automatically — remap them to DataSafe users, teams, tenants, and bucket policies.
+> **Honesty:** This is not a drop-in binary replacement and not a claim of 100% MinIO API parity. Object bytes move with standard S3 sync tools. `storage-cli migrate from-minio iam` imports builtin users, groups, and canned policies. MinIO user secrets are not available and are not copied. LDAP and OIDC identities are warnings with a recommendation, not accounts.
 
-Architecture: [ADR 0001](../../architecture/adr/0001-migration-kit.md) · Checklist source: `internal/migrate`.
+Architecture: [ADR 0001](../../architecture/adr/0001-migration-kit.md) · [ADR 0007](../../architecture/adr/0007-minio-s3-copier.md) · Checklist source: `internal/migrate`.
+
+## Embedded copier
+
+`storage-cli migrate from-minio` copies buckets over the S3 API. rclone and the checklist below remain the DIY path. IAM is a separate command, below.
+
+The copier writes, in order: bucket, versioning, Object Lock configuration, lifecycle, and bucket policy. Lifecycle keeps a prefix expiration in days (`Filter/Prefix`, `Filter/And/Prefix`, or the legacy `Prefix`). A transition, noncurrent action, tag filter, or date expiration is not stored and the run fails; the rule is not widened to the whole bucket. A policy condition other than `aws:SourceIp` or `aws:SecureTransport` is omitted and named in the report. Object versions and delete markers are copied in chronological order, so a delete marker stays between the versions it separates. Tags, user metadata, content-type, retention mode and date, and legal hold are copied with the version.
+
+Resume state is JSONL in `--state` (default `./.minio-migrate-state`), flushed after each object. A later run skips a version when that file records it, when the target metadata `x-amz-meta-datasafe-source-version` equals the source version id, or, when `--sse` is not set, when ETag and size already match. Ctrl+C is safe. Repeat the same command to continue. The same source version is not written twice.
+
+A target that answers HTTP 503 `not cluster leader` is retried with backoff. Repeat `--target` for each node; `GET /healthz` selects the one with `is_leader: true`.
+
+`--sse AES256` or `--sse aws:kms --kms-key …` is sent on the target PUT. Source SSE-KMS is read through the S3 API. Source bucket encryption is not copied. An empty source configuration does not turn off encryption the target bucket already has. `CreateBucket` on a bucket the caller already owns is HTTP 409 and does not change that bucket. Keys may be flags, `SOURCE_ACCESS_KEY` / `SOURCE_SECRET_KEY` / `TARGET_ACCESS_KEY` / `TARGET_SECRET_KEY`, or `--source-secret-file` and `--target-secret-file`. The report directory (`--report`, default `./minio-migrate-report`) contains `summary.md`, `evidence.json` (`verdicts` are PASS or FAIL), and `evidence.zip`. Verdicts are object count, bytes, delete-marker order, ETag (a multipart ETag, or a single-part ETag that is not the plaintext MD5 such as SSE-KMS, is checked with SHA-256 of the downloaded object, including when `x-amz-meta-datasafe-source-version` is missing), Object Lock mode, retain-until date, and legal hold, a SHA-256 sample (`--verify-sample` checks at least one object; `--verify-full` counts a missing object as a mismatch), and `encryption`. The `encryption` verdict fails when a target bucket that already had default encryption loses it, or a copied object is stored without `x-amz-server-side-encryption`. The target bucket is listed once. A follower forwards writes to the leader.
+
+DataSafe returns one `ListObjectVersions` page. The copier asks for 100000 keys. MinIO pages of 1000 are followed.
+
+```bash
+storage-cli migrate from-minio \
+  --source http://minio.example:9000 \
+  --source-key "$SOURCE_ACCESS_KEY" \
+  --source-secret "$SOURCE_SECRET_KEY" \
+  --target http://datasafe.example:9000 \
+  --target-key "$TARGET_ACCESS_KEY" \
+  --target-secret "$TARGET_SECRET_KEY" \
+  --buckets my-bucket \
+  --verify-sample 10
+```
+
+**Settings → Migrate** is a three-step wizard: the object-copy command, the IAM command, then a local `evidence.json`. It does not send or store source credentials. Object encryption on the target is [encryption.md](encryption.md).
+
+## IAM
+
+`storage-cli migrate from-minio iam` reads the MinIO admin API (`/minio/admin/v3/`, the same calls as `mc admin`) with the source admin keys. Groups are listed with `GET /groups` and described with `GET /group?group=`. It creates DataSafe users, teams, and bucket policies. `--tenant` sets the tenant id. A bucket that does not already exist is named in the report and its policy is not stored.
+
+Imported S3 rights are equal to MinIO or stricter. An Allow that this server cannot enforce exactly is dropped and named as WARN. A Deny whose condition cannot be enforced is stored without that condition, so it denies unconditionally, and the report says so. `aws:SourceIp` and `aws:SecureTransport` stay on the statement and are evaluated. `aws:SourceIp` is the TCP address of the peer that connected to DataSafe. Behind a load balancer that address is the balancer, so a client CIDR does not match, and a client-supplied `X-Forwarded-For` is ignored. Set `STORAGE_TRUSTED_PROXIES` to the balancer CIDRs, comma-separated, to take the client from `X-Forwarded-For`. Only a connection from one of those CIDRs is trusted. A policy for every bucket (`*`) is not copied. A service account with an inline policy does not receive parent allows that the inline policy does not grant. A disabled or already expired service account does not get a key. An expiration in the future is stored on the new key. `GET /` (`s3:ListAllMyBuckets`) is HTTP 403 AccessDenied only when the key owns no bucket, has no grant, and no policy allows `s3:ListAllMyBuckets`. A console owner or a grant holder lists those buckets and any bucket a policy makes visible to the key, even when another policy names the key and does not allow that action. An administrator, an operator, and the bootstrap owner key list every bucket. An imported key with nothing owned or granted and no `s3:ListAllMyBuckets` allow is HTTP 403, the same as MinIO, not an empty 200. The console lists buckets through the admin API. A statement for a bucket that does not exist on this server is WARN, that bucket is not probed, and the policies and access verdicts stay PASS when the buckets that do exist were stored and the probes that ran passed. The import does not write bucket grants, so an existing grant is left in place. A repeated run merges bucket policy statements and does not remove statements already stored. Actions, resources, and conditions are sorted before the comparison, so the same statement is not appended again and a second run leaves the policy byte-for-byte unchanged.
+
+MinIO does not return a usable user secret for this import. The command generates a password and an access key, and writes them to `--keys-file` (default `./minio-iam-keys.json`). The file mode is 0600. On Windows the command sets an owner-only ACL and records a WARN if that ACL cannot be set. A second run keeps the secrets already in the file and appends keys that were missing; it does not replace the file with empty passwords. `--keep-access-keys FILE` imports `username`, `access_key`, and `secret_key` from that operator file instead of generating the key. A service account secret is not available; the report says so and, when the account is enabled and unexpired, a new key is issued for the parent user. LDAP and OIDC users are WARN only: configure those providers on DataSafe. Group policies are expanded to member access keys only while the group is enabled, because a DataSafe bucket policy has no group principal. A member of a disabled group is denied every request on MinIO, including that user's own policy. The import drops those allows and stores an unconditional deny on each named bucket. If no named bucket can hold that deny, the user is not given a key and the report records a WARN. That warning does not fail the import. The report lists each group's status and whether its policy was applied, and each service account's disabled state, expiration, and inline-policy narrowing.
+
+Several `--target` values are checked with `GET /healthz`. Writes that return HTTP 503 `not cluster leader`, and a target that stops answering, are retried. The command checks every `--target` with `GET /healthz` and continues on the new leader. Each access key is written to the keys file as soon as it is issued. A ListBucket allow limited by `aws:SourceIp` is probed from this host; HTTP 403 is PASS when this host is outside the condition. The target login is `--target-admin-user` and `--target-admin-password` (or `TARGET_ADMIN_USER` / `TARGET_ADMIN_PASSWORD`). The report directory (`--report`, default `./minio-iam-report`) contains `summary.md` and `evidence.json`. Verdicts are users, groups, policies, and access. Access is a signed `ListBucket` with the new key.
+
+```bash
+storage-cli migrate from-minio iam \
+  --source http://minio.example:9000 \
+  --source-key "$SOURCE_ACCESS_KEY" \
+  --source-secret "$SOURCE_SECRET_KEY" \
+  --target http://datasafe.example:9000 \
+  --target-admin-user "$TARGET_ADMIN_USER" \
+  --target-admin-password "$TARGET_ADMIN_PASSWORD" \
+  --keys-file ./minio-iam-keys.json \
+  --report ./minio-iam-report
+```
 
 ---
 
@@ -139,10 +189,14 @@ pwsh -File scripts/migrate/minio-cutover-smoke.ps1 `
 ## 11. FAQ
 
 **Q: Can I import MinIO users automatically?**  
-No. Create DataSafe users/teams/tenants and issue new S3 keys.
+`storage-cli migrate from-minio iam` imports builtin users, groups, and canned policies. MinIO secrets are not copied. LDAP and OIDC identities are warnings. The console wizard only prints the command.
 
 **Q: Is Gateway required?**  
 No. Prefer parallel sync + cutover. Gateway is optional for hybrid/DR to an external S3 endpoint.
 
 **Q: Trusted clusters?**  
 Use when **both** sites run DataSafeS3 — [trusted-clusters.md](./trusted-clusters.md). For MinIO as source during migration, use rclone/aws sync (this guide).
+
+## 12. AIStor Free
+
+MinIO OSS (AGPLv3) is no longer maintained. AIStor is the current product. What Free includes, and what it refuses, is on the vendor pages, not in this guide's summary: [licenses](https://docs.min.io/aistor/operations/licenses/) and [pricing](https://www.min.io/pricing). The license page lists encryption at rest and replication as Enterprise Lite / Enterprise only. The same comparison for object encryption is in [encryption.md](encryption.md#aistor-free).

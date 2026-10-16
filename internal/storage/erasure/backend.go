@@ -413,6 +413,10 @@ func (b *Backend) CompleteMultipartUpload(ctx context.Context, bucket, key, uplo
 	_ = b.staging.DeleteObject(ctx, bucket, key)
 	return etag2, nil
 }
+func (b *Backend) OpenPart(ctx context.Context, bucket, key, uploadID string, partNumber int) (io.ReadCloser, error) {
+	return b.staging.OpenPart(ctx, bucket, key, uploadID, partNumber)
+}
+
 func (b *Backend) AbortMultipartUpload(ctx context.Context, bucket, key, uploadID string) error {
 	return b.staging.AbortMultipartUpload(ctx, bucket, key, uploadID)
 }

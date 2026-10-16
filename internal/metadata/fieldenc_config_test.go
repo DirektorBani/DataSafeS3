@@ -31,6 +31,7 @@ func TestEncryptSystemConfigPaths_secretLeaves(t *testing.T) {
 			Loki:          LogSinkEndpoint{Token: "loki-token"},
 			Webhook:       LogSinkEndpoint{Token: "wh-token"},
 		},
+		KMS: VaultKMSConfig{SecretID: "vault-secret-id", Token: "vault-token"},
 	}
 
 	enc, err := EncryptSystemConfigPaths(svc, cfg)
@@ -45,6 +46,8 @@ func TestEncryptSystemConfigPaths_secretLeaves(t *testing.T) {
 		"es_token":    enc.Logging.Elasticsearch.Token,
 		"loki":        enc.Logging.Loki.Token,
 		"webhook":     enc.Logging.Webhook.Token,
+		"kms_secret":  enc.KMS.SecretID,
+		"kms_token":   enc.KMS.Token,
 	} {
 		if !strings.HasPrefix(val, "enc:v1:") {
 			t.Fatalf("%s: expected enc:v1, got %q", name, val)
@@ -61,7 +64,9 @@ func TestEncryptSystemConfigPaths_secretLeaves(t *testing.T) {
 		dec.Logging.Elasticsearch.Password != cfg.Logging.Elasticsearch.Password ||
 		dec.Logging.Elasticsearch.Token != cfg.Logging.Elasticsearch.Token ||
 		dec.Logging.Loki.Token != cfg.Logging.Loki.Token ||
-		dec.Logging.Webhook.Token != cfg.Logging.Webhook.Token {
+		dec.Logging.Webhook.Token != cfg.Logging.Webhook.Token ||
+		dec.KMS.SecretID != cfg.KMS.SecretID ||
+		dec.KMS.Token != cfg.KMS.Token {
 		t.Fatalf("roundtrip mismatch: %+v", dec)
 	}
 }
@@ -71,9 +76,22 @@ func TestEncryptSystemConfigPaths_disabledPassthrough(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := SystemConfig{LDAP: LDAPConfig{BindPassword: "plain"}}
+	cfg := SystemConfig{
+		LDAP: LDAPConfig{BindPassword: "plain"},
+		KMS:  VaultKMSConfig{SecretID: "vault-secret-id", Token: "vault-token"},
+	}
 	out, err := EncryptSystemConfigPaths(svc, cfg)
 	if err != nil || out.LDAP.BindPassword != "plain" {
 		t.Fatalf("disabled: %+v err=%v", out, err)
+	}
+	if !strings.HasPrefix(out.KMS.SecretID, "kse:v1:") || !strings.HasPrefix(out.KMS.Token, "kse:v1:") {
+		t.Fatalf("kms secrets must be sealed when field encryption is off: %+v", out.KMS)
+	}
+	if strings.Contains(out.KMS.SecretID, "vault-secret-id") || strings.Contains(out.KMS.Token, "vault-token") {
+		t.Fatalf("plaintext kms secret: %+v", out.KMS)
+	}
+	dec, err := DecryptSystemConfigPaths(svc, out)
+	if err != nil || dec.KMS.SecretID != cfg.KMS.SecretID || dec.KMS.Token != cfg.KMS.Token || dec.LDAP.BindPassword != "plain" {
+		t.Fatalf("roundtrip %+v err=%v", dec, err)
 	}
 }

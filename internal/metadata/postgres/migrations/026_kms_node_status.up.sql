@@ -1,0 +1,5 @@
+ALTER TABLE cluster_node_heartbeats
+    ADD COLUMN IF NOT EXISTS kms_provider TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS kms_available BOOLEAN,
+    ADD COLUMN IF NOT EXISTS kms_error TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS kms_checked_at TIMESTAMPTZ;

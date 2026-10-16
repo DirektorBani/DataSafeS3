@@ -12,6 +12,9 @@ import (
 	"time"
 )
 
+// MaxPresignSeconds is the AWS ceiling for X-Amz-Expires (7 days).
+const MaxPresignSeconds int64 = 7 * 24 * 3600
+
 type Credentials struct {
 	AccessKey    string
 	SecretKey    string
@@ -19,9 +22,10 @@ type Credentials struct {
 }
 
 type Signer struct {
-	Region  string
-	Service string
-	Lookup  func(accessKey string) (Credentials, bool)
+	Region        string
+	Service       string
+	Lookup        func(accessKey string) (Credentials, bool)
+	RootAccessKey string
 }
 
 func NewSigner(region string, lookup func(string) (Credentials, bool)) *Signer {
@@ -66,6 +70,9 @@ func (s *Signer) Authenticate(r *http.Request) (Credentials, error) {
 	if !hmac.Equal([]byte(parts["Signature"]), []byte(expected)) {
 		return Credentials{}, ErrSignatureMismatch
 	}
+	if err := requireSignedHeaders(r, signedHeaders); err != nil {
+		return Credentials{}, err
+	}
 	if err := validateSessionToken(r, creds); err != nil {
 		return Credentials{}, err
 	}
@@ -80,24 +87,31 @@ func (s *Signer) verifyPresigned(r *http.Request) (Credentials, error) {
 		return Credentials{}, ErrInvalidAuth
 	}
 	accessKey := credFields[0]
+	if s.RootAccessKey != "" && accessKey == s.RootAccessKey {
+		return Credentials{}, ErrInvalidAuth
+	}
 	creds, ok := s.Lookup(accessKey)
 	if !ok {
 		return Credentials{}, ErrInvalidAuth
 	}
-	if exp := q.Get("X-Amz-Expires"); exp != "" {
-		dateStr := q.Get("X-Amz-Date")
-		if dateStr == "" {
-			return Credentials{}, ErrInvalidAuth
-		}
-		t, err := time.Parse("20060102T150405Z", dateStr)
-		if err != nil {
-			return Credentials{}, ErrInvalidAuth
-		}
-		var secs int64
-		fmt.Sscanf(exp, "%d", &secs)
-		if time.Since(t) > time.Duration(secs)*time.Second {
-			return Credentials{}, ErrExpired
-		}
+	exp := q.Get("X-Amz-Expires")
+	if exp == "" {
+		return Credentials{}, ErrInvalidAuth
+	}
+	dateStr := q.Get("X-Amz-Date")
+	if dateStr == "" {
+		return Credentials{}, ErrInvalidAuth
+	}
+	t, err := time.Parse("20060102T150405Z", dateStr)
+	if err != nil {
+		return Credentials{}, ErrInvalidAuth
+	}
+	var secs int64
+	if _, scanErr := fmt.Sscanf(exp, "%d", &secs); scanErr != nil || secs <= 0 || secs > MaxPresignSeconds {
+		return Credentials{}, ErrInvalidAuth
+	}
+	if time.Since(t) > time.Duration(secs)*time.Second {
+		return Credentials{}, ErrExpired
 	}
 	signedHeaders := strings.Split(q.Get("X-Amz-SignedHeaders"), ";")
 	canonical := canonicalPresignedRequest(r, signedHeaders)
@@ -106,10 +120,40 @@ func (s *Signer) verifyPresigned(r *http.Request) (Credentials, error) {
 	if !hmac.Equal([]byte(q.Get("X-Amz-Signature")), []byte(expected)) {
 		return Credentials{}, ErrSignatureMismatch
 	}
+	if err := requireSignedHeaders(r, signedHeaders); err != nil {
+		return Credentials{}, err
+	}
 	if err := validateSessionToken(r, creds); err != nil {
 		return Credentials{}, err
 	}
 	return creds, nil
+}
+
+// requireSignedHeaders rejects an x-amz-* header that was not signed, and
+// requires host in SignedHeaders. Content-Type may be unsigned: minio-go and
+// a browser presigned PUT send it that way, and AWS accepts it. The signature
+// is already checked, so an attacker cannot add x-amz-meta-* after signing.
+func requireSignedHeaders(r *http.Request, signed []string) error {
+	have := make(map[string]struct{}, len(signed))
+	for _, h := range signed {
+		name := strings.ToLower(strings.TrimSpace(h))
+		if name != "" {
+			have[name] = struct{}{}
+		}
+	}
+	if _, ok := have["host"]; !ok {
+		return ErrUnsignedHeaders
+	}
+	for name := range r.Header {
+		ln := strings.ToLower(name)
+		if !strings.HasPrefix(ln, "x-amz-") {
+			continue
+		}
+		if _, ok := have[ln]; !ok {
+			return ErrUnsignedHeaders
+		}
+	}
+	return nil
 }
 
 func validateSessionToken(r *http.Request, creds Credentials) error {

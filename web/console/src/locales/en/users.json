@@ -4,6 +4,7 @@
     "deleted": "User deleted",
     "updated": "User updated",
     "passwordReset": "Password reset",
+    "mfaReset": "2FA reset",
     "quotaUpdated": "Quota updated"
   },
   "fields": {
@@ -24,7 +25,8 @@
   },
   "actions": {
     "edit": "Edit",
-    "resetPwd": "Reset pwd"
+    "resetPwd": "Reset pwd",
+    "resetMfa": "Reset 2FA"
   },
   "title": "Users",
   "description": "Manage console accounts and roles.",
@@ -46,6 +48,12 @@
     "description": "Set storage and object limits for {{username}}.",
     "storage": "Storage quota",
     "objectCount": "Object count quota"
+  },
+  "mfaReset": {
+    "title": "Reset 2FA",
+    "description": "Clear every factor for {{username}}. They must enroll again before dangerous actions. A reason is stored in Activity.",
+    "reason": "Reason",
+    "action": "Reset 2FA"
   },
   "delete": {
     "title": "Delete user",

@@ -4,13 +4,13 @@
 #
 #   python3 scripts/single-node-gate.py self-test
 #   docker build -t datasafe-storage-server:gate -f deploy/docker/Dockerfile .
-#   docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.4.1
+#   docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
 #   bash scripts/single-node-gate.sh all
 #
 # Core installer (after the PR image is tagged as the pin the installer writes).
-# The resource baseline stays the published v1.4.1 image. The installer default
-# tag is the VERSION pin (v1.5.0), which is not published until the release tag.
-#   docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+# The resource baseline is the published v1.5.0 image, compared per backend.
+# Pull it before the installer retag below. The installer default tag is v1.6.0.
+#   docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.6.0
 #   ./install.sh --yes --profiles core --project datasafe-gate --data-root /tmp/datasafe-gate
 #   bash scripts/single-node-gate.sh smoke-installed
 #
@@ -21,7 +21,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 PY="$ROOT/scripts/single-node-gate.py"
 
-BASE_IMAGE="${BASE_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.4.1}"
+BASE_IMAGE="${BASE_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.5.0}"
 PR_IMAGE="${PR_IMAGE:-datasafe-storage-server:gate}"
 RUNS="${GATE_RUNS:-5}"
 WARMUP="${GATE_WARMUP_SEC:-5}"
@@ -49,32 +49,45 @@ env_value() {
 }
 
 cleanup_lone() {
-  docker rm -f -v gate-measure gate-smoke >/dev/null 2>&1 || true
+  docker rm -f -v gate-measure gate-smoke gate-postgres gate-legacy-sse >/dev/null 2>&1 || true
+  docker volume rm gate-legacy-sse-data >/dev/null 2>&1 || true
+  docker network rm gate-pg >/dev/null 2>&1 || true
 }
 trap cleanup_lone EXIT
 
 core_docker_run() {
   local name="$1" port="$2" image="$3"
-  docker run -d --name "$name" \
-    -p "127.0.0.1:${port}:9000" \
-    -e STORAGE_ADDR=:9000 \
-    -e STORAGE_DEV=false \
-    -e STORAGE_LOG_LEVEL=info \
-    -e STORAGE_DATA_DIR=/data \
-    -e STORAGE_REGION=us-east-1 \
-    -e STORAGE_ACCESS_KEY="$GATE_ACCESS_KEY" \
-    -e STORAGE_SECRET_KEY="$GATE_SECRET_KEY" \
-    -e STORAGE_ADMIN_USER="$GATE_ADMIN_USER" \
-    -e STORAGE_ADMIN_PASSWORD="$GATE_ADMIN_PASSWORD" \
-    -e STORAGE_JWT_SECRET="$GATE_JWT_SECRET" \
-    -e STORAGE_METADATA_BACKEND=bolt \
-    -e STORAGE_POSTGRES_HOST=postgres \
-    -e STORAGE_POSTGRES_PORT=5432 \
-    -e STORAGE_POSTGRES_USER=datasafe \
-    -e STORAGE_POSTGRES_PASSWORD=datasafe \
-    -e STORAGE_POSTGRES_DB=datasafe \
-    -e STORAGE_METRICS_TOKEN="$GATE_METRICS_TOKEN" \
-    "$image" >/dev/null
+  local backend="${4:-bolt}"
+  local pghost="${5:-postgres}"
+  local network="${6:-}"
+  local args=(
+    docker run -d --name "$name"
+    -p "127.0.0.1:${port}:9000"
+  )
+  if [ -n "$network" ]; then
+    args+=(--network "$network")
+  fi
+  args+=(
+    -e STORAGE_ADDR=:9000
+    -e STORAGE_DEV=false
+    -e STORAGE_LOG_LEVEL=info
+    -e STORAGE_DATA_DIR=/data
+    -e STORAGE_REGION=us-east-1
+    -e STORAGE_ACCESS_KEY="$GATE_ACCESS_KEY"
+    -e STORAGE_SECRET_KEY="$GATE_SECRET_KEY"
+    -e STORAGE_ADMIN_USER="$GATE_ADMIN_USER"
+    -e STORAGE_ADMIN_PASSWORD="$GATE_ADMIN_PASSWORD"
+    -e STORAGE_JWT_SECRET="$GATE_JWT_SECRET"
+    -e STORAGE_METADATA_BACKEND="$backend"
+    -e STORAGE_POSTGRES_HOST="$pghost"
+    -e STORAGE_POSTGRES_PORT=5432
+    -e STORAGE_POSTGRES_USER=datasafe
+    -e STORAGE_POSTGRES_PASSWORD=datasafe
+    -e STORAGE_POSTGRES_DB=datasafe
+    -e STORAGE_METRICS_TOKEN="$GATE_METRICS_TOKEN"
+    "$image"
+  )
+  "${args[@]}" >/dev/null
 }
 
 wait_health() {
@@ -137,7 +150,7 @@ cmd_measure() {
   pr_id="$(docker image inspect -f '{{.Id}}' "$PR_IMAGE")"
   if [ "$base_id" = "$pr_id" ]; then
     echo "baseline and PR images have the same id ($base_id)." >&2
-    echo "Refusing to compare a retagged image. docker pull the v1.4.1 baseline again." >&2
+    echo "Refusing to compare a retagged image. docker pull the v1.5.0 baseline again." >&2
     return 1
   fi
   local tsv work i
@@ -154,6 +167,7 @@ cmd_measure() {
 import json, sys
 tsv, out, base_image, pr_image, base_id, pr_id = sys.argv[1:]
 samples = {
+    "title": "Bolt resource budget",
     "baseline_image": base_image,
     "pr_image": pr_image,
     "baseline_id": base_id,
@@ -173,6 +187,129 @@ PY
   if [ -n "${GATE_SAMPLES_OUT:-}" ]; then
     cp "$work/samples.json" "$GATE_SAMPLES_OUT"
   fi
+}
+
+# measure-postgres compares v1.5.0 and this image, both on Postgres, on this
+# runner. Each run gets a fresh database so the older image does not start
+# against migrations this image already applied. RSS and startup use the same
+# limits as the Bolt measurement (+10% RSS, +1s startup). Medians of GATE_RUNS.
+cmd_measure_postgres() {
+  docker image inspect "$BASE_IMAGE" >/dev/null
+  docker image inspect "$PR_IMAGE" >/dev/null
+  local base_id pr_id
+  base_id="$(docker image inspect -f '{{.Id}}' "$BASE_IMAGE")"
+  pr_id="$(docker image inspect -f '{{.Id}}' "$PR_IMAGE")"
+  if [ "$base_id" = "$pr_id" ]; then
+    echo "baseline and PR images have the same id ($base_id)." >&2
+    echo "Refusing to compare a retagged image. docker pull the v1.5.0 baseline again." >&2
+    return 1
+  fi
+  docker network create gate-pg >/dev/null 2>&1 || true
+  docker rm -f -v gate-postgres >/dev/null 2>&1 || true
+  docker run -d --name gate-postgres --network gate-pg \
+    -e POSTGRES_USER=datasafe \
+    -e POSTGRES_PASSWORD=datasafe \
+    -e POSTGRES_DB=postgres \
+    postgres:16 >/dev/null
+  # pg_isready is true for the short-lived server that runs initdb. The first
+  # psql then hits a closed socket. Wait until that init has finished and a
+  # query succeeds on the server that stays up.
+  local deadline=$((SECONDS + 90))
+  until docker logs gate-postgres 2>&1 | grep -q "PostgreSQL init process complete"; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "postgres init did not finish" >&2
+      docker logs gate-postgres >&2 || true
+      return 1
+    fi
+    sleep 0.5
+  done
+  until docker exec gate-postgres psql -U datasafe -d postgres -v ON_ERROR_STOP=1 -c 'SELECT 1' >/dev/null 2>&1; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "postgres did not accept queries" >&2
+      docker logs gate-postgres >&2 || true
+      return 1
+    fi
+    sleep 0.5
+  done
+  local tsv work i
+  work="$(mktemp -d)"
+  tsv="$work/runs.tsv"
+  : >"$tsv"
+  i=1
+  while [ "$i" -le "$RUNS" ]; do
+    one_run_pg baseline "$BASE_IMAGE" >>"$tsv"
+    one_run_pg pr "$PR_IMAGE" >>"$tsv"
+    i=$((i + 1))
+  done
+  python3 - "$tsv" "$work/samples.json" "$BASE_IMAGE" "$PR_IMAGE" "$base_id" "$pr_id" <<'PY'
+import json, sys
+tsv, out, base_image, pr_image, base_id, pr_id = sys.argv[1:]
+samples = {
+    "title": "Postgres resource budget",
+    "baseline_image": base_image + " postgres",
+    "pr_image": pr_image + " postgres",
+    "baseline_id": base_id,
+    "pr_id": pr_id,
+    "baseline": {"startup_ms": [], "rss_kib": []},
+    "pr": {"startup_ms": [], "rss_kib": []},
+}
+for line in open(tsv, encoding="utf-8"):
+    label, startup, rss = line.split()
+    samples[label]["startup_ms"].append(int(startup))
+    samples[label]["rss_kib"].append(int(rss))
+with open(out, "w", encoding="utf-8") as fh:
+    json.dump(samples, fh)
+PY
+  local summary="${GITHUB_STEP_SUMMARY:-}"
+  python3 "$PY" budget "$work/samples.json" --summary "$summary"
+}
+
+reset_pg_db() {
+  local attempt
+  for attempt in 1 2 3 4 5 6 7 8; do
+    if docker exec gate-postgres psql -U datasafe -d postgres -v ON_ERROR_STOP=1 \
+        -c "DROP DATABASE IF EXISTS datasafe WITH (FORCE);" >/dev/null \
+      && docker exec gate-postgres psql -U datasafe -d postgres -v ON_ERROR_STOP=1 \
+        -c "CREATE DATABASE datasafe OWNER datasafe;" >/dev/null; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo "could not reset the datasafe database" >&2
+  return 1
+}
+
+one_run_pg() {
+  local label="$1" image="$2"
+  local name="gate-measure"
+  docker rm -f -v "$name" >/dev/null 2>&1 || true
+  reset_pg_db
+  local start_ns end_ns startup_ms
+  start_ns="$(now_ns)"
+  core_docker_run "$name" "$MEASURE_PORT" "$image" postgres gate-postgres gate-pg
+  wait_health "http://127.0.0.1:${MEASURE_PORT}/healthz" "$name"
+  end_ns="$(now_ns)"
+  startup_ms=$(((end_ns - start_ns) / 1000000))
+  local cmd
+  cmd="$(docker exec "$name" cat /proc/1/cmdline | tr '\0' ' ')"
+  case "$cmd" in
+    *storage-server*) ;;
+    *)
+      echo "PID 1 is not storage-server: $cmd" >&2
+      return 1
+      ;;
+  esac
+  sleep "$WARMUP"
+  local s1 s2 s3 rss
+  s1="$(sample_rss "$name")"
+  sleep 1
+  s2="$(sample_rss "$name")"
+  sleep 1
+  s3="$(sample_rss "$name")"
+  rss="$(python3 "$PY" median "$s1" "$s2" "$s3")"
+  docker rm -f -v "$name" >/dev/null 2>&1 || true
+  printf '%s\t%s\t%s\n' "$label" "$startup_ms" "$rss"
+  echo "$label postgres run startup_ms=$startup_ms rss_kib=$rss (samples $s1 $s2 $s3)" >&2
 }
 
 ensure_aws() {
@@ -344,14 +481,109 @@ cmd_smoke_installed() {
   smoke_body "$cid" "$api" "$s3"
 }
 
+# legacy-sse is not part of the RSS or startup sample. v1.5.0 stores an SSE
+# object only on a chunked PUT (Content-Length writes hit the size-mismatch
+# bug). 1.6.0 reads that unmarked blob with the same server key. The flag
+# STORAGE_SSE_LEGACY_FORMAT0 is still set. Reads classify each object and do not
+# treat every unmarked body as ciphertext.
+cmd_legacy_sse() {
+  local port="${GATE_LEGACY_PORT:-19080}"
+  local name="gate-legacy-sse"
+  local vol="gate-legacy-sse-data"
+  local key="legacy-sse-master-key-0123456789abcdef"
+  local bucket="legacybox"
+  local obj="kept.txt"
+  local payload="legacy-sse-payload-v15"
+  local ak="datasafe"
+  local sk="datasafesecret"
+  docker rm -f -v "$name" >/dev/null 2>&1 || true
+  docker volume rm "$vol" >/dev/null 2>&1 || true
+  docker volume create "$vol" >/dev/null
+  echo "legacy-sse: write with $BASE_IMAGE"
+  docker run -d --name "$name" \
+    -p "127.0.0.1:${port}:9000" \
+    -v "${vol}:/data" \
+    -e STORAGE_ADDR=:9000 \
+    -e STORAGE_DEV=true \
+    -e STORAGE_LOG_LEVEL=info \
+    -e STORAGE_DATA_DIR=/data \
+    -e STORAGE_REGION=us-east-1 \
+    -e STORAGE_ACCESS_KEY="$ak" \
+    -e STORAGE_SECRET_KEY="$sk" \
+    -e STORAGE_ADMIN_USER=admin \
+    -e STORAGE_ADMIN_PASSWORD=admin \
+    -e STORAGE_JWT_SECRET=legacy-jwt-secret \
+    -e STORAGE_AUTO_HOME_BUCKET=false \
+    -e STORAGE_SSE_MASTER_KEY="$key" \
+    "$BASE_IMAGE" >/dev/null
+  wait_health "http://127.0.0.1:${port}/healthz" "$name"
+  local code
+  code="$(curl --aws-sigv4 "aws:amz:us-east-1:s3" --user "${ak}:${sk}" \
+    -sS -o /dev/null -w '%{http_code}' -X PUT \
+    -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" \
+    "http://127.0.0.1:${port}/${bucket}")"
+  if [ "$code" != "200" ]; then
+    echo "legacy-sse create bucket HTTP $code" >&2
+    docker logs "$name" >&2 || true
+    return 1
+  fi
+  # -T - is chunked: curl does not set Content-Length. A sized PUT on 1.5.0
+  # with STORAGE_SSE_MASTER_KEY returns a size mismatch and stores nothing.
+  code="$(printf '%s' "$payload" | curl --http1.1 --aws-sigv4 "aws:amz:us-east-1:s3" --user "${ak}:${sk}" \
+    -sS -o /tmp/gate-legacy-put.txt -w '%{http_code}' -T - \
+    -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" \
+    "http://127.0.0.1:${port}/${bucket}/${obj}")"
+  if [ "$code" != "200" ]; then
+    echo "legacy-sse chunked put HTTP $code" >&2
+    cat /tmp/gate-legacy-put.txt >&2 || true
+    docker logs "$name" >&2 || true
+    return 1
+  fi
+  docker stop "$name" >/dev/null
+  docker rm "$name" >/dev/null
+  echo "legacy-sse: read with $PR_IMAGE"
+  docker run -d --name "$name" \
+    -p "127.0.0.1:${port}:9000" \
+    -v "${vol}:/data" \
+    -e STORAGE_ADDR=:9000 \
+    -e STORAGE_DEV=true \
+    -e STORAGE_LOG_LEVEL=info \
+    -e STORAGE_DATA_DIR=/data \
+    -e STORAGE_REGION=us-east-1 \
+    -e STORAGE_ACCESS_KEY="$ak" \
+    -e STORAGE_SECRET_KEY="$sk" \
+    -e STORAGE_ADMIN_USER=admin \
+    -e STORAGE_ADMIN_PASSWORD=admin \
+    -e STORAGE_JWT_SECRET=legacy-jwt-secret \
+    -e STORAGE_AUTO_HOME_BUCKET=false \
+    -e STORAGE_SSE_MASTER_KEY="$key" \
+    -e STORAGE_SSE_LEGACY_FORMAT0=true \
+    "$PR_IMAGE" >/dev/null
+  wait_health "http://127.0.0.1:${port}/healthz" "$name"
+  local got
+  got="$(curl --aws-sigv4 "aws:amz:us-east-1:s3" --user "${ak}:${sk}" \
+    -fsS -H "x-amz-content-sha256: UNSIGNED-PAYLOAD" \
+    "http://127.0.0.1:${port}/${bucket}/${obj}")"
+  if [ "$got" != "$payload" ]; then
+    echo "legacy-sse read mismatch: $(printf '%q' "$got")" >&2
+    docker logs "$name" >&2 || true
+    return 1
+  fi
+  docker rm -f -v "$name" >/dev/null
+  docker volume rm "$vol" >/dev/null
+  echo "legacy-sse: v1.5.0 chunked SSE object is readable on this image"
+}
+
 usage() {
   cat <<EOF
-Usage: bash scripts/single-node-gate.sh <measure|smoke|all|smoke-installed>
+Usage: bash scripts/single-node-gate.sh <measure|measure-postgres|smoke|all|smoke-installed|legacy-sse>
 
-  measure           interleaved idle RSS and startup vs \$BASE_IMAGE (default $BASE_IMAGE)
+  measure           interleaved Bolt idle RSS and startup vs \$BASE_IMAGE (default $BASE_IMAGE)
+  measure-postgres  interleaved Postgres idle RSS and startup, same images, fresh DB each run
   smoke             run only \$PR_IMAGE (default $PR_IMAGE) and smoke it
   all               measure, then smoke
   smoke-installed   smoke the core compose project (default datasafe-gate) using .env
+  legacy-sse        v1.5.0 chunked SSE object, then read it with \$PR_IMAGE (not part of the budget)
 
 Env: GATE_RUNS ($RUNS), GATE_WARMUP_SEC ($WARMUP), GITHUB_STEP_SUMMARY, GATE_SAMPLES_OUT
 EOF
@@ -361,9 +593,11 @@ main() {
   local cmd="${1:-}"
   case "$cmd" in
     measure) cmd_measure ;;
+    measure-postgres) cmd_measure_postgres ;;
     smoke) cmd_smoke_pr ;;
     all) cmd_measure; cmd_smoke_pr ;;
     smoke-installed) cmd_smoke_installed ;;
+    legacy-sse) cmd_legacy_sse ;;
     -h|--help|help|"") usage ;;
     *) echo "unknown command: $cmd" >&2; usage; return 1 ;;
   esac

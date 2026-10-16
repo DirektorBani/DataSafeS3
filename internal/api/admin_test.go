@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/api"
+	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/buildinfo"
 	"github.com/DirektorBani/datasafe/internal/observability"
@@ -40,12 +41,15 @@ func freshTestServer(t *testing.T) *api.Server {
 	}
 	t.Setenv("STORAGE_KAFKA_BROKERS", "")
 	t.Setenv("STORAGE_NATS_URL", "")
+	t.Setenv("STORAGE_KMS_PROVIDER", "")
+	t.Setenv("STORAGE_KMS_VAULT_ADDR", "")
 	dir := t.TempDir()
 	s, err := api.NewServer(api.Config{
 		DataDir:       dir,
 		AdminUser:     "admin",
 		AdminPassword: "admin",
 		JWTSecret:     "test",
+		SSEMasterKey:  "test-sse-master-key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -539,7 +543,7 @@ func TestHealthReportsVersionAndCommit(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatal(err)
 		}
-		if body.Status != "ok" || body.Version != buildinfo.Version || body.Commit != buildinfo.Commit {
+		if body.Status != "ok" || body.Version != s3.HeartbeatVersion(buildinfo.Version) || body.Commit != buildinfo.Commit {
 			t.Fatalf("%s %+v", path, body)
 		}
 		if body.Version == "" || body.Commit == "" {

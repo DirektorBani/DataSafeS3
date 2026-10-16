@@ -10,7 +10,7 @@ import (
 func (s *Service) grantsForRBAC(grants []metadata.BucketAccessGrant) []auth.BucketGrant {
 	out := make([]auth.BucketGrant, 0, len(grants))
 	for _, g := range grants {
-		out = append(out, auth.BucketGrant{UserID: g.UserID, CanRead: g.CanRead, CanWrite: g.CanWrite})
+		out = append(out, auth.BucketGrant{UserID: g.UserID, CanRead: g.CanRead, CanWrite: g.CanWrite, Level: g.Level})
 	}
 	return out
 }

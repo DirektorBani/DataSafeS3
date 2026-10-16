@@ -106,6 +106,8 @@ func TestSharedLinkDownloadAndLimit(t *testing.T) {
 		"key": "secret.txt", "expires_in_sec": 3600, "max_downloads": 1,
 	})
 	req = authReq(http.MethodPost, "/api/v1/buckets/share-test/shares", tok, body)
+	req.Header.Set("X-Forwarded-Host", "console.example:5173")
+	req.Header.Set("X-Forwarded-Proto", "https")
 	rec = httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusCreated {
@@ -123,6 +125,9 @@ func TestSharedLinkDownloadAndLimit(t *testing.T) {
 	}
 	if !strings.Contains(created.URL, "/share/"+created.Share.Token) {
 		t.Fatalf("share url want /share/{token} got %q", created.URL)
+	}
+	if !strings.HasPrefix(created.URL, "https://console.example:5173/share/") {
+		t.Fatalf("share url want forwarded host, got %q", created.URL)
 	}
 
 	info := httptest.NewRequest(http.MethodGet, "/api/v1/public/share/"+created.Share.Token, nil)

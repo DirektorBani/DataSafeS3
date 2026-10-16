@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const sharedLinkSelectCols = `id, bucket, key, token, token_hash, expires_at, max_downloads, download_count, created_by, created_at`
+const sharedLinkSelectCols = `id, bucket, key, token, token_hash, expires_at, max_downloads, download_count, created_by, created_at, password_hash, blocked_reason, password_failures, password_failure_at`
 
 func (s *Store) PutSharedLink(rec metadata.SharedLinkRecord) error {
 	_, err := s.putSharedLink(rec, nil)
@@ -30,9 +30,10 @@ func (s *Store) putSharedLink(rec metadata.SharedLinkRecord, evs []events.Outbox
 	ctx := context.Background()
 	run := func(q pgExec) error {
 		_, err := q.Exec(ctx, `
-			INSERT INTO shared_links (id, bucket, key, token, token_hash, expires_at, max_downloads, download_count, created_by, created_at)
-			VALUES ($1,$2,$3,NULL,$4,$5,$6,$7,$8,$9)`,
-			rec.ID, rec.Bucket, rec.Key, hash, rec.ExpiresAt, rec.MaxDownloads, rec.DownloadCount, rec.CreatedBy, rec.CreatedAt)
+			INSERT INTO shared_links (id, bucket, key, token, token_hash, expires_at, max_downloads, download_count, created_by, created_at, password_hash, blocked_reason, password_failures, password_failure_at)
+			VALUES ($1,$2,$3,NULL,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+			rec.ID, rec.Bucket, rec.Key, hash, rec.ExpiresAt, rec.MaxDownloads, rec.DownloadCount, rec.CreatedBy, rec.CreatedAt,
+			rec.PasswordHash, rec.BlockedReason, rec.PasswordFailures, rec.PasswordFailureAt)
 		return err
 	}
 	if len(evs) == 0 {
@@ -62,7 +63,8 @@ func (s *Store) scanSharedLink(query string, arg any) (metadata.SharedLinkRecord
 	var token *string
 	err := s.pool.QueryRow(context.Background(), query, arg).Scan(
 		&rec.ID, &rec.Bucket, &rec.Key, &token, &rec.TokenHash, &rec.ExpiresAt,
-		&rec.MaxDownloads, &rec.DownloadCount, &rec.CreatedBy, &rec.CreatedAt)
+		&rec.MaxDownloads, &rec.DownloadCount, &rec.CreatedBy, &rec.CreatedAt,
+		&rec.PasswordHash, &rec.BlockedReason, &rec.PasswordFailures, &rec.PasswordFailureAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return rec, metadata.ErrNotFound
 	}
@@ -101,7 +103,8 @@ func (s *Store) ListSharedLinks(bucket, key string) ([]metadata.SharedLinkRecord
 		var rec metadata.SharedLinkRecord
 		var token *string
 		if err := rows.Scan(&rec.ID, &rec.Bucket, &rec.Key, &token, &rec.TokenHash, &rec.ExpiresAt,
-			&rec.MaxDownloads, &rec.DownloadCount, &rec.CreatedBy, &rec.CreatedAt); err != nil {
+			&rec.MaxDownloads, &rec.DownloadCount, &rec.CreatedBy, &rec.CreatedAt,
+			&rec.PasswordHash, &rec.BlockedReason, &rec.PasswordFailures, &rec.PasswordFailureAt); err != nil {
 			return nil, err
 		}
 		rec.Token = ""
@@ -132,7 +135,8 @@ func (s *Store) IncrementSharedLinkDownload(id string) (metadata.SharedLinkRecor
 		  AND (max_downloads = 0 OR download_count < max_downloads)
 		RETURNING `+sharedLinkSelectCols, id).Scan(
 		&rec.ID, &rec.Bucket, &rec.Key, &token, &rec.TokenHash, &rec.ExpiresAt,
-		&rec.MaxDownloads, &rec.DownloadCount, &rec.CreatedBy, &rec.CreatedAt)
+		&rec.MaxDownloads, &rec.DownloadCount, &rec.CreatedBy, &rec.CreatedAt,
+		&rec.PasswordHash, &rec.BlockedReason, &rec.PasswordFailures, &rec.PasswordFailureAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		existing, gerr := s.GetSharedLink(id)
 		if gerr != nil {

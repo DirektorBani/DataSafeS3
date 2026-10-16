@@ -14,7 +14,8 @@ import (
 const userSelect = `
 	SELECT id, username, email, password_hash, role, status, COALESCE(tenant_id,''), COALESCE(team_id,''), mfa_enabled,
 		COALESCE(totp_secret,''), recovery_codes, COALESCE(auth_source,''), max_size_bytes, max_objects,
-		last_login, COALESCE(locale,''), COALESCE(webauthn_credentials,''), created_at FROM users`
+		last_login, COALESCE(locale,''), COALESCE(webauthn_credentials,''), created_at,
+		mfa_policy_since, bucket_admin_since, totp_last_step, idp_mfa, mfa_reset_required FROM users`
 
 func (s *Store) PutUser(rec metadata.UserRecord) error {
 	_, err := s.putUser(rec, nil)
@@ -44,7 +45,7 @@ func (s *Store) putUser(rec metadata.UserRecord, evs []events.OutboxRecord) (int
 		return userAlreadyExists(err)
 	}
 	if len(evs) == 0 {
-		return 0, run(s.pool)
+		return 0, run(s.queryExec())
 	}
 	return s.withOutboxTx(ctx, evs, func(tx pgx.Tx) error { return run(tx) })
 }
@@ -71,15 +72,18 @@ func (s *Store) GetUserByUsername(username string) (metadata.UserRecord, error) 
 func (s *Store) scanUser(row interface{ Scan(dest ...any) error }) (metadata.UserRecord, error) {
 	var rec metadata.UserRecord
 	var codes []byte
-	var lastLogin pgtype.Timestamptz
+	var lastLogin, policySince, adminSince pgtype.Timestamptz
 	err := row.Scan(&rec.ID, &rec.Username, &rec.Email, &rec.PasswordHash, &rec.Role, &rec.Status,
 		&rec.TenantID, &rec.TeamID, &rec.MFAEnabled, &rec.TOTPSecret, &codes, &rec.AuthSource,
-		&rec.MaxSizeBytes, &rec.MaxObjects, &lastLogin, &rec.Locale, &rec.WebAuthnCredentials, &rec.CreatedAt)
+		&rec.MaxSizeBytes, &rec.MaxObjects, &lastLogin, &rec.Locale, &rec.WebAuthnCredentials, &rec.CreatedAt,
+		&policySince, &adminSince, &rec.TOTPLastStep, &rec.IdPMFA, &rec.MFAResetRequired)
 	if err != nil {
 		return rec, metadata.ErrUserNotFound
 	}
 	_ = unmarshalJSON(codes, &rec.RecoveryCodes)
 	rec.LastLogin = timePtr(lastLogin)
+	rec.MFAPolicySince = timePtr(policySince)
+	rec.BucketAdminSince = timePtr(adminSince)
 	return rec, nil
 }
 
@@ -88,9 +92,13 @@ func (s *Store) UpdateUser(rec metadata.UserRecord) error {
 	tag, err := s.pool.Exec(context.Background(), `
 		UPDATE users SET email=$2, password_hash=$3, role=$4, status=$5, tenant_id=$6, team_id=$7, mfa_enabled=$8,
 			totp_secret=$9, recovery_codes=$10, auth_source=$11, max_size_bytes=$12, max_objects=$13,
-			last_login=$14, locale=$15, webauthn_credentials=$16 WHERE id=$1`,
+			last_login=$14, locale=$15, webauthn_credentials=$16,
+			mfa_policy_since=$17, bucket_admin_since=$18, idp_mfa=$19, mfa_reset_required=$20,
+			totp_last_step=GREATEST(totp_last_step, $21)
+			WHERE id=$1`,
 		rec.ID, rec.Email, rec.PasswordHash, rec.Role, rec.Status, rec.TenantID, optionalText(rec.TeamID), rec.MFAEnabled,
-		rec.TOTPSecret, codes, rec.AuthSource, rec.MaxSizeBytes, rec.MaxObjects, timestamptzPtr(rec.LastLogin), rec.Locale, rec.WebAuthnCredentials)
+		rec.TOTPSecret, codes, rec.AuthSource, rec.MaxSizeBytes, rec.MaxObjects, timestamptzPtr(rec.LastLogin), rec.Locale, rec.WebAuthnCredentials,
+		timestamptzPtr(rec.MFAPolicySince), timestamptzPtr(rec.BucketAdminSince), rec.IdPMFA, rec.MFAResetRequired, rec.TOTPLastStep)
 	if err != nil {
 		return err
 	}
@@ -142,6 +150,6 @@ func (s *Store) ListUsers() ([]metadata.UserRecord, error) {
 
 func (s *Store) CountUsers() (int, error) {
 	var n int
-	err := s.pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM users`).Scan(&n)
+	err := s.queryExec().QueryRow(context.Background(), `SELECT COUNT(*) FROM users`).Scan(&n)
 	return n, err
 }

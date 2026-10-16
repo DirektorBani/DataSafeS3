@@ -1,3 +1,5 @@
+import { requestStepUp } from "@/lib/step-up";
+
 const API_BASE = "/api/v1";
 const TOKEN_KEY = "datasafe_admin_token";
 const ROLE_KEY = "datasafe_admin_role";
@@ -21,6 +23,10 @@ export type Bucket = {
   owner?: string;
   owner_id?: string;
   visibility?: string;
+  default_encryption?: string;
+  encryption_provider?: string;
+  kms_key_status?: string;
+  kms_master_key_id?: string;
   tenant_id?: string;
   storage_key?: string;
   access?: {
@@ -64,7 +70,13 @@ export type QuotaInfo = {
   remaining_size?: number;
   remaining_objects?: number;
 };
-export type AccessKey = { access_key: string; label: string; created_at: string; owner?: string };
+export type AccessKey = {
+  access_key: string;
+  label: string;
+  created_at: string;
+  owner?: string;
+  created_with_mfa?: boolean;
+};
 export type CreatedKey = AccessKey & { secret_key: string };
 
 export type ActivityEvent = {
@@ -112,6 +124,79 @@ export type ConsoleUser = {
   max_objects?: number;
   last_login?: string;
   created_at: string;
+};
+
+export type KMSJob = {
+  id: string;
+  type: string;
+  bucket: string;
+  key_id: string;
+  target_version: number;
+  status: string;
+  total: number;
+  done: number;
+  errors: number;
+  eta_seconds: number;
+  samples?: string[];
+  holder_id?: string;
+  started_by?: string;
+  vault_delete_error?: string;
+};
+
+export type BucketEncryption = {
+  enabled: boolean;
+  algorithm: string;
+  provider: string;
+  key_id: string;
+  key_version?: number;
+  key_status: string;
+  active_job_id?: string;
+  visibility: string;
+  server_key_configured: boolean;
+  vault_configured: boolean;
+  kms_available?: boolean;
+  kms_probed?: boolean;
+  allowlist: string;
+  can_edit: boolean;
+  default_key_id: string;
+  metadata_backend?: string;
+  ha_enabled?: boolean;
+};
+
+export type KMSSettings = {
+  status: "unconfigured" | "checking" | "connected" | "error" | string;
+  provider?: string;
+  addr?: string;
+  namespace?: string;
+  transit_mount?: string;
+  ca_cert?: string;
+  auth?: "approle" | "token" | string;
+  role_id?: string;
+  secret_id_set?: boolean;
+  token_set?: boolean;
+  env_locked?: {
+    provider?: boolean;
+    addr?: boolean;
+    namespace?: boolean;
+    mount?: boolean;
+    ca_cert?: boolean;
+    role_id?: boolean;
+    secret?: boolean;
+    token?: boolean;
+  };
+  allowlist?: string;
+  error?: string;
+  message?: string;
+  kms_available?: boolean;
+};
+
+export type KMSNodeStatus = {
+  node_id: string;
+  version?: string;
+  provider?: string;
+  available?: boolean | null;
+  error?: string;
+  checked_at?: string;
 };
 
 export type BucketSettings = {
@@ -287,6 +372,35 @@ export type BucketAccessGrant = {
   prefix?: string;
   can_read: boolean;
   can_write: boolean;
+  level?: "read" | "write" | "admin" | string;
+};
+
+export type SharingPolicy = {
+  public_access_blocked?: boolean | null;
+  share_links_allowed?: boolean | null;
+  presign_allowed?: boolean | null;
+  max_share_ttl_sec?: number | null;
+  max_presign_ttl_sec?: number | null;
+  share_password_required?: boolean | null;
+};
+
+export type EffectiveSharing = {
+  public_access_blocked: boolean;
+  share_links_allowed: boolean;
+  presign_allowed: boolean;
+  max_share_ttl_sec: number;
+  max_presign_ttl_sec: number;
+  share_password_required: boolean;
+  public_access_blocked_by?: string;
+  share_links_blocked_by?: string;
+  presign_blocked_by?: string;
+  password_required_by?: string;
+};
+
+export type SharingView = {
+  policy: SharingPolicy;
+  effective: EffectiveSharing;
+  locked: string[];
 };
 
 export type UserNotification = {
@@ -323,6 +437,7 @@ export type LDAPConfig = {
 export type SecurityStatus = {
   weak_secrets: string[];
   doc?: string;
+  operator_write_all?: boolean;
 };
 
 export type OIDCConfig = {
@@ -337,6 +452,33 @@ export type OIDCConfig = {
 
 export type MFASettings = {
   require_admin_mfa?: boolean;
+  require_bucket_admin_mfa?: boolean;
+  grace_period_days?: number;
+  apply_to_tenant_admins?: boolean;
+  apply_to_global_admins?: boolean;
+  enabled_at?: string;
+  oidc_accepted_amr?: string[];
+  oidc_accepted_acr?: string[];
+};
+
+export type MFAPolicyView = {
+  policy: MFASettings;
+  dangerous_actions: string[];
+  users_without_mfa: {
+    user_id: string;
+    username: string;
+    grace_until?: string;
+    in_grace: boolean;
+  }[];
+};
+
+export type MeMFAPolicy = {
+  applies: boolean;
+  in_grace: boolean;
+  grace_until?: string;
+  has_factor: boolean;
+  has_local_factor: boolean;
+  banner: boolean;
 };
 
 export type ClusterNode = {
@@ -706,29 +848,55 @@ export class ApiError extends Error {
   }
 }
 
-async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
+async function readAPIError(res: Response): Promise<{ message: string; body?: Record<string, unknown> }> {
+  const text = await res.text();
+  let message = text || res.statusText;
+  let body: Record<string, unknown> | undefined;
+  try {
+    const json = JSON.parse(text) as Record<string, unknown>;
+    body = json;
+    if (typeof json.error === "string") message = json.error;
+  } catch {
+    /* use raw text */
+  }
+  return { message, body };
+}
+
+function keepsSession(error: string): boolean {
+  return error === "step_up_required" || error === "mfa_token_invalid" || error === "invalid code";
+}
+
+async function fetchJSON<T>(path: string, init?: RequestInit, stepUpRetried = false): Promise<T> {
   const headers = new Headers(init?.headers);
   const token = getToken();
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
+  if (!headers.has("X-DataSafe-Channel")) {
+    headers.set("X-DataSafe-Channel", "console");
+  }
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (res.status === 401) {
+    const { message, body } = await readAPIError(res);
+    const code = typeof body?.error === "string" ? body.error : "";
+    if (code === "step_up_required" && !stepUpRetried) {
+      const mfa = await requestStepUp({
+        action: String(body?.action ?? ""),
+        target: String(body?.target ?? ""),
+      });
+      const retryHeaders = new Headers(init?.headers);
+      retryHeaders.set("X-DataSafe-MFA-Token", mfa);
+      return fetchJSON<T>(path, { ...init, headers: retryHeaders }, true);
+    }
+    if (keepsSession(code)) {
+      throw new ApiError(message, 401, body);
+    }
     clearToken();
     window.dispatchEvent(new Event("datasafe:unauthorized"));
-    throw new ApiError("Session expired. Please sign in again.", 401);
+    throw new ApiError("Session expired. Please sign in again.", 401, body);
   }
   if (!res.ok) {
-    const text = await res.text();
-    let message = text || res.statusText;
-    let body: Record<string, unknown> | undefined;
-    try {
-      const json = JSON.parse(text) as Record<string, unknown>;
-      body = json;
-      if (typeof json.error === "string") message = json.error;
-    } catch {
-      /* use raw text */
-    }
+    const { message, body } = await readAPIError(res);
     throw new ApiError(message, res.status, body);
   }
   if (res.status === 204) return {} as T;
@@ -770,7 +938,13 @@ async function downloadAuthenticated(path: string, fallbackName: string): Promis
   URL.revokeObjectURL(url);
 }
 
-export async function login(username: string, password: string): Promise<{ mfa_required?: boolean; mfa_token?: string; mfa_setup_required?: boolean }> {
+export async function login(username: string, password: string): Promise<{
+  mfa_required?: boolean;
+  mfa_token?: string;
+  mfa_setup_required?: boolean;
+  webauthn_required?: boolean;
+  webauthn_available?: boolean;
+}> {
   const res = await fetch(`${API_BASE}/admin/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -787,7 +961,12 @@ export async function login(username: string, password: string): Promise<{ mfa_r
     throw new ApiError((data.error as string) || text || "Login failed", res.status);
   }
   if (data.mfa_required) {
-    return { mfa_required: true, mfa_token: data.mfa_token as string };
+    return {
+      mfa_required: true,
+      mfa_token: data.mfa_token as string,
+      webauthn_required: data.webauthn_required === true,
+      webauthn_available: data.webauthn_available === true,
+    };
   }
   setSession(data.token as string, (data.role as UserRole) ?? "administrator", data.username as string);
   if (data.mfa_setup_required) {
@@ -841,6 +1020,52 @@ export async function loginMFA(mfaToken: string, code: string): Promise<void> {
   }
   const data = await res.json();
   setSession(data.token, data.role ?? "administrator", data.username);
+  try {
+    await refreshSessionFromMe();
+  } catch {
+    /* profile enrichment optional */
+  }
+}
+
+export async function loginWebAuthnBegin(mfaToken: string): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/auth/mfa/webauthn/begin`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mfa_token: mfaToken }),
+  });
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    /* */
+  }
+  if (!res.ok) {
+    throw new ApiError((data.error as string) || text || "WebAuthn login failed", res.status, data);
+  }
+  return data;
+}
+
+export async function loginWebAuthnFinish(mfaToken: string, credential: unknown): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/mfa/webauthn/finish`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-DataSafe-MFA-Token": mfaToken,
+    },
+    body: JSON.stringify(credential),
+  });
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    /* */
+  }
+  if (!res.ok) {
+    throw new ApiError((data.error as string) || text || "WebAuthn login failed", res.status, data);
+  }
+  setSession(data.token as string, (data.role as UserRole) ?? "administrator", data.username as string);
   try {
     await refreshSessionFromMe();
   } catch {
@@ -978,7 +1203,17 @@ export const api = {
       `${API_BASE}/buckets/${encodeURIComponent(bucket)}/objects/${encodeURIComponent(key)}${q}`,
       { headers: token ? { Authorization: `Bearer ${token}` } : {} }
     );
-    if (!res.ok) throw new ApiError(await res.text(), res.status);
+    if (!res.ok) {
+      const text = await res.text();
+      let message = text || res.statusText;
+      try {
+        const json = JSON.parse(text) as { error?: string };
+        if (json.error) message = json.error;
+      } catch {
+        /* raw body */
+      }
+      throw new ApiError(message, res.status);
+    }
     return res.blob();
   },
 
@@ -1034,7 +1269,14 @@ export const api = {
           }
           return;
         }
-        reject(new ApiError(xhr.responseText || "Upload failed", xhr.status));
+        let message = xhr.responseText || "Upload failed";
+        try {
+          const json = JSON.parse(xhr.responseText) as { message?: string; error?: string };
+          message = json.message || json.error || message;
+        } catch {
+          /* raw body */
+        }
+        reject(new ApiError(message, xhr.status));
       };
       xhr.onerror = () => reject(new ApiError("Upload failed", 0));
       xhr.send(file);
@@ -1217,6 +1459,40 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password }),
     }),
+  resetMFA: (id: string, reason: string) =>
+    fetchJSON<{ ok: boolean }>(`/users/${encodeURIComponent(id)}/mfa/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    }),
+  getMFAPolicy: () => fetchJSON<MFAPolicyView>("/settings/mfa-policy"),
+  putMFAPolicy: (policy: MFASettings) =>
+    fetchJSON<{ policy: MFASettings }>("/settings/mfa-policy", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(policy),
+    }),
+  stepUp: (action: string, target: string, code: string) =>
+    fetchJSON<{ token: string; expires_at: string; action: string; target: string }>("/auth/step-up", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, target, totp_code: code }),
+    }),
+  stepUpWebAuthnBegin: (action: string, target: string) =>
+    fetchJSON<Record<string, unknown>>("/auth/step-up/webauthn/begin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, target }),
+    }),
+  stepUpWebAuthnFinish: (credential: unknown) =>
+    fetchJSON<{ token: string; expires_at: string; action: string; target: string }>(
+      "/auth/step-up/webauthn/finish",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credential),
+      },
+    ),
 
   listBucketSettings: () => fetchJSON<{ buckets: BucketSettings[] }>("/settings/buckets"),
   updateBucketSettings: (name: string, body: Partial<BucketSettings>) =>
@@ -1469,6 +1745,83 @@ export const api = {
       { method: "POST" },
     ),
   getSecurityStatus: () => fetchJSON<SecurityStatus>("/settings/security-status"),
+  getKMSSettings: () => fetchJSON<KMSSettings>("/kms/settings"),
+  putKMSSettings: (body: {
+    addr?: string;
+    namespace?: string;
+    transit_mount?: string;
+    ca_cert?: string;
+    auth?: string;
+    role_id?: string;
+    secret_id?: string;
+    token?: string;
+  }) =>
+    fetchJSON<KMSSettings>("/kms/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  testKMS: (body: {
+    addr?: string;
+    namespace?: string;
+    transit_mount?: string;
+    ca_cert?: string;
+    auth?: string;
+    role_id?: string;
+    secret_id?: string;
+    token?: string;
+  }) =>
+    fetchJSON<{ ok: boolean; error?: string; message?: string }>("/kms/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  getKMSNodes: () => fetchJSON<{ nodes: KMSNodeStatus[] }>("/kms/nodes"),
+  getGlobalSharing: () => fetchJSON<SharingView>("/settings/sharing"),
+  putGlobalSharing: (body: SharingPolicy) =>
+    fetchJSON<SharingView>("/settings/sharing", { method: "PUT", body: JSON.stringify(body) }),
+  getTenantSharing: (id: string) => fetchJSON<SharingView>(`/tenants/${encodeURIComponent(id)}/sharing`),
+  putTenantSharing: (id: string, body: SharingPolicy) =>
+    fetchJSON<SharingView>(`/tenants/${encodeURIComponent(id)}/sharing`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  getBucketEncryption: (bucket: string) =>
+    fetchJSON<BucketEncryption>(`/buckets/${encodeURIComponent(bucket)}/encryption`),
+  putBucketEncryption: (
+    bucket: string,
+    body: { enabled: boolean; provider?: string; key_id?: string }
+  ) =>
+    fetchJSON<BucketEncryption>(`/buckets/${encodeURIComponent(bucket)}/encryption`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  rotateKMSKey: (id: string) =>
+    fetchJSON<{ id: string; key_version: number; generation: number; status: string }>(
+      `/kms/keys/${encodeURIComponent(id)}/rotate`,
+      { method: "POST" }
+    ),
+  startEncryptExisting: (bucket: string) =>
+    fetchJSON<KMSJob>(`/buckets/${encodeURIComponent(bucket)}/encryption/rewrap`, { method: "POST" }),
+  destroyBucketKey: (bucket: string, confirm: string) =>
+    fetchJSON<KMSJob>(`/buckets/${encodeURIComponent(bucket)}/encryption/destroy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm }),
+    }),
+  getKMSJob: (id: string) => fetchJSON<KMSJob>(`/kms/jobs/${encodeURIComponent(id)}`),
+  getKMSJobReport: (id: string) => fetchJSON<KMSJob>(`/kms/jobs/${encodeURIComponent(id)}/report`),
+  getBucketSharing: (bucket: string) =>
+    fetchJSON<SharingView>(`/buckets/${encodeURIComponent(bucket)}/sharing`),
+  putBucketSharing: (bucket: string, body: SharingPolicy) =>
+    fetchJSON<SharingView>(`/buckets/${encodeURIComponent(bucket)}/sharing`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  revokeAllShares: (bucket: string) =>
+    fetchJSON<{ revoked: number }>(`/buckets/${encodeURIComponent(bucket)}/shares/revoke-all`, {
+      method: "POST",
+    }),
   mfaEnroll: () =>
     fetchJSON<{ secret: string; otpauth_uri: string; qr_url: string; qr_code: string }>("/mfa/enroll", { method: "POST" }),
   mfaVerify: (code: string) =>
@@ -1654,7 +2007,7 @@ export const api = {
     const q = key ? `?key=${encodeURIComponent(key)}` : "";
     return fetchJSON<{ shares: SharedLink[] }>(`/buckets/${encodeURIComponent(bucket)}/shares${q}`);
   },
-  createSharedLink: (bucket: string, body: { key: string; expires_in_sec?: number; max_downloads?: number }) =>
+  createSharedLink: (bucket: string, body: { key: string; expires_in_sec?: number; max_downloads?: number; password?: string }) =>
     fetchJSON<{ share: SharedLink; url: string }>(`/buckets/${encodeURIComponent(bucket)}/shares`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1792,6 +2145,7 @@ export const api = {
       locale?: string;
       mfa_enabled?: boolean;
       mfa_setup_required?: boolean;
+      mfa_policy?: MeMFAPolicy;
       webauthn_enabled?: boolean;
       passkey_count?: number;
       auth_source?: string;

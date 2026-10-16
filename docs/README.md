@@ -4,7 +4,7 @@
 
 Product documentation for DataSafeS3 — a self-hosted storage platform for secure and governed data management. Documentation focuses on **product value**, not comparisons with other products.
 
-**Current Community release:** [v1.5.0](../CHANGELOG.md#150---2026-10-12) (2026-10-12)
+**Current Community release:** [v1.6.0](../CHANGELOG.md#160---2026-10-15) (2026-10-15)
 
 ---
 
@@ -90,6 +90,7 @@ Environment variables and system settings: [User guide — Administrator setting
 | **Security self-assessment** | [operations-guide/en/security-self-assessment.md](operations-guide/en/security-self-assessment.md) | [operations-guide/ru/security-self-assessment.md](operations-guide/ru/security-self-assessment.md) |
 | **Field encryption (metadata)** | [operations-guide/en/field-encryption.md](operations-guide/en/field-encryption.md) | [operations-guide/ru/field-encryption.md](operations-guide/ru/field-encryption.md) |
 | **Vault secrets injection** | [operations-guide/en/secrets-vault.md](operations-guide/en/secrets-vault.md) | [operations-guide/ru/secrets-vault.md](operations-guide/ru/secrets-vault.md) |
+| **Vault Transit (object keys)** | [operations-guide/en/kms-vault.md](operations-guide/en/kms-vault.md) | [operations-guide/ru/kms-vault.md](operations-guide/ru/kms-vault.md) |
 | **Extension hooks (example)** | [../examples/extension-hook/README.md](../examples/extension-hook/README.md) | same |
 
 ---

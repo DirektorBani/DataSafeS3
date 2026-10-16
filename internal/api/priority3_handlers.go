@@ -257,7 +257,7 @@ func (s *Server) handleInitiateMultipart(w http.ResponseWriter, r *http.Request)
 	}
 	uploadID, err := s.svc.CreateMultipartUpload(r.Context(), sk, req.Key)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		writeObjectStoreErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

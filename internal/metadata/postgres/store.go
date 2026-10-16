@@ -13,6 +13,8 @@ import (
 	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
+	"sync"
+
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -48,8 +50,13 @@ type Store struct {
 	pool             *pgxpool.Pool
 	readPool         *pgxpool.Pool
 	fieldenc         *fieldenc.Service
+	kmsSealKey       []byte
 	outboxMaxPending int
 	outboxMaxSet     bool
+	// sticky is the schema-lock connection. Seed runs its own statements on
+	// that session so startup does not dial a second one.
+	stickyMu sync.Mutex
+	sticky   pgExec
 }
 
 // Open connects to PostgreSQL, runs migrations, and returns a Store.
@@ -87,6 +94,21 @@ func Open(dsn string, readReplicaDSN string) (*Store, error) {
 // SetFieldEncryption attaches the field encryption service (injected at startup).
 func (s *Store) SetFieldEncryption(fe *fieldenc.Service) {
 	s.fieldenc = fe
+}
+
+// SetKMSSealMaterial seals Vault secrets when field encryption is off.
+func (s *Store) SetKMSSealMaterial(material string) {
+	if s == nil {
+		return
+	}
+	s.kmsSealKey = metadata.DeriveKMSSealKey(material)
+}
+
+func (s *Store) kmsKey() []byte {
+	if s != nil && len(s.kmsSealKey) == 32 {
+		return s.kmsSealKey
+	}
+	return metadata.DeriveKMSSealKey("")
 }
 
 func (s *Store) readQueryPool() *pgxpool.Pool {
@@ -130,7 +152,25 @@ func (s *Store) WithSchemaLock(ctx context.Context, fn func() error) error {
 	defer func() {
 		_, _ = conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, migrationAdvisoryLock)
 	}()
+	s.stickyMu.Lock()
+	s.sticky = conn
+	s.stickyMu.Unlock()
+	defer func() {
+		s.stickyMu.Lock()
+		s.sticky = nil
+		s.stickyMu.Unlock()
+	}()
 	return fn()
+}
+
+// queryExec returns the schema-lock session while WithSchemaLock is running.
+func (s *Store) queryExec() pgExec {
+	s.stickyMu.Lock()
+	defer s.stickyMu.Unlock()
+	if s.sticky != nil {
+		return s.sticky
+	}
+	return s.pool
 }
 
 func (s *Store) migrate() error {

@@ -134,6 +134,7 @@ func (s *Store) GetBucketByKey(storageKey string) (metadata.BucketRecord, error)
 	if err != nil {
 		return rec, metadata.ErrNotFound
 	}
+	s.applyBucketEncryption(&rec)
 	return rec, nil
 }
 
@@ -169,6 +170,7 @@ func (s *Store) ResolveBucket(scope metadata.BucketScope, name string) (metadata
 		if err != nil {
 			return metadata.BucketRecord{}, metadata.ErrNotFound
 		}
+		s.applyBucketEncryption(&rec)
 		return rec, nil
 	default:
 		rec, err := scanBucketRow(s.pool.QueryRow(ctx, bucketSelect+`
@@ -176,6 +178,7 @@ func (s *Store) ResolveBucket(scope metadata.BucketScope, name string) (metadata
 			WHERE COALESCE(owner_id, '') = $1 AND name = $2
 				AND (tenant_id IS NULL OR tenant_id = '' OR tenant_id = 'default')`, scope.OwnerID, name))
 		if err == nil {
+			s.applyBucketEncryption(&rec)
 			return rec, nil
 		}
 		// Legacy bucket: storage_key == name, must belong to this owner scope.
@@ -186,6 +189,7 @@ func (s *Store) ResolveBucket(scope metadata.BucketScope, name string) (metadata
 		if !rec.LegacyBucket() || rec.OwnerID != scope.OwnerID {
 			return metadata.BucketRecord{}, metadata.ErrNotFound
 		}
+		s.applyBucketEncryption(&rec)
 		return rec, nil
 	}
 }
@@ -227,7 +231,14 @@ func (s *Store) ListBuckets() ([]metadata.BucketRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	return scanBucketRows(rows)
+	recs, err := scanBucketRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	for i := range recs {
+		s.applyBucketEncryption(&recs[i])
+	}
+	return recs, nil
 }
 
 func (s *Store) UpdateBucket(rec metadata.BucketRecord) error {

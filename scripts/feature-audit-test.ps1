@@ -181,13 +181,28 @@ function Invoke-S3Signed {
             }
         }
     }
-    $signedHeaders = @('host', 'x-amz-content-sha256', 'x-amz-date')
     $headerMap = @{
         host = $hostHeader
         'x-amz-content-sha256' = $PayloadHash
         'x-amz-date' = $amzDate
     }
-    foreach ($k in $ExtraHeaders.Keys) { $headerMap[$k.ToLower()] = $ExtraHeaders[$k] }
+    $signedNames = [System.Collections.Generic.List[string]]::new()
+    $signedNames.Add('host')
+    $signedNames.Add('x-amz-content-sha256')
+    $signedNames.Add('x-amz-date')
+    foreach ($k in @($ExtraHeaders.Keys)) {
+        $lk = $k.ToLower()
+        $headerMap[$lk] = $ExtraHeaders[$k]
+        if ($lk -eq 'content-type' -or $lk -eq 'content-md5' -or $lk.StartsWith('x-amz-')) {
+            if (-not $signedNames.Contains($lk)) { [void]$signedNames.Add($lk) }
+        }
+    }
+    # curl --data-binary sets Content-Type when the caller did not. Sign it.
+    if ($null -ne $Body -and -not $headerMap.ContainsKey('content-type')) {
+        $headerMap['content-type'] = 'application/octet-stream'
+        [void]$signedNames.Add('content-type')
+    }
+    $signedHeaders = @($signedNames | Sort-Object)
     $canonicalHeaders = (($signedHeaders | ForEach-Object { "$_`:$($headerMap[$_])" }) -join "`n") + "`n"
     $canonicalRequest = @(
         $Method.ToUpper()
@@ -214,7 +229,13 @@ function Invoke-S3Signed {
         '-H', "X-Amz-Date: $amzDate",
         '-H', "X-Amz-Content-Sha256: $PayloadHash",
         '-H', "Authorization: $auth")
-    foreach ($k in $ExtraHeaders.Keys) { $curlArgs += @('-H', "$k`: $($ExtraHeaders[$k])") }
+    if ($headerMap.ContainsKey('content-type')) {
+        $curlArgs += @('-H', "Content-Type: $($headerMap['content-type'])")
+    }
+    foreach ($k in @($ExtraHeaders.Keys)) {
+        if ($k.ToLower() -eq 'content-type') { continue }
+        $curlArgs += @('-H', "$k`: $($ExtraHeaders[$k])")
+    }
     $tmp = $null
     if ($null -ne $Body) {
         $tmp = [System.IO.Path]::GetTempFileName()

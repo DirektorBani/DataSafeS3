@@ -42,10 +42,17 @@ type s3Object struct {
 	VersionID string `json:"versionId"`
 }
 
+type shareBlock struct {
+	LinkID   string `json:"link_id,omitempty"`
+	Actor    string `json:"actor,omitempty"`
+	ClientIP string `json:"client_ip,omitempty"`
+}
+
 type datasafeBlock struct {
-	TenantID      string `json:"tenant_id"`
-	EventID       string `json:"event_id"`
-	SchemaVersion int    `json:"schema_version"`
+	TenantID      string      `json:"tenant_id"`
+	EventID       string      `json:"event_id"`
+	SchemaVersion int         `json:"schema_version"`
+	Share         *shareBlock `json:"share,omitempty"`
 }
 
 // NotificationJSON is the Kafka body. It is not the webhook or NATS body.
@@ -77,6 +84,7 @@ func NotificationJSON(e Event) ([]byte, error) {
 			TenantID:      e.TenantID,
 			EventID:       e.ID,
 			SchemaVersion: NotificationSchemaVersion,
+			Share:         shareBlockFrom(e),
 		},
 	}
 	return json.Marshal(msg)
@@ -97,12 +105,53 @@ func notificationEventName(eventType string) string {
 	case "UserCreated":
 		return "datasafe:UserCreated"
 	case "ShareCreated":
-		return "datasafe:ShareCreated"
+		return "datasafe:Share:Created"
+	case "ShareRevoked":
+		return "datasafe:Share:Revoked"
+	case "ShareDownloaded":
+		return "datasafe:Share:Downloaded"
+	case "ShareExpired":
+		return "datasafe:Share:Expired"
+	case "ShareLimitReached":
+		return "datasafe:Share:LimitReached"
+	case "ShareBlocked":
+		return "datasafe:Share:Blocked"
+	case "PresignIssued":
+		return "datasafe:Presign:Issued"
+	case "MfaPolicyChanged":
+		return "datasafe:Mfa:PolicyChanged"
+	case "MfaRequiredDenied":
+		return "datasafe:Mfa:RequiredDenied"
+	case "MfaStepUpRequired":
+		return "datasafe:Mfa:StepUpRequired"
+	case "MfaStepUpVerified":
+		return "datasafe:Mfa:StepUpVerified"
+	case "MfaReset":
+		return "datasafe:Mfa:Reset"
+	case "SharingPolicyChanged":
+		return "datasafe:Sharing:PolicyChanged"
 	case "TestEvent":
 		return "datasafe:TestEvent"
 	default:
 		return "datasafe:" + eventType
 	}
+}
+
+func shareBlockFrom(e Event) *shareBlock {
+	switch e.Type {
+	case "ShareCreated", "ShareRevoked", "ShareDownloaded", "ShareExpired", "ShareLimitReached", "ShareBlocked", "PresignIssued", "SharingPolicyChanged":
+	default:
+		return nil
+	}
+	block := &shareBlock{
+		LinkID:   payloadString(e.Payload, "link_id"),
+		Actor:    payloadString(e.Payload, "actor"),
+		ClientIP: payloadString(e.Payload, "client_ip"),
+	}
+	if block.LinkID == "" && block.Actor == "" && block.ClientIP == "" {
+		return nil
+	}
+	return block
 }
 
 func payloadString(p map[string]any, keys ...string) string {

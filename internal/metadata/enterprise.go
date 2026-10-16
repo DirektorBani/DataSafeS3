@@ -192,7 +192,60 @@ type OIDCConfig struct {
 }
 
 type MFASettings struct {
-	RequireAdminMFA bool `json:"require_admin_mfa"`
+	RequireAdminMFA       bool       `json:"require_admin_mfa"`
+	RequireBucketAdminMFA bool       `json:"require_bucket_admin_mfa"`
+	GracePeriodDays       *int       `json:"grace_period_days,omitempty"`
+	ApplyToTenantAdmins   bool       `json:"apply_to_tenant_admins"`
+	ApplyToGlobalAdmins   bool       `json:"apply_to_global_admins"`
+	EnabledAt             *time.Time `json:"enabled_at,omitempty"`
+	AcceptedAMR           []string   `json:"oidc_accepted_amr,omitempty"`
+	AcceptedACR           []string   `json:"oidc_accepted_acr,omitempty"`
+}
+
+// GraceDays returns the configured grace period. A missing value is 7 days.
+func (m MFASettings) GraceDays() int {
+	if m.GracePeriodDays == nil {
+		return 7
+	}
+	d := *m.GracePeriodDays
+	if d < 0 {
+		return 0
+	}
+	if d > 90 {
+		return 90
+	}
+	return d
+}
+
+// AppliesToGlobalAdmins is the alias of RequireAdminMFA and ApplyToGlobalAdmins.
+func (m MFASettings) AppliesToGlobalAdmins() bool {
+	return m.RequireAdminMFA || m.ApplyToGlobalAdmins
+}
+
+// NormalizeMFA keeps the global-admin alias in sync and stamps EnabledAt when
+// the bucket-admin policy is turned on. prev is the stored settings.
+func NormalizeMFA(next, prev MFASettings) MFASettings {
+	if next.RequireAdminMFA || next.ApplyToGlobalAdmins {
+		next.RequireAdminMFA = true
+		next.ApplyToGlobalAdmins = true
+	}
+	if next.GracePeriodDays != nil {
+		d := next.GraceDays()
+		next.GracePeriodDays = &d
+	}
+	if next.RequireBucketAdminMFA {
+		if next.EnabledAt == nil {
+			if prev.RequireBucketAdminMFA && prev.EnabledAt != nil {
+				next.EnabledAt = prev.EnabledAt
+			} else {
+				now := time.Now().UTC()
+				next.EnabledAt = &now
+			}
+		}
+	} else {
+		next.EnabledAt = nil
+	}
+	return next
 }
 
 type ClusterNode struct {
@@ -616,12 +669,15 @@ func (s *Store) SetObjectLegalHold(bucket, key, versionID string, hold bool) err
 	return s.PutObject(rec)
 }
 
-func (s *Store) SetObjectRetention(bucket, key, versionID string, until time.Time) error {
+func (s *Store) SetObjectRetention(bucket, key, versionID string, until time.Time, mode string) error {
 	rec, err := s.GetObjectVersion(bucket, key, versionID)
 	if err != nil {
 		return err
 	}
 	rec.RetentionUntil = &until
+	if mode = strings.ToUpper(strings.TrimSpace(mode)); mode != "" {
+		rec.RetentionMode = mode
+	}
 	if versionID != "" || rec.VersionID != "" {
 		return s.PutObjectVersioned(rec)
 	}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/DirektorBani/datasafe/internal/api"
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/metadata"
 )
 
 func setupBucket(t *testing.T, ts *httptest.Server, creds auth.Credentials, bucket string) {
@@ -94,10 +95,26 @@ func TestPresignedURL(t *testing.T) {
 	defer ts.Close()
 	setupBucket(t, ts, creds, "ps")
 
+	userCreds := auth.Credentials{AccessKey: "AKIApresigner01", SecretKey: "usersecretusersecretuser"}
+	if err := srv.Meta().PutUser(metadata.UserRecord{
+		ID: "presign-user", Username: "presigner", Role: metadata.RoleAdministrator,
+		Status: metadata.StatusActive, CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Meta().PutAccessKey(metadata.AccessKeyRecord{
+		AccessKey: userCreds.AccessKey, SecretKey: userCreds.SecretKey,
+		OwnerID: "presign-user", Owner: "presigner", CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
 	signer := auth.NewSigner("us-east-1", func(k string) (auth.Credentials, bool) {
+		if k == userCreds.AccessKey {
+			return userCreds, true
+		}
 		return creds, k == creds.AccessKey
 	})
-	url, err := signer.PresignURL(http.MethodPut, ts.URL, "ps", "signed.txt", creds, 3600*time.Second)
+	url, err := signer.PresignURL(http.MethodPut, ts.URL, "ps", "signed.txt", userCreds, 3600*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,6 +126,65 @@ func TestPresignedURL(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("presigned put %d", resp.StatusCode)
+	}
+}
+
+func TestPresignedPutContentTypeAndFetch(t *testing.T) {
+	srv, creds := testServer(t)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	setupBucket(t, ts, creds, "ps2")
+
+	userCreds := auth.Credentials{AccessKey: "AKIApresigner02", SecretKey: "usersecretusersecretuser"}
+	if err := srv.Meta().PutUser(metadata.UserRecord{
+		ID: "presign-user-2", Username: "presigner2", Role: metadata.RoleAdministrator,
+		Status: metadata.StatusActive, CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Meta().PutAccessKey(metadata.AccessKeyRecord{
+		AccessKey: userCreds.AccessKey, SecretKey: userCreds.SecretKey,
+		OwnerID: "presign-user-2", Owner: "presigner2", CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	signer := auth.NewSigner("us-east-1", func(k string) (auth.Credentials, bool) {
+		if k == userCreds.AccessKey {
+			return userCreds, true
+		}
+		return creds, k == creds.AccessKey
+	})
+	putURL, err := signer.PresignURL(http.MethodPut, ts.URL, "ps2", "page.txt", userCreds, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPut, putURL, bytes.NewReader([]byte("browser")))
+	req.Header.Set("Content-Type", "text/plain")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("presigned put %d %s", resp.StatusCode, raw)
+	}
+
+	getURL, err := signer.PresignURL(http.MethodGet, ts.URL, "ps2", "page.txt", userCreds, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err = http.Get(getURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || string(body) != "browser" {
+		t.Fatalf("fetch %d %q type %s", resp.StatusCode, body, resp.Header.Get("Content-Type"))
+	}
+	if !strings.Contains(resp.Header.Get("Content-Type"), "text/plain") {
+		t.Fatalf("content-type %s", resp.Header.Get("Content-Type"))
 	}
 }
 

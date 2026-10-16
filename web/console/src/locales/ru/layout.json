@@ -1,6 +1,40 @@
 {
   "securityBanner": {
     "message": "Обнаружены секреты по умолчанию ({{vars}}). Смените их перед production.",
+    "operatorWriteAll": "Включён устаревший режим записи для операторов, будет удалён в 1.7.0.",
     "learnMore": "Руководство по усилению безопасности"
+  },
+  "mfaSetupBanner": {
+    "message": "Для администратора обязательна двухфакторная аутентификация. Включите TOTP или ключ безопасности, прежде чем пользоваться консолью.",
+    "action": "Настроить 2FA"
+  },
+  "mfaPolicyBanner": {
+    "message": "Для управления бакетом включите двухфакторную аутентификацию",
+    "action": "Настроить 2FA"
+  },
+  "mfaStepUp": {
+    "title": "Подтвердите действие кодом 2FA",
+    "description": "{{action}} — {{target}}",
+    "code": "Код аутентификации",
+    "confirm": "Подтвердить",
+    "cancel": "Отмена",
+    "useKey": "Ключ безопасности",
+    "invalid": "Неверный код",
+    "cancelled": "Подтверждение отменено",
+    "noTarget": "это действие",
+    "actions": {
+      "crypto_shred": "Уничтожить ключ KMS",
+      "key_rotate": "Ротировать ключ KMS",
+      "trash_purge": "Очистить корзину",
+      "sharing_policy_change": "Изменить политику обмена",
+      "grants_change": "Изменить доступ к бакету",
+      "encryption_disable": "Выключить шифрование бакета",
+      "object_lock_config": "Изменить Object Lock",
+      "compliance_retention": "Изменить удержание COMPLIANCE",
+      "bucket_delete": "Удалить бакет",
+      "mfa_reset": "Сбросить 2FA пользователя",
+      "revoke_all_shares": "Отозвать все ссылки",
+      "access_key_create": "Создать ключ доступа"
+    }
   }
 }

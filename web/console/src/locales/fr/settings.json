@@ -3,7 +3,9 @@
     "buckets": "Bucket settings",
     "system": "Administrator settings",
     "security": "Security posture",
-    "events": "Livraison des événements"
+    "events": "Livraison des événements",
+    "kms": "Vault (KMS)",
+    "migrate": "Migration"
   },
   "buckets": {
     "confirmDiscard": "Discard unsaved changes?",

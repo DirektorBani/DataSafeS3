@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/security"
 	"github.com/DirektorBani/datasafe/internal/security/fieldenc"
@@ -24,8 +25,9 @@ func (s *Server) handleSecurityStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"weak_secrets":     security.WeakEnvVars(),
-		"doc":              security.JWTSecretsDocPath(),
-		"field_encryption": fe.Status(registryCount),
+		"weak_secrets":       security.WeakEnvVars(),
+		"doc":                security.JWTSecretsDocPath(),
+		"field_encryption":   fe.Status(registryCount),
+		"operator_write_all": auth.OperatorWriteAllEnabled(),
 	})
 }

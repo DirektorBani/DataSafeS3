@@ -82,6 +82,7 @@ func TestMigrationKitArtifactsExist(t *testing.T) {
 		filepath.Join("scripts", "migrate", "minio-cutover-smoke.ps1"),
 		filepath.Join("scripts", "migrate", "README.md"),
 		filepath.Join("docs", "architecture", "adr", "0001-migration-kit.md"),
+		filepath.Join("docs", "architecture", "adr", "0007-minio-s3-copier.md"),
 		filepath.Join("docs", "architecture", "adr", "0002-event-sink-interface.md"),
 		filepath.Join("docs", "architecture", "adr", "0003-immutable-backup-path.md"),
 		filepath.Join("docs", "architecture", "adr", "0004-inventory-jobs.md"),

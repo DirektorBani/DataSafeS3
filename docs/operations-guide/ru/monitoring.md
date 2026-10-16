@@ -4,7 +4,7 @@
 
 ![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/monitoring.png)
 
-Панели обзора: **HTTP / S3** (RPS, счётчики, объём, latency, ошибки, топ бакетов), **Cluster (summary)** (общий статус, healthy/offline, HA leader), **Host** (диск, CPU, память, сеть, lag Postgres) и **Event delivery** (очередь, скорость доставки, задержка, перезапуски моста).
+Панели обзора: **HTTP / S3** (RPS, счётчики, объём, latency, ошибки, топ бакетов), **Cluster (summary)** (общий статус, healthy/offline, HA leader), **Host** (диск, CPU, память, сеть, lag Postgres), **Event delivery** (очередь, скорость доставки, задержка, перезапуски моста) и **KMS** (доступность Vault по узлам, латентность запросов, кэш DEK, фоновые задачи). Ряды KMS есть только пока включён Vault Transit, кроме `datasafe_kms_jobs_objects_total`, который появляется после первого обработанного объекта, и счётчиков классификации 1.5.0, которые регистрируются при старте процесса.
 
 Полный статус нод и erasure: дашборд **DataSafeS3 Cluster Status** (`deploy/docker/grafana/dashboards/datasafe-cluster.json`, uid `datasafe-cluster`).
 
@@ -45,6 +45,18 @@
 | `DataSafeEventSinkDegraded` | У любого получателя `datasafe_events_sink_degraded` равен 1 в течение 5 минут |
 | `DataSafeEventDeadIncreasing` | `datasafe_events_dead_total` вырос за последние 10 минут |
 | `DataSafeEventDroppedIncreasing` | `datasafe_events_dropped_total{reason="pending_cap"}` вырос за последние 10 минут |
+| `DataSafeKMSUnavailable` | `datasafe_kms_available` равен 0 дольше 1 минуты. Ряд публикуется только пока включён Vault Transit |
+
+## KMS
+
+Ряд **KMS** на том же дашборде обзора. Узел, на котором Vault не включён, не публикует `datasafe_kms_available`, гистограмму запросов и счётчики кэша. Снимайте метрики с каждого узла, чтобы `instance` был этим узлом.
+
+| Панель | Запрос |
+|--------|--------|
+| KMS available | `datasafe_kms_available` по `instance`. 1 — последняя проверка Vault на этом узле |
+| KMS latency | p50 и p95 `datasafe_kms_request_duration_seconds` по `instance`, `op` и `provider` |
+| DEK cache | `rate` счётчиков `datasafe_kms_dek_cache_hits_total` и `datasafe_kms_dek_cache_misses_total` |
+| KMS jobs | `rate` `datasafe_kms_jobs_objects_total` по `instance`, `job` и `result` |
 
 В журнале Activity строка `events_sink_degraded` пишется при первой настоящей ошибке получателя, а `events_sink_recovered` — когда соединение снова удалось. Повторы той же ошибки новых строк не добавляют. Фраза `waiting for first successful connection` — причина статуса до первой проверки; в Activity она не попадает. `events_outbox_dropped` — переполнение очереди. Эти действия есть в фильтре Activity в консоли. `POST /api/v1/events/test` только ставит проверочное событие в очередь.
 

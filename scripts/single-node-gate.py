@@ -135,6 +135,7 @@ def budget_result(samples: dict) -> tuple[bool, str]:
     start_ok = p_start <= start_limit
     rss_ok = p_rss <= rss_limit
     ok = start_ok and rss_ok
+    title = samples.get("title") or "Single-node resource budget"
 
     def fmt_s(ms: int) -> str:
         return f"{ms / 1000:.3f}"
@@ -142,7 +143,7 @@ def budget_result(samples: dict) -> tuple[bool, str]:
     rows = [
         "| image | runs | startup median | startup min | startup max | idle RSS median | RSS min | RSS max |",
         "|---|---:|---:|---:|---:|---:|---:|---:|",
-        _row(samples.get("baseline_image", "v1.4.1"), base_startup, base_rss),
+        _row(samples.get("baseline_image", "v1.5.0"), base_startup, base_rss),
         _row(samples.get("pr_image", "pr"), pr_startup, pr_rss),
         f"| limit |  | {fmt_s(start_limit)} s |  |  | {rss_limit} KiB |  |  |",
         f"| result |  | {'pass' if start_ok else 'FAIL'} (median {fmt_s(p_start)} s, baseline {fmt_s(b_start)} s) |  |  | {'pass' if rss_ok else 'FAIL'} (median {p_rss} KiB, baseline {b_rss} KiB) |  |  |",
@@ -150,7 +151,7 @@ def budget_result(samples: dict) -> tuple[bool, str]:
     note = (
         "Startup is container create until HTTP /healthz. "
         "Idle RSS is the median of three VmRSS samples of PID 1 after warm-up, "
-        "then the median across interleaved runs. "
+        "then the median across interleaved runs of the same metadata backend. "
         "Fail when PR startup median > baseline median + 1s, or PR RSS median > baseline + 10%."
     )
     ids = ""
@@ -159,7 +160,7 @@ def budget_result(samples: dict) -> tuple[bool, str]:
             f"\n\nBaseline id `{samples.get('baseline_id', '')}`  \n"
             f"PR id `{samples.get('pr_id', '')}`\n"
         )
-    body = "### Single-node resource budget\n\n" + "\n".join(rows) + "\n\n" + note + ids
+    body = f"### {title}\n\n" + "\n".join(rows) + "\n\n" + note + ids
     return ok, body
 
 
@@ -284,6 +285,23 @@ def self_test() -> None:
         }
     )
     assert edge  # exactly +1s and exactly +10% still pass
+
+    pg_slow, pg_text = budget_result(
+        {
+            "title": "Postgres resource budget",
+            "baseline": {"startup_ms": [300] * 5, "rss_kib": [1000] * 5},
+            "pr": {"startup_ms": [9000] * 5, "rss_kib": [1060] * 5},
+        }
+    )
+    assert not pg_slow and "Postgres resource budget" in pg_text, pg_text
+    pg_bad, _ = budget_result(
+        {
+            "title": "Postgres resource budget",
+            "baseline": {"startup_ms": [300] * 5, "rss_kib": [1000] * 5},
+            "pr": {"startup_ms": [300] * 5, "rss_kib": [1101] * 5},
+        }
+    )
+    assert not pg_bad
 
     print("single-node-gate self-test ok")
 

@@ -4,9 +4,59 @@
 
 Runbook для переноса объектов с **MinIO-совместимого** S3 endpoint на **DataSafeS3** Community Edition.
 
-> **Честно:** это не drop-in замена бинарника и не заявление о 100% совместимости API MinIO. Байты объектов переносятся стандартными S3 sync-инструментами. Пользователи IAM MinIO, группы и server-side policies **не** импортируются автоматически — перенесите их в пользователей, teams, tenants и bucket policies DataSafe.
+> **Честно:** это не drop-in замена бинарника и не заявление о 100% совместимости API MinIO. Байты объектов переносятся стандартными S3 sync-инструментами. `storage-cli migrate from-minio iam` переносит встроенных пользователей, группы и canned-политики. Секреты пользователей MinIO недоступны и не импортируются. Учётные записи LDAP и OIDC не импортируются: в отчёте это предупреждение и рекомендация настроить эти провайдеры на DataSafe.
 
-Архитектура: [ADR 0001](../../architecture/adr/0001-migration-kit.md) · Чеклист: `internal/migrate`.
+Архитектура: [ADR 0001](../../architecture/adr/0001-migration-kit.md) · [ADR 0007](../../architecture/adr/0007-minio-s3-copier.md) · Чеклист: `internal/migrate`.
+
+## Встроенное копирование
+
+`storage-cli migrate from-minio` копирует бакеты по S3 API. rclone и чеклист ниже остаются ручным путём. IAM — отдельная команда ниже.
+
+Порядок: бакет, versioning, конфигурация Object Lock, lifecycle и bucket policy. Lifecycle сохраняет expiration по префиксу в днях (`Filter/Prefix`, `Filter/And/Prefix` или старый `Prefix`). Transition, noncurrent, фильтр по тегу или expiration по дате не сохраняются, и прогон завершается с FAIL; правило не расширяется на весь бакет. Условие кроме `aws:SourceIp` и `aws:SecureTransport` отбрасывается и называется в отчёте. Версии и delete marker копируются в хронологическом порядке, поэтому marker остаётся между версиями. С версией копируются теги, user metadata, content-type, режим и дата retention и legal hold.
+
+Состояние — JSONL в `--state` (по умолчанию `./.minio-migrate-state`), сброс после каждого объекта. Повтор пропускает версию, если она есть в файле, если метаданные цели `x-amz-meta-datasafe-source-version` совпадают с version id источника, или, без `--sse`, если совпали ETag и размер. Ctrl+C безопасен. Та же команда продолжает копирование. Одна версия источника не пишется дважды.
+
+Ответ цели HTTP 503 `not cluster leader` повторяется с паузой. Несколько `--target` проверяются через `GET /healthz`; берётся узел с `is_leader: true`.
+
+`--sse AES256` или `--sse aws:kms --kms-key …` уходит в PUT на цель. Исходный SSE-KMS читается через S3 API. Шифрование бакета источника не копируется. Пустая конфигурация источника не выключает шифрование, которое уже включено на бакете цели. `CreateBucket` бакета, который уже принадлежит вызывающему, отвечает HTTP 409 и не меняет этот бакет. Ключи можно передать флагами, переменными `SOURCE_ACCESS_KEY` / `SOURCE_SECRET_KEY` / `TARGET_ACCESS_KEY` / `TARGET_SECRET_KEY` или файлами `--source-secret-file` и `--target-secret-file`. Каталог отчёта (`--report`, по умолчанию `./minio-migrate-report`) содержит `summary.md`, `evidence.json` (`verdicts`: PASS или FAIL) и `evidence.zip`. Проверки: число объектов, байты, порядок delete marker, ETag (multipart ETag или single-part ETag, который не равен MD5 открытого текста, например SSE-KMS, сравнивается по SHA-256 скачанного объекта, в том числе когда нет `x-amz-meta-datasafe-source-version`), режим Object Lock, дата retention и legal hold, выборка SHA-256 (`--verify-sample` проверяет хотя бы один объект; `--verify-full` считает отсутствующий объект расхождением) и `encryption`. Вердикт `encryption` — FAIL, если у бакета цели было шифрование по умолчанию и оно пропало, или скопированный объект записан без `x-amz-server-side-encryption`. Бакет цели читается один раз. Последователь пересылает запись лидеру.
+
+DataSafe отдаёт одну страницу `ListObjectVersions`. Копир запрашивает 100000 ключей. Страницы MinIO по 1000 читаются дальше.
+
+```bash
+storage-cli migrate from-minio \
+  --source http://minio.example:9000 \
+  --source-key "$SOURCE_ACCESS_KEY" \
+  --source-secret "$SOURCE_SECRET_KEY" \
+  --target http://datasafe.example:9000 \
+  --target-key "$TARGET_ACCESS_KEY" \
+  --target-secret "$TARGET_SECRET_KEY" \
+  --buckets my-bucket \
+  --verify-sample 10
+```
+
+**Настройки → Миграция** — мастер из трёх шагов: команда копирования объектов, команда IAM, затем локальный `evidence.json`. Учётные данные источника туда не отправляются и не сохраняются. Шифрование объектов на цели — [encryption.md](encryption.md).
+
+## IAM
+
+`storage-cli migrate from-minio iam` читает admin API MinIO (`/minio/admin/v3/`, те же вызовы, что у `mc admin`) ключами администратора источника. Группы читаются через `GET /groups` и `GET /group?group=`. Создаются пользователи DataSafe, teams и bucket policies. `--tenant` задаёт тенант. Бакет, которого ещё нет, называется в отчёте, и политика на него не пишется.
+
+Импортированные права S3 равны правам MinIO или уже. Allow, который нельзя применить точно, отбрасывается и помечается WARN. Deny с условием, которое нельзя проверить, сохраняется без этого условия и запрещает всегда; отчёт это называет. `aws:SourceIp` и `aws:SecureTransport` остаются в операторе и проверяются. `aws:SourceIp` — это TCP-адрес того, кто подключился к DataSafe. За балансировщиком это адрес балансировщика, поэтому CIDR клиента не совпадает, а клиентский `X-Forwarded-For` игнорируется. `STORAGE_TRUSTED_PROXIES` — CIDR балансировщиков через запятую: только от них берётся клиент из `X-Forwarded-For`. Политика на все бакеты (`*`) не копируется. Service account со своей политикой не получает Allow родителя, которых в этой политике нет. Отключённый или уже просроченный service account ключ не получает. Будущий срок записывается в новый ключ. `GET /` (`s3:ListAllMyBuckets`) — HTTP 403 AccessDenied только когда ключ не владеет бакетом, не имеет гранта и ни одна политика не разрешает `s3:ListAllMyBuckets`. Владелец и обладатель гранта перечисляют эти бакеты и бакеты, которые политика делает видимыми для ключа, даже если другая политика называет ключ и не разрешает это действие. Администратор, оператор и корневой ключ перечисляют все бакеты. Импортированный ключ без своих бакетов, без гранта и без Allow `s3:ListAllMyBuckets` получает HTTP 403, как MinIO, а не пустой 200. Консоль берёт список через Admin API. Политика на бакет, которого на этом сервере нет, — WARN; этот бакет не проверяется, а вердикты policies и access остаются PASS, если существующие бакеты записаны и прошедшие проверки успешны. Импорт не записывает grants бакета, поэтому уже выданное право остаётся. Повторный запуск дополняет bucket policy и не удаляет уже записанные операторы. Действия, ресурсы и условия сортируются перед сравнением, поэтому тот же оператор не дописывается снова и повторный запуск оставляет политику байт в байт той же.
+
+MinIO не отдаёт секрет пользователя, пригодный для этого импорта. Команда генерирует пароль и ключ доступа и пишет их в `--keys-file` (по умолчанию `./minio-iam-keys.json`). Режим файла 0600. В Windows команда ставит ACL только для владельца и пишет WARN, если ACL поставить нельзя. Повторный запуск сохраняет секреты, которые уже лежат в файле, и дописывает недостающие ключи; файл не заменяется пустыми паролями. `--keep-access-keys FILE` берёт `username`, `access_key` и `secret_key` из файла оператора. Секрет service account недоступен: отчёт так и говорит, и для включённого непросроченного аккаунта родительскому пользователю выпускается новый ключ. Пользователи LDAP и OIDC — только WARN: эти провайдеры настраиваются на DataSafe отдельно. Политика группы разворачивается на ключи участников только пока группа включена, потому что у bucket policy DataSafe нет principal группы. Участник отключённой группы на MinIO не получает ни одного разрешения, включая собственную политику пользователя. Импорт отбрасывает эти Allow и записывает безусловный Deny на каждый именованный бакет. Если такой Deny некуда прикрепить, ключ пользователю не выдаётся и в отчёте WARN. Это предупреждение не валит импорт. Отчёт называет статус каждой группы и применена ли её политика, а также отключение, срок и сужение inline-политики каждого service account.
+
+Несколько `--target` проверяются через `GET /healthz`. Запись с HTTP 503 `not cluster leader` и цель, которая перестала отвечать, повторяются. Команда проверяет каждый `--target` через `GET /healthz` и продолжает на новом лидере. Каждый ключ пишется в файл ключей сразу после выпуска. Allow `ListBucket` с `aws:SourceIp` проверяется с этого хоста; HTTP 403 — это PASS, если хост вне условия. Вход на цель — `--target-admin-user` и `--target-admin-password` (или `TARGET_ADMIN_USER` / `TARGET_ADMIN_PASSWORD`). Каталог отчёта (`--report`, по умолчанию `./minio-iam-report`) содержит `summary.md` и `evidence.json`. Вердикты: users, groups, policies, access. Access — подписанный `ListBucket` новым ключом.
+
+```bash
+storage-cli migrate from-minio iam \
+  --source http://minio.example:9000 \
+  --source-key "$SOURCE_ACCESS_KEY" \
+  --source-secret "$SOURCE_SECRET_KEY" \
+  --target http://datasafe.example:9000 \
+  --target-admin-user "$TARGET_ADMIN_USER" \
+  --target-admin-password "$TARGET_ADMIN_PASSWORD" \
+  --keys-file ./minio-iam-keys.json \
+  --report ./minio-iam-report
+```
 
 ---
 
@@ -133,10 +183,14 @@ pwsh -File scripts/migrate/minio-cutover-smoke.ps1 `
 ## 11. FAQ
 
 **Можно ли автоматически импортировать пользователей MinIO?**  
-Нет. Создайте пользователей/teams/tenants DataSafe и новые S3-ключи.
+`storage-cli migrate from-minio iam` переносит встроенных пользователей, группы и canned-политики. Секреты MinIO не копируются. LDAP и OIDC — предупреждения. Мастер в консоли только печатает команду.
 
 **Нужен ли Gateway?**  
 Нет. Предпочтителен параллельный sync + cutover.
 
 **Trusted clusters?**  
 Когда **оба** сайта — DataSafeS3 — [trusted-clusters.md](./trusted-clusters.md). Для MinIO как source используйте этот гайд (rclone/aws).
+
+## 12. AIStor Free
+
+MinIO OSS (AGPLv3) больше не сопровождается. Текущий продукт — AIStor. Что входит в Free и что он отклоняет, написано у вендора, не в кратком пересказе: [licenses](https://docs.min.io/aistor/operations/licenses/) и [pricing](https://www.min.io/pricing). На странице лицензий шифрование на диске и репликация указаны только для Enterprise Lite и Enterprise. То же сравнение для шифрования объектов — в [encryption.md](encryption.md#aistor-free).

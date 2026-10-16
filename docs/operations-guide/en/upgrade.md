@@ -362,6 +362,45 @@ docker compose --profile postgres up -d
 
 Pull the `v1.5.0` server and console images. Do not `docker compose build` for this upgrade. Confirm `GET /healthz` returns `"version":"1.5.0"` and a `commit`, and `GET /` on the console port returns the SPA (`id="root"`). On a 3-node lab, delete `.env.erasure` and `.env.site-a` before recreating those stands.
 
+**Known issue, fixed in 1.6.0.** On 1.5.x, `STORAGE_SSE_MASTER_KEY` breaks object writes. The backend compares the plaintext `Content-Length` with the longer ciphertext and returns a size mismatch, so no SSE object is stored. Do not set the variable on 1.5.x. 1.6.0 writes a format-1 envelope and reports the plaintext size. Objects created on 1.5.x without the key stay plaintext when 1.6.0 starts with a key, including zip, gzip, jpeg, and other binary files. 1.5.0 did not record whether an object was encrypted. 1.6.0 classifies each unmarked object once: it tries the server key, stores `plaintext: true` when the tag does not match, and stores format 0 when it does. Startup walks the unmarked set in the background. A read before that walk classifies that object and then serves it. Later reads use the marker and do not guess. Plaintext is streamed from the file. A format-0 object that authenticated and is later changed is HTTP 500 `cipher: message authentication failed`, and the connection is closed. A blob that has never authenticated is not treated as ciphertext. That includes a 1.5.0 SSE object whose bytes were changed before the first 1.6.0 read: classification stores `plaintext: true` and GET returns the stored bytes, which are ciphertext. Fail-closed applies after a classification has succeeded, and to every format-1 object. The first read of a large unmarked object authenticates the whole file before the body is sent, about 11 seconds per 2GB, and then streams. The startup walk does that work in the background. Until it finishes, a GET of an object still unmarked pays the same cost. Progress is the log lines `legacy classification started`, `legacy classification progress`, `legacy classification reading object` (objects of 32MB or more), and `legacy classification finished`. The same decisions are `datasafe_kms_legacy_classify_objects_total` (`result` is `plaintext`, `format0`, `skipped`, or `error`) and `datasafe_kms_legacy_classify_current_bytes` while a large object is being read. Those series are registered at process start at zero (`result` is plaintext, format0, skipped, or error, and `current_bytes` is 0) and then increment as objects are classified. Vault request metrics stay unpublished until Vault is used. `STORAGE_SSE_LEGACY_FORMAT0` does not force that reader onto every unmarked object; the result is the same with the variable set or unset. A format-1 object written by 1.6.0 is authenticated before HTTP 200. A changed byte is the same 500. GET does not answer 200 and then leave the connection open with an empty body.
+
+## Upgrading to v1.6.0
+
+`VERSION`, the installers, Compose, and Helm are **1.6.0**. Images `ghcr.io/direktorbani/datasafe-storage-server:v1.6.0` and `datasafe-console:v1.6.0` appear when `release.yml` runs on the git tag. This commit does not push that tag. A Docker build with no `VERSION` argument reads the `VERSION` file.
+
+**Fixed, and it was in v1.5.0.** An unversioned object overwrite on Postgres ran `DELETE FROM objects` and `INSERT` as two autocommit statements. A crash between them deleted the metadata row and left the file on disk. 1.6.0 runs both statements in one transaction. The previous row remains. A rewrap job whose present count is short of the count taken at the start finishes `completed_with_errors`, not `completed`.
+
+**Tracked, not fixed.** S3 `GET` of a file that is already on this node's disk does not compare the bytes with the stored ETag. A corrupted local copy is HTTP 200. Peer intake checks the ETag. See [encryption.md](encryption.md).
+
+Update every storage node to 1.6.0 before you enable bucket encryption. A 1.5.0 process cannot read a format-1 object (`DSSE`). A live 1.5.0 peer makes a 1.6.0 encryption change HTTP 409 `cluster upgrade in progress`. That gate exists only in 1.6.0. A 1.5.0 leader runs 1.5.0 code and accepts `PutBucketEncryption` itself, so do not leave the call on the last old node. Finish the rolling upgrade first, then turn encryption on.
+
+## Mixed cluster
+
+HTTP 409 `cluster_upgrade` (`cluster upgrade in progress`) is returned by a 1.6.0 node while any live 1.5.0 peer is still in the cluster. The check does not require `system_config` → `cluster.nodes`. A rolling upgrade does not have to register the old nodes there.
+
+| What is visible | 409 |
+|---|---|
+| Heartbeat in `cluster_node_heartbeats` whose version is below 1.6.0, or a non-blank version that does not parse as 1.6.0 or newer | Yes. An unknown version is treated as older than 1.6.0. A blank version left by an address registration is not a version. |
+| Unexpired HA leader lease `ha_leader_lock` (`lock_id=storage-server`, `holder_id`, `acquired_at`, `expires_at`) whose `holder_id` has no 1.6.0 heartbeat | Yes. This is the 1.5.0 leader. |
+| Recent row in `ha_leader_attempts` whose `holder_id` has no 1.6.0 heartbeat | Yes. This is a live 1.5.0 follower. |
+| Cluster registry node whose `GET /healthz` is `"status":"ok"` and `"version":"1.5.0"`, or a healthy registry node with an empty version | Yes, when that list is populated. An unreachable registry entry does not block. |
+
+1.5.0 does not write `cluster_node_heartbeats`. A follower retries the same lease `INSERT` as the leader (`TryAcquireLeader`). While the lease is held the `WHERE` clause does not match, so `ha_leader_lock` stays with the leader. Migration `030` adds `ha_leader_attempts` and a `BEFORE INSERT` trigger on `ha_leader_lock`. That trigger runs for the follower statement and stores `holder_id` even when the update is skipped. A 1.6.0 peer that retries the lease also appears there, and its heartbeat is at least 1.6.0, so it does not block. A stopped node leaves the two-minute window.
+
+While the gate is on, a PUT with no encryption header stays plaintext. SSE-S3 requested in that window is format 0, which a 1.5.0 reader with the same server key can open. SSE-KMS is HTTP 409.
+
+On Postgres or HA, the console asks you to check **All nodes are upgraded to 1.6.0** before it sends the admin `PUT`. S3 `PutBucketEncryption` has no such checkbox. It uses the same 409 rules as the table. Do not enable encryption until every node is 1.6.0. A 1.5.0 leader runs 1.5.0 code and accepts `PutBucketEncryption` itself, so the call has to reach a 1.6.0 process.
+
+`GET /healthz` on a 1.6.0 process reports at least `1.6.0`, including when the image stamp still says 1.5.0. A stopped 1.5.0 leader drops its lease within about 30 seconds.
+
+If `STORAGE_SSE_MASTER_KEY` was set and a later start clears it, the process refuses to start. The error says the key is missing and to set `STORAGE_SSE_MASTER_KEY` to the original key. A different value still reports `SSE master key fingerprint mismatch`.
+
+Vault Transit stays off until `STORAGE_KMS_PROVIDER=vault-transit` and an address are both set, in the environment or under Settings → Vault (KMS). With those empty, the process does not open a Vault connection. SSE-S3 keeps using the server key and does not call Vault. See [kms-vault.md](kms-vault.md).
+
+## Cluster KMS gate
+
+`bash scripts/ha/run-kms-cluster-test.sh` starts Postgres, three storage nodes, Vault dev with one AppRole per node, MinIO, a webhook receiver, and a load balancer. Ports stay off `:9000` and `:9001`. The run writes `summary.md` and `evidence.json` and exits non-zero when any verdict is FAIL. CI runs the same script as `cluster-kms-gate`. It does not change the single-node RSS or startup limits.
+
 ## Checklist
 
 - [ ] Backup metadata and objects
@@ -374,3 +413,6 @@ Pull the `v1.5.0` server and console images. Do not `docker compose build` for t
 - [ ] v1.1.0: remove `STORAGE_OUTBOUND_HTTP_ALLOW`; configure `STORAGE_METRICS_TOKEN` + Prometheus bearer if used
 - [ ] v1.4.1: `STORAGE_DEV` is false unless you opted in; installer or `.env` has `STORAGE_METRICS_TOKEN`; Prometheus scrape still works
 - [ ] v1.5.0: `docker compose pull` the `v1.5.0` server and console images (do not build them); delete old `.env.erasure` / `.env.site-a` if those labs should use the new ports; leave `STORAGE_KAFKA_BROKERS` empty unless you want the external feed
+- [ ] v1.6.0: upgrade every node before enabling encryption. 409 covers a 1.5.0 leader and a live 1.5.0 follower (lease attempt, unknown version treated as old). `cluster.nodes` is not required. A 1.5.0 leader accepts its own `PutBucketEncryption` when the call reaches that process. On Postgres or HA, check “All nodes are upgraded to 1.6.0” in the console. S3 `PutBucketEncryption` has no checkbox.
+- [ ] v1.6.0: leave Vault unset unless you use it. The client starts only when `STORAGE_KMS_PROVIDER=vault-transit` and an address are both set. SSE-S3 does not call Vault. See [kms-vault.md](kms-vault.md).
+- [ ] v1.6.0: a 1.5.0 SSE object changed before its first 1.6.0 read is returned as stored. Large unmarked objects are slow on the first read until background classification finishes (`datasafe_kms_legacy_classify_objects_total`).

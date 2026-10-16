@@ -2,10 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"sort"
 	"strings"
 
+	"github.com/DirektorBani/datasafe/internal/api/s3"
 	"github.com/DirektorBani/datasafe/internal/auth"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 )
@@ -135,7 +137,7 @@ func (s *Server) handleListBucketSettings(w http.ResponseWriter, r *http.Request
 		}
 		out = append(out, settingsRow{
 			Name: b.Name, Owner: b.Owner, Description: b.Description,
-			Versioning: b.Versioning, VersioningSuspended: b.VersioningSuspended,
+			Versioning: versioningEnabledReported(b), VersioningSuspended: versioningSuspendedReported(b),
 			ObjectLock: b.ObjectLock, RetentionDays: b.RetentionDays, RetentionMode: mode,
 			StorageClass: b.StorageClass, TenantID: b.TenantID, Visibility: vis,
 			MaxSizeBytes: b.MaxSizeBytes, MaxObjects: b.MaxObjects,
@@ -173,6 +175,16 @@ func (s *Server) handleUpdateBucketSettings(w http.ResponseWriter, r *http.Reque
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
 		return
+	}
+	compliance := req.RetentionMode != nil && strings.EqualFold(*req.RetentionMode, "COMPLIANCE")
+	if compliance || (req.RetentionDays != nil && strings.EqualFold(rec.RetentionMode, "COMPLIANCE")) {
+		if !s.allowDangerous(w, r, auth.ActionComplianceRetention, name) {
+			return
+		}
+	} else if req.ObjectLock != nil {
+		if !s.allowDangerous(w, r, auth.ActionObjectLockConfig, name) {
+			return
+		}
 	}
 	rec.Description = req.Description
 	lockChanged := false
@@ -223,9 +235,21 @@ func (s *Server) handleUpdateBucketSettings(w http.ResponseWriter, r *http.Reque
 	if req.StorageClass != "" {
 		rec.StorageClass = req.StorageClass
 	}
+	if req.RetentionMode != nil && strings.EqualFold(*req.RetentionMode, "COMPLIANCE") && !s.isBucketAdmin(info, rec) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
+		return
+	}
 	if req.Visibility != "" {
 		if err := s.applyBucketVisibilityPolicy(info, name, req.Visibility); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			if errors.Is(err, errPublicKMS) {
+				writeJSON(w, http.StatusConflict, map[string]any{"error": "public_kms_conflict", "message": s3.MsgPublicKMS})
+				return
+			}
+			status := http.StatusInternalServerError
+			if errors.Is(err, errSharingForbidden) || errors.Is(err, errPublicBlocked) {
+				status = http.StatusForbidden
+			}
+			writeJSON(w, status, map[string]any{"error": err.Error()})
 			return
 		}
 		rec, _ = s.meta.GetBucket(name)
@@ -239,6 +263,14 @@ func (s *Server) handleUpdateBucketSettings(w http.ResponseWriter, r *http.Reque
 	if req.LifecycleRules != nil {
 		rec.LifecycleRules = req.LifecycleRules
 	}
+	if rec.ObjectLock {
+		if (req.Versioning != nil && !*req.Versioning) || (req.VersioningSuspended != nil && *req.VersioningSuspended) {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "object lock requires versioning to stay enabled"})
+			return
+		}
+		rec.Versioning = true
+		rec.VersioningSuspended = false
+	}
 	if err := s.meta.UpdateBucket(rec); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -251,4 +283,19 @@ func (s *Server) handleUpdateBucketSettings(w http.ResponseWriter, r *http.Reque
 		s.logActivity(r, metadata.ActionVersioningChanged, "bucket", name)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "bucket": rec.Name})
+}
+
+// Object Lock keeps versioning Enabled. The stored Suspended flag is not what clients see.
+func versioningEnabledReported(rec metadata.BucketRecord) bool {
+	if rec.ObjectLock {
+		return true
+	}
+	return rec.Versioning
+}
+
+func versioningSuspendedReported(rec metadata.BucketRecord) bool {
+	if rec.ObjectLock {
+		return false
+	}
+	return rec.VersioningSuspended
 }

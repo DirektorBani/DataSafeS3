@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"context"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/events"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/observability"
 	"github.com/DirektorBani/datasafe/internal/storage"
@@ -19,9 +21,23 @@ import (
 // user is a display name (access-key owner username when known).
 type ActivityHook func(user, ip, action, resourceType, resourceName string)
 
+// PresignDecryptHook records a presigned GET that decrypted or refused a sealed object.
+// result is "ok", "key_destroyed", or "kms_unavailable".
+type PresignDecryptHook func(ctx context.Context, user, ip, bucket, key, keyID, tenant, result string, keyVersion int)
+
+// PublicReadHook records an anonymous GET (plaintext, SSE-S3, or a KMS refusal).
+// result is "ok", "public_blocked", or "kms_public".
+type PublicReadHook func(ctx context.Context, ip, bucket, key, result, keyID string, keyVersion int)
+
+// PresignBlockedHook records a presigned GET refused because sharing is off.
+type PresignBlockedHook func(ctx context.Context, accessKey, ip, bucket, reason string)
+
 type Handler struct {
-	Svc        *Service
-	OnActivity ActivityHook
+	Svc              *Service
+	OnActivity       ActivityHook
+	OnPresignDecrypt PresignDecryptHook
+	OnPublicRead     PublicReadHook
+	OnPresignBlocked PresignBlockedHook
 }
 
 func NewHandler(svc *Service) *Handler {
@@ -55,6 +71,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if key == "" {
 		switch r.Method {
 		case http.MethodPut:
+			if q.Has("encryption") {
+				h.putBucketEncryption(w, r, bucket)
+				return
+			}
+			if q.Has("policy") {
+				h.putBucketPolicy(w, r, bucket)
+				return
+			}
 			if q.Has("versioning") {
 				h.putBucketVersioning(w, r, bucket)
 				return
@@ -73,12 +97,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			h.createBucket(w, r, bucket)
 		case http.MethodDelete:
+			if q.Has("encryption") {
+				h.deleteBucketEncryption(w, r, bucket)
+				return
+			}
+			if q.Has("policy") {
+				h.deleteBucketPolicy(w, r, bucket)
+				return
+			}
 			if q.Has("notification") {
 				h.deleteBucketNotification(w, r, bucket)
 				return
 			}
 			h.deleteBucket(w, r, bucket)
 		case http.MethodGet:
+			if q.Has("encryption") {
+				h.getBucketEncryption(w, r, bucket)
+				return
+			}
 			if q.Has("versioning") {
 				h.getBucketVersioning(w, r, bucket)
 				return
@@ -95,8 +131,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				h.getBucketNotification(w, r, bucket)
 				return
 			}
+			if q.Has("policy") {
+				h.getBucketPolicy(w, r, bucket)
+				return
+			}
 			if q.Has("versions") {
 				h.listObjectVersions(w, r, bucket, q)
+				return
+			}
+			if q.Has("location") {
+				h.getBucketLocation(w, r, bucket)
+				return
+			}
+			if q.Has("uploads") {
+				h.listMultipartUploads(w, r, bucket, q)
 				return
 			}
 			h.listObjects(w, r, bucket, q)
@@ -173,6 +221,8 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request) (auth.Cre
 	creds, err := h.Svc.Signer.Authenticate(r)
 	if err != nil {
 		switch err {
+		case auth.ErrUnsignedHeaders:
+			writeError(w, r, http.StatusBadRequest, "AccessDenied", "There were headers present in the request which were not signed")
 		case auth.ErrMissingAuth, auth.ErrInvalidAuth, auth.ErrSignatureMismatch:
 			writeError(w, r, http.StatusForbidden, "AccessDenied", "access denied")
 		case auth.ErrExpired:
@@ -186,7 +236,7 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request) (auth.Cre
 }
 
 func (h *Handler) authorize(w http.ResponseWriter, r *http.Request, creds auth.Credentials, bucket, key, action string) bool {
-	if !h.Svc.Authorize(bucket, key, action, creds.AccessKey) {
+	if !h.Svc.AuthorizeRequest(bucket, key, action, creds.AccessKey, requestSourceIP(r), r.TLS != nil) {
 		writeError(w, r, http.StatusForbidden, "AccessDenied", "access denied")
 		return false
 	}
@@ -237,6 +287,9 @@ func (h *Handler) putBucketVersioning(w http.ResponseWriter, r *http.Request, bu
 	}
 	enabled := strings.EqualFold(cfg.Status, "Enabled")
 	suspended := strings.EqualFold(cfg.Status, "Suspended")
+	if suspended && h.denyAdminS3WithoutMFA(w, r, creds.AccessKey) {
+		return
+	}
 	status := "Suspended"
 	if enabled {
 		status = "Enabled"
@@ -282,16 +335,20 @@ func (h *Handler) putBucketLifecycle(w http.ResponseWriter, r *http.Request, buc
 	if !h.authorize(w, r, creds, bucket, "", "s3:PutLifecycleConfiguration") {
 		return
 	}
-	var cfg LifecycleConfiguration
-	if err := xml.NewDecoder(r.Body).Decode(&cfg); err != nil {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
 		writeError(w, r, http.StatusBadRequest, "MalformedXML", "invalid xml")
+		return
+	}
+	rules, err := parseLifecycleXML(raw)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "InvalidArgument", err.Error())
 		return
 	}
 	sk, ok := h.storageBucket(w, r, creds, bucket)
 	if !ok {
 		return
 	}
-	rules := lifecycleRulesFromXML(cfg)
 	if err := h.Svc.SetBucketLifecycle(sk, rules); err != nil {
 		mapErr(w, r, err)
 		return
@@ -338,8 +395,8 @@ func (h *Handler) createBucket(w http.ResponseWriter, r *http.Request, bucket st
 		return
 	}
 	if _, brec, err := h.Svc.ResolveBucketKey(creds.AccessKey, bucket); err == nil {
+		changed := false
 		if ak, aerr := h.Svc.Meta.GetAccessKey(creds.AccessKey); aerr == nil {
-			changed := false
 			if brec.OwnerID == "" && ak.OwnerID != "" {
 				brec.OwnerID = ak.OwnerID
 				changed = true
@@ -360,13 +417,25 @@ func (h *Handler) createBucket(w http.ResponseWriter, r *http.Request, bucket st
 					}
 				}
 			}
-			if changed {
-				_ = h.Svc.Meta.UpdateBucket(brec)
-			}
+		}
+		// x-amz-bucket-object-lock-enabled is only honored at creation. AWS then
+		// keeps versioning Enabled; a later PutObjectLockConfiguration is not required.
+		if objectLockHeaderOn(r) {
+			brec.ObjectLock = true
+			brec.Versioning = true
+			brec.VersioningSuspended = false
+			changed = true
+		}
+		if changed {
+			_ = h.Svc.Meta.UpdateBucket(brec)
 		}
 	}
 	w.Header().Set("Location", "/"+bucket)
 	w.WriteHeader(http.StatusOK)
+}
+
+func objectLockHeaderOn(r *http.Request) bool {
+	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Amz-Bucket-Object-Lock-Enabled")), "true")
 }
 
 func (h *Handler) deleteBucket(w http.ResponseWriter, r *http.Request, bucket string) {
@@ -375,6 +444,9 @@ func (h *Handler) deleteBucket(w http.ResponseWriter, r *http.Request, bucket st
 		return
 	}
 	if !h.authorize(w, r, creds, bucket, "", "s3:DeleteBucket") {
+		return
+	}
+	if h.denyAdminS3WithoutMFA(w, r, creds.AccessKey) {
 		return
 	}
 	sk, ok := h.storageBucket(w, r, creds, bucket)
@@ -386,6 +458,34 @@ func (h *Handler) deleteBucket(w http.ResponseWriter, r *http.Request, bucket st
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// getBucketLocation answers ?location. An object listing is not a region:
+// minio-go reads this before PUT and would put that XML into Authorization.
+func (h *Handler) getBucketLocation(w http.ResponseWriter, r *http.Request, bucket string) {
+	creds, ok := h.authenticate(w, r)
+	if !ok {
+		return
+	}
+	if !h.authorize(w, r, creds, bucket, "", "s3:GetBucketLocation") {
+		return
+	}
+	if _, ok := h.storageBucket(w, r, creds, bucket); !ok {
+		return
+	}
+	region := h.Svc.Region
+	// us-east-1 is the empty constraint. Any other region is the element text.
+	text := region
+	if region == "" || region == "us-east-1" {
+		text = ""
+	}
+	writeXML(w, http.StatusOK, locationConstraint{Xmlns: xmlNS, Region: text})
+}
+
+type locationConstraint struct {
+	XMLName xml.Name `xml:"LocationConstraint"`
+	Xmlns   string   `xml:"xmlns,attr"`
+	Region  string   `xml:",chardata"`
 }
 
 func (h *Handler) headBucket(w http.ResponseWriter, r *http.Request, bucket string) {
@@ -426,34 +526,78 @@ func (h *Handler) listObjects(w http.ResponseWriter, r *http.Request, bucket str
 	} else {
 		prefix = eff
 	}
-	maxKeys := 1000
-	if mk := first(q["max-keys"]); mk != "" {
-		if n, err := strconv.Atoi(mk); err == nil && n > 0 {
-			maxKeys = n
+	maxKeys := parseMaxKeys(first(q["max-keys"]))
+	v2 := first(q["list-type"]) == "2"
+	start := first(q["marker"])
+	if v2 {
+		if tok := first(q["continuation-token"]); tok != "" {
+			start = tok
+		} else {
+			start = first(q["start-after"])
 		}
 	}
-	objs, err := h.Svc.ListObjects(r.Context(), sk, prefix, maxKeys)
+	objs, truncated, next, err := h.listObjectPage(sk, prefix, start, maxKeys)
 	if err != nil {
 		mapErr(w, r, err)
 		return
 	}
 	objs = h.Svc.FilterObjectsForAccessKey(creds.AccessKey, sk, objs)
-	resp := ListObjectsV2Result{
+	contents := h.objectInfos(sk, objs)
+	if v2 {
+		resp := ListObjectsV2Result{
+			Xmlns:       xmlNS,
+			Name:        bucket,
+			Prefix:      prefix,
+			KeyCount:    len(contents),
+			MaxKeys:     maxKeys,
+			IsTruncated: truncated,
+			Contents:    contents,
+		}
+		if tok := first(q["continuation-token"]); tok != "" {
+			resp.ContinuationToken = tok
+		}
+		if truncated {
+			resp.NextContinuationToken = next
+		}
+		writeXML(w, http.StatusOK, resp)
+		return
+	}
+	resp := ListBucketResult{
 		Xmlns:       xmlNS,
 		Name:        bucket,
 		Prefix:      prefix,
-		KeyCount:    len(objs),
+		Marker:      first(q["marker"]),
 		MaxKeys:     maxKeys,
-		IsTruncated: false,
+		IsTruncated: truncated,
+		Contents:    contents,
 	}
+	if truncated {
+		resp.NextMarker = next
+	}
+	writeXML(w, http.StatusOK, resp)
+}
+
+func (h *Handler) listObjectPage(bucket, prefix, start string, maxKeys int) ([]metadata.ObjectRecord, bool, string, error) {
+	if maxKeys == 0 {
+		probe, _, _, err := h.Svc.Meta.ListObjectsPage(bucket, prefix, start, 1)
+		if err != nil {
+			return nil, false, "", err
+		}
+		return nil, len(probe) > 0, "", nil
+	}
+	return h.Svc.Meta.ListObjectsPage(bucket, prefix, start, maxKeys)
+}
+
+func (h *Handler) objectInfos(storageKey string, objs []metadata.ObjectRecord) []ObjectInfo {
+	out := make([]ObjectInfo, 0, len(objs))
 	for _, o := range objs {
 		sc := metadata.S3StorageClassDisplay(o.StorageClass)
 		if sc == metadata.StorageClassStandard {
-			if brec, err := h.Svc.Meta.GetBucketByKey(sk); err == nil && brec.StorageClass != "" {
+			if brec, err := h.Svc.Meta.GetBucketByKey(storageKey); err == nil && brec.StorageClass != "" {
 				sc = metadata.S3StorageClassDisplay(brec.StorageClass)
 			}
 		}
-		resp.Contents = append(resp.Contents, ObjectInfo{
+		out = append(out, ObjectInfo{
 			Key:          o.Key,
 			LastModified: formatTime(o.LastModified),
 			ETag:         o.ETag,
@@ -462,7 +606,21 @@ func (h *Handler) listObjects(w http.ResponseWriter, r *http.Request, bucket str
 			VersionID:    o.VersionID,
 		})
 	}
-	writeXML(w, http.StatusOK, resp)
+	return out
+}
+
+func parseMaxKeys(raw string) int {
+	if raw == "" {
+		return 1000
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return 1000
+	}
+	if n > 1000 {
+		return 1000
+	}
+	return n
 }
 
 func (h *Handler) listObjectVersions(w http.ResponseWriter, r *http.Request, bucket string, q map[string][]string) {
@@ -484,38 +642,89 @@ func (h *Handler) listObjectVersions(w http.ResponseWriter, r *http.Request, buc
 	} else {
 		prefix = eff
 	}
-	maxKeys := 1000
-	if mk := first(q["max-keys"]); mk != "" {
-		if n, err := strconv.Atoi(mk); err == nil && n > 0 {
-			maxKeys = n
-		}
-	}
-	objs, err := h.Svc.ListObjectVersions(r.Context(), sk, prefix, maxKeys)
+	maxKeys := parseMaxKeys(first(q["max-keys"]))
+	objs, err := h.Svc.ListObjectVersions(r.Context(), sk, prefix, 0)
 	if err != nil {
 		mapErr(w, r, err)
 		return
 	}
 	objs = h.Svc.FilterObjectsForAccessKey(creds.AccessKey, sk, objs)
-	resp := ListObjectVersionsResult{
-		Xmlns:       xmlNS,
-		Name:        bucket,
-		Prefix:      prefix,
-		KeyCount:    len(objs),
-		MaxKeys:     maxKeys,
-		IsTruncated: false,
+	// The list is newest-first within a key. That first row is IsLatest,
+	// including when it is a delete marker. GetObject hides delete markers,
+	// so it cannot answer this.
+	type latestMark struct {
+		id     string
+		marker bool
 	}
+	latest := map[string]latestMark{}
 	for _, o := range objs {
-		sc := metadata.S3StorageClassDisplay(o.StorageClass)
-		resp.Versions = append(resp.Versions, ObjectInfo{
+		if _, ok := latest[o.Key]; ok {
+			continue
+		}
+		latest[o.Key] = latestMark{id: o.VersionID, marker: o.IsDeleteMarker}
+	}
+	page, truncated, nextKey, nextVid := pageVersions(objs, first(q["key-marker"]), first(q["version-id-marker"]), maxKeys)
+	resp := ListObjectVersionsResult{
+		Xmlns:               xmlNS,
+		Name:                bucket,
+		Prefix:              prefix,
+		KeyMarker:           first(q["key-marker"]),
+		VersionIDMarker:     first(q["version-id-marker"]),
+		KeyCount:            len(page),
+		MaxKeys:             maxKeys,
+		IsTruncated:         truncated,
+		NextKeyMarker:       nextKey,
+		NextVersionIDMarker: nextVid,
+	}
+	for _, o := range page {
+		entry := VersionEntry{
 			Key:          o.Key,
-			LastModified: formatTime(o.LastModified),
+			LastModified: o.LastModified.UTC().Format(time.RFC3339Nano),
 			ETag:         o.ETag,
 			Size:         o.Size,
-			StorageClass: sc,
+			StorageClass: metadata.S3StorageClassDisplay(o.StorageClass),
 			VersionID:    o.VersionID,
-		})
+		}
+		if mark, ok := latest[o.Key]; ok && mark.id == o.VersionID && mark.marker == o.IsDeleteMarker {
+			entry.IsLatest = true
+		}
+		resp.Items = append(resp.Items, orderedEntry{DeleteMarker: o.IsDeleteMarker, Entry: entry})
 	}
 	writeXML(w, http.StatusOK, resp)
+}
+
+func pageVersions(objs []metadata.ObjectRecord, keyMarker, versionMarker string, maxKeys int) (page []metadata.ObjectRecord, truncated bool, nextKey, nextVid string) {
+	start := 0
+	if keyMarker != "" {
+		start = len(objs)
+		for i, o := range objs {
+			if o.Key < keyMarker {
+				continue
+			}
+			if o.Key > keyMarker {
+				start = i
+				break
+			}
+			if versionMarker == "" {
+				continue
+			}
+			if o.VersionID == versionMarker {
+				start = i + 1
+				break
+			}
+		}
+	}
+	rest := objs[start:]
+	if len(rest) > maxKeys {
+		truncated = true
+		rest = rest[:maxKeys]
+	}
+	if truncated && len(rest) > 0 {
+		last := rest[len(rest)-1]
+		nextKey = last.Key
+		nextVid = last.VersionID
+	}
+	return rest, truncated, nextKey, nextVid
 }
 
 func (h *Handler) validObjectKey(w http.ResponseWriter, r *http.Request, key string) bool {
@@ -534,6 +743,9 @@ func (h *Handler) putObject(w http.ResponseWriter, r *http.Request, bucket, key 
 	if !h.validObjectKey(w, r, key) {
 		return
 	}
+	if h.rejectBlockedPresign(w, r, creds, bucket) {
+		return
+	}
 	if !h.authorize(w, r, creds, bucket, key, "s3:PutObject") {
 		return
 	}
@@ -545,12 +757,22 @@ func (h *Handler) putObject(w http.ResponseWriter, r *http.Request, bucket, key 
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
-	size := r.ContentLength
-	rec, err := h.Svc.PutObject(WithObjectEvents(r.Context()), sk, key, r.Body, size, contentType, userMetadata(r.Header))
+	body, size, chunkErr := auth.UnwrapAWSChunked(r, creds.SecretKey)
+	if chunkErr != nil {
+		mapErr(w, r, chunkErr)
+		return
+	}
+	ctx, sseErr := ctxWithSSE(WithObjectEvents(r.Context()), r)
+	if sseErr != nil {
+		writeError(w, r, http.StatusBadRequest, "InvalidArgument", "SSEAlgorithm must be AES256 or aws:kms")
+		return
+	}
+	rec, err := h.Svc.PutObject(ctx, sk, key, body, size, contentType, userMetadata(r.Header))
 	if err != nil {
 		mapErr(w, r, err)
 		return
 	}
+	applySSEHeaders(w, rec)
 	w.Header().Set("ETag", rec.ETag)
 	if rec.VersionID != "" {
 		w.Header().Set("x-amz-version-id", rec.VersionID)
@@ -565,12 +787,14 @@ func (h *Handler) getObject(w http.ResponseWriter, r *http.Request, bucket, key 
 	}
 	creds, authErr := h.Svc.Signer.Authenticate(r)
 	if authErr != nil {
-		if errors.Is(authErr, auth.ErrMissingAuth) && h.Svc.IsPublicReadBucket(bucket) {
-			h.serveObjectPublic(w, r, bucket, key)
+		if errors.Is(authErr, auth.ErrMissingAuth) && h.serveAnonymousGet(w, r, bucket, key) {
 			observability.IncS3ReadOps(bucket)
 			return
 		}
 		h.writeAuthError(w, r, authErr)
+		return
+	}
+	if h.rejectBlockedPresign(w, r, creds, bucket) {
 		return
 	}
 	if !h.authorize(w, r, creds, bucket, key, "s3:GetObject") {
@@ -580,27 +804,91 @@ func (h *Handler) getObject(w http.ResponseWriter, r *http.Request, bucket, key 
 	if !ok {
 		return
 	}
+	if h.rejectKMSPresign(w, r, creds, sk, key) {
+		return
+	}
 	h.serveObject(w, r, sk, key)
 	observability.IncS3ReadOps(bucket)
 }
 
-func (h *Handler) serveObjectPublic(w http.ResponseWriter, r *http.Request, logicalBucket, key string) {
-	sk, err := h.Svc.PublicReadStorageKey(logicalBucket)
+func (h *Handler) serveAnonymousGet(w http.ResponseWriter, r *http.Request, logicalBucket, key string) bool {
+	rec, err := h.Svc.ResolvePublicRead(logicalBucket, tenantHint(r), requestSourceIP(r), r.TLS != nil, key)
 	if err != nil {
-		mapErr(w, r, err)
-		return
+		if errors.Is(err, ErrPublicBlocked) {
+			h.notePublicRead(r, logicalBucket, key, "public_blocked")
+			writeError(w, r, http.StatusForbidden, "AccessDenied", "public access is blocked by policy")
+			return true
+		}
+		if errors.Is(err, ErrPublicAmbiguous) {
+			writeError(w, r, http.StatusNotFound, "NoSuchBucket", "bucket not found")
+			return true
+		}
+		return false
 	}
-	h.serveObject(w, r, sk, key)
+	if h.rejectAnonymousKMS(w, r, rec.EffectiveStorageKey(), logicalBucket, key) {
+		return true
+	}
+	h.notePublicRead(r, logicalBucket, key, "ok")
+	h.serveObject(w, r, rec.EffectiveStorageKey(), key)
+	return true
+}
+
+func (h *Handler) serveAnonymousHead(w http.ResponseWriter, r *http.Request, logicalBucket, key string) bool {
+	rec, err := h.Svc.ResolvePublicRead(logicalBucket, tenantHint(r), requestSourceIP(r), r.TLS != nil, key)
+	if err != nil {
+		if errors.Is(err, ErrPublicBlocked) {
+			writeError(w, r, http.StatusForbidden, "AccessDenied", "public access is blocked by policy")
+			return true
+		}
+		if errors.Is(err, ErrPublicAmbiguous) {
+			writeError(w, r, http.StatusNotFound, "NoSuchBucket", "bucket not found")
+			return true
+		}
+		return false
+	}
+	if h.rejectAnonymousKMS(w, r, rec.EffectiveStorageKey(), logicalBucket, key) {
+		return true
+	}
+	h.serveHeadObject(w, r, rec.EffectiveStorageKey(), key)
+	return true
+}
+
+func (h *Handler) rejectBlockedPresign(w http.ResponseWriter, r *http.Request, creds auth.Credentials, bucket string) bool {
+	if r.URL.Query().Get("X-Amz-Algorithm") == "" {
+		return false
+	}
+	if msg := h.Svc.PresignBlockReason(creds.AccessKey, bucket); msg != "" {
+		if h.OnPresignBlocked != nil {
+			h.OnPresignBlocked(r.Context(), creds.AccessKey, r.RemoteAddr, bucket, msg)
+		}
+		writeError(w, r, http.StatusForbidden, "AccessDenied", msg)
+		return true
+	}
+	return false
 }
 
 func (h *Handler) serveObject(w http.ResponseWriter, r *http.Request, storageBucket, key string) {
 	versionID := r.URL.Query().Get("versionId")
 	rc, rec, err := h.Svc.GetObject(r.Context(), storageBucket, key, versionID)
 	if err != nil {
+		if errors.Is(err, ErrKeyDestroyed) {
+			h.notePresignDecrypt(r, storageBucket, key, rec, "key_destroyed")
+		}
+		if errors.Is(err, ErrKMSUnavailable) {
+			h.notePresignDecrypt(r, storageBucket, key, rec, "kms_unavailable")
+		}
+		if strings.Contains(err.Error(), "message authentication failed") {
+			w.Header().Set("Connection", "close")
+		}
 		mapErr(w, r, err)
 		return
 	}
 	defer rc.Close()
+	if rec.Encryption != nil && rec.Encryption.Sealed() {
+		h.notePresignDecrypt(r, storageBucket, key, rec, "ok")
+	}
+	applySSEHeaders(w, rec)
+	writeObjectMeta(w, rec)
 	w.Header().Set("ETag", rec.ETag)
 	if rec.VersionID != "" {
 		w.Header().Set("x-amz-version-id", rec.VersionID)
@@ -634,6 +922,8 @@ func (h *Handler) serveObject(w http.ResponseWriter, r *http.Request, storageBuc
 
 func (h *Handler) writeAuthError(w http.ResponseWriter, r *http.Request, err error) {
 	switch err {
+	case auth.ErrUnsignedHeaders:
+		writeError(w, r, http.StatusBadRequest, "AccessDenied", "There were headers present in the request which were not signed")
 	case auth.ErrMissingAuth, auth.ErrInvalidAuth, auth.ErrSignatureMismatch:
 		writeError(w, r, http.StatusForbidden, "AccessDenied", "access denied")
 	case auth.ErrExpired:
@@ -649,17 +939,14 @@ func (h *Handler) headObject(w http.ResponseWriter, r *http.Request, bucket, key
 	}
 	creds, authErr := h.Svc.Signer.Authenticate(r)
 	if authErr != nil {
-		if errors.Is(authErr, auth.ErrMissingAuth) && h.Svc.IsPublicReadBucket(bucket) {
-			sk, err := h.Svc.PublicReadStorageKey(bucket)
-			if err != nil {
-				mapErr(w, r, err)
-				return
-			}
-			h.serveHeadObject(w, r, sk, key)
+		if errors.Is(authErr, auth.ErrMissingAuth) && h.serveAnonymousHead(w, r, bucket, key) {
 			observability.IncS3ReadOps(bucket)
 			return
 		}
 		h.writeAuthError(w, r, authErr)
+		return
+	}
+	if h.rejectBlockedPresign(w, r, creds, bucket) {
 		return
 	}
 	if !h.authorize(w, r, creds, bucket, key, "s3:GetObject") {
@@ -679,6 +966,8 @@ func (h *Handler) serveHeadObject(w http.ResponseWriter, r *http.Request, storag
 		mapErr(w, r, err)
 		return
 	}
+	applySSEHeaders(w, rec)
+	writeObjectMeta(w, rec)
 	w.Header().Set("ETag", rec.ETag)
 	if rec.VersionID != "" {
 		w.Header().Set("x-amz-version-id", rec.VersionID)
@@ -699,6 +988,10 @@ func (h *Handler) deleteObject(w http.ResponseWriter, r *http.Request, bucket, k
 	if !ok {
 		return
 	}
+	if r.URL.Query().Get("X-Amz-Algorithm") != "" {
+		writeError(w, r, http.StatusForbidden, "AccessDenied", "presigned DELETE is not allowed")
+		return
+	}
 	if !h.authorize(w, r, creds, bucket, key, "s3:DeleteObject") {
 		return
 	}
@@ -706,7 +999,8 @@ func (h *Handler) deleteObject(w http.ResponseWriter, r *http.Request, bucket, k
 	if !ok {
 		return
 	}
-	if err := h.Svc.DeleteObject(WithObjectEvents(r.Context()), sk, key, r.URL.Query().Get("versionId")); err != nil {
+	ctx := WithUserMetadata(WithObjectEvents(r.Context()), userMetadata(r.Header))
+	if err := h.Svc.DeleteObject(ctx, sk, key, r.URL.Query().Get("versionId")); err != nil {
 		if err == metadata.ErrRetentionLocked || err == metadata.ErrLegalHold {
 			h.emitActivity(r, creds.AccessKey, metadata.ActionObjectDeleteBlocked, "object", bucket+"/"+key)
 		}
@@ -714,6 +1008,53 @@ func (h *Handler) deleteObject(w http.ResponseWriter, r *http.Request, bucket, k
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) notePresignDecrypt(r *http.Request, storageBucket, key string, rec metadata.ObjectRecord, result string) {
+	if h.OnPresignDecrypt == nil || r.URL.Query().Get("X-Amz-Algorithm") == "" {
+		return
+	}
+	logical := storageBucket
+	tenant := ""
+	if b, err := h.Svc.Meta.GetBucketByKey(storageBucket); err == nil {
+		if b.Name != "" {
+			logical = b.Name
+		}
+		tenant = b.EffectiveTenantID()
+	}
+	keyID, ver := "", 0
+	if rec.Encryption != nil {
+		keyID = rec.Encryption.KeyID
+		ver = rec.Encryption.KeyVersion
+	}
+	objectKey := rec.Key
+	if objectKey == "" {
+		objectKey = key
+	}
+	user := ""
+	if creds, err := h.Svc.Signer.Authenticate(r); err == nil {
+		user = creds.AccessKey
+	}
+	ip := r.RemoteAddr
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		ip = strings.TrimSpace(strings.Split(fwd, ",")[0])
+	}
+	h.OnPresignDecrypt(r.Context(), user, ip, logical, objectKey, keyID, tenant, result, ver)
+}
+
+func (h *Handler) notePublicRead(r *http.Request, logicalBucket, key, result string) {
+	if h.OnPublicRead == nil {
+		return
+	}
+	keyID := ""
+	ver := 0
+	if b, err := h.Svc.Meta.GetBucket(logicalBucket); err == nil {
+		if rec, err := h.Svc.Meta.GetObject(b.EffectiveStorageKey(), key); err == nil && rec.Encryption != nil {
+			keyID = rec.Encryption.KeyID
+			ver = rec.Encryption.KeyVersion
+		}
+	}
+	h.OnPublicRead(r.Context(), requestSourceIP(r), logicalBucket, key, result, keyID, ver)
 }
 
 func (h *Handler) emitActivity(r *http.Request, accessKey, action, resourceType, resourceName string) {
@@ -764,13 +1105,85 @@ func (h *Handler) copyObject(w http.ResponseWriter, r *http.Request, dstBucket, 
 	if !ok {
 		return
 	}
-	rec, err := h.Svc.CopyObject(WithObjectEvents(r.Context()), srcSK, srcKey, dstSK, dstKey)
+	ctx, sseErr := ctxWithSSE(WithObjectEvents(r.Context()), r)
+	if sseErr != nil {
+		writeError(w, r, http.StatusBadRequest, "InvalidArgument", "SSEAlgorithm must be AES256 or aws:kms")
+		return
+	}
+	rec, err := h.Svc.CopyObject(ctx, srcSK, srcKey, dstSK, dstKey)
 	if err != nil {
 		mapErr(w, r, err)
 		return
 	}
+	applySSEHeaders(w, rec)
 	w.Header().Set("ETag", rec.ETag)
 	w.WriteHeader(http.StatusOK)
+}
+
+func (h *Handler) listMultipartUploads(w http.ResponseWriter, r *http.Request, bucket string, q map[string][]string) {
+	creds, ok := h.authenticate(w, r)
+	if !ok {
+		return
+	}
+	if !h.authorize(w, r, creds, bucket, "", "s3:ListBucketMultipartUploads") {
+		return
+	}
+	sk, ok := h.storageBucket(w, r, creds, bucket)
+	if !ok {
+		return
+	}
+	rows, err := h.Svc.ListMultipartUploads(sk)
+	if err != nil {
+		mapErr(w, r, err)
+		return
+	}
+	prefix := first(q["prefix"])
+	keyMarker := first(q["key-marker"])
+	idMarker := first(q["upload-id-marker"])
+	maxUploads := parseMaxKeys(first(q["max-uploads"]))
+	var matched []metadata.MultipartRecord
+	for _, rec := range rows {
+		if prefix != "" && !strings.HasPrefix(rec.Key, prefix) {
+			continue
+		}
+		if keyMarker != "" {
+			if rec.Key < keyMarker {
+				continue
+			}
+			if rec.Key == keyMarker && (idMarker == "" || rec.UploadID <= idMarker) {
+				continue
+			}
+		}
+		matched = append(matched, rec)
+	}
+	truncated := false
+	if maxUploads >= 0 && len(matched) > maxUploads {
+		truncated = true
+		matched = matched[:maxUploads]
+	}
+	resp := ListMultipartUploadsResult{
+		Xmlns:          xmlNS,
+		Bucket:         bucket,
+		Prefix:         prefix,
+		KeyMarker:      keyMarker,
+		UploadIDMarker: idMarker,
+		MaxUploads:     maxUploads,
+		IsTruncated:    truncated,
+	}
+	for _, rec := range matched {
+		resp.Upload = append(resp.Upload, MultipartUploadEntry{
+			Key:          rec.Key,
+			UploadID:     rec.UploadID,
+			StorageClass: "STANDARD",
+			Initiated:    formatTime(rec.Initiated),
+		})
+	}
+	if truncated && len(matched) > 0 {
+		last := matched[len(matched)-1]
+		resp.NextKeyMarker = last.Key
+		resp.NextUploadIDMarker = last.UploadID
+	}
+	writeXML(w, http.StatusOK, resp)
 }
 
 func (h *Handler) createMultipart(w http.ResponseWriter, r *http.Request, bucket, key string) {
@@ -785,7 +1198,16 @@ func (h *Handler) createMultipart(w http.ResponseWriter, r *http.Request, bucket
 	if !ok {
 		return
 	}
-	uploadID, err := h.Svc.CreateMultipartUpload(r.Context(), sk, key)
+	ctx, sseErr := ctxWithSSE(r.Context(), r)
+	if sseErr != nil {
+		writeError(w, r, http.StatusBadRequest, "InvalidArgument", "SSEAlgorithm must be AES256 or aws:kms")
+		return
+	}
+	ctx = WithUserMetadata(ctx, userMetadata(r.Header))
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		ctx = WithContentType(ctx, ct)
+	}
+	uploadID, err := h.Svc.CreateMultipartUpload(ctx, sk, key)
 	if err != nil {
 		mapErr(w, r, err)
 		return
@@ -816,7 +1238,12 @@ func (h *Handler) uploadPart(w http.ResponseWriter, r *http.Request, bucket, key
 		writeError(w, r, http.StatusBadRequest, "InvalidArgument", "invalid part number")
 		return
 	}
-	etag, err := h.Svc.UploadPart(r.Context(), sk, key, uploadID, partNum, r.Body, r.ContentLength)
+	body, size, chunkErr := auth.UnwrapAWSChunked(r, creds.SecretKey)
+	if chunkErr != nil {
+		mapErr(w, r, chunkErr)
+		return
+	}
+	etag, err := h.Svc.UploadPart(r.Context(), sk, key, uploadID, partNum, body, size)
 	if err != nil {
 		mapErr(w, r, err)
 		return
@@ -850,6 +1277,9 @@ func (h *Handler) completeMultipart(w http.ResponseWriter, r *http.Request, buck
 	if err != nil {
 		mapErr(w, r, err)
 		return
+	}
+	if rec.VersionID != "" {
+		w.Header().Set("x-amz-version-id", rec.VersionID)
 	}
 	resp := CompleteMultipartUploadResult{
 		Xmlns:    xmlNS,
@@ -924,6 +1354,17 @@ func (h *Handler) putObjectTagging(w http.ResponseWriter, r *http.Request, bucke
 	w.WriteHeader(http.StatusOK)
 }
 
+func writeObjectMeta(w http.ResponseWriter, rec metadata.ObjectRecord) {
+	if rec.IsDeleteMarker {
+		w.Header().Set("x-amz-delete-marker", "true")
+	}
+	for k, v := range rec.Metadata {
+		if strings.HasPrefix(strings.ToLower(k), "x-amz-meta-") {
+			w.Header().Set(k, v)
+		}
+	}
+}
+
 func userMetadata(h http.Header) map[string]string {
 	out := map[string]string{}
 	for k, vals := range h {
@@ -980,11 +1421,77 @@ func mapErr(w http.ResponseWriter, r *http.Request, err error) {
 		writeError(w, r, http.StatusConflict, "BucketNotEmpty", "bucket not empty")
 	case metadata.ErrQuotaExceeded:
 		writeError(w, r, http.StatusForbidden, "QuotaExceeded", "quota exceeded")
+	case ErrSSEKeyMissing:
+		writeError(w, r, http.StatusBadRequest, "InvalidArgument", ErrSSEKeyMissing.Error())
+	case ErrPublicKMS:
+		writeError(w, r, http.StatusConflict, "InvalidRequest", MsgPublicKMS)
+	case ErrClusterUpgrade:
+		writeError(w, r, http.StatusConflict, "InvalidRequest", MsgClusterUpgrade)
+	case ErrKeyNotAllowed:
+		writeError(w, r, http.StatusBadRequest, "InvalidArgument", ErrKeyNotAllowed.Error())
+	case ErrKeyDestroyed:
+		writeError(w, r, http.StatusForbidden, "AccessDenied", MsgKeyDestroyed)
+	case ErrKMSUnavailable:
+		writeError(w, r, http.StatusServiceUnavailable, "ServiceUnavailable", "KMS unavailable")
+	case ErrObjectUnavailable:
+		w.Header().Set("Retry-After", "1")
+		writeError(w, r, http.StatusServiceUnavailable, "ServiceUnavailable", ErrObjectUnavailable.Error())
+	case errObjectLockVersioning:
+		writeError(w, r, http.StatusConflict, "InvalidBucketState", errObjectLockVersioning.Error())
 	case metadata.ErrLegalHold:
 		writeError(w, r, http.StatusForbidden, "AccessDenied", "object is under legal hold")
 	case metadata.ErrRetentionLocked:
 		writeError(w, r, http.StatusForbidden, "AccessDenied", "object retention period has not expired")
+	case auth.ErrChunkSignature:
+		writeError(w, r, http.StatusForbidden, "SignatureDoesNotMatch", "The request signature we calculated does not match the signature you provided")
+	case auth.ErrBadDigest:
+		writeError(w, r, http.StatusBadRequest, "BadDigest", "The checksum you specified did not match")
+	case auth.ErrMalformedChunk, auth.ErrDecodedLength:
+		writeError(w, r, http.StatusBadRequest, "IncompleteBody", err.Error())
 	default:
+		// A leader kill leaves in-flight writes on a session Postgres has already
+		// made read-only (SQLSTATE 25006) or drops the connection (57P01, 08006,
+		// reset). Those were HTTP 500 InternalError. Clients retry 503
+		// ServiceUnavailable with this message; the body is already consumed, so
+		// this process does not replay the PUT. A follower that cannot dial the
+		// previous holder answers the same 503 from leaderGuard.
+		if retryableClusterWrite(err) {
+			w.Header().Set("Retry-After", "1")
+			writeError(w, r, http.StatusServiceUnavailable, "ServiceUnavailable", "not cluster leader")
+			return
+		}
 		writeError(w, r, http.StatusInternalServerError, "InternalError", err.Error())
 	}
+}
+
+func retryableClusterWrite(err error) bool {
+	if err == nil {
+		return false
+	}
+	if events.StoreFenced(err) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	for _, n := range []string{
+		"sqlstate 57p01",
+		"sqlstate 57p02",
+		"sqlstate 57p03",
+		"sqlstate 08000",
+		"sqlstate 08001",
+		"sqlstate 08003",
+		"sqlstate 08006",
+		"sqlstate 40001",
+		"sqlstate 40p01",
+		"connection refused",
+		"connection reset",
+		"broken pipe",
+		"server closed the connection",
+		"conn closed",
+		"terminating connection",
+	} {
+		if strings.Contains(msg, n) {
+			return true
+		}
+	}
+	return false
 }

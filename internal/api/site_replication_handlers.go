@@ -83,7 +83,7 @@ func (s *Server) runSiteReplicationWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.processSiteReplicationOnce(ctx)
+			s.withBackgroundDB(func() { s.processSiteReplicationOnce(ctx) })
 		}
 	}
 }
