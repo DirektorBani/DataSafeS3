@@ -6,6 +6,7 @@ fn main() {
                 "profile_save",
                 "profile_forget",
                 "browse",
+                "transfer",
                 "server_info",
                 "auth_login",
                 "auth_mfa",
@@ -18,4 +19,6 @@ fn main() {
         ),
     )
     .expect("failed to run tauri-build");
+    #[cfg(target_os = "windows")]
+    embed_resource::compile("windows/longpath.rc", embed_resource::NONE);
 }

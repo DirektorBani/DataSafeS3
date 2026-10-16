@@ -5,13 +5,17 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
 // App is the stdio agent. It keeps profiles on disk and secrets only in
 // the RPC call that is using them.
 type App struct {
-	dataDir string
+	dataDir      string
+	transferOnce sync.Once
+	transfers    *Engine
+	transferErr  error
 }
 
 func (a *App) inspect(profile Profile, token string) (ServerCard, error) {

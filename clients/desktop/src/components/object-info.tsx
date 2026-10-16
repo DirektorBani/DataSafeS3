@@ -14,6 +14,7 @@ export type ListedObject = {
   version_id?: string;
   legal_hold?: boolean;
   retention_until?: string;
+  retention_mode?: string;
   encryption?: { sse_algorithm?: string; plaintext?: boolean };
 };
 
@@ -91,13 +92,23 @@ export function ObjectInfo(props: {
       if (cancel) {
         return;
       }
-      const object = (metaResult.body?.object || {}) as ListedObject & { metadata?: MapValue };
+      const object = (metaResult.body?.object || {}) as ListedObject & { metadata?: MapValue; retention_mode?: string };
       setMeta(lines(asMap(object.metadata)));
       setContentType(object.content_type || props.object.content_type || "");
       setTags(lines(asMap(tagResult.body?.tags)));
       const until = holdResult.body?.retain_until;
       const hold = holdResult.body?.legal_hold ? "legal hold" : "";
-      setRetention([hold, typeof until === "string" ? until : ""].filter(Boolean).join(" · "));
+      let mode = object.retention_mode || props.object.retention_mode || "";
+      if (!mode && (typeof until === "string" && until || holdResult.body?.legal_hold)) {
+        const settings = await browse(props.profileId, "bucket.settings", { bucket: props.bucket });
+        if (typeof settings.body?.retention_mode === "string") {
+          mode = settings.body.retention_mode;
+        }
+      }
+      if (mode) {
+        mode = mode.toUpperCase();
+      }
+      setRetention([mode, hold, typeof until === "string" ? until : ""].filter(Boolean).join(" · "));
       const rows = Array.isArray(versionResult.body?.versions) ? (versionResult.body?.versions as ListedObject[]) : [];
       setVersions(rows);
     }

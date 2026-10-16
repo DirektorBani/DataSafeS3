@@ -208,6 +208,56 @@ fn browse(state: State<Desktop>, id: String, method: String, params: Option<Valu
     call(&state, &method, body)
 }
 
+fn transfer_method_allowed(method: &str) -> bool {
+    matches!(method, "transfer.list" | "transfer.enqueue" | "transfer.cancel" | "transfer.resolve")
+}
+
+fn strip_secrets(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            map.remove("token");
+            map.remove("password");
+            map.remove("access_secret");
+            map.remove("mfa_token");
+            map.remove("wrapped_dek");
+            for child in map.values_mut() {
+                strip_secrets(child);
+            }
+        }
+        Value::Array(items) => {
+            for child in items {
+                strip_secrets(child);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[tauri::command]
+fn transfer(state: State<Desktop>, id: String, method: String, params: Option<Value>) -> Result<Value, String> {
+    if !transfer_method_allowed(&method) {
+        return Err("method is not a transfer call".into());
+    }
+    let token = token_for(&state, &id);
+    let mut body = params.unwrap_or_else(|| json!({}));
+    let obj = body.as_object_mut().ok_or("transfer params must be an object")?;
+    obj.remove("token");
+    obj.remove("password");
+    obj.remove("access_secret");
+    obj.insert("id".into(), Value::String(id.clone()));
+    obj.insert("token".into(), Value::String(token));
+    if method == "transfer.enqueue" {
+        if let Ok(Some(secret)) = state.secrets.get(&id, "access_secret") {
+            if !secret.is_empty() {
+                obj.insert("access_secret".into(), Value::String(secret));
+            }
+        }
+    }
+    let mut result = call(&state, &method, body)?;
+    strip_secrets(&mut result);
+    Ok(result)
+}
+
 #[tauri::command]
 fn server_info(state: State<Desktop>, id: String) -> Result<Value, String> {
     let token = token_for(&state, &id);
@@ -308,6 +358,7 @@ pub fn run() {
             profile_save,
             profile_forget,
             browse,
+            transfer,
             server_info,
             auth_login,
             auth_mfa,

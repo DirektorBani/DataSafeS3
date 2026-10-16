@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -19,6 +21,9 @@ type Client struct {
 	BaseURL string
 	Token   string
 	HTTP    *http.Client
+	// Stream has no overall timeout. Transfer bodies are larger than the
+	// JSON client allows, and a 10 GiB copy must not be cut off at 20s.
+	Stream *http.Client
 }
 
 func newClient(baseURL string, insecure bool) (*Client, error) {
@@ -36,11 +41,20 @@ func newClient(baseURL string, insecure bool) (*Client, error) {
 	if insecure {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // profile flag insecure_dev
 	}
+	streamTransport := transport.Clone()
+	streamTransport.ResponseHeaderTimeout = 2 * time.Minute
 	return &Client{
 		BaseURL: strings.TrimRight(u.String(), "/"),
 		HTTP: &http.Client{
 			Timeout:   20 * time.Second,
 			Transport: transport,
+		},
+		Stream: &http.Client{
+			Timeout:   0,
+			Transport: streamTransport,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 	}, nil
 }
@@ -89,6 +103,77 @@ func (c *Client) do(method, path string, payload any) (rawResponse, error) {
 		return rawResponse{}, err
 	}
 	return rawResponse{Status: resp.StatusCode, Header: resp.Header, Body: buf}, nil
+}
+
+// stream sends a body without the 1 MiB JSON cap. The caller closes the
+// response body. A dropped connection is errNetwork.
+func (c *Client) stream(ctx context.Context, method, path string, body io.Reader, n int64, header map[string]string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil && n >= 0 {
+		req.ContentLength = n
+	}
+	for key, value := range header {
+		req.Header.Set(key, value)
+	}
+	if body != nil && req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/octet-stream")
+	}
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	resp, err := c.Stream.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, wrapNet(err)
+	}
+	return resp, nil
+}
+
+// openURL fetches a presigned URL. The bearer token is not sent: the
+// signature is in the query string.
+func (c *Client) openURL(ctx context.Context, rawURL string, offset int64) (io.ReadCloser, string, int64, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, "", 0, 0, err
+	}
+	if offset > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+	}
+	resp, err := c.Stream.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, "", 0, 0, ctx.Err()
+		}
+		return nil, "", 0, 0, wrapNet(err)
+	}
+	if offset > 0 && resp.StatusCode != http.StatusPartialContent {
+		resp.Body.Close()
+		return nil, "", 0, resp.StatusCode, errNoRange
+	}
+	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
+		return nil, "", 0, resp.StatusCode, readFault(resp)
+	}
+	return resp.Body, strings.Trim(resp.Header.Get("ETag"), `"`), resp.ContentLength, resp.StatusCode, nil
+}
+
+func wrapNet(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	var ue *url.Error
+	if errors.As(err, &ue) && ue.Err != nil && (errors.Is(ue.Err, context.Canceled) || errors.Is(ue.Err, context.DeadlineExceeded)) {
+		return ue.Err
+	}
+	return fmt.Errorf("%w: %s", errNetwork, err.Error())
 }
 
 func decodeObject(raw []byte) (map[string]any, bool) {

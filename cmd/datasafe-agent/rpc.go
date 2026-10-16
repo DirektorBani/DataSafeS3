@@ -30,7 +30,7 @@ type rpcError struct {
 
 func serve(r io.Reader, w io.Writer, app *App) error {
 	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 64*1024), 4<<20)
+	scanner.Buffer(make([]byte, 64*1024), 32<<20)
 	enc := json.NewEncoder(w)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -222,6 +222,14 @@ func (a *App) dispatch(method string, params map[string]any) (any, *rpcError) {
 		return rpcBrowse(a.trashRestore(params))
 	case "trash.purge":
 		return rpcBrowse(a.trashPurge(params))
+	case "transfer.list":
+		return rpcCall(a.transferList())
+	case "transfer.enqueue":
+		return rpcCall(a.transferEnqueue(params))
+	case "transfer.cancel":
+		return rpcCall(a.transferCancel(params))
+	case "transfer.resolve":
+		return rpcCall(a.transferResolve(params))
 	default:
 		return nil, &rpcError{Code: -32601, Message: "method not found"}
 	}
@@ -248,6 +256,13 @@ func profileFrom(raw any) (Profile, error) {
 		return Profile{}, err
 	}
 	return profile, nil
+}
+
+func rpcCall(result any, err error) (any, *rpcError) {
+	if err != nil {
+		return nil, rpcFail(err)
+	}
+	return result, nil
 }
 
 func rpcBrowse(result apiResult, err error) (any, *rpcError) {

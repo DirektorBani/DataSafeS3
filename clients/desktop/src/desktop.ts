@@ -99,3 +99,26 @@ export type BrowseResult = {
 export function browse(id: string, method: string, params: Record<string, unknown> = {}): Promise<BrowseResult> {
   return invoke("browse", { id, method, params });
 }
+
+export type TransferNote = { action: string; from: string; to?: string; reason: string };
+
+export type TransferTask = {
+  id: string;
+  profile_id?: string;
+  direction: string;
+  state: string;
+  local_path?: string;
+  dest_path?: string;
+  bucket?: string;
+  key?: string;
+  bytes_done?: number;
+  size?: number;
+  message?: string;
+  report?: TransferNote[];
+  pending_key?: string;
+  pending_local?: string;
+};
+
+export function transfer(id: string, method: string, params: Record<string, unknown> = {}): Promise<{ transfers?: TransferTask[]; transfer?: TransferTask }> {
+  return invoke("transfer", { id, method, params });
+}

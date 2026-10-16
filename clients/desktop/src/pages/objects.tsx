@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "r
 import { useTranslation } from "react-i18next";
 import { Button } from "@datasafe/ui/ui/button";
 import { ObjectInfo, type ListedObject } from "../components/object-info";
+import { TransferPanel } from "../components/transfers/panel";
 import { browse, type BrowseResult } from "../desktop";
 
 type SortKey = "name" | "size" | "modified";
@@ -58,6 +59,7 @@ export function ObjectBrowser(props: {
   const [folderName, setFolderName] = useState("");
   const [trash, setTrash] = useState<Array<Record<string, unknown>>>([]);
   const [showTrash, setShowTrash] = useState(false);
+  const [selectKey, setSelectKey] = useState("");
 
   const load = useCallback(
     async (nextPrefix: string, startAfter: string, recordFirst: boolean) => {
@@ -96,6 +98,9 @@ export function ObjectBrowser(props: {
     setPrefix("");
     setMarkers([""]);
     setFirstPageMs(null);
+    setShowTrash(false);
+    setTrash([]);
+    setSelectKey("");
     void load("", "", true);
   }, [bucket, load, profileId]);
 
@@ -110,6 +115,17 @@ export function ObjectBrowser(props: {
     const cmp = sort === "size" ? bySize : sort === "modified" ? byTime : byName;
     return [...folders.sort(byName), ...files.sort(cmp)];
   }, [rows, filter, sort]);
+
+  useEffect(() => {
+    if (!selectKey) {
+      return;
+    }
+    const index = visible.findIndex((row) => row.key === selectKey);
+    if (index >= 0) {
+      setSelected(index);
+      setSelectKey("");
+    }
+  }, [selectKey, visible]);
 
   const current = visible[selected];
 
@@ -150,7 +166,9 @@ export function ObjectBrowser(props: {
       return;
     }
     setFolderName("");
-    await load(prefix, "", true);
+    const key = name.replace(/\/+$/, "") + "/";
+    setRows((current) => (current.some((row) => row.key === key) ? current : [...current, { kind: "folder", name: displayName(key), key }]));
+    setSelectKey(key);
   }
 
   async function openTrash() {
@@ -192,6 +210,24 @@ export function ObjectBrowser(props: {
     } else if (event.key === "F2" && props.canWrite && current?.kind === "object") {
       event.preventDefault();
       setRenaming(current.name);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setSelected(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setSelected(Math.max(visible.length - 1, 0));
+    } else if (event.key === "PageUp") {
+      event.preventDefault();
+      setSelected((index) => Math.max(index - 10, 0));
+    } else if (event.key === "PageDown") {
+      event.preventDefault();
+      setSelected((index) => Math.min(index + 10, Math.max(visible.length - 1, 0)));
+    } else if (event.key === "Backspace" && prefix) {
+      event.preventDefault();
+      const next = parentPrefix(prefix);
+      setPrefix(next);
+      setMarkers([""]);
+      void load(next, "", true);
     }
   }
 
@@ -341,6 +377,7 @@ export function ObjectBrowser(props: {
           </ul>
         </div>
       ) : null}
+      <TransferPanel profileId={props.profileId} bucket={props.bucket} prefix={prefix} canWrite={props.canWrite} selectedKey={current?.key || ""} selectedFolder={current?.kind === "folder"} />
     </section>
   );
 }
