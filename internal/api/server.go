@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -278,6 +279,9 @@ func NewServer(cfg Config) (*Server, error) {
 		slog.Warn("STORAGE_OPERATOR_WRITE_ALL is enabled: operators can write every bucket; this compatibility mode is removed in 1.7.0")
 		s.logActivityAs("system", "", metadata.ActionOperatorWriteAll, "config", "STORAGE_OPERATOR_WRITE_ALL")
 	}
+	// Startup parses the OpenAPI contract once. Give those pages back before
+	// the process sits idle; the single-node gate samples VmRSS.
+	debug.FreeOSMemory()
 	return s, nil
 }
 

@@ -1,13 +1,13 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/DirektorBani/datasafe/internal/openapi"
-	"gopkg.in/yaml.v3"
 )
 
 // DeprecationNotice is one deprecated operation. Production notices come from
@@ -24,11 +24,11 @@ type DeprecationNotice struct {
 }
 
 func init() {
-	notices, err := parseDeprecations(openapi.SpecYAML())
-	if err != nil {
+	var doc map[string]any
+	if err := json.Unmarshal(openapi.SpecJSON(), &doc); err != nil {
 		panic("api: parse openapi deprecations: " + err.Error())
 	}
-	apiDeprecations = notices
+	apiDeprecations = noticesFromDoc(doc)
 }
 
 var apiDeprecations []DeprecationNotice
@@ -94,11 +94,7 @@ func pathPatternMatch(pattern, path string) bool {
 	return len(pp) == len(rp)
 }
 
-func parseDeprecations(spec []byte) ([]DeprecationNotice, error) {
-	var doc map[string]any
-	if err := yaml.Unmarshal(spec, &doc); err != nil {
-		return nil, err
-	}
+func noticesFromDoc(doc map[string]any) []DeprecationNotice {
 	paths, _ := doc["paths"].(map[string]any)
 	var out []DeprecationNotice
 	for path, item := range paths {
@@ -136,7 +132,7 @@ func parseDeprecations(spec []byte) ([]DeprecationNotice, error) {
 			out = append(out, n)
 		}
 	}
-	return out, nil
+	return out
 }
 
 func deprecationPublicPath(path string) string {
@@ -164,6 +160,8 @@ func yamlString(v any) string {
 		return strconv.FormatInt(x, 10)
 	case uint64:
 		return strconv.FormatUint(x, 10)
+	case float64:
+		return strconv.FormatInt(int64(x), 10)
 	default:
 		return ""
 	}

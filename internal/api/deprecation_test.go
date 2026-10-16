@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestProductionSpecHasNoDeprecations(t *testing.T) {
@@ -31,10 +33,11 @@ paths:
       x-since: "1.6.1"
       x-sunset: "Wed, 21 Oct 2015 07:28:00 GMT"
 `
-	notices, err := parseDeprecations([]byte(spec))
-	if err != nil {
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte(spec), &doc); err != nil {
 		t.Fatal(err)
 	}
+	notices := noticesFromDoc(doc)
 	if len(notices) != 2 {
 		t.Fatalf("notices %d", len(notices))
 	}
