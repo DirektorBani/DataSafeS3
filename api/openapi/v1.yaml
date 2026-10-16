@@ -53,7 +53,6 @@ info:
   license:
     name: Apache 2.0
     identifier: Apache-2.0
-    url: https://www.apache.org/licenses/LICENSE-2.0
 
 servers:
   - url: http://localhost:8080/api/v1
@@ -195,7 +194,7 @@ components:
       properties:
         min_supported: { type: string, example: "1.0.0" }
         min_required: { type: string, nullable: true }
-        min_required_reason: { type: string, nullable: true, description: security, or null when min_required is unset }
+        min_required_reason: { type: string, nullable: true, description: "security, or null when min_required is unset" }
         advisory_url: { type: string, nullable: true }
         max_tested: { type: string, nullable: true }
     DeprecationNotice:
@@ -415,7 +414,7 @@ components:
         bucket: { type: string }
         key: { type: string }
         expires_seconds: { type: integer, minimum: 1, default: 3600 }
-        endpoint: { type: string, format: uri, description: S3 base URL, default request Host }
+        endpoint: { type: string, format: uri, description: "S3 base URL, default request Host" }
 
     PresignResponse:
       type: object
@@ -576,6 +575,7 @@ paths:
             schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
       responses:
         '200':
+          description: Password changed
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OkResponse' }
@@ -628,6 +628,7 @@ paths:
             description: Filter by access.ownership (default all)
       responses:
         '200':
+          description: Buckets
           content:
             application/json:
               schema:
@@ -837,6 +838,7 @@ paths:
           - $ref: '#/components/parameters/MaxKeys'
       responses:
         '200':
+          description: Objects
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ObjectListResponse' }
@@ -1030,6 +1032,7 @@ paths:
           - $ref: '#/components/parameters/ObjectKey'
       responses:
         '200':
+          description: Stored object
           content:
             application/json:
               schema:
@@ -1081,6 +1084,7 @@ paths:
             schema: { $ref: '#/components/schemas/PresignRequest' }
       responses:
         '200':
+          description: Presigned URL
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PresignResponse' }
@@ -1099,6 +1103,7 @@ paths:
         - BearerJWT: []
       responses:
         '200':
+          description: Access keys
           content:
             application/json:
               schema:
@@ -1187,6 +1192,7 @@ paths:
             schema: { $ref: '#/components/schemas/LifecycleRules' }
       responses:
         '200':
+          description: Lifecycle saved
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OkResponse' }
@@ -1280,6 +1286,7 @@ paths:
         - BearerJWT: []
       responses:
         '200':
+          description: API tokens
           content:
             application/json:
               schema:
@@ -1620,6 +1627,7 @@ paths:
             schema: { type: string }
       responses:
         '200':
+          description: Share links
           content:
             application/json:
               schema:
@@ -2142,7 +2150,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/BucketName'
       responses:
-        '200': { description: Policy, effective policy, and locked fields }
+        '200': { description: "Policy, effective policy, and locked fields" }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 

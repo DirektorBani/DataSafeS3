@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: dev down logs test lint dev-local dev-docker-nobuild openapi openapi-check
+.PHONY: dev down logs test lint dev-local dev-docker-nobuild openapi openapi-check openapi-validate
 
 dev:
 	docker compose up --build
@@ -33,3 +33,6 @@ openapi:
 openapi-check:
 	cmp -s api/openapi/v1.yaml internal/openapi/openapi.yaml
 	cmp -s api/openapi/v1.yaml docs/api/openapi.yaml
+
+openapi-validate:
+	bash scripts/ci/openapi-validate.sh

@@ -12,6 +12,10 @@ All notable changes to DataSafeS3 are documented in this file.
 - **`GET /api/v1/capabilities`.** Without a token the body is `api`, `server_version`, `spec_version`, and `login_methods`. `features`, `clients.desktop`, and `deprecations` require a bearer token. `Cache-Control` is `public` or `private` with `max-age=300`. The body does not include IdP addresses or secrets. `max_tested` and `min_required` are null.
 - **Structured REST errors.** JSON errors keep the legacy `error` string and add `code`, `message`, `details`, and `request_id`. `429` responses include `Retry-After`. Deprecation headers are implemented; no production operation is deprecated in 1.6.1.
 
+### Fixed
+
+- **OpenAPI 3.1 validation.** `api/openapi/v1.yaml` matches the OAS 3.1.0 schema: `info.license` keeps the SPDX `identifier` and omits `url`, every response has `description`, and flow-mapping descriptions that contain commas are quoted. `openapi-conformance` runs `scripts/ci/openapi-validate.sh`.
+
 ### Security
 
 - **Multipart `uploadId` is bound to the URL bucket.** `PUT` part, complete, and abort checked write permission on the URL bucket and then called the service with the bucket stored on the upload. A caller who could write bucket A could store a part for an upload that belonged to bucket B. The handlers now resolve the URL bucket and return `404 upload not found` when it does not match. A regression test covers part, complete, and abort.
