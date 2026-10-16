@@ -274,8 +274,15 @@ func (s *Server) handleUploadMultipartPart(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}
+	sk, ok := s.bucketKeyOr404(w, info, bucket)
+	if !ok {
+		return
+	}
+	// The upload record's bucket is the storage key. Passing that key into
+	// UploadPart makes the service's bucket check a no-op, so a caller who can
+	// write the URL bucket could store a part on another bucket's uploadId.
 	mp, err := s.meta.GetMultipart(uploadID)
-	if err != nil {
+	if err != nil || mp.Bucket != sk {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "upload not found"})
 		return
 	}
@@ -284,7 +291,7 @@ func (s *Server) handleUploadMultipartPart(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid part number"})
 		return
 	}
-	etag, err := s.svc.UploadPart(r.Context(), mp.Bucket, mp.Key, uploadID, partNum, r.Body, r.ContentLength)
+	etag, err := s.svc.UploadPart(r.Context(), sk, mp.Key, uploadID, partNum, r.Body, r.ContentLength)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
@@ -300,8 +307,12 @@ func (s *Server) handleCompleteMultipart(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}
+	sk, ok := s.bucketKeyOr404(w, info, bucket)
+	if !ok {
+		return
+	}
 	mp, err := s.meta.GetMultipart(uploadID)
-	if err != nil {
+	if err != nil || mp.Bucket != sk {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "upload not found"})
 		return
 	}
@@ -319,7 +330,7 @@ func (s *Server) handleCompleteMultipart(w http.ResponseWriter, r *http.Request)
 	for _, p := range req.Parts {
 		parts = append(parts, storage.PartInfo{PartNumber: p.PartNumber, ETag: strings.Trim(p.ETag, `"`)})
 	}
-	rec, _, err := s.svc.CompleteMultipartNotifying(r.Context(), mp.Bucket, mp.Key, uploadID, parts, func(obj metadata.ObjectRecord) []events.OutboxRecord {
+	rec, _, err := s.svc.CompleteMultipartNotifying(r.Context(), sk, mp.Key, uploadID, parts, func(obj metadata.ObjectRecord) []events.OutboxRecord {
 		var evs []events.OutboxRecord
 		evs = append(evs, s.outboxRecords(metadata.EventObjectCreated, bucket, mp.Key, obj.VersionID, "", objectEventFields(bucket, mp.Key, obj, nil))...)
 		evs = append(evs, s.outboxRecords(metadata.EventMultipartCompleted, bucket, mp.Key, obj.VersionID, "", objectEventFields(bucket, mp.Key, obj, map[string]any{"upload_id": uploadID}))...)
@@ -345,12 +356,16 @@ func (s *Server) handleAbortMultipart(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]any{"error": "forbidden"})
 		return
 	}
+	sk, ok := s.bucketKeyOr404(w, info, bucket)
+	if !ok {
+		return
+	}
 	mp, err := s.meta.GetMultipart(uploadID)
-	if err != nil {
+	if err != nil || mp.Bucket != sk {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "upload not found"})
 		return
 	}
-	if err := s.svc.AbortMultipartUpload(r.Context(), mp.Bucket, mp.Key, uploadID); err != nil {
+	if err := s.svc.AbortMultipartUpload(r.Context(), sk, mp.Key, uploadID); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
