@@ -4,15 +4,15 @@ import { Link } from "react-router-dom";
 import { type ColumnDef } from "@tanstack/react-table";
 import { useTranslation } from "react-i18next";
 import { FolderOpen, Plus, RefreshCw, Trash2, Pin } from "lucide-react";
-import { BucketEncryptionBadge } from "@/components/encryption/encryption-card";
+import { BucketEncryptionBadge } from "@datasafe/ui/encryption/encryption-card";
 import { toast } from "sonner";
 import { api, type Bucket } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
-import { DataTable } from "@/components/data-table";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DataTable } from "@datasafe/ui/data-table";
+import { ConfirmDialog } from "@datasafe/ui/confirm-dialog";
+import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -20,16 +20,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+} from "@datasafe/ui/ui/dialog";
+import { Label } from "@datasafe/ui/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from "@datasafe/ui/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@datasafe/ui/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
 
 type FilesTab = "owned" | "shared" | "tenant";

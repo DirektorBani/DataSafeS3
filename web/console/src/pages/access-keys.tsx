@@ -5,17 +5,17 @@ import { AlertTriangle, KeyRound, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@datasafe/ui/ui/tabs";
 import { api, type AccessKey, type APIToken, type CreatedKey } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
-import { DataTable } from "@/components/data-table";
+import { DataTable } from "@datasafe/ui/data-table";
 import { CopyButton } from "@/components/copy-button";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { ConfirmDialog } from "@datasafe/ui/confirm-dialog";
+import { Badge } from "@datasafe/ui/ui/badge";
+import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -23,7 +23,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@datasafe/ui/ui/dialog";
 
 export function AccessKeysPage() {
   const { t, i18n } = useTranslation(["access", "common"]);

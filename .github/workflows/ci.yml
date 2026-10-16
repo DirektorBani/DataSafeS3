@@ -78,11 +78,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: build console
-        working-directory: web/console
         run: |
           npm ci
-          npm run build
+          npm run build -w datasafe-console
 
   event-observability:
     runs-on: ubuntu-latest
@@ -242,11 +243,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: Build console for compose Caddy
-        working-directory: web/console
         run: |
           npm ci
-          npm run build
+          npm run build -w datasafe-console
       - name: Start compose stack for E2E
         env:
           DATASAFE_DATA_ROOT: ${{ github.workspace }}/.datasafe-data-ci
@@ -538,7 +540,7 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: web/console/package-lock.json
+          cache-dependency-path: package-lock.json
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.9"

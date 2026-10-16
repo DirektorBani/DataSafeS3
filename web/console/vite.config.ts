@@ -9,6 +9,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "@datasafe/ui": fileURLToPath(new URL("../ui/src", import.meta.url)),
     },
   },
   server: {

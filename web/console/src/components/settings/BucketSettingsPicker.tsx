@@ -2,10 +2,10 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { BucketSettings } from "@/lib/api";
 import { isBucketConfigured } from "@/lib/bucket-settings-merge";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Badge } from "@datasafe/ui/ui/badge";
+import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
 
 type BucketSettingsPickerProps = {
   buckets: BucketSettings[];

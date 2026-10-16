@@ -3,7 +3,7 @@
 | Client | Path | Stack | Status |
 |--------|------|-------|--------|
 | **Sync CLI** | [`cmd/datasafe-sync`](../cmd/datasafe-sync) | Go | **Phase 3 — shipped** |
-| **Desktop** | [`desktop/`](desktop/) | Tauri 2 + sidecar | **Phase 3 — shipped** |
+| **Desktop** | [`desktop/`](desktop/) | Tauri 2 + React | **1.0 scaffold** (`desktop/1.0`) |
 | **Mobile** | [`mobile/`](mobile/) | Flutter | Phase 4 backlog |
 | **Mobile web** | [`mobile-web/`](mobile-web/) | Vite PWA | Phase 4 backlog |
 
@@ -23,14 +23,6 @@ go build -o datasafe-sync ./cmd/datasafe-sync
 
 ## Desktop app
 
-```bash
-# From repo root — bundle sidecar binaries for Tauri
-./scripts/build-datasafe-sync.ps1   # Windows
-# ./scripts/build-datasafe-sync.sh  # Linux/macOS
+Windows and Linux shell. From the repository root: `npm ci`, then `npm run tauri -w datasafe-desktop -- dev`. See [desktop/README.md](desktop/README.md). The sync CLI above is unchanged.
 
-cd clients/desktop
-npm install
-npm run tauri dev
-```
 
-See [desktop/README.md](desktop/README.md).

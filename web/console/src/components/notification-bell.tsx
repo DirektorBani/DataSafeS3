@@ -3,7 +3,7 @@ import { Bell } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
-import { Button } from "@/components/ui/button";
+import { Button } from "@datasafe/ui/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,7 +11,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@datasafe/ui/ui/dropdown-menu";
 
 export function NotificationBell() {
   const { t } = useTranslation("notifications");

@@ -4,8 +4,8 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { api, type SharingPolicy } from "@/lib/api";
 import { DurationFields } from "@/components/duration-fields";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@datasafe/ui/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@datasafe/ui/ui/dialog";
 
 type Scope = "global" | "tenant" | "bucket";
 

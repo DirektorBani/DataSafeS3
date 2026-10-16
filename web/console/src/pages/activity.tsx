@@ -6,17 +6,17 @@ import { Circle, Download, RefreshCw } from "lucide-react";
 import { api, type ActivityEvent } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
-import { DataTable } from "@/components/data-table";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { DataTable } from "@datasafe/ui/data-table";
+import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@datasafe/ui/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 

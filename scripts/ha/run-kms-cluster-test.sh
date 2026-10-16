@@ -701,7 +701,8 @@ fi
 # stays on the single-node e2e job. These two specs are the encryption UI.
 if [ "${KMS_CLUSTER_PLAYWRIGHT:-1}" = "1" ] && command -v npm >/dev/null 2>&1; then
   install_start=$SECONDS
-  (cd web/console && npm ci && npx playwright install chromium --with-deps)
+  npm ci
+  (cd web/console && npx playwright install chromium --with-deps)
   WORK_START=$((WORK_START + SECONDS - install_start))
   (cd web/console && DS_API_PROXY="$LB" npm run dev -- --host 127.0.0.1 --port 15173) >"$STATE/vite.log" 2>&1 &
   VITE_PID=$!

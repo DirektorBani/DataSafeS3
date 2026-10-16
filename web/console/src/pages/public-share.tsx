@@ -10,8 +10,8 @@ import {
   FileIcon,
   Loader2,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@datasafe/ui/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
 import { formatBytes, formatDate } from "@/lib/utils";
 
 type ShareInfo = {

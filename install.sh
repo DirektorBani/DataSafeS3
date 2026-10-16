@@ -506,7 +506,12 @@ build_local() {
   ok "deploy/docker/storage-server-linux"
   if [ ! -f web/console/dist/index.html ]; then
     info "Building web console..."
-    (cd web/console && (npm ci || npm install) && npm run build)
+    if [ -f package-lock.json ]; then
+      npm ci || npm install
+      npm run build -w datasafe-console
+    else
+      (cd web/console && (npm ci || npm install) && npm run build)
+    fi
   else
     ok "web/console/dist already present"
   fi

@@ -1,67 +1,48 @@
-# DataSafeS3 Desktop Sync (Phase 3)
+# DataSafeS3 Desktop 1.0
 
-Tauri 2 app with **system tray**, folder picker, background **watch** (poll or fsnotify), bucket list, conflict panel, and bundled **`datasafe-sync`** sidecar.
+Tauri 2 shell for Windows and Linux. This scaffold is version `1.0.0-dev`: Russian and English, light and dark theme, no sign-in yet. The window does not open a network connection. Folder sync remains the `datasafe-sync` CLI; it is not this app.
+
+The bundle id is `com.datasafe.desktop`.
 
 ## Prerequisites
 
-- [Rust](https://rustup.rs/) + Cargo
 - Node.js 20+
-- Go 1.25+ (to build sidecar)
+- Rust and Cargo
+- Windows: WebView2 and the Visual Studio C++ build tools
+- Linux: `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `librsvg2-dev`, `patchelf`, and a C compiler
 
-## Build sidecar (required for Tauri bundle)
+From the repository root:
 
-From repository root:
+```bash
+npm ci
+```
+
+## Run on Windows
 
 ```powershell
-.\scripts\build-datasafe-sync.ps1
+npm run tauri -w datasafe-desktop -- dev
 ```
+
+The window title is **DataSafeS3 Desktop**. Switch EN/RU and Light/Dark. Close the window and open it again: the choices stay. The page does not ask for a password.
+
+A release bundle:
+
+```powershell
+npm run tauri -w datasafe-desktop -- build --bundles nsis
+```
+
+The installer is under `clients/desktop/src-tauri/target/release/bundle/nsis/`. Record its size and the idle memory of the running app in [BASELINE.md](BASELINE.md).
+
+## Linux
 
 ```bash
-./scripts/build-datasafe-sync.sh
+npm run tauri -w datasafe-desktop -- build --bundles deb
 ```
 
-Copies target-triple binaries into `src-tauri/binaries/` for Tauri `externalBin`.
-
-## Run desktop UI (dev)
+## Checks
 
 ```bash
-cd clients/desktop
-npm install
-npm run tauri dev
+bash scripts/ci/desktop-s5.sh
+npm run build -w datasafe-console
+npm run build -w datasafe-desktop
 ```
-
-For dev without bundling, ensure `datasafe-sync` is on `PATH` (Tauri falls back when sidecar missing in dev depending on setup — prefer building sidecar first).
-
-## CLI-only (no Tauri)
-
-```bash
-datasafe-sync login --server http://localhost:8080 --user alice --password secret
-datasafe-sync sync --folder ~/DataSafeS3 --bucket files --prefix reports/ --pull --push --delete
-datasafe-sync watch --folder ~/DataSafeS3 --fsnotify --interval 15s --delete
-datasafe-sync conflicts --folder ~/DataSafeS3
-datasafe-sync resolve --name "doc (conflict 2026-06-23-120000).pdf"
-datasafe-sync token set --token JWT   # MFA / console token
-```
-
-## Features
-
-| Feature | CLI | Desktop UI |
-|---------|-----|------------|
-| JWT login | yes | yes |
-| Bucket picker (owned/shared) | `buckets --json` | yes |
-| Prefix sync | `--prefix` | yes |
-| Delete propagation | `--delete` | checkbox |
-| Conflict policies | `--conflict-policy` | dropdown |
-| fsnotify watch | `watch --fsnotify` | checkbox |
-| Tray icon | — | yes |
-| Conflict backups | `.datasafe-conflicts/` | list panel |
-
-Uses console REST API (`POST /api/v1/admin/login`, object CRUD).
-
-## Production builds
-
-```bash
-npm run tauri build
-```
-
-Code signing and auto-update are not configured in-tree (ops task).

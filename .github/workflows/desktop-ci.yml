@@ -1,0 +1,35 @@
+name: desktop-ci
+
+# Windows and Linux only. macOS is out of Desktop 1.0.
+on:
+  push:
+    branches:
+      - "desktop/**"
+  pull_request:
+
+jobs:
+  s5:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: CSP and capabilities
+        run: bash scripts/ci/desktop-s5.sh
+
+  linux-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: WebView system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf build-essential
+      - name: Install workspaces
+        run: npm ci
+      - name: Linux deb
+        run: npm run tauri -w datasafe-desktop -- build --bundles deb

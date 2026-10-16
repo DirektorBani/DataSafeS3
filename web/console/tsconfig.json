@@ -13,7 +13,8 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@datasafe/ui/*": ["../ui/src/*"]
     }
   },
   "include": ["src"]

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ShieldAlert } from "lucide-react";
 import { api, isMfaSetupRequired } from "@/lib/api";
-import { Button } from "@/components/ui/button";
+import { Button } from "@datasafe/ui/ui/button";
 
 export function MfaSetupBanner() {
   const { t } = useTranslation("layout");

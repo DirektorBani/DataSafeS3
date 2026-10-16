@@ -2,11 +2,11 @@ import { Outlet } from "react-router-dom";
 import { Sidebar } from "@/layouts/sidebar";
 import { GlobalSearch } from "@/components/global-search";
 import { NotificationBell } from "@/components/notification-bell";
-import { LanguageSwitcher } from "@/components/language-switcher";
+import { LanguageSwitcher } from "@datasafe/ui/language-switcher";
 import { SecurityBanner } from "@/components/security-banner";
 import { MfaSetupBanner } from "@/components/mfa-setup-banner";
 import { MfaPolicyBanner } from "@/components/mfa-policy-banner";
-import { StepUpDialog } from "@/components/step-up-dialog";
+import { StepUpDialog } from "@datasafe/ui/step-up-dialog";
 
 export function AppLayout() {
   return (

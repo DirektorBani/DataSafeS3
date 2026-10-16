@@ -19,10 +19,10 @@ import { api, type BucketUsage } from "@/lib/api";
 import { formatBytes, formatBytesAxis, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { MetricsCard } from "@/components/metrics-card";
-import { DataTable } from "@/components/data-table";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { DataTable } from "@datasafe/ui/data-table";
+import { Button } from "@datasafe/ui/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { Skeleton } from "@datasafe/ui/ui/skeleton";
 
 export function UsagePage() {
   const { t, i18n } = useTranslation(["usage", "common", "dashboard"]);

@@ -8,12 +8,12 @@ import { useTranslation } from "react-i18next";
 import { ArrowLeft, Database, Loader2, ShieldCheck } from "lucide-react";
 import { api, getToken, login, loginMFA, loginWebAuthnBegin, loginWebAuthnFinish, setSessionProfile } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { OtpInput, useTotpCountdown } from "@/components/otp-input";
-import { LanguageSwitcher } from "@/components/language-switcher";
+import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { OtpInput, useTotpCountdown } from "@datasafe/ui/otp-input";
+import { LanguageSwitcher } from "@datasafe/ui/language-switcher";
 
 type LoginForm = { username: string; password: string };
 

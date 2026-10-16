@@ -14,7 +14,7 @@ Thank you for improving DataSafeS3 Community Edition.
 
 go test ./...
 
-cd web/console && npm ci && npm run build
+npm ci && npm run build -w datasafe-console
 
 ```
 

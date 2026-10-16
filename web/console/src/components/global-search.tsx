@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { File, FolderOpen, Search, User, X } from "lucide-react";
 import { api, type SearchResult } from "@/lib/api";
 import { formatBytes } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
+import { Input } from "@datasafe/ui/ui/input";
 import { cn } from "@/lib/utils";
 
 export function GlobalSearch() {

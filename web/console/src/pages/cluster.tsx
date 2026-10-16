@@ -5,11 +5,11 @@ import { toast } from "sonner";
 import { Copy, Link2, Plus, ShieldOff, Trash2 } from "lucide-react";
 import { api, type SiteReplicationRule, type TrustedCluster } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { Badge } from "@datasafe/ui/ui/badge";
+import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
 
 function formatTime(iso?: string) {
   if (!iso) return "—";

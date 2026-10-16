@@ -39,12 +39,12 @@ import { formatBytes, formatDate, formatDuration, formatSpeed } from "@/lib/util
 import { PageHeader } from "@/components/page-header";
 import { SharingPolicyCard } from "@/components/sharing-policy-card";
 import { CopyButton } from "@/components/copy-button";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@datasafe/ui/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
+import { Textarea } from "@datasafe/ui/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@datasafe/ui/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -52,18 +52,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@datasafe/ui/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@datasafe/ui/ui/select";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { BucketSettingsTabs } from "@/components/settings/BucketSettingsTabs";
-import { EncryptionCard } from "@/components/encryption/encryption-card";
+import { EncryptionCard } from "@datasafe/ui/encryption/encryption-card";
 
 type UploadItem = {
   name: string;

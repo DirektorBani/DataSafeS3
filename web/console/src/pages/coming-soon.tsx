@@ -2,7 +2,7 @@ import { Construction } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
 
 type ComingSoonProps = {
   title: string;

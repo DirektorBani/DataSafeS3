@@ -7,17 +7,17 @@ import { api } from "@/lib/api";
 import { emptyPolicy, parsePolicy, serializePolicy, type PolicyDocument } from "@/lib/policy";
 import { PolicyBuilder } from "@/components/policy-builder";
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@datasafe/ui/ui/button";
+import { Textarea } from "@datasafe/ui/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@datasafe/ui/ui/tabs";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
+} from "@datasafe/ui/ui/select";
+import { Label } from "@datasafe/ui/ui/label";
 
 export function PolicyPage() {
   const { t } = useTranslation(["policy", "common"]);

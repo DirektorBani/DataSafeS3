@@ -8,11 +8,11 @@ import { api, type ConsoleUser, type UserRole, bytesFromQuota, quotaFromBytes, t
 import { formatDate, formatBytes } from "@/lib/utils";
 import { useObjectQuotaPresets } from "@/hooks/use-quota-presets";
 import { PageHeader } from "@/components/page-header";
-import { DataTable } from "@/components/data-table";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { DataTable } from "@datasafe/ui/data-table";
+import { ConfirmDialog } from "@datasafe/ui/confirm-dialog";
+import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -20,14 +20,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@datasafe/ui/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@datasafe/ui/ui/select";
 
 export function UsersPage() {
   const { t, i18n } = useTranslation(["users", "common"]);

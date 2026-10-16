@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { Skeleton } from "@datasafe/ui/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 type MetricsCardProps = {

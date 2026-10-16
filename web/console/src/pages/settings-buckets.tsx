@@ -13,18 +13,18 @@ import {
   mergeBucketSettings,
 } from "@/lib/bucket-settings-merge";
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { Button } from "@datasafe/ui/ui/button";
+import { Label } from "@datasafe/ui/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@datasafe/ui/ui/select";
 import { BucketSettingsTabs } from "@/components/settings/BucketSettingsTabs";
 import { BucketSettingsPicker } from "@/components/settings/BucketSettingsPicker";
-import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ConfirmDialog } from "@datasafe/ui/confirm-dialog";
 
 function parseBucketsFromQuery(searchParams: URLSearchParams, known: Set<string>): string[] {
   const multi = searchParams.get("buckets");

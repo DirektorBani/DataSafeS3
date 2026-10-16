@@ -1,10 +1,6 @@
-import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
 import i18n, { normalizeLocale } from "@/i18n";
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+export { cn } from "@datasafe/ui/cn";
 
 function resolveLocale(locale?: string): string {
   return normalizeLocale(locale ?? i18n.language);

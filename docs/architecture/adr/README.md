@@ -11,5 +11,6 @@ Architecture Decision Records for DataSafeS3 Community Edition.
 | [0005](0005-scripted-ha-promote.md) | Scripted HA promote | Proposed |
 | [0006](0006-object-encryption-envelope.md) | Object encryption envelope | Accepted |
 | [0007](0007-minio-s3-copier.md) | MinIO S3 copier | Accepted |
+| [0008](0008-desktop-client.md) | Desktop client | Accepted |
 
 Internal product TZs: `D:\datasafe_tz\specs\`.

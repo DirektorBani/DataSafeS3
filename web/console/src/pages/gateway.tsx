@@ -27,13 +27,13 @@ function scheduleOptionLabel(value: string, t: (key: string) => string) {
 }
 import { formatBytes } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@datasafe/ui/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@datasafe/ui/ui/select";
+import { Badge } from "@datasafe/ui/ui/badge";
 
 export function GatewayPage() {
   const { t, i18n } = useTranslation(["gateway", "common"]);

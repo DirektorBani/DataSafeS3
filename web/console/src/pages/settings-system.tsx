@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { api, type SystemConfig } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
+import { Button } from "@datasafe/ui/ui/button";
 import { AdministratorSettings } from "@/components/settings/AdministratorSettings";
 import { SecurityStatusPanel } from "@/components/settings/SecurityStatusPanel";
 import {

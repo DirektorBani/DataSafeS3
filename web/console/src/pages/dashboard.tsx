@@ -8,9 +8,9 @@ import { formatBytes, formatBytesAxis } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { MetricsCard } from "@/components/metrics-card";
 import { StatusBadge } from "@/components/status-badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { Skeleton } from "@datasafe/ui/ui/skeleton";
+import { Button } from "@datasafe/ui/ui/button";
 
 export function DashboardPage() {
   const { t, i18n } = useTranslation(["dashboard", "common"]);

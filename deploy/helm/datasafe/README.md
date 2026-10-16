@@ -79,7 +79,7 @@ docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .
 # ghcr.io/direktorbani/datasafe-console:<tag>
 
 # Local production build, served only with the local-dist overlay:
-cd web/console && npm ci && npm run build
+npm ci && npm run build -w datasafe-console
 docker compose -f docker-compose.yml -f deploy/compose/docker-compose.local-console.yml up -d
 ```
 

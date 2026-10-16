@@ -1,20 +1,15 @@
 [package]
 name = "datasafe-desktop"
-version = "0.3.0"
-description = "DataSafeS3 desktop sync (Tauri)"
-authors = ["DataSafeS3"]
+version = "1.0.0-dev"
+description = "DataSafeS3 Desktop"
+authors = ["Ilya Trachuk"]
 edition = "2021"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-shell = "2"
-tauri-plugin-dialog = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1", features = ["sync", "io-util"] }
+tauri = { version = "2", features = [] }
 
 [lib]
 name = "datasafe_desktop_lib"

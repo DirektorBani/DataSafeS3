@@ -1,10 +1,6 @@
 {
   "identifier": "default",
-  "description": "DataSafeS3 Sync default capabilities",
+  "description": "Desktop 1.0 shell. Each later command and sidecar is added by name. The shell plugin is not granted.",
   "windows": ["main"],
-  "permissions": [
-    "core:default",
-    "shell:default",
-    "dialog:default"
-  ]
+  "permissions": ["core:default"]
 }

@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@datasafe/ui/ui/badge";
 import { useTranslation } from "react-i18next";
 
 type Status = "ok" | "warning" | "error" | "info" | "demo";

@@ -1,17 +1,17 @@
 import { Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@datasafe/ui/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
+import { Badge } from "@datasafe/ui/ui/badge";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@datasafe/ui/ui/select";
 import {
   S3_ACTIONS,
   bucketArn,

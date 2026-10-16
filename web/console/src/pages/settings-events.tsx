@@ -2,9 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@datasafe/ui/ui/badge";
+import { Button } from "@datasafe/ui/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
 import { api } from "@/lib/api";
 
 function statusVariant(status: string): "success" | "warning" | "secondary" {

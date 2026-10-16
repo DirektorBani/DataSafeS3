@@ -5,10 +5,10 @@ import { Plus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { api, type ConsoleUser, type Team } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
+import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { Label } from "@datasafe/ui/ui/label";
 
 export function TeamsPage() {
   const { t } = useTranslation("teams");

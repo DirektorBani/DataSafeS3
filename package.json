@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "workspaces": [
+    "web/ui",
+    "web/console",
+    "clients/desktop"
+  ]
+}

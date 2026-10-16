@@ -1,5 +1,5 @@
 # Serve a host production build instead of the published console image.
-# Build first: cd web/console && npm ci && npm run build
+# Build first: npm ci && npm run build -w datasafe-console
 #
 #   docker compose -f docker-compose.yml -f deploy/compose/docker-compose.local-console.yml up -d
 services:

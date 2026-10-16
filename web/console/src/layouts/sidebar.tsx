@@ -23,8 +23,8 @@ import {
   Users,
   Building2,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@datasafe/ui/ui/button";
+import { Separator } from "@datasafe/ui/ui/separator";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +32,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@datasafe/ui/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { api } from "@/lib/api";
 import { useTheme } from "@/hooks/use-theme";

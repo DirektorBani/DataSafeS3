@@ -6,11 +6,11 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { CopyButton } from "@/components/copy-button";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { OtpInput, useTotpCountdown } from "@/components/otp-input";
+import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { OtpInput, useTotpCountdown } from "@datasafe/ui/otp-input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,7 +20,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from "@datasafe/ui/ui/alert-dialog";
 
 type EnrollData = { secret: string; otpauth_uri: string; qr_code: string };
 

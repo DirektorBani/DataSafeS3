@@ -25,8 +25,7 @@ jobs:
           done
           exit 1
       - name: Build console
-        working-directory: web/console
-        run: npm ci && npm run build
+        run: npm ci && npm run build -w datasafe-console
       - name: Start DataSafe stack
         env:
           DATASAFE_DATA_ROOT: ${{ github.workspace }}/.datasafe-data-oidc

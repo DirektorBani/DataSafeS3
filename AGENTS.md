@@ -54,7 +54,7 @@ endpoints work. The bolt state lives in `./data` (gitignored); delete it to rese
 - Lint: `make lint` runs `gofmt -l .` + `go vet ./...`. Note: `go vet` is clean, but `gofmt -l .`
   currently reports many pre-existing unformatted files in the committed tree, so `make lint`
   fails on the gofmt step out of the box — this is the repo's existing state, not your change.
-- Console build: `cd web/console && npm run build` (`tsc -b && vite build`); E2E tests use Playwright
+- Console build: `npm ci && npm run build -w datasafe-console` (`tsc -b && vite build`); E2E tests use Playwright
   (`web/console/e2e`, `playwright.config.ts`).
 
 ### Postgres backend (optional)

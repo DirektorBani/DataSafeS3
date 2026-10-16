@@ -6,13 +6,13 @@ import { toast } from "sonner";
 import { api, WEBHOOK_EVENTS, type Webhook as WebhookConfig, type WebhookDelivery } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
-import { DataTable } from "@/components/data-table";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { DataTable } from "@datasafe/ui/data-table";
+import { ConfirmDialog } from "@datasafe/ui/confirm-dialog";
+import { Button } from "@datasafe/ui/ui/button";
+import { Badge } from "@datasafe/ui/ui/badge";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
+import { Textarea } from "@datasafe/ui/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -20,14 +20,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@datasafe/ui/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@datasafe/ui/ui/select";
 
 const TEMPLATE_NONE = "__custom__";
 

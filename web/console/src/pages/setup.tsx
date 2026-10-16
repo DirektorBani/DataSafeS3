@@ -5,18 +5,18 @@ import { useTranslation } from "react-i18next";
 import { CheckCircle2, Cloud, Database, KeyRound, Loader2, PartyPopper } from "lucide-react";
 import { toast } from "sonner";
 import { api, type ExternalS3Config } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { LanguageSwitcher } from "@/components/language-switcher";
+} from "@datasafe/ui/ui/dialog";
+import { LanguageSwitcher } from "@datasafe/ui/language-switcher";
 
 const defaultS3: ExternalS3Config = {
   endpoint: "",

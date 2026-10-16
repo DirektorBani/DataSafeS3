@@ -5,17 +5,17 @@ import { Plus, Trash2, Wifi } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
+import { Card, CardContent } from "@datasafe/ui/ui/card";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@datasafe/ui/ui/select";
 
 export function FederationPage() {
   const { t } = useTranslation(["federation", "common"]);

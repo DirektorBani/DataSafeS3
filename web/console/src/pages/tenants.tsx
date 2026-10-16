@@ -7,11 +7,11 @@ import { api, type Bucket, type TenantGroup, type TenantMember } from "@/lib/api
 import { formatDate } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { PageHeader } from "@/components/page-header";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { Badge } from "@datasafe/ui/ui/badge";
 import { SharingPolicyCard } from "@/components/sharing-policy-card";
 import {
   Select,
@@ -19,7 +19,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@datasafe/ui/ui/select";
 
 function GroupMultiSelect({
   groups,
