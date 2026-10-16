@@ -2,7 +2,7 @@
 
 **[English](docs/en/README.md)** · **[Русский](docs/ru/README.md)** · **[Documentation](docs/README.md)**
 
-**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.6.0](CHANGELOG.md#160---2026-10-15)
+**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.6.1](CHANGELOG.md#160---2026-10-15)
 
 ---
 
@@ -94,7 +94,7 @@ Kafka is an opt-in event sink. A default install does not set `STORAGE_KAFKA_BRO
 
 ---
 
-## v1.6.0
+## v1.6.1
 
 - SSE-S3 and optional SSE-KMS (Vault Transit). A single node with no Vault does not open a KMS connection.
 - Key rotation, rewrap, and crypto-shred. Finish the rolling upgrade of every node before enabling encryption.
@@ -140,9 +140,9 @@ copy .env.example .env
 docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml up -d
 ```
 
-The default Compose stack serves the console from `DATASAFE_CONSOLE_IMAGE` (`ghcr.io/direktorbani/datasafe-console:v1.6.0`); a host `web/console/dist` is not required. To serve a local production build, add `-f deploy/compose/docker-compose.local-console.yml`. For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
+The default Compose stack serves the console from `DATASAFE_CONSOLE_IMAGE` (`ghcr.io/direktorbani/datasafe-console:v1.6.1`); a host `web/console/dist` is not required. To serve a local production build, add `-f deploy/compose/docker-compose.local-console.yml`. For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
 
-Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.6.0` and `ghcr.io/direktorbani/datasafe-console:v1.6.0`.
+Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.6.1` and `ghcr.io/direktorbani/datasafe-console:v1.6.1`.
 
 Default Compose install is production-safe: `STORAGE_DEV` is off unless you pass installer `-Dev` / `--dev` (or profile `dev`). The installer generates `STORAGE_METRICS_TOKEN` and wires Prometheus. First login is still `admin` / `admin`, then the setup wizard.
 

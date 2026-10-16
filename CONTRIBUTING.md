@@ -144,6 +144,10 @@ Some paths are gitignored: `docs/analysis/`, `_local/`, filled handoffs, audit a
 
 
 
+## API compatibility
+
+Changes to `/api/v1` stay additive: new operations, optional response fields, and new error codes. Do not remove or rename a field, code, or operation inside `/api/v1`. The canonical contract is `api/openapi/v1.yaml`; `make openapi` copies it to the embedded spec and `docs/api/openapi.yaml`. CI runs `oasdiff breaking` against the last release that contains that file. A break needs the `api-breaking-approved` label and a note in the release. See [docs/api/compatibility.md](docs/api/compatibility.md).
+
 ## Code style
 
 

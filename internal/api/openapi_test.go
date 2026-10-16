@@ -27,9 +27,13 @@ var forbiddenPathPrefixes = []string{
 	"/federation",
 	"/cluster",
 	"/settings/ldap",
-	"/auth/",
-	"/mfa/",
 	"/sts/",
+}
+
+// Desktop 1.0 calls these auth routes. They live in the one /api/v1 contract.
+var contractAuthPaths = map[string]bool{
+	"/admin/login":  true,
+	"/admin/logout": true,
 }
 
 var requiredCommunityPaths = []string{
@@ -82,6 +86,9 @@ func TestOpenAPINoAdminPaths(t *testing.T) {
 	paths := openAPISpecPaths(t)
 	var found []string
 	for p := range paths {
+		if contractAuthPaths[p] || strings.HasPrefix(p, "/auth/") || strings.HasPrefix(p, "/mfa/") {
+			continue
+		}
 		for _, prefix := range forbiddenPathPrefixes {
 			if strings.HasPrefix(p, prefix) || p == strings.TrimSuffix(prefix, "/") {
 				found = append(found, p)
@@ -173,23 +180,26 @@ func communityPathExistsOnServer(openAPIPath string, routes map[string]bool) boo
 
 func TestOpenAPIEmbeddedMatchesDocs(t *testing.T) {
 	root := findRepoRoot(t)
+	canonical := filepath.Join(root, "api", "openapi", "v1.yaml")
 	docs := filepath.Join(root, "docs", "api", "openapi.yaml")
 	embed := filepath.Join(root, "internal", "openapi", "openapi.yaml")
-	a, err := os.ReadFile(docs)
+	a, err := os.ReadFile(canonical)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(embed)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(a) != string(b) {
-		t.Fatal("docs/api/openapi.yaml and internal/openapi/openapi.yaml differ; run: go run tools/gen-openapi-yaml.go")
+	for _, path := range []string{docs, embed} {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(a) != string(b) {
+			t.Fatalf("%s differs from api/openapi/v1.yaml; run: make openapi", path)
+		}
 	}
 	_ = openapi.SpecJSON() // ensure package init succeeds
 }
 
-var routeRe = regexp.MustCompile(`mux\.HandleFunc\("([A-Z]+) (/api/v1/[^"]+)"`)
+var routeRe = regexp.MustCompile(`mux\.HandleFunc\("([A-Z]+) (/api/v1/[^"]+|/healthz)"`)
 
 func parseServerRoutes(src string) map[string]bool {
 	out := make(map[string]bool)
@@ -205,6 +215,9 @@ func routeToOpenAPIPath(route string) string {
 		return ""
 	}
 	p := parts[1]
+	if p == "/healthz" {
+		return "/healthz"
+	}
 	if !strings.HasPrefix(p, "/api/v1/") {
 		return ""
 	}
@@ -267,8 +280,9 @@ func countOperations(t *testing.T) int {
 
 func TestOpenAPIOperationCount(t *testing.T) {
 	n := countOperations(t)
-	if n < 45 || n > 65 {
-		t.Fatalf("expected ~55 community operations, got %d", n)
+	// 1.6.1 contract: integration operations plus the Desktop auth and capability routes.
+	if n != 84 {
+		t.Fatalf("expected 84 /api/v1 contract operations, got %d", n)
 	}
 }
 
@@ -324,7 +338,7 @@ func TestOpenAPISecurityScheme(t *testing.T) {
 	if _, ok := schemes["BearerAPIToken"]; !ok {
 		t.Fatal("missing BearerAPIToken security scheme")
 	}
-	if _, ok := schemes["BearerJWT"]; ok {
-		t.Fatal("BearerJWT must not be in community spec")
+	if _, ok := schemes["BearerJWT"]; !ok {
+		t.Fatal("missing BearerJWT security scheme")
 	}
 }

@@ -144,10 +144,13 @@ jobs:
       - name: v1.5.0 chunked SSE object is readable
         run: bash scripts/single-node-gate.sh legacy-sse
       - name: Build console image for the installer pin
-        run: docker build -t ghcr.io/direktorbani/datasafe-console:v1.6.0 -f deploy/docker/Dockerfile.console .
+        run: |
+          tag="v$(tr -d '[:space:]' < VERSION)"
+          docker build -t "ghcr.io/direktorbani/datasafe-console:${tag}" -f deploy/docker/Dockerfile.console .
       - name: Install core profile (non-interactive)
         run: |
-          docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.6.0
+          tag="v$(tr -d '[:space:]' < VERSION)"
+          docker tag datasafe-storage-server:gate "ghcr.io/direktorbani/datasafe-storage-server:${tag}"
           bash install.sh --yes --profiles core --project datasafe-gate --data-root "${{ runner.temp }}/datasafe-gate"
       - name: Smoke the core install
         run: bash scripts/single-node-gate.sh smoke-installed
@@ -561,3 +564,40 @@ jobs:
             /tmp/datasafe-kms-cluster/migrate-first.log
             /tmp/datasafe-kms-cluster/migrate-second.log
             /tmp/datasafe-kms-cluster/vite.log
+
+  openapi-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+      - name: Embedded copy matches the canonical spec
+        run: make openapi-check
+      - name: Desktop contract, route coverage, and error codes
+        run: |
+          go test ./internal/api/ -count=1 -timeout 15m \
+            -run 'TestDesktopOpenAPIConformance|TestOpenAPIRouteCoverage|TestOpenAPI|TestCapabilities|TestDeprecation|TestEnrichAPIError|TestLoginIgnores|TestProductionSpec|TestErrorCode|TestAssignRequest'
+          go test ./internal/apicompat/ -count=1
+
+  openapi-breaking:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+      - name: oasdiff breaking gate
+        env:
+          API_BREAKING_APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'api-breaking-approved') }}
+        run: bash scripts/ci/openapi-breaking.sh
+
+  desktop-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Empty suite until the first Desktop release
+        run: bash scripts/ci/desktop-contract.sh

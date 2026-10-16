@@ -2,11 +2,11 @@ English | **[Русский](../../ru/context/project-status.md)**
 
 # Project Status
 
-**Last updated:** 2026-10-15 · **Current release:** [v1.6.0](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.6.0)
+**Last updated:** 2026-10-15 · **Current release:** [v1.6.1](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.6.1)
 
 ## Summary
 
-DataSafeS3 **Community Edition v1.6.0** is the current release: SSE-S3 and optional SSE-KMS (Vault Transit), key rotation, rewrap, and crypto-shred, and `storage-cli migrate from-minio` with a console command wizard. Images for this tag are published when the git tag is pushed. This repository commit does not push that tag. Prior: **v1.5.0** (durable event outbox, optional Kafka, scripted HA promote, per-rule gateway sync), **v1.4.1** (release pins and a production-safe default install) on **v1.4.0 Governance Evidence Pack**, cluster installer (v1.3.0), immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Core platform: S3-compatible API, web console (EN/RU/DE/FR), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, Teams, metrics-token protection, share-token hashing, and HA v2 lab tooling.
+DataSafeS3 **Community Edition v1.6.1** is the current release: SSE-S3 and optional SSE-KMS (Vault Transit), key rotation, rewrap, and crypto-shred, and `storage-cli migrate from-minio` with a console command wizard. Images for this tag are published when the git tag is pushed. This repository commit does not push that tag. Prior: **v1.5.0** (durable event outbox, optional Kafka, scripted HA promote, per-rule gateway sync), **v1.4.1** (release pins and a production-safe default install) on **v1.4.0 Governance Evidence Pack**, cluster installer (v1.3.0), immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Core platform: S3-compatible API, web console (EN/RU/DE/FR), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, Teams, metrics-token protection, share-token hashing, and HA v2 lab tooling.
 
 **v1.1.0** burns down trust-debt C01-C21 and ships **HA v2 CE lab foundation**: erasure backend, Postgres leader lock, site replication, and local validation scripts. This HA scope is explicitly **lab / not production multi-AZ**: no automatic failover orchestrator, no Patroni-certified production cluster, and no petabyte 4+2 multi-host promise.
 

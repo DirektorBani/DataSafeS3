@@ -4,7 +4,8 @@ Hand-written OpenAPI **3.1** specifications for the JSON REST API (`/api/v1/*`).
 
 | Artifact | Path |
 |----------|------|
-| **Community spec** (Swagger UI, integrators) | [`openapi.yaml`](openapi.yaml) |
+| **Canonical contract** (Desktop and integrators) | [`../../api/openapi/v1.yaml`](../../api/openapi/v1.yaml) |
+| **Community spec** (copy of the canonical file) | [`openapi.yaml`](openapi.yaml) |
 | **Full Admin API** (all routes, operators) | [`openapi-full.yaml`](openapi-full.yaml) |
 | Embedded copy (served by server) | [`internal/openapi/openapi.yaml`](../../internal/openapi/openapi.yaml) |
 | Live JSON | `GET /api/v1/openapi.json` |
@@ -15,15 +16,11 @@ Hand-written OpenAPI **3.1** specifications for the JSON REST API (`/api/v1/*`).
 
 **Not in OpenAPI:** S3 XML API (SigV4 on port 9000) — use AWS SDKs.
 
-## Regenerate both specs
+## Regenerate
 
-After editing `tools/gen-openapi-yaml.go` (`operations` inventory):
+The canonical contract is [`api/openapi/v1.yaml`](../../api/openapi/v1.yaml). Copy it into the embedded spec and this directory with `make openapi`. Do not rebuild those two files from `tools/gen-openapi-yaml.go`.
 
-```cmd
-go run tools/gen-openapi-yaml.go
-```
-
-Writes `openapi.yaml`, `internal/openapi/openapi.yaml`, and `openapi-full.yaml`.
+`go run tools/gen-openapi-yaml.go` still refreshes `openapi-full.yaml` from the route inventory, then copies the canonical file over `openapi.yaml` and `internal/openapi/openapi.yaml`.
 
 Rebuild and restart `storage-server`:
 

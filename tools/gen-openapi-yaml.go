@@ -1,6 +1,9 @@
 //go:build ignore
 
-// Generates docs/api/openapi.yaml and internal/openapi/openapi.yaml from route inventory.
+// Regenerates docs/api/openapi-full.yaml from the route inventory.
+// The Desktop contract api/openapi/v1.yaml is hand-maintained. This tool copies
+// it onto docs/api/openapi.yaml and internal/openapi/openapi.yaml and does not
+// rebuild those files from the inventory.
 // Run: go run tools/gen-openapi-yaml.go
 package main
 
@@ -16,14 +19,18 @@ func main() {
 	if len(os.Args) > 1 {
 		root = os.Args[1]
 	}
-	community := buildSpec(false)
+	canonical, err := os.ReadFile(filepath.Join(root, "api", "openapi", "v1.yaml"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read canonical spec: %v\n", err)
+		os.Exit(1)
+	}
 	full := buildSpec(true)
 	targets := []struct {
 		path    string
 		content string
 	}{
-		{filepath.Join(root, "docs", "api", "openapi.yaml"), community},
-		{filepath.Join(root, "internal", "openapi", "openapi.yaml"), community},
+		{filepath.Join(root, "docs", "api", "openapi.yaml"), string(canonical)},
+		{filepath.Join(root, "internal", "openapi", "openapi.yaml"), string(canonical)},
 		{filepath.Join(root, "docs", "api", "openapi-full.yaml"), full},
 	}
 	for _, t := range targets {

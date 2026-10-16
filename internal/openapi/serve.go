@@ -17,16 +17,36 @@ var swaggerUIAssets embed.FS
 
 var specJSON []byte
 
+// specVersion is info.version from the embedded contract.
+var specVersion string
+
 func init() {
 	var doc any
 	if err := yaml.Unmarshal(specYAML, &doc); err != nil {
 		panic("openapi: invalid embedded yaml: " + err.Error())
 	}
-	b, err := json.Marshal(normalizeYAML(doc))
+	normalized := normalizeYAML(doc)
+	b, err := json.Marshal(normalized)
 	if err != nil {
 		panic("openapi: json marshal: " + err.Error())
 	}
 	specJSON = b
+	specVersion = readSpecVersion(normalized)
+	if specVersion == "" {
+		panic("openapi: info.version is empty")
+	}
+}
+
+func readSpecVersion(doc any) string {
+	root, _ := doc.(map[string]any)
+	info, _ := root["info"].(map[string]any)
+	version, _ := info["version"].(string)
+	return version
+}
+
+// SpecVersion returns info.version of the embedded OpenAPI contract.
+func SpecVersion() string {
+	return specVersion
 }
 
 // normalizeYAML converts map[interface{}]interface{} from yaml.v2 into JSON-safe types.

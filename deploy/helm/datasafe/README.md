@@ -10,16 +10,16 @@ Helm chart for deploying **DataSafeS3** — self-hosted S3-compatible object stora
 - Helm 3.10+
 - PersistentVolume provisioner (for object data and optional PostgreSQL)
 - Built images (or pull from GHCR):
-  - `ghcr.io/direktorbani/datasafe-storage-server:v1.6.0` — release tag (or build locally: `docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .`)
-  - `ghcr.io/direktorbani/datasafe-console:v1.6.0` — release tag (or build via `deploy/docker/Dockerfile.console`)
+  - `ghcr.io/direktorbani/datasafe-storage-server:v1.6.1` — release tag (or build locally: `docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .`)
+  - `ghcr.io/direktorbani/datasafe-console:v1.6.1` — release tag (or build via `deploy/docker/Dockerfile.console`)
 
 ## Quick install (GHCR release tags)
 
 ```bash
-# Minimal BoltDB stack with published v1.6.0 images
+# Minimal BoltDB stack with published v1.6.1 images
 helm install datasafe deploy/helm/datasafe \
-  --set storageServer.image.tag=v1.6.0 \
-  --set console.image.tag=v1.6.0 \
+  --set storageServer.image.tag=v1.6.1 \
+  --set console.image.tag=v1.6.1 \
   --namespace datasafe --create-namespace
 ```
 

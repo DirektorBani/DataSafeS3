@@ -9,3 +9,4 @@
 ## Docs
 
 - [ ] EN/RU user docs updated when behavior changed
+- [ ] `/api/v1` changes are additive ([compatibility](docs/api/compatibility.md)), or this PR has the `api-breaking-approved` label

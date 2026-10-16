@@ -4,7 +4,7 @@
 
 Product documentation for DataSafeS3 — a self-hosted storage platform for secure and governed data management. Documentation focuses on **product value**, not comparisons with other products.
 
-**Current Community release:** [v1.6.0](../CHANGELOG.md#160---2026-10-15) (2026-10-15)
+**Current Community release:** [v1.6.1](../CHANGELOG.md#160---2026-10-15) (2026-10-15)
 
 ---
 

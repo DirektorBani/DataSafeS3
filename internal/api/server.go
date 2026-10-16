@@ -459,6 +459,8 @@ func (s *Server) storageStats() (int, int64) {
 
 func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assignRequestID(w, r)
+		applyDeprecationHeaders(w, r)
 		setCORS(w, r)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -596,6 +598,7 @@ func (s *Server) ensureSetupFlagsForExistingInstall(cfg metadata.SystemConfig) m
 func (s *Server) routes() {
 	mux := s.mux
 	openapi.Register(mux)
+	mux.HandleFunc("GET /api/v1/capabilities", s.handleCapabilities)
 	mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":  "ok",
@@ -1598,6 +1601,11 @@ func (s *Server) handlePutLifecycle(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
+	if status >= 400 {
+		if body, ok := v.(map[string]any); ok {
+			v = enrichAPIError(w, status, body)
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)

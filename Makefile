@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: dev down logs test lint dev-local dev-docker-nobuild
+.PHONY: dev down logs test lint dev-local dev-docker-nobuild openapi openapi-check
 
 dev:
 	docker compose up --build
@@ -25,3 +25,11 @@ lint:
 	@test -z "$$(gofmt -l .)" || (echo "gofmt found issues:" && gofmt -l . && exit 1)
 	@echo "==> govet"
 	go vet ./...
+
+openapi:
+	cp api/openapi/v1.yaml internal/openapi/openapi.yaml
+	cp api/openapi/v1.yaml docs/api/openapi.yaml
+
+openapi-check:
+	cmp -s api/openapi/v1.yaml internal/openapi/openapi.yaml
+	cmp -s api/openapi/v1.yaml docs/api/openapi.yaml
