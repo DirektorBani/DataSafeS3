@@ -60,6 +60,7 @@ PINS: list[tuple[str, str, int]] = [
     ("deploy/helm/datasafe/README.md", "--set storageServer.image.tag={tag}", 1),
     ("deploy/helm/datasafe/README.md", "--set console.image.tag={tag}", 1),
     ("web/console/package.json", '"version": "{ver}"', 1),
+    ("web/ui/package.json", '"version": "{ver}"', 1),
     ("scripts/cluster/remote/deploy-storage-server.sh", "ghcr.io/direktorbani/datasafe-storage-server:{tag}", 2),
     ("scripts/cluster/lab/up-local.sh", "ghcr.io/direktorbani/datasafe-storage-server:{tag}", 1),
     ("deploy/cluster/lab/docker-compose.yml", "ghcr.io/direktorbani/datasafe-storage-server:{tag}", 1),
@@ -77,7 +78,9 @@ THIRD_PARTY_IMAGES = (
     "repository: grafana/grafana",
 )
 HELM_VALUES = "deploy/helm/datasafe/values.yaml"
-PACKAGE_LOCK = "web/console/package-lock.json"
+PACKAGE_LOCK = "package-lock.json"
+# npm workspaces: the root package has no version. These entries carry the server release.
+LOCK_PACKAGES = ("web/console", "web/ui")
 
 
 def fail(msg: str) -> None:
@@ -162,12 +165,12 @@ def check_package_lock(ver: str) -> list[str]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return [f"{PACKAGE_LOCK}: {exc}"]
+    packages = data.get("packages") or {}
     errors: list[str] = []
-    if data.get("version") != ver:
-        errors.append(f"{PACKAGE_LOCK}: root version is {data.get('version')!r}, want {ver}")
-    pkg = (data.get("packages") or {}).get("") or {}
-    if pkg.get("version") != ver:
-        errors.append(f"{PACKAGE_LOCK}: packages[''].version is {pkg.get('version')!r}, want {ver}")
+    for name in LOCK_PACKAGES:
+        got = (packages.get(name) or {}).get("version")
+        if got != ver:
+            errors.append(f"{PACKAGE_LOCK}: packages[{name!r}].version is {got!r}, want {ver}")
     return errors
 
 
@@ -206,13 +209,16 @@ def bump_package_lock(old: str, new: str) -> None:
     text = read_text(path)
     needle = f'"version": "{old}"'
     repl = f'"version": "{new}"'
-    out = text
-    for n in range(2):
-        idx = out.find(needle)
-        if idx < 0:
-            fail(f"{PACKAGE_LOCK}: occurrence {n + 1} of {needle} not found")
-        out = out[:idx] + repl + out[idx + len(needle) :]
-    write_text(path, out)
+    for name in LOCK_PACKAGES:
+        key = f'\n    "{name}": {{\n'
+        start = text.find(key)
+        if start < 0:
+            fail(f"{PACKAGE_LOCK}: missing workspace package {name}")
+        ver_at = text.find(needle, start)
+        if ver_at < 0 or ver_at > start + 500:
+            fail(f"{PACKAGE_LOCK}: {name} has no version {old}")
+        text = text[:ver_at] + repl + text[ver_at + len(needle) :]
+    write_text(path, text)
 
 
 def bump(raw: str) -> None:
