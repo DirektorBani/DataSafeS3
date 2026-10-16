@@ -87,3 +87,15 @@ export function saveApiToken(id: string, token: string): Promise<LoginView> {
 export function saveAccessKey(id: string, secret: string): Promise<LoginView> {
   return invoke("auth_access_key", { id, secret });
 }
+
+export type BrowseResult = {
+  status: number;
+  code?: string;
+  message?: string;
+  step_up?: boolean;
+  body?: Record<string, unknown>;
+};
+
+export function browse(id: string, method: string, params: Record<string, unknown> = {}): Promise<BrowseResult> {
+  return invoke("browse", { id, method, params });
+}

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@datasafe/ui/ui/button";
 import { listProfiles, type Profile } from "./desktop";
 import { setDesktopLocale, THEME_KEY, type DesktopLocale } from "./i18n";
+import { BucketBrowser } from "./pages/buckets";
 import { LoginPanel } from "./pages/login";
 import { ProfileList } from "./pages/profiles";
 
@@ -36,7 +37,7 @@ export default function App() {
   const current = profiles.find((profile) => profile.id === selected);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
+    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-8">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">{t("title")}</h1>
         <p className="text-sm text-muted-foreground">{t("version", { version: VERSION })}</p>
@@ -101,6 +102,9 @@ export default function App() {
           />
         ) : null}
       </div>
+      {current && current.session === "signed_in" && !current.server?.rejected && !current.server?.blocked && current.server?.browse_allowed !== false ? (
+        <BucketBrowser profileId={current.id} onError={setError} />
+      ) : null}
     </main>
   );
 }

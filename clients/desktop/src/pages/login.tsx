@@ -47,7 +47,12 @@ export function LoginPanel(props: {
         setMfa(false);
       }
       const notes = [
-        result?.secrets_persisted === false ? t("secretsMemory") : "",
+        result?.secrets_persisted === false &&
+        result?.status !== "rejected" &&
+        result?.status !== "blocked" &&
+        result?.status !== "error"
+          ? t("secretsMemory")
+          : "",
         result?.message && result.status === "signed_out" ? t("passwordStays") : "",
         result?.mfa_setup ? t("mfaSetup") : "",
         result?.server?.expires_soon ? t("expiresSoon") : "",

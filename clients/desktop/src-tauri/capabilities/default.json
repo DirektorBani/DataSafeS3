@@ -6,6 +6,7 @@
     "allow-profile-list",
     "allow-profile-save",
     "allow-profile-forget",
+    "allow-browse",
     "allow-server-info",
     "allow-auth-login",
     "allow-auth-mfa",

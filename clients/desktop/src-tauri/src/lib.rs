@@ -62,6 +62,30 @@ fn take_secrets(value: &mut Value) -> (String, String) {
     (token, mfa)
 }
 
+fn persisted_login_status(status: &str) -> bool {
+    matches!(status, "signed_in" | "mfa_required")
+}
+
+fn present_login(state: &Desktop, id: &str, result: Value, password: &str, remember: bool) -> Result<Value, String> {
+    let status = result.get("status").and_then(|item| item.as_str()).unwrap_or("").to_string();
+    if !persisted_login_status(&status) {
+        let mut view = result;
+        if let Some(obj) = view.as_object_mut() {
+            obj.remove("token");
+            obj.remove("mfa_token");
+            obj.insert("secrets_persisted".into(), Value::Bool(false));
+        }
+        return Ok(view);
+    }
+    let mut view = store_login(state, id, result, status == "signed_in")?;
+    if !remember_password(state, id, password, remember) {
+        if let Some(obj) = view.as_object_mut() {
+            obj.insert("secrets_persisted".into(), Value::Bool(false));
+        }
+    }
+    Ok(view)
+}
+
 fn remember_password(state: &Desktop, id: &str, password: &str, remember: bool) -> bool {
     if remember {
         return state.secrets.set(id, "password", password).is_ok();
@@ -140,6 +164,50 @@ fn profile_forget(state: State<Desktop>, id: String) -> Result<Value, String> {
     call(&state, "profile.delete", json!({ "id": id }))
 }
 
+fn browse_method_allowed(method: &str) -> bool {
+    matches!(
+        method,
+        "bucket.list"
+            | "bucket.create"
+            | "bucket.delete"
+            | "bucket.settings"
+            | "bucket.encryption"
+            | "object.list"
+            | "object.meta"
+            | "object.meta.put"
+            | "object.tags"
+            | "object.tags.put"
+            | "object.retention"
+            | "object.versions"
+            | "object.restore"
+            | "object.rename"
+            | "object.delete"
+            | "folder.create"
+            | "folder.delete"
+            | "trash.list"
+            | "trash.restore"
+            | "trash.purge"
+    )
+}
+
+#[tauri::command]
+fn browse(state: State<Desktop>, id: String, method: String, params: Option<Value>) -> Result<Value, String> {
+    if !browse_method_allowed(&method) {
+        return Err("method is not a browse call".into());
+    }
+    let token = token_for(&state, &id);
+    let mut body = params.unwrap_or_else(|| json!({}));
+    if let Some(obj) = body.as_object_mut() {
+        obj.remove("token");
+        obj.remove("password");
+        obj.insert("id".into(), Value::String(id));
+        obj.insert("token".into(), Value::String(token));
+    } else {
+        return Err("browse params must be an object".into());
+    }
+    call(&state, &method, body)
+}
+
 #[tauri::command]
 fn server_info(state: State<Desktop>, id: String) -> Result<Value, String> {
     let token = token_for(&state, &id);
@@ -154,13 +222,7 @@ fn auth_login(state: State<Desktop>, id: String, username: String, password: Str
         password
     };
     let result = call(&state, "auth.login", json!({ "id": id, "username": username, "password": password }))?;
-    let mut view = store_login(&state, &id, result, true)?;
-    if !remember_password(&state, &id, &password, remember) {
-        if let Some(obj) = view.as_object_mut() {
-            obj.insert("secrets_persisted".into(), Value::Bool(false));
-        }
-    }
-    Ok(view)
+    present_login(&state, &id, result, &password, remember)
 }
 
 #[tauri::command]
@@ -192,13 +254,7 @@ fn auth_logout(state: State<Desktop>, id: String) -> Result<Value, String> {
 #[tauri::command]
 fn auth_oidc_password(state: State<Desktop>, id: String, username: String, password: String, remember: bool) -> Result<Value, String> {
     let result = call(&state, "auth.oidc", json!({ "id": id, "username": username, "password": password }))?;
-    let mut view = store_login(&state, &id, result, true)?;
-    if !remember_password(&state, &id, &password, remember) {
-        if let Some(obj) = view.as_object_mut() {
-            obj.insert("secrets_persisted".into(), Value::Bool(false));
-        }
-    }
-    Ok(view)
+    present_login(&state, &id, result, &password, remember)
 }
 
 #[tauri::command]
@@ -251,6 +307,7 @@ pub fn run() {
             profile_list,
             profile_save,
             profile_forget,
+            browse,
             server_info,
             auth_login,
             auth_mfa,
@@ -262,4 +319,19 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running DataSafeS3 Desktop");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::persisted_login_status;
+
+    #[test]
+    fn rejected_sign_in_is_not_persisted() {
+        assert!(!persisted_login_status("rejected"));
+        assert!(!persisted_login_status("blocked"));
+        assert!(!persisted_login_status("error"));
+        assert!(!persisted_login_status(""));
+        assert!(persisted_login_status("signed_in"));
+        assert!(persisted_login_status("mfa_required"));
+    }
 }

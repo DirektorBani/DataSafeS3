@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 )
 
@@ -178,6 +179,49 @@ func (a *App) dispatch(method string, params map[string]any) (any, *rpcError) {
 			return nil, rpcFail(err)
 		}
 		return result, nil
+	case "bucket.list":
+		return rpcBrowse(a.bucketList(params))
+	case "bucket.create":
+		return rpcBrowse(a.bucketCreate(params))
+	case "bucket.delete":
+		return rpcBrowse(a.bucketDelete(params))
+	case "bucket.settings":
+		return rpcBrowse(a.bucketSettings(params))
+	case "bucket.encryption":
+		return rpcBrowse(a.bucketEncryption(params))
+	case "object.list":
+		return rpcBrowse(a.objectList(params))
+	case "object.meta":
+		return rpcBrowse(a.objectMeta(params, http.MethodGet, nil))
+	case "object.meta.put":
+		return rpcBrowse(a.objectMeta(params, http.MethodPut, map[string]any{
+			"metadata":     params["metadata"],
+			"content_type": strParam(params, "content_type"),
+		}))
+	case "object.tags":
+		return rpcBrowse(a.objectTags(params, http.MethodGet, nil))
+	case "object.tags.put":
+		return rpcBrowse(a.objectTags(params, http.MethodPut, map[string]any{"tags": params["tags"]}))
+	case "object.retention":
+		return rpcBrowse(a.objectRetention(params))
+	case "object.versions":
+		return rpcBrowse(a.objectVersions(params))
+	case "object.restore":
+		return rpcBrowse(a.objectAction(params, "restore", map[string]any{"version_id": strParam(params, "version_id")}))
+	case "object.rename":
+		return rpcBrowse(a.objectAction(params, "rename", map[string]any{"dest_key": strParam(params, "dest_key")}))
+	case "object.delete":
+		return rpcBrowse(a.objectDelete(params))
+	case "folder.create":
+		return rpcBrowse(a.folderCreate(params))
+	case "folder.delete":
+		return rpcBrowse(a.folderDelete(params))
+	case "trash.list":
+		return rpcBrowse(a.trashList(params))
+	case "trash.restore":
+		return rpcBrowse(a.trashRestore(params))
+	case "trash.purge":
+		return rpcBrowse(a.trashPurge(params))
 	default:
 		return nil, &rpcError{Code: -32601, Message: "method not found"}
 	}
@@ -204,6 +248,13 @@ func profileFrom(raw any) (Profile, error) {
 		return Profile{}, err
 	}
 	return profile, nil
+}
+
+func rpcBrowse(result apiResult, err error) (any, *rpcError) {
+	if err != nil {
+		return nil, rpcFail(err)
+	}
+	return result, nil
 }
 
 func rpcFail(err error) *rpcError {

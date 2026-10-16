@@ -5,6 +5,7 @@ fn main() {
                 "profile_list",
                 "profile_save",
                 "profile_forget",
+                "browse",
                 "server_info",
                 "auth_login",
                 "auth_mfa",
