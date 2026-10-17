@@ -3,7 +3,7 @@ package main
 import "strings"
 
 var secretKeys = []string{
-	"password", "secret", "token", "mfa_token", "mfa_code", "exchange_code",
+	"password", "secret", "token", "mfa_token", "mfa_code", "step_up_code", "totp_code", "exchange_code",
 	"authorization", "access_key_secret",
 }
 

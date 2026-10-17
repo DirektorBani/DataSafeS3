@@ -42,6 +42,7 @@ export function ObjectBrowser(props: {
   canWrite: boolean;
   encryption: string;
   onError: (message: string) => void;
+  confirmDangerous: (method: string, params: Record<string, unknown>) => Promise<BrowseResult>;
 }) {
   const { t } = useTranslation();
   const { profileId, bucket, onError } = props;
@@ -183,7 +184,13 @@ export function ObjectBrowser(props: {
   }
 
   async function trashAction(method: "trash.restore" | "trash.purge", id: string) {
-    const result = await browse(props.profileId, method, { trash_id: id });
+    const result =
+      method === "trash.purge"
+        ? await props.confirmDangerous(method, { trash_id: id })
+        : await browse(props.profileId, method, { trash_id: id });
+    if (result.code === "cancelled" || result.mfa_setup) {
+      return;
+    }
     const message = problem(result);
     if (message) {
       props.onError(message);

@@ -25,6 +25,7 @@ func TestSecretsInLogs(t *testing.T) {
 	logger.Info("login password=" + password)
 	logger.Info("mfa X-DataSafe-MFA-Token: " + totp)
 	logger.Info("mfa_code=" + totp)
+	logger.Info("step_up_code=" + totp)
 	logger.Info("presign https://storage.example/bucket/key?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=" + accessKey + "&X-Amz-Signature=" + signature)
 	logger.Info(`json {"password":"` + password + `","token":"jwt-secret-token","mfa_code":"` + totp + `"}`)
 	logger.Info("Authorization: Bearer jwt-secret-token")

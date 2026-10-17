@@ -73,6 +73,8 @@ type Task struct {
 const (
 	// journalBatchFiles is how many per-file updates share one fsync.
 	// One bolt row per file stays; only the sync is batched.
+	// A part can be on the server before this sync. Server 1.6.1 has no
+	// ListParts the client can call, so resume uploads that part again.
 	journalBatchFiles = 32
 	journalFlushEvery = 200 * time.Millisecond
 )

@@ -174,7 +174,8 @@ fn profile_forget(state: State<Desktop>, id: String) -> Result<Value, String> {
 fn browse_method_allowed(method: &str) -> bool {
     matches!(
         method,
-        "bucket.list"
+        "account.me"
+            | "bucket.list"
             | "bucket.create"
             | "bucket.delete"
             | "bucket.settings"
@@ -212,7 +213,9 @@ fn browse(state: State<Desktop>, id: String, method: String, params: Option<Valu
     } else {
         return Err("browse params must be an object".into());
     }
-    call(&state, &method, body)
+    let mut result = call(&state, &method, body)?;
+    strip_secrets(&mut result);
+    Ok(result)
 }
 
 fn transfer_method_allowed(method: &str) -> bool {
@@ -229,6 +232,8 @@ fn strip_secrets(value: &mut Value) {
             map.remove("password");
             map.remove("access_secret");
             map.remove("mfa_token");
+            map.remove("step_up_code");
+            map.remove("totp_code");
             map.remove("wrapped_dek");
             for child in map.values_mut() {
                 strip_secrets(child);

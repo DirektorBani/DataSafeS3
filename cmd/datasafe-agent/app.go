@@ -337,9 +337,10 @@ func (a *App) probe(profile Profile, token string, retry bool) (loginResult, err
 	if resp.Status == http.StatusOK {
 		obj, _ := decodeObject(resp.Body)
 		username, _ := obj["username"].(string)
+		setup, _ := obj["mfa_setup_required"].(bool)
 		profile.Session = "signed_in"
 		_ = a.updateProfile(profile)
-		return loginResult{Status: "signed_in", Username: username}, nil
+		return loginResult{Status: "signed_in", Username: username, MFASetup: setup}, nil
 	}
 	apiErr := classifyError(resp.Status, resp.Body, resp.Header)
 	if apiErr.StepUp {

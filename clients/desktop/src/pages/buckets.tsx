@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@datasafe/ui/ui/button";
+import { StepUpDialog, useStepUp } from "../components/step-up";
 import { browse, type BrowseResult } from "../desktop";
 import { ObjectBrowser } from "./objects";
 
@@ -20,8 +21,9 @@ function problem(result: BrowseResult): string {
   return "";
 }
 
-export function BucketBrowser(props: { profileId: string; onError: (message: string) => void }) {
+export function BucketBrowser(props: { profileId: string; onError: (message: string) => void; onMfaSetup: () => void }) {
   const { t } = useTranslation();
+  const step = useStepUp(props.profileId, props.onMfaSetup);
   const [buckets, setBuckets] = useState<BucketItem[]>([]);
   const [filter, setFilter] = useState("all");
   const [name, setName] = useState("");
@@ -82,11 +84,14 @@ export function BucketBrowser(props: { profileId: string; onError: (message: str
   }
 
   async function deleteBucket() {
-    const result = await browse(props.profileId, "bucket.delete", { bucket: selected });
     setConfirm(false);
+    const result = await step.call("bucket.delete", { bucket: selected });
+    if (result.code === "cancelled" || result.mfa_setup) {
+      return;
+    }
     const message = problem(result);
     if (message) {
-      props.onError(result.step_up ? t("stepUp") : message);
+      props.onError(message);
       return;
     }
     setSelected("");
@@ -95,6 +100,7 @@ export function BucketBrowser(props: { profileId: string; onError: (message: str
 
   return (
     <section className="space-y-4">
+      <StepUpDialog open={step.open} error={step.error} onCancel={step.cancel} onSubmit={(code) => void step.submit(code)} />
       <div className="flex flex-wrap items-end gap-2">
         <label className="space-y-1 text-sm">
           <span className="block">{t("buckets")}</span>
@@ -139,7 +145,14 @@ export function BucketBrowser(props: { profileId: string; onError: (message: str
       </div>
       {current && current.access?.can_write !== true ? <p className="text-sm">{t("readOnly")}</p> : null}
       {selected ? (
-        <ObjectBrowser profileId={props.profileId} bucket={selected} canWrite={canWrite} encryption={encryption} onError={props.onError} />
+        <ObjectBrowser
+          profileId={props.profileId}
+          bucket={selected}
+          canWrite={canWrite}
+          encryption={encryption}
+          onError={props.onError}
+          confirmDangerous={step.call}
+        />
       ) : null}
     </section>
   );

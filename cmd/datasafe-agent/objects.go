@@ -9,14 +9,23 @@ import (
 // apiResult is a browse response. The body is the server JSON with wrapped
 // key material removed. A rejected or blocked profile never leaves the agent.
 type apiResult struct {
-	Status  int            `json:"status"`
-	Code    string         `json:"code,omitempty"`
-	Message string         `json:"message,omitempty"`
-	StepUp  bool           `json:"step_up,omitempty"`
-	Body    map[string]any `json:"body,omitempty"`
+	Status   int            `json:"status"`
+	Code     string         `json:"code,omitempty"`
+	Message  string         `json:"message,omitempty"`
+	StepUp   bool           `json:"step_up,omitempty"`
+	MFASetup bool           `json:"mfa_setup,omitempty"`
+	Body     map[string]any `json:"body,omitempty"`
 }
 
+// mfaTokenHeader is the one-shot step-up credential. It stays in the agent
+// for the retry of the action that asked for it, then it is discarded.
+const mfaTokenHeader = "X-DataSafe-MFA-Token"
+
 func (a *App) browse(profile Profile, token, method, path string, query url.Values, payload any) (apiResult, error) {
+	return a.browseWith(profile, token, method, path, query, payload, "")
+}
+
+func (a *App) browseWith(profile Profile, token, method, path string, query url.Values, payload any, code string) (apiResult, error) {
 	if profile.Session == "rejected" || (profile.Server != nil && profile.Server.Rejected) {
 		return apiResult{Code: "server.too_old", Message: "server is older than 1.5.0"}, nil
 	}
@@ -38,23 +47,74 @@ func (a *App) browse(profile Profile, token, method, path string, query url.Valu
 	if err != nil {
 		return apiResult{}, err
 	}
+	result := finishBrowse(resp)
+	if !result.StepUp || strings.TrimSpace(code) == "" {
+		return result, nil
+	}
+	// A 1.5.0 server does not answer step_up_required, so this exchange
+	// never runs there and the ordinary confirm stands.
+	return a.presentStepUp(client, method, path, payload, result, strings.TrimSpace(code))
+}
+
+// presentStepUp trades a TOTP or recovery code for one action token and
+// retries the call that asked for it. The token is not returned and is not
+// kept for a second action. A replayed token comes back as 401 and the
+// caller opens the dialog again.
+func (a *App) presentStepUp(client *Client, method, path string, payload any, asked apiResult, code string) (apiResult, error) {
+	action, _ := asked.Body["action"].(string)
+	target, _ := asked.Body["target"].(string)
+	action = strings.TrimSpace(action)
+	if action == "" {
+		return asked, nil
+	}
+	step, err := client.do(http.MethodPost, "/api/v1/auth/step-up", map[string]string{
+		"action": action,
+		"target": target,
+		"code":   code,
+	})
+	if err != nil {
+		return apiResult{}, err
+	}
+	if step.Status >= 400 {
+		failed := finishBrowse(step)
+		if step.Status == http.StatusUnauthorized {
+			failed.StepUp = true
+		}
+		return failed, nil
+	}
+	stepBody, _ := decodeObject(step.Body)
+	mfaToken, _ := stepBody["token"].(string)
+	mfaToken = strings.TrimSpace(mfaToken)
+	if mfaToken == "" {
+		return apiResult{Status: step.Status, Code: "auth.step_up_required", Message: "auth.step_up_required", StepUp: true}, nil
+	}
+	retry, err := client.doHeaders(method, path, payload, map[string]string{mfaTokenHeader: mfaToken})
+	mfaToken = ""
+	if err != nil {
+		return apiResult{}, err
+	}
+	again := finishBrowse(retry)
+	if again.StepUp || again.Code == "auth.mfa_token_invalid" {
+		again.StepUp = true
+	}
+	return again, nil
+}
+
+func finishBrowse(resp rawResponse) apiResult {
 	body, _ := decodeObject(resp.Body)
 	body = dropWrapped(body)
-	if resp.Status >= 400 {
-		apiErr := classifyError(resp.Status, resp.Body, resp.Header)
-		message := safeMessage(apiErr)
-		if apiErr.StepUp {
-			message = "2FA is required. Complete it in the web console."
-		}
-		return apiResult{
-			Status:  resp.Status,
-			Code:    apiErr.Code,
-			Message: message,
-			StepUp:  apiErr.StepUp,
-			Body:    body,
-		}, nil
+	if resp.Status < 400 {
+		return apiResult{Status: resp.Status, Body: body}
 	}
-	return apiResult{Status: resp.Status, Body: body}, nil
+	apiErr := classifyError(resp.Status, resp.Body, resp.Header)
+	return apiResult{
+		Status:   resp.Status,
+		Code:     apiErr.Code,
+		Message:  safeMessage(apiErr),
+		StepUp:   apiErr.StepUp,
+		MFASetup: apiErr.MFASetup,
+		Body:     body,
+	}
 }
 
 func (a *App) browseCall(params map[string]any, method, path string, query url.Values, payload any) (apiResult, error) {
@@ -63,7 +123,7 @@ func (a *App) browseCall(params map[string]any, method, path string, query url.V
 		return apiResult{}, err
 	}
 	token, _ := params["token"].(string)
-	return a.browse(profile, token, method, path, query, payload)
+	return a.browseWith(profile, token, method, path, query, payload, strParam(params, "step_up_code"))
 }
 
 func bucketPath(params map[string]any) (string, error) {
@@ -80,6 +140,17 @@ var errBucketName = errString("bucket name is required")
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+func (a *App) accountMe(params map[string]any) (apiResult, error) {
+	result, err := a.browseCall(params, http.MethodGet, "/api/v1/me", nil, nil)
+	if err != nil || result.Status != http.StatusOK {
+		return result, err
+	}
+	if setup, _ := result.Body["mfa_setup_required"].(bool); setup {
+		result.MFASetup = true
+	}
+	return result, nil
+}
 
 func (a *App) bucketList(params map[string]any) (apiResult, error) {
 	query := url.Values{}
@@ -331,6 +402,15 @@ func stringList(raw any) []string {
 	return out
 }
 
+func dropSecretKey(key string) bool {
+	switch strings.ToLower(key) {
+	case "wrapped_dek", "token", "mfa_token", "step_up_code", "totp_code", "password", "access_secret":
+		return true
+	default:
+		return false
+	}
+}
+
 func itoa(n int) string {
 	if n == 0 {
 		return "0"
@@ -357,7 +437,7 @@ func dropWrappedValue(value any) any {
 	case map[string]any:
 		out := make(map[string]any, len(typed))
 		for key, child := range typed {
-			if strings.EqualFold(key, "wrapped_dek") {
+			if dropSecretKey(key) {
 				continue
 			}
 			out[key] = dropWrappedValue(child)

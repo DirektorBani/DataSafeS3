@@ -180,6 +180,8 @@ func (a *App) dispatch(method string, params map[string]any) (any, *rpcError) {
 			return nil, rpcFail(err)
 		}
 		return result, nil
+	case "account.me":
+		return rpcBrowse(a.accountMe(params))
 	case "bucket.list":
 		return rpcBrowse(a.bucketList(params))
 	case "bucket.create":

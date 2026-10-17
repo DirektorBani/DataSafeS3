@@ -31,12 +31,15 @@ func classifyError(status int, body []byte, header http.Header) apiError {
 		code = legacyCode(status, legacy)
 	}
 	out := apiError{
-		Status:   status,
-		Code:     code,
-		Legacy:   legacy,
-		Message:  message,
-		StepUp:   code == "auth.step_up_required" || legacy == "step_up_required",
-		MFASetup: code == "auth.mfa_setup_required" || legacy == "mfa_setup_required",
+		Status:  status,
+		Code:    code,
+		Legacy:  legacy,
+		Message: message,
+		StepUp: code == "auth.step_up_required" || legacy == "step_up_required" ||
+			code == "auth.mfa_token_invalid" || legacy == "mfa_token_invalid" ||
+			code == "auth.invalid_code" || legacy == "invalid code",
+		MFASetup: code == "auth.mfa_setup_required" || legacy == "mfa_setup_required" ||
+			code == "auth.mfa_required" || legacy == "mfa_required",
 	}
 	if status == http.StatusTooManyRequests {
 		out.RetryAfter = 60
@@ -60,8 +63,14 @@ func legacyCode(status int, legacy string) string {
 		return "auth.session_expired"
 	case "step_up_required":
 		return "auth.step_up_required"
+	case "mfa_token_invalid":
+		return "auth.mfa_token_invalid"
+	case "invalid code":
+		return "auth.invalid_code"
 	case "mfa_setup_required":
 		return "auth.mfa_setup_required"
+	case "mfa_required":
+		return "auth.mfa_required"
 	case "forbidden":
 		return "access.forbidden"
 	case "not found":

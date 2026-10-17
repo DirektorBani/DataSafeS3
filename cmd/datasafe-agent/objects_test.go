@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 )
@@ -108,7 +110,7 @@ func TestBrowseForbiddenAndStepUp(t *testing.T) {
 		t.Fatal(rpcErr.Message)
 	}
 	step := raw.(apiResult)
-	if !step.StepUp || !strings.Contains(step.Message, "web console") || calls.Load() != 2 {
+	if !step.StepUp || step.Code != "auth.step_up_required" || strings.Contains(step.Message, "web console") || calls.Load() != 2 {
 		t.Fatalf("step-up %+v calls %d", step, calls.Load())
 	}
 }
@@ -137,5 +139,253 @@ func TestBrowseRefusesOldProfileWithoutHTTP(t *testing.T) {
 	result := raw.(apiResult)
 	if result.Code != "server.too_old" || calls.Load() != 0 {
 		t.Fatalf("%+v calls %d", result, calls.Load())
+	}
+}
+
+func TestStepUpDeleteThenSecondAction(t *testing.T) {
+	const totp = "654321"
+	const recovery = "recovery-code-1"
+	var mu sync.Mutex
+	var hits []string
+	seen := map[string]int{}
+	var seq atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer jwt" {
+			t.Errorf("auth %q", r.Header.Get("Authorization"))
+		}
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/auth/step-up":
+			var posted map[string]string
+			raw, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(raw, &posted)
+			if posted["totp_code"] != "" || posted["code"] == "" {
+				t.Errorf("step-up body %+v", posted)
+			}
+			n := seq.Add(1)
+			token := "action-token-" + itoa(int(n))
+			mu.Lock()
+			hits = append(hits, "step-up "+posted["action"]+" "+posted["target"]+" "+posted["code"])
+			mu.Unlock()
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"token": token, "action": posted["action"], "target": posted["target"],
+			})
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/v1/buckets/plain":
+			mu.Lock()
+			hits = append(hits, "delete-plain "+r.Header.Get(mfaTokenHeader))
+			mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodDelete && (r.URL.Path == "/api/v1/buckets/photos" || r.URL.Path == "/api/v1/trash/t1"):
+			header := r.Header.Get(mfaTokenHeader)
+			action, target := "bucket_delete", "photos"
+			if r.URL.Path == "/api/v1/trash/t1" {
+				action = "trash_purge"
+			}
+			mu.Lock()
+			hits = append(hits, r.URL.Path+" header="+header)
+			if header != "" {
+				seen[header]++
+				if seen[header] > 1 {
+					mu.Unlock()
+					w.WriteHeader(http.StatusUnauthorized)
+					_, _ = w.Write([]byte(`{"error":"mfa_token_invalid"}`))
+					return
+				}
+			}
+			mu.Unlock()
+			if header == "" {
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": "step_up_required", "action": action, "target": target})
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	app := &App{dataDir: t.TempDir()}
+	profile, err := app.putProfile(Profile{Name: "One", ServerURL: srv.URL, AuthMethod: "password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile.Session = "signed_in"
+	if err := app.updateProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	params := func(extra map[string]any) map[string]any {
+		out := map[string]any{"id": profile.ID, "token": "jwt"}
+		for key, value := range extra {
+			out[key] = value
+		}
+		return out
+	}
+	raw, rpcErr := app.dispatch("bucket.delete", params(map[string]any{"bucket": "plain", "step_up_code": totp}))
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	plain := raw.(apiResult)
+	if plain.Status != http.StatusNoContent || plain.StepUp {
+		t.Fatalf("1.5-shaped delete %+v", plain)
+	}
+	mu.Lock()
+	for _, hit := range hits {
+		if strings.HasPrefix(hit, "step-up") {
+			t.Fatalf("old server asked for a code: %v", hits)
+		}
+	}
+	mu.Unlock()
+
+	raw, rpcErr = app.dispatch("bucket.delete", params(map[string]any{"bucket": "photos"}))
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	asked := raw.(apiResult)
+	if !asked.StepUp || asked.Body["action"] != "bucket_delete" || asked.Body["target"] != "photos" {
+		t.Fatalf("ask %+v", asked)
+	}
+
+	raw, rpcErr = app.dispatch("bucket.delete", params(map[string]any{"bucket": "photos", "step_up_code": totp}))
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	deleted := raw.(apiResult)
+	encoded, _ := json.Marshal(deleted)
+	if deleted.Status != http.StatusNoContent || deleted.StepUp || strings.Contains(string(encoded), "action-token") || strings.Contains(string(encoded), totp) {
+		t.Fatalf("delete %+v %s", deleted, encoded)
+	}
+
+	raw, rpcErr = app.dispatch("trash.purge", params(map[string]any{"trash_id": "t1"}))
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	second := raw.(apiResult)
+	if !second.StepUp || second.Body["action"] != "trash_purge" || second.Body["target"] != "photos" {
+		t.Fatalf("second action reused a token: %+v", second)
+	}
+	mu.Lock()
+	var purgeHeaders int
+	for _, hit := range hits {
+		if strings.HasPrefix(hit, "/api/v1/trash/t1") {
+			purgeHeaders++
+			if strings.Contains(hit, "action-token") {
+				t.Fatalf("purge sent a stored token: %s", hit)
+			}
+		}
+	}
+	mu.Unlock()
+	if purgeHeaders != 1 {
+		t.Fatalf("purge calls %d", purgeHeaders)
+	}
+	raw, rpcErr = app.dispatch("trash.purge", params(map[string]any{"trash_id": "t1", "step_up_code": recovery}))
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	purged := raw.(apiResult)
+	encoded, _ = json.Marshal(purged)
+	if purged.Status != http.StatusNoContent || strings.Contains(string(encoded), recovery) || strings.Contains(string(encoded), "action-token") {
+		t.Fatalf("purge %+v %s", purged, encoded)
+	}
+	mu.Lock()
+	joined := strings.Join(hits, "\n")
+	mu.Unlock()
+	if !strings.Contains(joined, "step-up bucket_delete photos "+totp) || !strings.Contains(joined, "step-up trash_purge photos "+recovery) {
+		t.Fatalf("step-up posts:\n%s", joined)
+	}
+}
+
+func TestReplayedStepUpTokenOpensDialog(t *testing.T) {
+	const totp = "111222"
+	const token = "replayed-token"
+	var presented atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/auth/step-up":
+			var posted map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&posted)
+			if posted["code"] != totp || posted["action"] != "bucket_delete" || posted["target"] != "photos" {
+				t.Errorf("posted %+v", posted)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": token, "action": "bucket_delete", "target": "photos"})
+		case r.Method == http.MethodDelete:
+			if r.Header.Get(mfaTokenHeader) == "" {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error":"step_up_required","action":"bucket_delete","target":"photos"}`))
+				return
+			}
+			presented.Add(1)
+			if r.Header.Get(mfaTokenHeader) != token {
+				t.Errorf("header %q", r.Header.Get(mfaTokenHeader))
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"mfa_token_invalid"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	app := &App{dataDir: t.TempDir()}
+	profile, err := app.putProfile(Profile{Name: "One", ServerURL: srv.URL, AuthMethod: "password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile.Session = "signed_in"
+	if err := app.updateProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	raw, rpcErr := app.dispatch("bucket.delete", map[string]any{
+		"id": profile.ID, "token": "jwt", "bucket": "photos", "step_up_code": totp,
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	result := raw.(apiResult)
+	encoded, _ := json.Marshal(result)
+	if !result.StepUp || result.Code != "auth.mfa_token_invalid" || presented.Load() != 1 {
+		t.Fatalf("replay %+v presented %d", result, presented.Load())
+	}
+	if strings.Contains(string(encoded), token) || strings.Contains(string(encoded), totp) {
+		t.Fatalf("secret returned %s", encoded)
+	}
+}
+
+func TestMFASetupRequiredIsABanner(t *testing.T) {
+	var steps atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/auth/step-up" {
+			steps.Add(1)
+		}
+		if r.URL.Path == "/api/v1/me" {
+			_, _ = w.Write([]byte(`{"username":"alice","mfa_setup_required":true,"token":"jwt-should-stay","mfa_token":"mfa-should-stay"}`))
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"mfa_setup_required","mfa_setup_required":true}`))
+	}))
+	defer srv.Close()
+	app := &App{dataDir: t.TempDir()}
+	profile, err := app.putProfile(Profile{Name: "One", ServerURL: srv.URL, AuthMethod: "password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile.Session = "signed_in"
+	if err := app.updateProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	raw, rpcErr := app.dispatch("bucket.delete", map[string]any{"id": profile.ID, "token": "jwt", "bucket": "photos", "step_up_code": "123456"})
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	blocked := raw.(apiResult)
+	if !blocked.MFASetup || blocked.StepUp || steps.Load() != 0 {
+		t.Fatalf("banner %+v steps %d", blocked, steps.Load())
+	}
+	raw, rpcErr = app.dispatch("account.me", map[string]any{"id": profile.ID, "token": "jwt"})
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	me := raw.(apiResult)
+	encoded, _ := json.Marshal(me)
+	if !me.MFASetup || me.Body["username"] != "alice" || strings.Contains(string(encoded), "jwt-should-stay") || strings.Contains(string(encoded), "mfa-should-stay") {
+		t.Fatalf("me %+v %s", me, encoded)
 	}
 }

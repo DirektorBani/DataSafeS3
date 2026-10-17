@@ -117,6 +117,12 @@ type rawResponse struct {
 }
 
 func (c *Client) do(method, path string, payload any) (rawResponse, error) {
+	return c.doHeaders(method, path, payload, nil)
+}
+
+// doHeaders is do with extra headers. The step-up retry sets
+// X-DataSafe-MFA-Token here and nowhere else. The token is not logged.
+func (c *Client) doHeaders(method, path string, payload any, headers map[string]string) (rawResponse, error) {
 	var body io.Reader
 	if payload != nil {
 		raw, err := json.Marshal(payload)
@@ -131,6 +137,11 @@ func (c *Client) do(method, path string, payload any) (rawResponse, error) {
 	}
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for key, value := range headers {
+		if value != "" {
+			req.Header.Set(key, value)
+		}
 	}
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)

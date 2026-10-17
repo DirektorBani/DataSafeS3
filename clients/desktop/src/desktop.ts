@@ -93,6 +93,7 @@ export type BrowseResult = {
   code?: string;
   message?: string;
   step_up?: boolean;
+  mfa_setup?: boolean;
   body?: Record<string, unknown>;
 };
 

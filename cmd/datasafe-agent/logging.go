@@ -150,7 +150,7 @@ func (l *Logger) Close() error {
 var (
 	logURL   = regexp.MustCompile(`(?i)https?://[^\s"'<>]+`)
 	logAuth  = regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)(?:bearer\s+)?\S+`)
-	logField = regexp.MustCompile(`(?i)("?(?:x-datasafe-mfa-token|x-amz-signature|x-amz-credential|x-amz-security-token|password|secret|token|mfa_code|mfa_token|access_key_secret|exchange_code)"?\s*[:=]\s*)(?:"[^"]*"|[^\s,}&]+)`)
+	logField = regexp.MustCompile(`(?i)("?(?:x-datasafe-mfa-token|x-amz-signature|x-amz-credential|x-amz-security-token|password|secret|token|mfa_code|mfa_token|step_up_code|totp_code|access_key_secret|exchange_code)"?\s*[:=]\s*)(?:"[^"]*"|[^\s,}&]+)`)
 )
 
 // maskText removes secrets from one log line. Presigned query strings are

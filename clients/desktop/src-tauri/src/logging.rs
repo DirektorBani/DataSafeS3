@@ -26,6 +26,8 @@ const KEYS: &[&str] = &[
     "token",
     "mfa_code",
     "mfa_token",
+    "step_up_code",
+    "totp_code",
     "access_key_secret",
     "exchange_code",
 ];
