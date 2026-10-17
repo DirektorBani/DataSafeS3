@@ -233,6 +233,8 @@ func (a *App) dispatch(method string, params map[string]any) (any, *rpcError) {
 		return rpcCall(a.transferResolve(params))
 	case "transfer.files":
 		return rpcCall(a.transferFiles(params))
+	case "transfer.resume":
+		return rpcCall(a.transferResume(params))
 	case "diag.preview":
 		return rpcCall(a.diagPreview(params))
 	case "diag.export":

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 )
 
@@ -30,11 +31,41 @@ func versionsText(server string) string {
 	if server == "" {
 		server = "none"
 	}
-	commit := strings.TrimSpace(DesktopCommit)
-	if commit == "" {
-		commit = "unknown"
+	return fmt.Sprintf("product: DataSafeS3 Desktop\nversion: %s\ncommit: %s\nos: %s\nserver: %s\ngo: %s\n", DesktopVersion, desktopCommit(), osDescription(), server, runtime.Version())
+}
+
+// desktopCommit prefers the CI ldflag. A local build leaves that as
+// "unknown"; Go then has the revision it read with git while compiling.
+func desktopCommit() string {
+	return chooseCommit(DesktopCommit, vcsRevision())
+}
+
+func chooseCommit(explicit, revision string) string {
+	explicit = strings.TrimSpace(explicit)
+	if explicit != "" && !strings.EqualFold(explicit, "unknown") {
+		return explicit
 	}
-	return fmt.Sprintf("product: DataSafeS3 Desktop\nversion: %s\ncommit: %s\nos: %s\nserver: %s\ngo: %s\n", DesktopVersion, commit, osDescription(), server, runtime.Version())
+	revision = strings.TrimSpace(revision)
+	if revision == "" {
+		return "unknown"
+	}
+	if len(revision) > 12 {
+		revision = revision[:12]
+	}
+	return revision
+}
+
+func vcsRevision() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.revision" {
+			return setting.Value
+		}
+	}
+	return ""
 }
 
 func (a *App) connectedServer(params map[string]any) string {

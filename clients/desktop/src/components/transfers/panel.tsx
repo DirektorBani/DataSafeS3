@@ -66,7 +66,16 @@ export function TransferPanel(props: {
         }
       }
     }
-    void tick();
+    void (async () => {
+      try {
+        await transfer(props.profileId, "transfer.resume");
+      } catch {
+        // The list still shows a transfer that could not continue.
+      }
+      if (!stop) {
+        await tick();
+      }
+    })();
     const timer = window.setInterval(() => void tick(), 1000);
     return () => {
       stop = true;

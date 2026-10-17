@@ -269,6 +269,55 @@ func (e *Engine) Resolve(id, choice string, all bool) error {
 	}
 }
 
+// Resume continues tasks that were still running when the agent last
+// exited. The journal has the upload id, confirmed parts, and download
+// offset. The token and the access-key secret are supplied again by the
+// signed-in profile; they are not read from the journal. A sleeping
+// machine does not come through here: the process is still alive, and a
+// dropped connection uses the same network retry as any other outage.
+func (e *Engine) Resume(profile Profile, token, accessKey, secret string) (int, error) {
+	if strings.TrimSpace(token) == "" && strings.TrimSpace(secret) == "" {
+		return 0, nil
+	}
+	tasks, err := e.journal.List()
+	if err != nil {
+		return 0, err
+	}
+	var ids []string
+	for _, task := range tasks {
+		if task.State != "interrupted" || task.ProfileID != profile.ID {
+			continue
+		}
+		task.State = "queued"
+		task.Message = ""
+		if err := e.journal.SaveMeta(task); err != nil {
+			return len(ids), err
+		}
+		e.mu.Lock()
+		live := e.live[task.ID]
+		if live == nil {
+			live = &liveTask{decide: make(chan decision, 1)}
+			e.live[task.ID] = live
+		}
+		live.profile = profile
+		live.token = token
+		live.accessKey = accessKey
+		live.secret = secret
+		e.mu.Unlock()
+		ids = append(ids, task.ID)
+	}
+	if e.syncRun {
+		for _, id := range ids {
+			e.process(id)
+		}
+		return len(ids), nil
+	}
+	if len(ids) > 0 {
+		e.signal()
+	}
+	return len(ids), nil
+}
+
 func (e *Engine) take() string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -1091,47 +1140,60 @@ func (e *Engine) downloadJob(ctx context.Context, task *Task, index int, remote 
 	if strings.HasSuffix(task.Key, "/") && strings.HasPrefix(job.Key, task.Key) {
 		relKey = strings.TrimPrefix(job.Key, task.Key)
 	}
-	local, notes := MapDownloadPath(relKey, task.DestPath, e.osName, used, e.longPaths)
-	task.Report = append(task.Report, notes...)
+	local := job.Local
+	if local == "" {
+		var notes []PathNote
+		local, notes = MapDownloadPath(relKey, task.DestPath, e.osName, used, e.longPaths)
+		task.Report = append(task.Report, notes...)
+	}
 	if local == "" {
 		job.Done = true
 		e.saveFile(task, index)
 		return nil
 	}
-	if _, err := os.Stat(local); err == nil {
-		choice := task.Conflict
-		if choice == "" || choice == "ask" {
-			task.State = "conflict"
-			task.PendingKey = job.Key
-			task.PendingLocal = local
-			e.save(task)
-			d, err := e.waitDecision(ctx, task.ID)
-			if err != nil {
-				return err
-			}
-			choice = d.choice
-			if d.all {
-				task.Conflict = choice
-			}
-			task.State = "running"
-			task.PendingKey = ""
-			task.PendingLocal = ""
+	continuing := job.Offset > 0
+	if !continuing {
+		if st, err := os.Stat(local + ".dspart"); err == nil && st.Size() > 0 {
+			continuing = true
+			job.Offset = st.Size()
 		}
-		switch choice {
-		case "skip":
-			task.Report = append(task.Report, PathNote{Action: "skip", From: job.Key, To: local, Reason: "exists"})
-			job.Done = true
-			e.saveFile(task, index)
-			return nil
-		case "rename":
-			local = uniqueLocal(local, e.osName, used)
-			task.Report = append(task.Report, PathNote{Action: "rename", From: job.Key, To: local, Reason: "exists"})
-		case "replace":
-		default:
-			task.Report = append(task.Report, PathNote{Action: "skip", From: job.Key, Reason: "exists"})
-			job.Done = true
-			e.saveFile(task, index)
-			return nil
+	}
+	if !continuing {
+		if _, err := os.Stat(local); err == nil {
+			choice := task.Conflict
+			if choice == "" || choice == "ask" {
+				task.State = "conflict"
+				task.PendingKey = job.Key
+				task.PendingLocal = local
+				e.save(task)
+				d, err := e.waitDecision(ctx, task.ID)
+				if err != nil {
+					return err
+				}
+				choice = d.choice
+				if d.all {
+					task.Conflict = choice
+				}
+				task.State = "running"
+				task.PendingKey = ""
+				task.PendingLocal = ""
+			}
+			switch choice {
+			case "skip":
+				task.Report = append(task.Report, PathNote{Action: "skip", From: job.Key, To: local, Reason: "exists"})
+				job.Done = true
+				e.saveFile(task, index)
+				return nil
+			case "rename":
+				local = uniqueLocal(local, e.osName, used)
+				task.Report = append(task.Report, PathNote{Action: "rename", From: job.Key, To: local, Reason: "exists"})
+			case "replace":
+			default:
+				task.Report = append(task.Report, PathNote{Action: "skip", From: job.Key, Reason: "exists"})
+				job.Done = true
+				e.saveFile(task, index)
+				return nil
+			}
 		}
 	}
 	job.Local = local
@@ -1393,6 +1455,28 @@ func (a *App) transferEnqueue(params map[string]any) (any, error) {
 		return nil, err
 	}
 	return map[string]any{"transfer": task}, nil
+}
+
+func (a *App) transferResume(params map[string]any) (any, error) {
+	eng, err := a.engine()
+	if err != nil {
+		return nil, err
+	}
+	profile, err := a.profileFromParams(params)
+	if err != nil {
+		return nil, err
+	}
+	token, _ := params["token"].(string)
+	secret, _ := params["access_secret"].(string)
+	accessKey, _ := params["access_key"].(string)
+	if accessKey == "" {
+		accessKey = profile.Username
+	}
+	n, err := eng.Resume(profile, token, accessKey, secret)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"resumed": n}, nil
 }
 
 func (a *App) transferList() (any, error) {

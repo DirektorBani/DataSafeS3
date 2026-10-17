@@ -3,7 +3,6 @@
 package main
 
 import (
-	"fmt"
 	"runtime"
 
 	"golang.org/x/sys/windows"
@@ -11,5 +10,5 @@ import (
 
 func osDescription() string {
 	v := windows.RtlGetVersion()
-	return fmt.Sprintf("windows %d.%d.%d %s", v.MajorVersion, v.MinorVersion, v.BuildNumber, runtime.GOARCH)
+	return formatWindowsVersion(v.MajorVersion, v.MinorVersion, v.BuildNumber, runtime.GOARCH)
 }

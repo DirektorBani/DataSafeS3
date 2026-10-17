@@ -250,6 +250,122 @@ func TestResumeSkipsConfirmedParts(t *testing.T) {
 	}
 }
 
+func TestInterruptedUploadResumesAfterRestart(t *testing.T) {
+	path := writeTemp(t, bytes.Repeat([]byte("x"), 10))
+	info, _ := os.Stat(path)
+	dbPath := filepath.Join(t.TempDir(), "transfers.db")
+	j, err := openJournal(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := Task{
+		ID: "t1", ProfileID: "p", Direction: "upload", State: "running", Bucket: "b",
+		LocalPath: path, Key: "k",
+		Files: []fileJob{{
+			Local: path, Key: "k", Size: info.Size(), MtimeUnix: info.ModTime().Unix(),
+			UploadID: "up1", Parts: []partRec{{Number: 1, ETag: "e1"}},
+		}},
+	}
+	if err := j.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(); err != nil {
+		t.Fatal(err)
+	}
+	j, err = openJournal(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = j.Close() })
+	got, err := j.Get("t1")
+	if err != nil || got.State != "interrupted" || got.Message != "resume_after_restart" {
+		t.Fatalf("after restart %+v %v", got, err)
+	}
+	if len(got.Files) != 1 || got.Files[0].UploadID != "up1" || len(got.Files[0].Parts) != 1 {
+		t.Fatalf("journal lost the upload %+v", got.Files)
+	}
+	fake := &fakeRemote{}
+	e := newEngine(j)
+	e.syncRun = true
+	e.limits = Limits{Threshold: 8, PartSize: 4, Transfers: 2, PartParallel: 2}
+	e.progressEvery = 0
+	e.build = func(creds, string) (remote, error) { return fake, nil }
+	e.sleep = func(time.Duration) {}
+	n, err := e.Resume(Profile{ID: "p"}, "", "", "")
+	if err != nil || n != 0 {
+		t.Fatalf("resume without credentials %d %v", n, err)
+	}
+	n, err = e.Resume(Profile{ID: "p"}, "super-secret-token", "", "")
+	if err != nil || n != 1 {
+		t.Fatalf("resume %d %v", n, err)
+	}
+	got, _ = e.journal.Get("t1")
+	if got.State != "done" {
+		t.Fatalf("state %s %s", got.State, got.Message)
+	}
+	if fake.initiates != 0 {
+		t.Fatalf("initiate %d", fake.initiates)
+	}
+	if len(fake.partNums) != 2 || fake.partNums[0] == 1 || fake.partNums[1] == 1 {
+		t.Fatalf("parts %v", fake.partNums)
+	}
+	raw, _ := os.ReadFile(dbPath)
+	if bytes.Contains(raw, []byte("super-secret-token")) {
+		t.Fatal("journal contains the token")
+	}
+}
+
+func TestInterruptedDownloadResumesFromOffset(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "a.txt")
+	dbPath := filepath.Join(t.TempDir(), "transfers.db")
+	j, err := openJournal(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := Task{
+		ID: "t1", ProfileID: "p", Direction: "download", State: "running", Bucket: "b",
+		Key: "a.txt", DestPath: filepath.Dir(dest),
+		Files: []fileJob{{
+			Local: dest, Key: "a.txt", Size: 10, Offset: 4, ETag: "aaa",
+		}},
+	}
+	if err := j.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dest+".dspart", []byte("0123"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(); err != nil {
+		t.Fatal(err)
+	}
+	j, err = openJournal(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = j.Close() })
+	fake := &fakeRemote{data: []byte("0123456789"), forceETag: "aaa"}
+	e := newEngine(j)
+	e.syncRun = true
+	e.limits = Limits{Threshold: 8, PartSize: 4, Transfers: 1, PartParallel: 1}
+	e.progressEvery = 0
+	e.build = func(creds, string) (remote, error) { return fake, nil }
+	e.sleep = func(time.Duration) {}
+	if _, err := e.Resume(Profile{ID: "p"}, "token", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.journal.Get("t1")
+	if got.State != "done" {
+		t.Fatalf("state %s %s", got.State, got.Message)
+	}
+	if len(fake.openOffsets) == 0 || fake.openOffsets[0] != 4 {
+		t.Fatalf("offsets %v", fake.openOffsets)
+	}
+	body, err := os.ReadFile(dest)
+	if err != nil || string(body) != "0123456789" {
+		t.Fatalf("body %q %v", body, err)
+	}
+}
+
 func TestFileChangeAbortsUpload(t *testing.T) {
 	path := writeTemp(t, []byte("0123456789"))
 	fake := &fakeRemote{}

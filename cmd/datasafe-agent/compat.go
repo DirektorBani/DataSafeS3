@@ -10,7 +10,8 @@ import (
 const DesktopVersion = "1.0.0-dev"
 
 // DesktopCommit is the git SHA of the desktop build. CI sets it with
-// -X main.DesktopCommit. A plain go build leaves it unknown.
+// -X main.DesktopCommit. A plain go build leaves it unknown, and
+// versions.txt then uses the revision Go recorded from git at build time.
 var DesktopCommit = "unknown"
 
 // Feature columns from spec 4.6.6. A test checks these maps.
