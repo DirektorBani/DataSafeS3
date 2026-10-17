@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
 import {
   confirmMfa,
   forgetProfile,
@@ -65,13 +68,16 @@ export function LoginPanel(props: {
   }
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-sm font-medium">{profile.name}</h2>
-      <p className="text-sm text-muted-foreground">
-        {t("session")}: {profile.session || "signed_out"}
-        {server?.server_version ? ` · ${server.server_version}` : ""}
-        {server?.profile ? ` · ${server.profile}` : ""}
-      </p>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{profile.name}</CardTitle>
+        <CardDescription>
+          {t("session")}: {profile.session || "signed_out"}
+          {server?.server_version ? ` · ${server.server_version}` : ""}
+          {server?.profile ? ` · ${server.profile}` : ""}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
       {server?.warning === "the server certificate could not be verified" ? <p>{t("tlsCertificate")}</p> : null}
       {server?.warning === "server is unreachable" ? <p>{t("unreachable")}</p> : null}
       {server?.rejected && server.warning !== "the server certificate could not be verified" && server.warning !== "server is unreachable" ? <p>{t("rejected")}</p> : null}
@@ -98,10 +104,10 @@ export function LoginPanel(props: {
             void run(() => login(profile.id, profile.username || "", password, remember));
           }}
         >
-          <label className="block text-sm">
-            {t("password")}
-            <input className="mt-1 w-full rounded-md border bg-background px-2 py-1" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
-          </label>
+          <div className="space-y-1">
+            <Label htmlFor="login-password">{t("password")}</Label>
+            <Input id="login-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
+          </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
             {t("remember")}
@@ -118,10 +124,10 @@ export function LoginPanel(props: {
             void run(() => confirmMfa(profile.id, code));
           }}
         >
-          <label className="block text-sm">
-            {t("code")}
-            <input className="mt-1 w-full rounded-md border bg-background px-2 py-1" value={code} onChange={(event) => setCode(event.target.value)} inputMode="numeric" autoComplete="off" />
-          </label>
+          <div className="space-y-1">
+            <Label htmlFor="login-code">{t("code")}</Label>
+            <Input id="login-code" value={code} onChange={(event) => setCode(event.target.value)} inputMode="numeric" autoComplete="off" />
+          </div>
           <Button type="submit">{t("confirmCode")}</Button>
         </form>
       ) : null}
@@ -136,7 +142,7 @@ export function LoginPanel(props: {
             }}
           >
             <p className="text-sm font-medium">{t("oidcPassword")}</p>
-            <input className="w-full rounded-md border bg-background px-2 py-1" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
+            <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
               {t("remember")}
@@ -151,10 +157,10 @@ export function LoginPanel(props: {
             }}
           >
             <p className="text-sm">{t("exchangeHint")}</p>
-            <label className="block text-sm">
-              {t("exchange")}
-              <input className="mt-1 w-full rounded-md border bg-background px-2 py-1" value={exchange} onChange={(event) => setExchange(event.target.value)} />
-            </label>
+            <div className="space-y-1">
+              <Label htmlFor="login-exchange">{t("exchange")}</Label>
+              <Input id="login-exchange" value={exchange} onChange={(event) => setExchange(event.target.value)} autoComplete="off" />
+            </div>
             <Button type="submit" variant="outline">
               {t("signIn")}
             </Button>
@@ -170,10 +176,10 @@ export function LoginPanel(props: {
             void run(() => saveApiToken(profile.id, token));
           }}
         >
-          <label className="block text-sm">
-            {t("apiToken")}
-            <input className="mt-1 w-full rounded-md border bg-background px-2 py-1" type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" />
-          </label>
+          <div className="space-y-1">
+            <Label htmlFor="login-token">{t("apiToken")}</Label>
+            <Input id="login-token" type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" />
+          </div>
           <Button type="submit">{t("saveSecret")}</Button>
         </form>
       ) : null}
@@ -186,10 +192,10 @@ export function LoginPanel(props: {
             void run(() => saveAccessKey(profile.id, secret));
           }}
         >
-          <label className="block text-sm">
-            {t("secret")}
-            <input className="mt-1 w-full rounded-md border bg-background px-2 py-1" type="password" value={secret} onChange={(event) => setSecret(event.target.value)} autoComplete="off" />
-          </label>
+          <div className="space-y-1">
+            <Label htmlFor="login-secret">{t("secret")}</Label>
+            <Input id="login-secret" type="password" value={secret} onChange={(event) => setSecret(event.target.value)} autoComplete="off" />
+          </div>
           <Button type="submit">{t("saveSecret")}</Button>
         </form>
       ) : null}
@@ -214,6 +220,7 @@ export function LoginPanel(props: {
           {t("forget")}
         </Button>
       </div>
-    </section>
+      </CardContent>
+    </Card>
   );
 }

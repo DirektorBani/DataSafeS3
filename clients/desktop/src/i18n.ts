@@ -1,5 +1,13 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+import enCommon from "../../../web/console/src/locales/en/common.json";
+import ruCommon from "../../../web/console/src/locales/ru/common.json";
+import enNav from "../../../web/console/src/locales/en/nav.json";
+import ruNav from "../../../web/console/src/locales/ru/nav.json";
+import enBuckets from "../../../web/console/src/locales/en/buckets.json";
+import ruBuckets from "../../../web/console/src/locales/ru/buckets.json";
+import enBucketDetail from "../../../web/console/src/locales/en/bucketDetail.json";
+import ruBucketDetail from "../../../web/console/src/locales/ru/bucketDetail.json";
 
 export const LOCALE_KEY = "datasafe-desktop.locale";
 export const THEME_KEY = "datasafe-desktop.theme";
@@ -53,6 +61,7 @@ const resources = {
       tlsCertificate: "The server certificate could not be verified.",
       basic: "The server version is unknown. Browsing stays available.",
       buckets: "Buckets",
+      filterAll: "All",
       objects: "Objects",
       trash: "Trash",
       createBucket: "Create bucket",
@@ -188,6 +197,7 @@ const resources = {
       tlsCertificate: "Сертификат сервера не прошёл проверку.",
       basic: "Версия сервера не определена. Просмотр остаётся доступным.",
       buckets: "Бакеты",
+      filterAll: "Все",
       objects: "Объекты",
       trash: "Корзина",
       createBucket: "Создать бакет",
@@ -285,10 +295,13 @@ function storedLocale(): DesktopLocale {
 }
 
 void i18n.use(initReactI18next).init({
-  resources,
+  resources: {
+    en: { ...resources.en, common: enCommon, nav: enNav, buckets: enBuckets, bucketDetail: enBucketDetail },
+    ru: { ...resources.ru, common: ruCommon, nav: ruNav, buckets: ruBuckets, bucketDetail: ruBucketDetail },
+  },
   lng: storedLocale(),
   fallbackLng: "en",
-  ns: ["shell"],
+  ns: ["shell", "common", "nav", "buckets", "bucketDetail"],
   defaultNS: "shell",
   interpolation: { escapeValue: false },
 });

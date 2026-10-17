@@ -1,6 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { cn } from "@datasafe/ui/cn";
 import { saveProfile, type AuthMethod, type Profile } from "../desktop";
 
 const METHODS: AuthMethod[] = ["password", "oidc", "api_token", "access_key"];
@@ -39,15 +43,18 @@ export function ProfileList(props: {
   }
 
   return (
-    <section className="space-y-4">
-      <h2 className="text-sm font-medium">{t("profiles")}</h2>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t("profiles")}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
       {props.profiles.length === 0 ? <p className="text-sm text-muted-foreground">{t("empty")}</p> : null}
       <ul className="space-y-2">
         {props.profiles.map((profile) => (
           <li key={profile.id}>
             <button
               type="button"
-              className={`w-full rounded-md border px-3 py-2 text-left ${props.selected === profile.id ? "border-primary" : "border-border"}`}
+              className={cn("w-full rounded-md border px-3 py-2 text-left transition-colors hover:bg-accent", props.selected === profile.id ? "border-primary bg-primary/5" : "border-border")}
               onClick={() => props.onSelect(profile.id)}
             >
               <span className="block font-medium">{profile.name}</span>
@@ -60,41 +67,42 @@ export function ProfileList(props: {
       </ul>
       <form className="space-y-3" onSubmit={submit}>
         <h3 className="text-sm font-medium">{t("addProfile")}</h3>
-        <label className="block text-sm">
-          {t("name")}
-          <input className="mt-1 w-full rounded-md border bg-background px-2 py-1" value={name} onChange={(event) => setName(event.target.value)} required />
-        </label>
-        <label className="block text-sm">
-          {t("server")}
-          <input className="mt-1 w-full rounded-md border bg-background px-2 py-1" value={server} onChange={(event) => setServer(event.target.value)} required />
-        </label>
-        <label className="block text-sm">
-          {t("method")}
-          <select className="mt-1 w-full rounded-md border bg-background px-2 py-1" value={method} onChange={(event) => setMethod(event.target.value as AuthMethod)}>
+        <div className="space-y-1">
+          <Label htmlFor="profile-name">{t("name")}</Label>
+          <Input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} required autoComplete="off" />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="profile-server">{t("server")}</Label>
+          <Input id="profile-server" value={server} onChange={(event) => setServer(event.target.value)} required autoComplete="off" />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="profile-method">{t("method")}</Label>
+          <select id="profile-method" className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={method} onChange={(event) => setMethod(event.target.value as AuthMethod)}>
             {METHODS.map((item) => (
               <option key={item} value={item}>
                 {t(`methods.${item}`)}
               </option>
             ))}
           </select>
-        </label>
+        </div>
         {method !== "api_token" ? (
-          <label className="block text-sm">
-            {method === "access_key" ? t("accessKey") : t("username")}
-            <input className="mt-1 w-full rounded-md border bg-background px-2 py-1" value={username} onChange={(event) => setUsername(event.target.value)} />
-          </label>
+          <div className="space-y-1">
+            <Label htmlFor="profile-user">{method === "access_key" ? t("accessKey") : t("username")}</Label>
+            <Input id="profile-user" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="off" />
+          </div>
         ) : null}
-        <label className="block text-sm">
-          {t("caFile")}
-          <input className="mt-1 w-full rounded-md border bg-background px-2 py-1" value={caFile} onChange={(event) => setCaFile(event.target.value)} />
-        </label>
+        <div className="space-y-1">
+          <Label htmlFor="profile-ca">{t("caFile")}</Label>
+          <Input id="profile-ca" value={caFile} onChange={(event) => setCaFile(event.target.value)} autoComplete="off" />
+        </div>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={insecure} onChange={(event) => setInsecure(event.target.checked)} />
+          <input type="checkbox" className="h-4 w-4" checked={insecure} onChange={(event) => setInsecure(event.target.checked)} />
           {t("insecure")}
         </label>
         {insecure ? <p className="text-sm text-destructive">{t("insecureWarning")}</p> : null}
         <Button type="submit">{t("save")}</Button>
       </form>
-    </section>
+      </CardContent>
+    </Card>
   );
 }

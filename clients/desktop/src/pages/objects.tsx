@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { ChevronRight, File, Folder, FolderPlus, Trash2 } from "lucide-react";
 import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@datasafe/ui/ui/tabs";
+import { PageHeader } from "@datasafe/ui/page-header";
+import { cn } from "@datasafe/ui/cn";
 import { ObjectInfo, type ListedObject } from "../components/object-info";
 import { TransferPanel } from "../components/transfers/panel";
 import { browse, type BrowseResult } from "../desktop";
@@ -43,8 +49,9 @@ export function ObjectBrowser(props: {
   encryption: string;
   onError: (message: string) => void;
   confirmDangerous: (method: string, params: Record<string, unknown>) => Promise<BrowseResult>;
+  headerActions?: ReactNode;
 }) {
-  const { t } = useTranslation();
+  const { t } = useTranslation(["shell", "bucketDetail", "common"]);
   const { profileId, bucket, onError } = props;
   const [prefix, setPrefix] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
@@ -238,152 +245,237 @@ export function ObjectBrowser(props: {
     }
   }
 
+  const crumbItems = [{ label: t("bucketDetail:breadcrumb.root"), path: "" }];
+  if (prefix) {
+    let acc = "";
+    for (const part of prefix.replace(/\/$/, "").split("/")) {
+      acc += `${part}/`;
+      crumbItems.push({ label: part, path: acc });
+    }
+  }
+
   return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!prefix}
-          onClick={() => {
-            const next = parentPrefix(prefix);
-            setPrefix(next);
-            setMarkers([""]);
-            void load(next, "", true);
-          }}
-        >
-          {t("back")}
-        </Button>
-        <p className="text-sm text-muted-foreground">
-          {props.bucket}/{prefix}
-          {props.encryption ? ` · ${t("encryption")}: ${props.encryption}` : ""}
-          {firstPageMs !== null ? ` · ${t("firstPage", { ms: firstPageMs })}` : ""}
-        </p>
-        <Button type="button" variant="outline" onClick={() => void openTrash()}>
-          {t("trash")}
-        </Button>
-      </div>
-      {!props.canWrite ? <p className="text-sm">{t("noWrite")}</p> : null}
-      <div className="flex flex-wrap gap-2">
-        <input className="rounded-md border bg-transparent px-2 py-1" placeholder={t("filter")} value={filter} onChange={(event) => setFilter(event.target.value)} />
-        <label className="flex items-center gap-2 text-sm">
-          {t("sort")}
-          <select className="rounded-md border bg-transparent px-2 py-1" value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
-            <option value="name">{t("sortName")}</option>
-            <option value="size">{t("sortSize")}</option>
-            <option value="modified">{t("sortModified")}</option>
-          </select>
-        </label>
-        {props.canWrite ? (
-          <>
-            <input className="rounded-md border bg-transparent px-2 py-1" placeholder={t("folder")} value={folderName} onChange={(event) => setFolderName(event.target.value)} />
-            <Button type="button" variant="outline" onClick={() => void createFolder()}>
-              {t("folder")}
-            </Button>
-          </>
-        ) : null}
-      </div>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div role="listbox" tabIndex={0} aria-label={t("objects")} className="max-h-[28rem] overflow-auto rounded-md border outline-none focus-visible:ring-2" onKeyDown={onKey}>
-          {visible.length === 0 ? <p className="p-3 text-sm text-muted-foreground">{t("emptyBucket")}</p> : null}
-          {visible.map((row, index) => (
-            <div
-              key={row.key}
-              role="option"
-              aria-selected={index === selected}
-              className={`flex cursor-pointer items-center justify-between px-3 py-2 text-sm ${index === selected ? "bg-muted" : ""}`}
-              onClick={() => {
-                setSelected(index);
-                if (row.kind === "folder") {
-                  setPrefix(row.key);
-                  setMarkers([""]);
-                  void load(row.key, "", true);
-                }
-              }}
-            >
-              <span>{row.kind === "folder" ? `${row.name}/` : row.name}</span>
-              <span className="text-muted-foreground">{row.object ? row.object.size ?? 0 : ""}</span>
+    <section className="space-y-4">
+      <PageHeader
+        title={props.bucket}
+        description={t("bucketDetail:description")}
+        badge={props.encryption ? <span className="text-xs text-muted-foreground">{props.encryption}</span> : undefined}
+        actions={props.headerActions}
+      />
+      {firstPageMs !== null ? <p className="text-xs text-muted-foreground">{t("firstPage", { ms: firstPageMs })}</p> : null}
+      {!props.canWrite ? <p className="text-sm text-muted-foreground">{t("noWrite")}</p> : null}
+      <Tabs
+        value={showTrash ? "trash" : "objects"}
+        onValueChange={(next) => {
+          if (next === "trash") {
+            void openTrash();
+          } else {
+            setShowTrash(false);
+          }
+        }}
+      >
+        <TabsList>
+          <TabsTrigger value="objects">{t("bucketDetail:tabs.objects")}</TabsTrigger>
+          <TabsTrigger value="trash">{t("bucketDetail:tabs.trash")}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="objects" className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {crumbItems.map((crumb, index) => (
+              <span key={crumb.path || "root"} className="inline-flex items-center gap-1">
+                {index > 0 ? <ChevronRight className="h-3 w-3 text-muted-foreground" /> : null}
+                <button
+                  type="button"
+                  className={cn("hover:text-primary", index === crumbItems.length - 1 ? "font-medium text-foreground" : "text-muted-foreground")}
+                  onClick={() => {
+                    setPrefix(crumb.path);
+                    setMarkers([""]);
+                    void load(crumb.path, "", true);
+                  }}
+                >
+                  {crumb.label}
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input className="max-w-xs" placeholder={t("filter")} value={filter} onChange={(event) => setFilter(event.target.value)} />
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              {t("sort")}
+              <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
+                <option value="name">{t("bucketDetail:table.name")}</option>
+                <option value="size">{t("bucketDetail:table.size")}</option>
+                <option value="modified">{t("bucketDetail:table.modified")}</option>
+              </select>
+            </label>
+            {props.canWrite ? (
+              <>
+                <Input className="max-w-xs" placeholder={t("bucketDetail:actions.newFolder")} value={folderName} onChange={(event) => setFolderName(event.target.value)} />
+                <Button type="button" variant="outline" size="sm" onClick={() => void createFolder()}>
+                  <FolderPlus className="h-4 w-4" />
+                  {t("bucketDetail:actions.newFolder")}
+                </Button>
+              </>
+            ) : null}
+          </div>
+          <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+            <Card>
+              <CardContent className="p-0">
+                <div role="listbox" tabIndex={0} aria-label={t("objects")} className="max-h-[28rem] overflow-auto outline-none focus-visible:ring-2" onKeyDown={onKey}>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        <th className="p-3">{t("bucketDetail:table.name")}</th>
+                        <th className="p-3">{t("bucketDetail:table.size")}</th>
+                        <th className="p-3">{t("bucketDetail:table.modified")}</th>
+                        <th className="w-24 p-3" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visible.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="p-8 text-center text-muted-foreground">
+                            {t("bucketDetail:emptyFolder")}
+                          </td>
+                        </tr>
+                      ) : null}
+                      {visible.map((row, index) => (
+                        <tr
+                          key={row.key}
+                          role="option"
+                          aria-selected={index === selected}
+                          className={cn("cursor-pointer border-b hover:bg-muted/50", index === selected && "bg-muted/30")}
+                          onClick={() => {
+                            setSelected(index);
+                            if (row.kind === "folder") {
+                              setPrefix(row.key);
+                              setMarkers([""]);
+                              void load(row.key, "", true);
+                            }
+                          }}
+                        >
+                          <td className="p-3 font-mono">
+                            <span className="inline-flex items-center gap-2">
+                              {row.kind === "folder" ? <Folder className="h-4 w-4 text-amber-500" /> : <File className="h-4 w-4 text-muted-foreground" />}
+                              {row.name}
+                            </span>
+                          </td>
+                          <td className="p-3">{row.object?.size ?? ""}</td>
+                          <td className="p-3">{row.object?.last_modified || ""}</td>
+                          <td className="p-3">
+                            {props.canWrite ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelected(index);
+                                  setConfirmKey(row.key);
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            ) : null}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {markers.length > 1 || truncated ? (
+                  <div className="flex justify-center gap-2 border-t p-3">
+                    {markers.length > 1 ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const next = markers.slice(0, -1);
+                          setMarkers(next);
+                          void load(prefix, next[next.length - 1] || "", false);
+                        }}
+                      >
+                        {t("common:back")}
+                      </Button>
+                    ) : null}
+                    {truncated ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setMarkers((stack) => [...stack, marker]);
+                          void load(prefix, marker, false);
+                        }}
+                      >
+                        {t("bucketDetail:loadMore")}
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+            {current?.kind === "object" && current.object ? (
+              <ObjectInfo profileId={props.profileId} bucket={props.bucket} object={current.object} canWrite={props.canWrite} onChanged={() => void load(prefix, markers[markers.length - 1] || "", false)} onError={props.onError} />
+            ) : (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">{t("bucketDetail:metadata.title")}</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground">{t("bucketDetail:metadata.selectObject")}</CardContent>
+              </Card>
+            )}
+          </div>
+          {confirmKey && props.canWrite ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-mono">{confirmKey}</span>
+              <Button type="button" variant="destructive" size="sm" onClick={() => void remove(confirmKey, confirmKey.endsWith("/"))}>
+                {t("common:delete")}
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setConfirmKey("")}>
+                {t("common:cancel")}
+              </Button>
             </div>
-          ))}
-        </div>
-        {current?.kind === "object" && current.object ? (
-          <ObjectInfo profileId={props.profileId} bucket={props.bucket} object={current.object} canWrite={props.canWrite} onChanged={() => void load(prefix, markers[markers.length - 1] || "", false)} onError={props.onError} />
-        ) : (
-          <aside className="rounded-md border p-3 text-sm text-muted-foreground">{t("info")}</aside>
-        )}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {markers.length > 1 ? (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              const next = markers.slice(0, -1);
-              setMarkers(next);
-              void load(prefix, next[next.length - 1] || "", false);
-            }}
-          >
-            {t("back")}
-          </Button>
-        ) : null}
-        {truncated ? (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setMarkers((stack) => [...stack, marker]);
-              void load(prefix, marker, false);
-            }}
-          >
-            {t("loadMore")}
-          </Button>
-        ) : null}
-      </div>
-      {confirmKey && props.canWrite ? (
-        <div className="flex items-center gap-2 text-sm">
-          <span>{confirmKey}</span>
-          <Button type="button" onClick={() => void remove(confirmKey, confirmKey.endsWith("/"))}>
-            {t("confirmDelete")}
-          </Button>
-          <Button type="button" variant="outline" onClick={() => setConfirmKey("")}>
-            {t("cancel")}
-          </Button>
-        </div>
-      ) : null}
-      {renaming && current?.kind === "object" && props.canWrite ? (
-        <div className="flex items-center gap-2">
-          <input className="rounded-md border bg-transparent px-2 py-1" value={renaming} onChange={(event) => setRenaming(event.target.value)} />
-          <Button type="button" onClick={() => void rename(current)}>
-            {t("rename")}
-          </Button>
-        </div>
-      ) : null}
-      {showTrash ? (
-        <div className="space-y-2 rounded-md border p-3">
-          <h3 className="text-sm font-medium">{t("trash")}</h3>
-          {trash.length === 0 ? <p className="text-sm text-muted-foreground">{t("emptyTrash")}</p> : null}
-          <ul className="space-y-2 text-sm">
-            {trash.map((item) => {
-              const id = String(item.id || "");
-              return (
-                <li key={id} className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="break-all">{String(item.original_key || id)}</span>
-                  {props.canWrite ? (
-                    <span className="flex gap-2">
-                      <Button type="button" variant="outline" onClick={() => void trashAction("trash.restore", id)}>
-                        {t("restoreTrash")}
-                      </Button>
-                      <Button type="button" variant="outline" onClick={() => void trashAction("trash.purge", id)}>
-                        {t("purgeTrash")}
-                      </Button>
-                    </span>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
+          ) : null}
+          {renaming && current?.kind === "object" && props.canWrite ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Input className="max-w-xs" value={renaming} onChange={(event) => setRenaming(event.target.value)} />
+              <Button type="button" size="sm" onClick={() => void rename(current)}>
+                {t("rename")}
+              </Button>
+            </div>
+          ) : null}
+        </TabsContent>
+        <TabsContent value="trash">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t("bucketDetail:tabs.trash")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {trash.length === 0 ? <p className="text-muted-foreground">{t("emptyTrash")}</p> : null}
+              {trash.map((item) => {
+                const id = String(item.id || "");
+                return (
+                  <div key={id} className="flex flex-wrap items-center justify-between gap-2 border-b py-2">
+                    <span className="break-all font-mono">{String(item.original_key || id)}</span>
+                    {props.canWrite ? (
+                      <span className="flex gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => void trashAction("trash.restore", id)}>
+                          {t("restoreTrash")}
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void trashAction("trash.purge", id)}>
+                          {t("purgeTrash")}
+                        </Button>
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
       <TransferPanel profileId={props.profileId} bucket={props.bucket} prefix={prefix} canWrite={props.canWrite} selectedKey={current?.key || ""} selectedFolder={current?.kind === "folder"} />
     </section>
   );

@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Info } from "lucide-react";
 import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Textarea } from "@datasafe/ui/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
 import { browse, type BrowseResult } from "../desktop";
 
 type MapValue = Record<string, string>;
@@ -151,62 +155,75 @@ export function ObjectInfo(props: {
   }
 
   return (
-    <aside className="space-y-3 rounded-md border p-3 text-sm">
-      <h3 className="font-medium">{t("info")}</h3>
-      <p className="break-all">{props.object.key}</p>
-      <p>
-        {t("size")}: {props.object.size ?? 0}
-      </p>
-      <p>
-        {t("type")}: {contentType || "—"}
-      </p>
-      <p className="break-all">
-        {t("etag")}: {props.object.etag || "—"}
-      </p>
-      <p>
-        {t("modified")}: {props.object.last_modified || "—"}
-      </p>
-      {sealed ? (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <Info className="h-4 w-4" /> {t("bucketDetail:metadata.title")}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        <div>
+          <span className="text-muted-foreground">{t("bucketDetail:metadata.key")}</span>
+          <p className="break-all font-mono">{props.object.key}</p>
+        </div>
+        <div>
+          <span className="text-muted-foreground">{t("bucketDetail:metadata.size")}</span>
+          <p>{props.object.size ?? 0}</p>
+        </div>
+        <div>
+          <span className="text-muted-foreground">{t("bucketDetail:metadata.contentType")}</span>
+          <Input className="mt-1 h-8 text-xs" value={contentType} readOnly={!props.canWrite} onChange={(event) => setContentType(event.target.value)} />
+        </div>
+        <div>
+          <span className="text-muted-foreground">{t("bucketDetail:metadata.etag")}</span>
+          <p className="break-all font-mono text-xs">{props.object.etag || "—"}</p>
+        </div>
+        <div>
+          <span className="text-muted-foreground">{t("bucketDetail:metadata.modified")}</span>
+          <p>{props.object.last_modified || "—"}</p>
+        </div>
+        {sealed ? (
+          <p>
+            {t("encryption")}: {props.object.encryption?.sse_algorithm}
+          </p>
+        ) : null}
         <p>
-          {t("encryption")}: {props.object.encryption?.sse_algorithm}
+          {t("retention")}: {retention || props.object.retention_until || (props.object.legal_hold ? "legal hold" : "—")}
         </p>
-      ) : null}
-      <p>
-        {t("retention")}: {retention || props.object.retention_until || (props.object.legal_hold ? "legal hold" : "—")}
-      </p>
-      <label className="block space-y-1">
-        <span>{t("metadata")}</span>
-        <textarea className="w-full rounded-md border bg-transparent p-2" rows={3} value={meta} readOnly={!props.canWrite} onChange={(event) => setMeta(event.target.value)} />
-      </label>
-      {props.canWrite ? (
-        <Button type="button" variant="outline" onClick={() => void save("object.meta.put")}>
-          {t("saveMeta")}
-        </Button>
-      ) : null}
-      <label className="block space-y-1">
-        <span>{t("tags")}</span>
-        <textarea className="w-full rounded-md border bg-transparent p-2" rows={3} value={tags} readOnly={!props.canWrite} onChange={(event) => setTags(event.target.value)} />
-      </label>
-      {props.canWrite ? (
-        <Button type="button" variant="outline" onClick={() => void save("object.tags.put")}>
-          {t("saveTags")}
-        </Button>
-      ) : null}
-      <div>
-        <h4 className="font-medium">{t("versions")}</h4>
-        <ul className="space-y-1">
-          {versions.map((version) => (
-            <li key={version.version_id || version.last_modified} className="flex items-center justify-between gap-2">
-              <span className="truncate">{version.version_id || version.last_modified}</span>
-              {props.canWrite && version.version_id ? (
-                <Button type="button" variant="outline" onClick={() => void restore(version.version_id || "")}>
-                  {t("restore")}
-                </Button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </aside>
+        <div className="space-y-1">
+          <span className="text-muted-foreground">{t("metadata")}</span>
+          <Textarea rows={3} className="font-mono text-xs" value={meta} readOnly={!props.canWrite} onChange={(event) => setMeta(event.target.value)} />
+        </div>
+        {props.canWrite ? (
+          <Button type="button" size="sm" variant="outline" onClick={() => void save("object.meta.put")}>
+            {t("bucketDetail:metadata.save")}
+          </Button>
+        ) : null}
+        <div className="space-y-1">
+          <span className="text-muted-foreground">{t("tags")}</span>
+          <Textarea rows={3} className="font-mono text-xs" value={tags} readOnly={!props.canWrite} onChange={(event) => setTags(event.target.value)} />
+        </div>
+        {props.canWrite ? (
+          <Button type="button" size="sm" variant="outline" onClick={() => void save("object.tags.put")}>
+            {t("saveTags")}
+          </Button>
+        ) : null}
+        <div>
+          <h4 className="font-medium">{t("bucketDetail:tabs.versions")}</h4>
+          <ul className="space-y-1">
+            {versions.map((version) => (
+              <li key={version.version_id || version.last_modified} className="flex items-center justify-between gap-2">
+                <span className="truncate font-mono text-xs">{version.version_id || version.last_modified}</span>
+                {props.canWrite && version.version_id ? (
+                  <Button type="button" size="sm" variant="outline" onClick={() => void restore(version.version_id || "")}>
+                    {t("restore")}
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

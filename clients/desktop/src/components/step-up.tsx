@@ -1,6 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Label } from "@datasafe/ui/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@datasafe/ui/ui/dialog";
 import { browse, type BrowseResult } from "../desktop";
 
 type Job = {
@@ -98,49 +101,39 @@ export function StepUpDialog(props: {
 }) {
   const { t } = useTranslation();
   const [code, setCode] = useState("");
-  if (!props.open) {
-    return null;
-  }
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <form
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="step-up-title"
-        className="w-full max-w-md space-y-3 rounded-md border bg-background p-4 shadow-lg"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const next = code.trim();
-          if (next === "") {
-            return;
-          }
-          setCode("");
-          props.onSubmit(next);
-        }}
-      >
-        <h2 id="step-up-title" className="text-lg font-semibold">
-          {t("stepUpTitle")}
-        </h2>
-        <p className="text-sm text-muted-foreground">{t("stepUpHint")}</p>
-        {props.error === "again" ? <p className="text-sm text-destructive">{t("stepUpAgain")}</p> : null}
-        {props.error === "invalid" ? <p className="text-sm text-destructive">{t("stepUpInvalid")}</p> : null}
-        <label className="block text-sm">
-          {t("code")}
-          <input
-            className="mt-1 w-full rounded-md border bg-background px-2 py-1"
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-            autoComplete="off"
-            autoFocus
-          />
-        </label>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={props.onCancel}>
-            {t("cancel")}
-          </Button>
-          <Button type="submit">{t("stepUpConfirm")}</Button>
-        </div>
-      </form>
-    </div>
+    <Dialog open={props.open} onOpenChange={(open) => { if (!open) props.onCancel(); }}>
+      <DialogContent>
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const next = code.trim();
+            if (next === "") {
+              return;
+            }
+            setCode("");
+            props.onSubmit(next);
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{t("stepUpTitle")}</DialogTitle>
+            <DialogDescription>{t("stepUpHint")}</DialogDescription>
+          </DialogHeader>
+          {props.error === "again" ? <p className="text-sm text-destructive">{t("stepUpAgain")}</p> : null}
+          {props.error === "invalid" ? <p className="text-sm text-destructive">{t("stepUpInvalid")}</p> : null}
+          <div className="space-y-1">
+            <Label htmlFor="step-up-code">{t("code")}</Label>
+            <Input id="step-up-code" value={code} onChange={(event) => setCode(event.target.value)} autoComplete="off" autoFocus />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={props.onCancel}>
+              {t("common:cancel")}
+            </Button>
+            <Button type="submit">{t("stepUpConfirm")}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { cn } from "@datasafe/ui/cn";
 import { transfer, type TransferDetail, type TransferTask } from "../../desktop";
 
 function formatBytes(n: number): string {
@@ -90,7 +93,13 @@ export function TransferPanel(props: {
     if (!props.canWrite) {
       return;
     }
-    void getCurrentWebview()
+    let webview: ReturnType<typeof getCurrentWebview>;
+    try {
+      webview = getCurrentWebview();
+    } catch {
+      return;
+    }
+    void webview
       .onDragDropEvent((event) => {
         if (event.payload.type !== "drop") {
           return;
@@ -182,15 +191,19 @@ export function TransferPanel(props: {
   }
 
   return (
-    <section className="space-y-3 rounded-md border p-3">
-      <h3 className="text-sm font-medium">{t("transfers")}</h3>
-      <p className="text-sm text-muted-foreground">{t("dragHint")}</p>
-      <p className="text-sm text-muted-foreground">{t("dragOut")}</p>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t("transfers")}</CardTitle>
+        <CardDescription>
+          {t("dragHint")} {t("dragOut")}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
       {props.canWrite ? (
         <div className="flex flex-wrap items-center gap-2">
-          <input className="min-w-64 rounded-md border bg-transparent px-2 py-1" placeholder={t("localPath")} value={localPath} onChange={(event) => setLocalPath(event.target.value)} />
+          <Input className="max-w-sm" placeholder={t("localPath")} value={localPath} onChange={(event) => setLocalPath(event.target.value)} autoComplete="off" />
           <Button type="button" variant="outline" disabled={!localPath.trim()} onClick={() => void enqueue(localPath.trim())}>
-            {t("upload")}
+            {t("bucketDetail:actions.upload")}
           </Button>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={follow} onChange={(event) => setFollow(event.target.checked)} />
@@ -201,7 +214,7 @@ export function TransferPanel(props: {
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2 text-sm">
           <span>{t("destFolder")}</span>
-          <input className="min-w-64 rounded-md border bg-transparent px-2 py-1" aria-label={t("destFolder")} placeholder={t("destFolderHint")} value={destPath} onChange={(event) => setDestPath(event.target.value)} />
+          <Input className="max-w-sm" aria-label={t("destFolder")} placeholder={t("destFolderHint")} value={destPath} onChange={(event) => setDestPath(event.target.value)} autoComplete="off" />
         </label>
         <Button type="button" variant="outline" disabled={!props.selectedKey || !destPath.trim()} onClick={() => void download()}>
           {t("download")}
@@ -211,7 +224,7 @@ export function TransferPanel(props: {
       {tasks.length === 0 ? <p className="text-sm text-muted-foreground">{t("noTransfers")}</p> : null}
       <ul className="space-y-2 text-sm">
         {tasks.map((task) => (
-          <li key={task.id} className="space-y-1 rounded-md border px-3 py-2">
+          <li key={task.id} className="space-y-2 rounded-md border p-3 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="break-all">
                 {task.direction} · {task.key || task.local_path} · {explain(task)}
@@ -234,6 +247,14 @@ export function TransferPanel(props: {
                 ) : null}
               </span>
             </div>
+            {task.size ? (
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn("h-full transition-all", task.state === "error" ? "bg-destructive" : "bg-primary")}
+                  style={{ width: `${Math.min(100, Math.round(((task.bytes_done ?? 0) / task.size) * 100))}%` }}
+                />
+              </div>
+            ) : null}
             {task.state === "conflict" ? (
               <div className="flex flex-wrap gap-2">
                 <span className="break-all">{t("conflict")}: {task.pending_local}</span>
@@ -281,7 +302,8 @@ export function TransferPanel(props: {
           </li>
         ))}
       </ul>
-    </section>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -321,23 +343,32 @@ export function ResumeProgress(props: { profileId: string }) {
     return null;
   }
   return (
-    <section className="space-y-2">
-      <h2 className="text-sm font-medium">{t("transfers")}</h2>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t("transfers")}</CardTitle>
+      </CardHeader>
+      <CardContent>
       <ul className="space-y-2 text-sm">
         {tasks.map((task) => (
-          <li key={task.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2">
+          <li key={task.id} className="space-y-2 rounded-md border p-3">
             <span className="break-all">
               {task.direction} · {task.key || task.local_path} · {task.state}
               {task.size ? ` · ${formatBytes(task.bytes_done ?? 0)} / ${formatBytes(task.size)}` : task.bytes_done ? ` · ${formatBytes(task.bytes_done)}` : ""}
             </span>
             {task.state === "error" ? (
-              <Button type="button" variant="outline" onClick={() => void transfer(props.profileId, "transfer.retry", { transfer_id: task.id })}>
+              <Button type="button" size="sm" variant="outline" onClick={() => void transfer(props.profileId, "transfer.retry", { transfer_id: task.id })}>
                 {t("retry")}
               </Button>
+            ) : null}
+            {task.size ? (
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div className="h-full bg-primary transition-all" style={{ width: `${Math.min(100, Math.round(((task.bytes_done ?? 0) / task.size) * 100))}%` }} />
+              </div>
             ) : null}
           </li>
         ))}
       </ul>
-    </section>
+      </CardContent>
+    </Card>
   );
 }

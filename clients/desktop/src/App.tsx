@@ -1,19 +1,38 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ShieldAlert } from "lucide-react";
 import { Button } from "@datasafe/ui/ui/button";
-import { browse, diagExport, diagPreview, listProfiles, transfer, type DiagPreview, type Profile } from "./desktop";
-import { setDesktopLocale, THEME_KEY, type DesktopLocale } from "./i18n";
+import { Input } from "@datasafe/ui/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
+import { PageHeader } from "@datasafe/ui/page-header";
+import { browse, diagExport, diagPreview, listProfiles, logout, transfer, type DiagPreview, type Profile } from "./desktop";
+import { THEME_KEY } from "./i18n";
 import { ResumeProgress } from "./components/transfers/panel";
+import { DesktopShell, type DesktopTheme, type DesktopView } from "./components/shell";
 import { BucketBrowser } from "./pages/buckets";
 import { LoginPanel } from "./pages/login";
 import { ProfileList } from "./pages/profiles";
 
 const VERSION = "1.0.0-dev";
 
+function storedTheme(): DesktopTheme {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === "light" || saved === "dark" || saved === "system") {
+    return saved;
+  }
+  return "dark";
+}
+
+function applyTheme(theme: DesktopTheme) {
+  const dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.classList.toggle("dark", dark);
+  localStorage.setItem(THEME_KEY, theme);
+}
+
 export default function App() {
-  const { t, i18n } = useTranslation();
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
-  const locale: DesktopLocale = i18n.language === "ru" ? "ru" : "en";
+  const { t } = useTranslation();
+  const [theme, setTheme] = useState<DesktopTheme>(storedTheme);
+  const [view, setView] = useState<DesktopView>("profiles");
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selected, setSelected] = useState("");
   const [error, setError] = useState("");
@@ -41,6 +60,8 @@ export default function App() {
   }, [reload]);
 
   const current = profiles.find((profile) => profile.id === selected);
+  const signedIn = Boolean(current && current.session === "signed_in" && !current.server?.rejected);
+  const canBrowse = Boolean(signedIn && current && !current.server?.blocked && current.server?.browse_allowed !== false);
 
   useEffect(() => {
     const signed = new Set(
@@ -101,105 +122,114 @@ export default function App() {
     }
   }
 
-  return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-8">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{t("title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("version", { version: VERSION })}</p>
-        <p>{t("subtitle")}</p>
-      </header>
-      <section className="flex flex-wrap gap-6">
-        <div className="space-y-2">
-          <h2 className="text-sm font-medium">{t("language")}</h2>
-          <div className="flex gap-2">
-            <Button type="button" variant={locale === "en" ? "default" : "outline"} onClick={() => setDesktopLocale("en")}>
-              EN
-            </Button>
-            <Button type="button" variant={locale === "ru" ? "default" : "outline"} onClick={() => setDesktopLocale("ru")}>
-              RU
-            </Button>
-          </div>
-        </div>
-        <div className="space-y-2">
-          <h2 className="text-sm font-medium">{t("theme")}</h2>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant={dark ? "outline" : "default"}
-              onClick={() => {
-                document.documentElement.classList.toggle("dark", false);
-                localStorage.setItem(THEME_KEY, "light");
-                setDark(false);
-              }}
-            >
-              {t("themeLight")}
-            </Button>
-            <Button
-              type="button"
-              variant={dark ? "default" : "outline"}
-              onClick={() => {
-                document.documentElement.classList.toggle("dark", true);
-                localStorage.setItem(THEME_KEY, "dark");
-                setDark(true);
-              }}
-            >
-              {t("themeDark")}
-            </Button>
-          </div>
-        </div>
-      </section>
-      {current?.tls?.insecure_dev ? <p className="text-sm text-destructive">{t("insecureWarning")}</p> : null}
-      <section className="space-y-2">
-        <h2 className="text-sm font-medium">{t("diagnostics")}</h2>
-        <p className="text-sm text-muted-foreground">{t("diagHint")}</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" onClick={() => void previewDiagnostics()}>
-            {t("diagPreview")}
-          </Button>
-          <input
-            className="min-w-64 rounded-md border bg-transparent px-2 py-1"
-            aria-label={t("diagFolder")}
-            placeholder={t("diagFolder")}
-            value={diagFolder}
-            onChange={(event) => setDiagFolder(event.target.value)}
-          />
-          <Button type="button" variant="outline" disabled={!diag || !diagFolder.trim()} onClick={() => void saveDiagnostics()}>
-            {t("diagSave")}
-          </Button>
-        </div>
-        {diag ? (
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border p-2 text-xs">{`${diag.versions ?? ""}${diag.files?.length ? `\n${diag.files.map((file) => `${file.name} ${file.bytes}`).join("\n")}` : ""}`}</pre>
-        ) : null}
-        {diagSaved ? <p className="text-sm text-muted-foreground">{diagSaved}</p> : null}
-      </section>
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+  async function signOut() {
+    if (!current) {
+      return;
+    }
+    try {
+      await logout(current.id);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  const banner = (
+    <>
       {mfaBanner ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm" role="status">
-          {t("mfaSetupBanner")}
-        </p>
+        <div className="border-b border-destructive/40 bg-destructive/10 px-6 py-3 text-sm lg:px-8" role="status">
+          <div className="flex items-start gap-2">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden />
+            <p>{t("mfaSetupBanner")}</p>
+          </div>
+        </div>
       ) : null}
-      <div className="grid gap-8 md:grid-cols-2">
-        <ProfileList
-          profiles={profiles}
-          selected={selected}
-          onSelect={setSelected}
-          onCreated={() => void reload()}
-          onError={setError}
-        />
-        {current ? (
-          <LoginPanel
-            profile={current}
-            notice={notice}
-            onNotice={setNotice}
-            onChanged={() => void reload()}
-            onError={setError}
-          />
-        ) : null}
-      </div>
-      {current && current.session === "signed_in" && !current.server?.rejected ? <ResumeProgress profileId={current.id} /> : null}
-      {current && current.session === "signed_in" && !current.server?.rejected && !current.server?.blocked && current.server?.browse_allowed !== false ? (
-        <BucketBrowser profileId={current.id} onError={setError} onMfaSetup={() => setMfaBanner(true)} />
+      {current?.tls?.insecure_dev ? <p className="border-b px-6 py-2 text-sm text-destructive lg:px-8">{t("insecureWarning")}</p> : null}
+      {error ? <p className="border-b px-6 py-2 text-sm text-destructive lg:px-8">{error}</p> : null}
+    </>
+  );
+
+  return (
+    <DesktopShell
+      view={view}
+      onView={setView}
+      theme={theme}
+      onTheme={(next) => {
+        applyTheme(next);
+        setTheme(next);
+      }}
+      version={VERSION}
+      signedIn={signedIn}
+      onSignOut={() => void signOut()}
+      banner={banner}
+    >
+      {view === "profiles" ? (
+        <div className="space-y-6">
+          <PageHeader title={t("profiles")} description={t("subtitle")} />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <ProfileList profiles={profiles} selected={selected} onSelect={setSelected} onCreated={() => void reload()} onError={setError} />
+            {current ? (
+              <LoginPanel profile={current} notice={notice} onNotice={setNotice} onChanged={() => void reload()} onError={setError} />
+            ) : null}
+          </div>
+          {signedIn && current ? <ResumeProgress profileId={current.id} /> : null}
+        </div>
       ) : null}
-    </main>
+      {view === "buckets" ? (
+        canBrowse && current ? (
+          <BucketBrowser profileId={current.id} onError={setError} onMfaSetup={() => setMfaBanner(true)} />
+        ) : (
+          <PageHeader title={t("nav:buckets")} description={t("subtitle")} />
+        )
+      ) : null}
+      {view === "transfers" ? (
+        <div className="space-y-4">
+          <PageHeader title={t("transfers")} description={t("resumeAfterRestart")} />
+          {signedIn && current ? <ResumeProgress profileId={current.id} /> : <p className="text-sm text-muted-foreground">{t("empty")}</p>}
+        </div>
+      ) : null}
+      {view === "diagnostics" ? (
+        <div className="space-y-4">
+          <PageHeader title={t("diagnostics")} description={t("diagHint")} />
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t("diagPreview")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => void previewDiagnostics()}>
+                  {t("diagPreview")}
+                </Button>
+                <Input aria-label={t("diagFolder")} placeholder={t("diagFolder")} value={diagFolder} onChange={(event) => setDiagFolder(event.target.value)} className="max-w-sm" />
+                <Button type="button" variant="outline" disabled={!diag || !diagFolder.trim()} onClick={() => void saveDiagnostics()}>
+                  {t("diagSave")}
+                </Button>
+              </div>
+              {diag ? (
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border p-3 text-xs">{`${diag.versions ?? ""}${diag.files?.length ? `\n${diag.files.map((file) => `${file.name} ${file.bytes}`).join("\n")}` : ""}`}</pre>
+              ) : null}
+              {diagSaved ? <p className="text-sm text-muted-foreground">{diagSaved}</p> : null}
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+      {view === "settings" ? (
+        <div className="space-y-4">
+          <PageHeader title={t("nav:settings")} description={t("subtitle")} />
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t("common:theme.appearance")}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              {(["light", "dark", "system"] as const).map((item) => (
+                <Button key={item} type="button" variant={theme === item ? "default" : "outline"} onClick={() => { applyTheme(item); setTheme(item); }}>
+                  {t(`common:theme.${item}`)}
+                </Button>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+    </DesktopShell>
   );
 }

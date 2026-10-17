@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ArrowLeft, FolderOpen, Plus, Trash2 } from "lucide-react";
 import { Button } from "@datasafe/ui/ui/button";
+import { Input } from "@datasafe/ui/ui/input";
+import { Card, CardContent } from "@datasafe/ui/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@datasafe/ui/ui/tabs";
+import { PageHeader } from "@datasafe/ui/page-header";
 import { StepUpDialog, useStepUp } from "../components/step-up";
 import { browse, type BrowseResult } from "../desktop";
 import { ObjectBrowser } from "./objects";
@@ -22,7 +27,7 @@ function problem(result: BrowseResult): string {
 }
 
 export function BucketBrowser(props: { profileId: string; onError: (message: string) => void; onMfaSetup: () => void }) {
-  const { t } = useTranslation();
+  const { t } = useTranslation(["shell", "buckets", "common"]);
   const step = useStepUp(props.profileId, props.onMfaSetup);
   const [buckets, setBuckets] = useState<BucketItem[]>([]);
   const [filter, setFilter] = useState("all");
@@ -101,59 +106,100 @@ export function BucketBrowser(props: { profileId: string; onError: (message: str
   return (
     <section className="space-y-4">
       <StepUpDialog open={step.open} error={step.error} onCancel={step.cancel} onSubmit={(code) => void step.submit(code)} />
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="space-y-1 text-sm">
-          <span className="block">{t("buckets")}</span>
-          <select className="rounded-md border bg-transparent px-2 py-1" value={filter} onChange={(event) => setFilter(event.target.value)}>
-            <option value="all">all</option>
-            <option value="owned">owned</option>
-            <option value="shared">shared</option>
-          </select>
-        </label>
-        <ul className="flex flex-wrap gap-2">
-          {buckets.map((bucket) => (
-            <li key={bucket.name}>
-              <Button type="button" variant={bucket.name === selected ? "default" : "outline"} onClick={() => setSelected(bucket.name)}>
-                {bucket.name}
-                {bucket.object_lock_enabled ? " · lock" : ""}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <input className="rounded-md border bg-transparent px-2 py-1" placeholder={t("createBucket")} value={name} onChange={(event) => setName(event.target.value)} />
-        <Button type="button" onClick={() => void createBucket()}>
-          {t("createBucket")}
-        </Button>
-        {selected && canWrite ? (
-          confirm ? (
-            <>
-              <Button type="button" onClick={() => void deleteBucket()}>
-                {t("confirmDelete")}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setConfirm(false)}>
-                {t("cancel")}
-              </Button>
-            </>
-          ) : (
-            <Button type="button" variant="outline" onClick={() => setConfirm(true)}>
-              {t("deleteBucket")}
-            </Button>
-          )
-        ) : null}
-      </div>
-      {current && current.access?.can_write !== true ? <p className="text-sm">{t("readOnly")}</p> : null}
       {selected ? (
-        <ObjectBrowser
-          profileId={props.profileId}
-          bucket={selected}
-          canWrite={canWrite}
-          encryption={encryption}
-          onError={props.onError}
-          confirmDangerous={step.call}
-        />
-      ) : null}
+        <>
+          <div className="mb-4">
+            <Button variant="ghost" size="sm" type="button" onClick={() => setSelected("")}>
+              <ArrowLeft className="h-4 w-4" />
+              {t("bucketDetail:backToBuckets")}
+            </Button>
+          </div>
+          {current && current.access?.can_write !== true ? <p className="mb-4 text-sm text-muted-foreground">{t("readOnly")}</p> : null}
+          <ObjectBrowser
+            profileId={props.profileId}
+            bucket={selected}
+            canWrite={canWrite}
+            encryption={encryption}
+            onError={props.onError}
+            confirmDangerous={step.call}
+            headerActions={
+              canWrite ? (
+                confirm ? (
+                  <>
+                    <Button type="button" variant="destructive" size="sm" onClick={() => void deleteBucket()}>
+                      {t("confirmDelete")}
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setConfirm(false)}>
+                      {t("common:cancel")}
+                    </Button>
+                  </>
+                ) : (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setConfirm(true)}>
+                    <Trash2 className="h-4 w-4" />
+                    {t("deleteBucket")}
+                  </Button>
+                )
+              ) : null
+            }
+          />
+        </>
+      ) : (
+        <>
+          <PageHeader
+            title={t("buckets:title")}
+            description={t("buckets:description")}
+            actions={
+              <>
+                <Input className="w-48" aria-label={t("buckets:fields.bucketName")} placeholder={t("buckets:placeholder.bucketName")} value={name} onChange={(event) => setName(event.target.value)} />
+                <Button type="button" onClick={() => void createBucket()} disabled={!name.trim()}>
+                  <Plus className="h-4 w-4" />
+                  {t("buckets:actions.create")}
+                </Button>
+              </>
+            }
+          />
+          <Tabs value={filter} onValueChange={setFilter}>
+            <TabsList>
+              <TabsTrigger value="all">{t("filterAll")}</TabsTrigger>
+              <TabsTrigger value="owned">{t("buckets:tabs.myFiles")}</TabsTrigger>
+              <TabsTrigger value="shared">{t("buckets:tabs.shared")}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <Card>
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="p-3">{t("buckets:columns.name")}</th>
+                    <th className="p-3">{t("buckets:columns.access")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {buckets.length === 0 ? (
+                    <tr>
+                      <td colSpan={2} className="p-8 text-center text-muted-foreground">
+                        {t("buckets:empty.owned")}
+                      </td>
+                    </tr>
+                  ) : null}
+                  {buckets.map((bucket) => (
+                    <tr key={bucket.name} className="cursor-pointer border-b hover:bg-muted/50" onClick={() => setSelected(bucket.name)}>
+                      <td className="p-3">
+                        <span className="inline-flex items-center gap-2 font-medium text-primary">
+                          <FolderOpen className="h-4 w-4" />
+                          {bucket.name}
+                          {bucket.object_lock_enabled ? " · lock" : ""}
+                        </span>
+                      </td>
+                      <td className="p-3 capitalize text-muted-foreground">{bucket.access?.ownership || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </section>
   );
 }
