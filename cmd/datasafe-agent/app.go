@@ -288,16 +288,14 @@ func (a *App) finishLogin(profile Profile, result loginResult) (loginResult, err
 }
 
 func (a *App) logout(profile Profile, token string) (loginResult, error) {
-	if eng, err := a.engine(); err == nil && eng != nil {
-		_ = eng.PauseProfile(profile.ID)
+	if a.transfers != nil {
+		_ = a.transfers.PauseProfile(profile.ID)
 	}
 	resume := func() {
-		if strings.TrimSpace(token) == "" {
+		if a.transfers == nil || strings.TrimSpace(token) == "" {
 			return
 		}
-		if eng, err := a.engine(); err == nil && eng != nil {
-			_, _ = eng.Resume(profile, token, "", "")
-		}
+		_, _ = a.transfers.Resume(profile, token, "", "")
 	}
 	revoked := false
 	if token != "" && (profile.Server == nil || !profile.Server.Blocked) {

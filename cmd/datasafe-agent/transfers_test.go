@@ -1548,23 +1548,26 @@ func TestPauseProfileDoesNotAbort(t *testing.T) {
 }
 
 func TestLogoutPausesTransfers(t *testing.T) {
-	app := &App{dataDir: t.TempDir()}
+	dir := t.TempDir()
+	app := &App{dataDir: dir}
+	journal, err := openJournal(filepath.Join(dir, "transfers.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = journal.Close() })
+	app.transfers = newEngine(journal)
 	profile, err := app.putProfile(Profile{Name: "One", ServerURL: "http://127.0.0.1:9", AuthMethod: "password"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	eng, err := app.engine()
-	if err != nil {
-		t.Fatal(err)
-	}
 	task := Task{ID: "t1", ProfileID: profile.ID, State: "queued", Bucket: "b", Key: "k", UploadID: "up1"}
-	if err := eng.journal.Save(task); err != nil {
+	if err := journal.Save(task); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := app.logout(profile, ""); err != nil {
 		t.Fatal(err)
 	}
-	got, err := eng.journal.Get("t1")
+	got, err := journal.Get("t1")
 	if err != nil {
 		t.Fatal(err)
 	}
