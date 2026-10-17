@@ -43,35 +43,43 @@ type fileJob struct {
 	ContentMD5 string `json:"content_md5,omitempty"`
 }
 
+// pendingAbort is an upload id whose DELETE has not returned 204 or 404 yet.
+// The row has no token. A later sign-in retries it with that profile's secret.
+type pendingAbort struct {
+	Key      string `json:"key,omitempty"`
+	UploadID string `json:"upload_id"`
+}
+
 // Task is one transfer row. It has no token, password, or access-key secret.
 type Task struct {
-	ID             string     `json:"id"`
-	ProfileID      string     `json:"profile_id"`
-	Direction      string     `json:"direction"`
-	State          string     `json:"state"`
-	LocalPath      string     `json:"local_path"`
-	DestPath       string     `json:"dest_path,omitempty"`
-	Bucket         string     `json:"bucket"`
-	Key            string     `json:"key"`
-	Size           int64      `json:"size"`
-	MtimeUnix      int64      `json:"mtime_unix"`
-	UploadID       string     `json:"upload_id,omitempty"`
-	Parts          []partRec  `json:"parts,omitempty"`
-	Offset         int64      `json:"offset,omitempty"`
-	ETag           string     `json:"etag,omitempty"`
-	Message        string     `json:"message,omitempty"`
-	Report         []PathNote `json:"report,omitempty"`
-	Files          []fileJob  `json:"files,omitempty"`
-	FilesDone      int        `json:"files_done,omitempty"`
-	FilesTotal     int        `json:"files_total,omitempty"`
-	FollowSymlinks bool       `json:"follow_symlinks,omitempty"`
-	Conflict       string     `json:"conflict,omitempty"`
-	ResumeMode     string     `json:"resume_mode,omitempty"`
-	BytesDone      int64      `json:"bytes_done,omitempty"`
-	PendingKey     string     `json:"pending_key,omitempty"`
-	PendingLocal   string     `json:"pending_local,omitempty"`
-	CreatedUnix    int64      `json:"created_unix"`
-	UpdatedUnix    int64      `json:"updated_unix"`
+	ID             string         `json:"id"`
+	ProfileID      string         `json:"profile_id"`
+	Direction      string         `json:"direction"`
+	State          string         `json:"state"`
+	LocalPath      string         `json:"local_path"`
+	DestPath       string         `json:"dest_path,omitempty"`
+	Bucket         string         `json:"bucket"`
+	Key            string         `json:"key"`
+	Size           int64          `json:"size"`
+	MtimeUnix      int64          `json:"mtime_unix"`
+	UploadID       string         `json:"upload_id,omitempty"`
+	Parts          []partRec      `json:"parts,omitempty"`
+	Offset         int64          `json:"offset,omitempty"`
+	ETag           string         `json:"etag,omitempty"`
+	Message        string         `json:"message,omitempty"`
+	Report         []PathNote     `json:"report,omitempty"`
+	Files          []fileJob      `json:"files,omitempty"`
+	FilesDone      int            `json:"files_done,omitempty"`
+	FilesTotal     int            `json:"files_total,omitempty"`
+	FollowSymlinks bool           `json:"follow_symlinks,omitempty"`
+	Conflict       string         `json:"conflict,omitempty"`
+	ResumeMode     string         `json:"resume_mode,omitempty"`
+	BytesDone      int64          `json:"bytes_done,omitempty"`
+	PendingKey     string         `json:"pending_key,omitempty"`
+	PendingLocal   string         `json:"pending_local,omitempty"`
+	PendingAborts  []pendingAbort `json:"pending_aborts,omitempty"`
+	CreatedUnix    int64          `json:"created_unix"`
+	UpdatedUnix    int64          `json:"updated_unix"`
 }
 
 const (

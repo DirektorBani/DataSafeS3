@@ -11,6 +11,13 @@ import (
 	"testing"
 )
 
+func newTestApp(t *testing.T) *App {
+	t.Helper()
+	app := &App{dataDir: t.TempDir()}
+	t.Cleanup(func() { app.closeTransfers() })
+	return app
+}
+
 func TestLoginRetryForgetAndSecrets(t *testing.T) {
 	password := "hunter2-not-in-logs"
 	var token string
@@ -53,7 +60,7 @@ func TestLoginRetryForgetAndSecrets(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	app := &App{dataDir: t.TempDir()}
+	app := newTestApp(t)
 	first, err := app.putProfile(Profile{Name: "One", ServerURL: srv.URL, AuthMethod: "password", Username: "alice"})
 	if err != nil {
 		t.Fatal(err)
@@ -151,7 +158,7 @@ func TestRejectOldServerAndBlockFloor(t *testing.T) {
 		}
 	}))
 	defer old.Close()
-	app := &App{dataDir: t.TempDir()}
+	app := newTestApp(t)
 	profile, err := app.putProfile(Profile{Name: "Old", ServerURL: old.URL, AuthMethod: "password", Username: "a"})
 	if err != nil {
 		t.Fatal(err)
@@ -214,7 +221,7 @@ func TestHealthzFixturesFromTags(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	app := &App{dataDir: t.TempDir()}
+	app := newTestApp(t)
 	profile, err := app.putProfile(Profile{Name: "150", ServerURL: srv.URL, AuthMethod: "password", Username: "a"})
 	if err != nil {
 		t.Fatal(err)
@@ -291,7 +298,7 @@ func TestMFAAndEchoedSecret(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	app := &App{dataDir: t.TempDir()}
+	app := newTestApp(t)
 	profile, err := app.putProfile(Profile{Name: "MFA", ServerURL: srv.URL, AuthMethod: "password", Username: "alice"})
 	if err != nil {
 		t.Fatal(err)
@@ -340,7 +347,7 @@ func TestOIDCExchange(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	app := &App{dataDir: t.TempDir()}
+	app := newTestApp(t)
 	profile, err := app.putProfile(Profile{Name: "OIDC", ServerURL: srv.URL, AuthMethod: "oidc", Username: "alice"})
 	if err != nil {
 		t.Fatal(err)
@@ -352,6 +359,81 @@ func TestOIDCExchange(t *testing.T) {
 	out, err := app.logout(profile, got.Token)
 	if err != nil || !out.PasswordRevoked {
 		t.Fatalf("oidc logout %+v %v", out, err)
+	}
+}
+
+func TestLoginResumesPausedTransfer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/healthz":
+			_, _ = w.Write([]byte(`{"status":"ok","version":"1.6.1"}`))
+		case "/api/v1/capabilities":
+			_, _ = w.Write([]byte(`{"api":"v1","server_version":"1.6.1","spec_version":"1.6.1","login_methods":["password"]}`))
+		case "/api/v1/admin/login":
+			_ = json.NewEncoder(w).Encode(map[string]any{"token": "jwt-resume", "expires_in": 86400, "username": "alice"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	app := newTestApp(t)
+	profile, err := app.putProfile(Profile{Name: "One", ServerURL: srv.URL, AuthMethod: "password", Username: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := writeTemp(t, []byte("hello"))
+	journal, err := openJournal(filepath.Join(app.dataDir, "transfers.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeRemote{}
+	eng := newEngine(journal)
+	eng.syncRun = true
+	eng.limits = Limits{Threshold: 1 << 20, PartSize: 1 << 20, Transfers: 1, PartParallel: 1}
+	eng.build = func(creds, string) (remote, error) { return fake, nil }
+	app.transfers = eng
+	task := Task{
+		ID: "t1", ProfileID: profile.ID, Direction: "upload", State: "interrupted", Message: "paused_signed_out",
+		Bucket: "b", Key: "k", LocalPath: path,
+	}
+	if err := journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	got, err := app.loginPassword(profile, "alice", "secret")
+	if err != nil || got.Status != "signed_in" {
+		t.Fatalf("login %+v %v", got, err)
+	}
+	loaded, err := journal.Get("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.State != "done" || fake.puts != 1 {
+		t.Fatalf("state %s puts %d message %s", loaded.State, fake.puts, loaded.Message)
+	}
+}
+
+func TestBrowseSessionExpiryMarksReauth(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"session expired"}`))
+	}))
+	defer srv.Close()
+	app := newTestApp(t)
+	profile, err := app.putProfile(Profile{Name: "OIDC", ServerURL: srv.URL, AuthMethod: "oidc", Username: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile.Session = "signed_in"
+	if err := app.updateProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	result, err := app.browse(profile, "jwt", http.MethodGet, "/api/v1/me", nil, nil)
+	if err != nil || result.Code != "auth.session_expired" {
+		t.Fatalf("%+v %v", result, err)
+	}
+	reloaded, err := app.profileByID(profile.ID)
+	if err != nil || reloaded.Session != "reauth" {
+		t.Fatalf("session %s %v", reloaded.Session, err)
 	}
 }
 

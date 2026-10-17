@@ -94,6 +94,13 @@ type Engine struct {
 	progressEvery time.Duration
 	progressAt    time.Time
 	log           *Logger
+	stop          chan struct{}
+	stopOnce      sync.Once
+	workers       sync.WaitGroup
+	abortMu       sync.Mutex
+	abortDone     map[string]struct{}
+	abortBusy     map[string]struct{}
+	onSession     func(profileID string)
 	// assembleFor is how long a retried complete polls object-meta before
 	// giving up. Zero means 30s. Tests set a short budget: their sleep is a
 	// no-op, so a full 30s would spin on the wall clock.
@@ -115,26 +122,64 @@ func newEngine(j *Journal) *Engine {
 }
 
 func (e *Engine) start() {
+	if e.stop == nil {
+		e.stop = make(chan struct{})
+	}
 	n := e.limits.Transfers
 	if n < 1 {
 		n = 1
 	}
+	e.workers.Add(n)
 	for i := 0; i < n; i++ {
-		go e.worker()
+		go func() {
+			defer e.workers.Done()
+			e.worker()
+		}()
+	}
+}
+
+// Close stops transfer workers and releases the journal file.
+func (e *Engine) Close() {
+	if e == nil {
+		return
+	}
+	if e.stop != nil {
+		e.stopOnce.Do(func() { close(e.stop) })
+		e.workers.Wait()
+	}
+	if e.journal != nil {
+		_ = e.journal.Close()
 	}
 }
 
 func (e *Engine) worker() {
 	for {
+		if e.stopping() {
+			return
+		}
 		id := e.take()
 		if id == "" {
 			select {
 			case <-e.wake:
+			case <-e.stop:
+				return
 			case <-time.After(400 * time.Millisecond):
 			}
 			continue
 		}
 		e.process(id)
+	}
+}
+
+func (e *Engine) stopping() bool {
+	if e.stop == nil {
+		return false
+	}
+	select {
+	case <-e.stop:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -158,6 +203,7 @@ func (a *App) engine() (*Engine, error) {
 		eng := newEngine(j)
 		eng.log = a.log
 		eng.build = a.remoteFor
+		eng.onSession = a.markReauth
 		eng.start()
 		a.transfers = eng
 	})
@@ -285,6 +331,9 @@ func (e *Engine) cancel(id string, extra creds) error {
 	if use.AccessKey == "" {
 		use.AccessKey = remembered.AccessKey
 	}
+	task.State = "cancelled"
+	clearStale(&task)
+	e.removePartial(&task)
 	if e.build != nil && task.Bucket != "" && (use.Token != "" || use.Secret != "") {
 		if remote, err := e.build(use, task.Bucket); err == nil && remote != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -292,9 +341,6 @@ func (e *Engine) cancel(id string, extra creds) error {
 			cancel()
 		}
 	}
-	task.State = "cancelled"
-	clearStale(&task)
-	e.removePartial(&task)
 	return e.journal.SaveMeta(task)
 }
 
@@ -332,6 +378,7 @@ func (e *Engine) Resume(profile Profile, token, accessKey, secret string) (int, 
 	if err != nil {
 		return 0, err
 	}
+	e.retryPendingAborts(profile, token, accessKey, secret)
 	var ids []string
 	for _, task := range tasks {
 		if task.State != "interrupted" || task.ProfileID != profile.ID {
@@ -503,6 +550,10 @@ func (e *Engine) process(id string) {
 			e.stopped(ctx, &task, remote)
 			return
 		}
+		if sessionWait(runErr) {
+			e.finishSession(&task)
+			return
+		}
 		if retryableTransfer(runErr) {
 			task.State = "waiting_network"
 			task.Message = "waiting_network"
@@ -626,6 +677,29 @@ func (e *Engine) finishCancel(ctx context.Context, task *Task, remote remote) {
 	_ = ctx
 }
 
+// finishSession leaves the upload id in place. The next sign-in continues
+// the transfer. A 401 that asks for step-up is not a session expiry.
+func (e *Engine) finishSession(task *Task) {
+	task.State = "interrupted"
+	task.Message = "auth.session_expired"
+	_ = e.journal.SaveMeta(*task)
+	if e.onSession != nil && strings.TrimSpace(task.ProfileID) != "" {
+		e.onSession(task.ProfileID)
+	}
+}
+
+func sessionWait(err error) bool {
+	var fault *apiFault
+	if !errors.As(err, &fault) || fault == nil || fault.Status != http.StatusUnauthorized {
+		return false
+	}
+	switch fault.Code {
+	case "auth.step_up_required", "auth.mfa_token_invalid", "auth.invalid_code":
+		return false
+	}
+	return true
+}
+
 // removePartial deletes a download's .dspart. Cancel used to leave that
 // file in the destination folder. The journal no longer points at it.
 func (e *Engine) removePartial(task *Task) {
@@ -677,9 +751,157 @@ func retryableTransfer(err error) bool {
 }
 
 func (e *Engine) abortAll(ctx context.Context, task *Task, remote remote) {
-	// One DELETE per upload id. The task row and a file row often carry the
-	// same id; aborting both made the server answer 404 on the second call.
-	seen := map[string]string{}
+	if task == nil || remote == nil {
+		return
+	}
+	// One successful DELETE per upload id. The task row and a file row often
+	// carry the same id. A 400 while the server still has the part file open
+	// is not success: the id stays pending and is tried again.
+	notePendingAborts(task)
+	if e.journal != nil {
+		_ = e.journal.SaveMeta(*task)
+	}
+	attempts := 8
+	if e.sleep == nil {
+		attempts = 2
+	}
+	stop := e.drainAborts(ctx, task, remote, attempts)
+	if len(task.PendingAborts) > 0 && !stop && e.sleep == nil {
+		go e.keepAborting(task.ID, remote)
+	}
+}
+
+// drainAborts sends DELETE until each id returns success, the error will
+// not clear by waiting, or the attempt budget runs out. Success is a nil
+// error from Abort, which is HTTP below 400 or 404. A later call does not
+// send that id again.
+func (e *Engine) drainAborts(ctx context.Context, task *Task, remote remote, attempts int) bool {
+	if attempts < 1 {
+		attempts = 1
+	}
+	backoff := 200 * time.Millisecond
+	stop := false
+	for attempt := 0; attempt < attempts && len(task.PendingAborts) > 0; attempt++ {
+		if attempt > 0 {
+			if err := e.pause(ctx, backoff); err != nil {
+				break
+			}
+			if backoff < 30*time.Second {
+				backoff *= 2
+				if backoff > 30*time.Second {
+					backoff = 30 * time.Second
+				}
+			}
+		}
+		left := make([]pendingAbort, 0, len(task.PendingAborts))
+		for _, item := range task.PendingAborts {
+			cleared, again := e.abortOnce(ctx, remote, item)
+			if cleared {
+				continue
+			}
+			left = append(left, item)
+			if !again {
+				stop = true
+			}
+		}
+		task.PendingAborts = left
+		if e.journal != nil {
+			_ = e.journal.SaveMeta(*task)
+		}
+		if stop {
+			break
+		}
+	}
+	return stop
+}
+
+func (e *Engine) keepAborting(id string, remote remote) {
+	backoff := 400 * time.Millisecond
+	for {
+		if err := e.pause(context.Background(), backoff); err != nil {
+			return
+		}
+		if backoff < 30*time.Second {
+			backoff *= 2
+			if backoff > 30*time.Second {
+				backoff = 30 * time.Second
+			}
+		}
+		if e.journal == nil || e.stopping() {
+			return
+		}
+		task, err := e.journal.Get(id)
+		if err != nil || len(task.PendingAborts) == 0 {
+			return
+		}
+		stop := e.drainAborts(context.Background(), &task, remote, 1)
+		if stop || len(task.PendingAborts) == 0 {
+			return
+		}
+	}
+}
+
+// abortOnce returns cleared when this id has already had its successful
+// DELETE, or this call got one. again is false when waiting will not help.
+func (e *Engine) abortOnce(ctx context.Context, remote remote, item pendingAbort) (cleared bool, again bool) {
+	id := strings.TrimSpace(item.UploadID)
+	if id == "" {
+		return true, false
+	}
+	e.abortMu.Lock()
+	if e.abortDone == nil {
+		e.abortDone = map[string]struct{}{}
+	}
+	if _, ok := e.abortDone[id]; ok {
+		e.abortMu.Unlock()
+		return true, false
+	}
+	if e.abortBusy == nil {
+		e.abortBusy = map[string]struct{}{}
+	}
+	if _, ok := e.abortBusy[id]; ok {
+		e.abortMu.Unlock()
+		return false, true
+	}
+	e.abortBusy[id] = struct{}{}
+	e.abortMu.Unlock()
+
+	err := remote.Abort(ctx, item.Key, id)
+
+	e.abortMu.Lock()
+	delete(e.abortBusy, id)
+	if err == nil {
+		e.abortDone[id] = struct{}{}
+		e.abortMu.Unlock()
+		return true, false
+	}
+	e.abortMu.Unlock()
+	return false, abortRetryable(err)
+}
+
+func abortRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, errNetwork) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+	var fault *apiFault
+	if errors.As(err, &fault) && fault != nil {
+		if fault.Status == http.StatusNotFound || fault.Status < 400 {
+			return false
+		}
+		return fault.Status == http.StatusBadRequest || fault.Status == http.StatusConflict || fault.Status == http.StatusTooManyRequests || fault.Status >= 500
+	}
+	return true
+}
+
+func notePendingAborts(task *Task) {
+	if task == nil {
+		return
+	}
+	seen := map[string]struct{}{}
+	var out []pendingAbort
 	add := func(key, id string) {
 		id = strings.TrimSpace(id)
 		if id == "" {
@@ -688,19 +910,45 @@ func (e *Engine) abortAll(ctx context.Context, task *Task, remote remote) {
 		if _, ok := seen[id]; ok {
 			return
 		}
-		seen[id] = key
+		seen[id] = struct{}{}
+		out = append(out, pendingAbort{Key: key, UploadID: id})
 	}
-	if task != nil {
-		add(task.Key, task.UploadID)
-		for _, job := range task.Files {
-			if job.Done {
-				continue
-			}
-			add(job.Key, job.UploadID)
+	for _, item := range task.PendingAborts {
+		add(item.Key, item.UploadID)
+	}
+	add(task.Key, task.UploadID)
+	for _, job := range task.Files {
+		if job.Done {
+			continue
 		}
+		add(job.Key, job.UploadID)
 	}
-	for id, key := range seen {
-		_ = remote.Abort(ctx, key, id)
+	task.PendingAborts = out
+}
+
+// retryPendingAborts finishes DELETEs that were still failing when the
+// process last stopped. Resume calls it for the profile that just signed in.
+func (e *Engine) retryPendingAborts(profile Profile, token, accessKey, secret string) {
+	if e == nil || e.journal == nil || e.build == nil {
+		return
+	}
+	if strings.TrimSpace(token) == "" && strings.TrimSpace(secret) == "" {
+		return
+	}
+	tasks, err := e.journal.List()
+	if err != nil {
+		return
+	}
+	for i := range tasks {
+		task := tasks[i]
+		if task.ProfileID != profile.ID || len(task.PendingAborts) == 0 {
+			continue
+		}
+		remote, err := e.build(creds{Profile: profile, Token: token, AccessKey: accessKey, Secret: secret}, task.Bucket)
+		if err != nil || remote == nil {
+			continue
+		}
+		e.abortAll(context.Background(), &task, remote)
 	}
 }
 
@@ -1020,7 +1268,7 @@ func (e *Engine) runUpload(ctx context.Context, task *Task, remote remote) error
 			continue
 		}
 		if ctx.Err() != nil {
-			return ctx.Err()
+			break
 		}
 		wg.Add(1)
 		sem <- struct{}{}
@@ -1038,7 +1286,10 @@ func (e *Engine) runUpload(ctx context.Context, task *Task, remote remote) error
 		}(i)
 	}
 	wg.Wait()
-	return first
+	if first != nil {
+		return first
+	}
+	return ctx.Err()
 }
 
 type uploadItem struct {
@@ -1328,7 +1579,7 @@ func (e *Engine) uploadParts(ctx context.Context, task *Task, index int, remote 
 	var errMu sync.Mutex
 	for _, number := range missing {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			break
 		}
 		wg.Add(1)
 		sem <- struct{}{}

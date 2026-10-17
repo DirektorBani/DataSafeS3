@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Button } from "@datasafe/ui/ui/button";
@@ -37,7 +37,7 @@ const messages: Record<string, string> = {
   "tls.failed": "tlsFailed",
   "request.invalid": "codeRequestInvalid",
   "auth.unauthorized": "codeAuth",
-  "auth.session_expired": "codeAuth",
+  "auth.session_expired": "sessionExpired",
   "access.forbidden": "forbidden",
   "resource.not_found": "codeNotFound",
   internal: "codeInternal",
@@ -356,14 +356,26 @@ export function TransferPanel(props: {
   );
 }
 
-export function ResumeProgress(props: { profileId: string; onSummary?: (text: string) => void }) {
+export function ResumeProgress(props: { profileId: string; onSummary?: (text: string) => void; onSessionExpired?: () => void }) {
   const { t } = useTranslation();
   const [tasks, setTasks] = useState<TransferTask[]>([]);
   const onSummary = props.onSummary;
+  const onSessionExpired = props.onSessionExpired;
+  const toldSession = useRef(false);
 
   useEffect(() => {
     onSummary?.(transferSummary(tasks, t));
   }, [tasks, onSummary, t]);
+
+  useEffect(() => {
+    if (toldSession.current || !onSessionExpired) {
+      return;
+    }
+    if (tasks.some((task) => task.message === "auth.session_expired")) {
+      toldSession.current = true;
+      onSessionExpired();
+    }
+  }, [onSessionExpired, tasks]);
 
   useEffect(() => {
     let stop = false;

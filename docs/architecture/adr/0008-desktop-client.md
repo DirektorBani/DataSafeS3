@@ -127,6 +127,28 @@ A 1.5.0 card has `sharing.links` only. The password field stays hidden, the clie
 
 Revoke one link is `DELETE /api/v1/shares/{id}`. Revoke all links is `POST /api/v1/buckets/{bucket}/shares/revoke-all` through the same step-up dialog as bucket delete: the agent posts the code to `/api/v1/auth/step-up` and retries once with `X-DataSafe-MFA-Token`. Listing uses `GET /api/v1/buckets/{bucket}/shares?key=`.
 
+The copy button is labeled Copy until the clipboard write succeeds, and then the notice says the link was copied. An expiry is shown in the local time zone and the active locale. When the bucket requires a share password, that sentence is the reason the create button is inactive. The field label stays Password.
+
+### E08 follow-up: cancel, resume, session token
+
+Cancel waits until the part workers have returned, then sends `DELETE` for each upload id. The server can still answer 400 `unlinkat` for a moment after the client request has ended, because the part file is open in the server process. That 400 is not a finished abort. The client retries with a pause of 200ms that doubles up to 30s until the response is below 400 or 404. Those two results are the one successful DELETE. A later call for the same id does not send DELETE again. While the DELETE has not succeeded, the upload id is stored on the task as `pending_aborts` and the task is already `cancelled`. Opening the journal after a restart keeps that list. The next sign-in retries it. A 401 or 403 is left pending for that sign-in instead of being retried in a loop. Sign-out still does not abort.
+
+Sign-in resumes that profile's interrupted transfers inside the agent, from `finishLogin`, as soon as the session is `signed_in`. An access-key sign-in resumes from the command that stored the secret. The window still calls `transfer.resume` when it sees a signed-in profile. That call only queues rows that are still interrupted.
+
+A 401 that is not step-up pauses the transfer with `auth.session_expired`, leaves the upload id, and marks the profile `reauth`. The window says the session expired and, for an OIDC profile, offers the browser sign-in again.
+
+TZ §4.5 stores the session `token` and `expires_at` in the OS store (S1). S6 is only the password: it is not saved unless Remember password is checked, and that checkbox is off by default. Remember password does not decide whether the JWT is kept. After a signed-in profile is reopened, the stored token signs it in again until the token expires or the user signs out. Sign-out deletes the token. The profile record holds `expires_at` as `ExpiresAtUnix`; it is not a secret. Without a secret store (S2), the token stays in the process memory only, and the window says so.
+
+### E09 OIDC
+
+OIDC sign-in uses the server that is already deployed. The desktop does not change it.
+
+The profile can open the system browser at `{server}/api/v1/auth/oidc/login`. Keycloak runs there. The server callback then redirects to `/login?exchange_code=` on the web console, and that page redeems the code for its own session. The desktop does not receive it. Pasting a code still calls `POST /api/v1/auth/oidc/exchange` when the user has a code that has not been redeemed. The sign-in that returns a JWT to this app without a server change is the resource-owner password grant, `POST /api/v1/auth/oidc/password-login`, for a Keycloak client that allows direct access grants. The agent stores that JWT the same way as a password session. Logout is `POST /api/v1/admin/logout` and then the token is deleted. For an OIDC profile that logout revokes the server session.
+
+A deep link `datasafe://oidc?code=` is not implemented. The server accepts a redirect only at its configured `OIDC.RedirectURL` and then sends the browser to the console login page. Sending the code to the desktop instead would be a server change. TZ question Q2-2 is still open, and that redirect belongs to E12. This step does not add it.
+
+When an OIDC session expires, a request returns 401 `session expired`. The profile goes to `reauth`, active transfers pause without an abort, and the window asks the user to sign in again through the browser and the one-time code.
+
 ### Server: GET stalls while parts are written (not changed)
 
 This is a 1.6.1 server defect. No server code was changed.
@@ -149,7 +171,7 @@ Proposed fix, bolt only: in `ListObjects`, set `seen[objKey]` before continuing 
 
 ### Secrets
 
-Secrets (password, JWT, `ds_` token, access-key secret, local-server secrets, share password, TOTP, step-up token) live only in the OS store under `datasafe-desktop/<profile_id>/<kind>`: Windows Credential Manager or Linux Secret Service. On Windows the credential target is `<profile_id>/<kind>.datasafe-desktop`. There is no secret file. Secrets are not process arguments or environment variables. Without Secret Service, Linux asks for the password on each launch and does not save it. E00 removes the old sync shell, which passed the password to `datasafe-sync` as `--password`. The OS store itself is implemented in E01. Forgetting a profile deletes that profile's entries. Uninstall leaves them unless the Windows prompt is answered Yes. That runs `datasafe-agent.exe --purge-secrets` before the files are removed. The agent uses `CredEnumerateW` with filter `*` and flags 0, strips a `LegacyGeneric:target=` prefix, and calls `CredDeleteW` on the bare target `<profile_id>/<kind>.datasafe-desktop`. A name with two slashes, or a generic credential that does not end in that suffix, is left in place. It does not parse `cmdkey`. No and `/S` do not run it. An update does not ask.
+Secrets (password, JWT, `ds_` token, access-key secret, local-server secrets, share password, TOTP, step-up token) live only in the OS store under `datasafe-desktop/<profile_id>/<kind>`: Windows Credential Manager or Linux Secret Service. On Windows the credential target is `<profile_id>/<kind>.datasafe-desktop`. There is no secret file. Secrets are not process arguments or environment variables. Without Secret Service, Linux asks for the password on each launch and does not save it. Remember password (S6) controls only the password entry. The session token is stored on every successful sign-in and removed on sign-out, which is what §4.5 requires. A restart while the token is still valid signs the profile in again. E00 removes the old sync shell, which passed the password to `datasafe-sync` as `--password`. The OS store itself is implemented in E01. Forgetting a profile deletes that profile's entries. Uninstall leaves them unless the Windows prompt is answered Yes. That runs `datasafe-agent.exe --purge-secrets` before the files are removed. The agent uses `CredEnumerateW` with filter `*` and flags 0, strips a `LegacyGeneric:target=` prefix, and calls `CredDeleteW` on the bare target `<profile_id>/<kind>.datasafe-desktop`. A name with two slashes, or a generic credential that does not end in that suffix, is left in place. It does not parse `cmdkey`. No and `/S` do not run it. An update does not ask.
 
 ### Name
 

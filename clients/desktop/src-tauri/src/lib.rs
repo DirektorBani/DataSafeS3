@@ -385,11 +385,69 @@ fn auth_api_token(state: State<Desktop>, id: String, token: String) -> Result<Va
 fn auth_access_key(state: State<Desktop>, id: String, secret: String) -> Result<Value, String> {
     let saved = state.secrets.set(&id, "access_secret", &secret).is_ok();
     let info = call(&state, "server.info", json!({ "id": id }))?;
+    // Sign-in for an access key does not go through auth.login. Resume here,
+    // in the command that stored the secret, so a paused transfer continues
+    // without waiting for the window to refresh the profile list.
+    let _ = call(&state, "transfer.resume", json!({ "id": id, "access_secret": secret }));
     Ok(json!({
         "status": "credentials_saved",
         "secrets_persisted": saved,
         "server": info.get("server").cloned().unwrap_or(Value::Null),
     }))
+}
+
+fn profile_server_url(state: &Desktop, id: &str) -> Result<String, String> {
+    let listed = call(state, "profile.list", json!({}))?;
+    let items = listed.get("profiles").and_then(Value::as_array).ok_or("profile was not found")?;
+    for item in items {
+        if item.get("id").and_then(Value::as_str) != Some(id) {
+            continue;
+        }
+        let url = item.get("server_url").and_then(Value::as_str).unwrap_or("").trim().to_string();
+        if url.is_empty() {
+            return Err("server url is required".into());
+        }
+        return Ok(url);
+    }
+    Err("profile was not found".into())
+}
+
+fn oidc_login_url(server: &str) -> Result<String, String> {
+    let base = server.trim().trim_end_matches('/');
+    if !(base.starts_with("https://") || base.starts_with("http://")) {
+        return Err("server url is not http(s)".into());
+    }
+    Ok(format!("{base}/api/v1/auth/oidc/login"))
+}
+
+fn open_browser(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        return std::process::Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", url])
+            .spawn()
+            .map(|_| ())
+            .map_err(|err| err.to_string());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return std::process::Command::new("xdg-open")
+            .arg(url)
+            .spawn()
+            .map(|_| ())
+            .map_err(|err| err.to_string());
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    {
+        let _ = url;
+        Err("this desktop build does not open a browser on this system".into())
+    }
+}
+
+#[tauri::command]
+fn auth_oidc_browser(state: State<Desktop>, id: String) -> Result<(), String> {
+    let server = profile_server_url(&state, &id)?;
+    open_browser(&oidc_login_url(&server)?)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -421,6 +479,7 @@ pub fn run() {
             auth_logout,
             auth_oidc_password,
             auth_oidc_exchange,
+            auth_oidc_browser,
             auth_api_token,
             auth_access_key,
             settings_load,
@@ -432,7 +491,20 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::persisted_login_status;
+    use super::{oidc_login_url, persisted_login_status};
+
+    #[test]
+    fn oidc_browser_url_uses_the_server_login_route() {
+        assert_eq!(
+            oidc_login_url("https://storage.example/").unwrap(),
+            "https://storage.example/api/v1/auth/oidc/login"
+        );
+        assert_eq!(
+            oidc_login_url("http://127.0.0.1:9000").unwrap(),
+            "http://127.0.0.1:9000/api/v1/auth/oidc/login"
+        );
+        assert!(oidc_login_url("datasafe://oidc").is_err());
+    }
 
     #[test]
     fn rejected_sign_in_is_not_persisted() {

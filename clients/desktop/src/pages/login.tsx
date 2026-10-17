@@ -9,6 +9,7 @@ import {
   forgetProfile,
   login,
   logout,
+  oidcBrowser,
   oidcExchange,
   oidcPassword,
   saveAccessKey,
@@ -134,6 +135,10 @@ export function LoginPanel(props: {
 
       {profile.auth_method === "oidc" ? (
         <div className="space-y-3">
+          {profile.session === "reauth" ? <p className="text-sm">{t("sessionExpired")}</p> : null}
+          <Button type="button" variant="outline" onClick={() => void run(() => oidcBrowser(profile.id))}>
+            {t("oidcBrowser")}
+          </Button>
           <form
             className="space-y-2"
             onSubmit={(event) => {

@@ -48,12 +48,19 @@ func (a *App) browseWith(profile Profile, token, method, path string, query url.
 		return apiResult{}, err
 	}
 	result := finishBrowse(resp)
+	if result.Status == http.StatusUnauthorized && !result.StepUp {
+		a.markReauth(profile.ID)
+	}
 	if !result.StepUp || strings.TrimSpace(code) == "" {
 		return result, nil
 	}
 	// A 1.5.0 server does not answer step_up_required, so this exchange
 	// never runs there and the ordinary confirm stands.
-	return a.presentStepUp(client, method, path, payload, result, strings.TrimSpace(code))
+	again, err := a.presentStepUp(client, method, path, payload, result, strings.TrimSpace(code))
+	if err == nil && again.Status == http.StatusUnauthorized && !again.StepUp {
+		a.markReauth(profile.ID)
+	}
+	return again, err
 }
 
 // presentStepUp trades a TOTP or recovery code for one action token and

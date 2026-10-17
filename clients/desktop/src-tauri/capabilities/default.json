@@ -17,6 +17,7 @@
     "allow-auth-logout",
     "allow-auth-oidc-password",
     "allow-auth-oidc-exchange",
+    "allow-auth-oidc-browser",
     "allow-auth-api-token",
     "allow-auth-access-key",
     "allow-settings-load",

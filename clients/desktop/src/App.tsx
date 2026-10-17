@@ -121,15 +121,20 @@ export default function App() {
     let cancel = false;
     void browse(current.id, "account.me")
       .then((result) => {
-        if (!cancel) {
-          setMfaBanner(Boolean(result.mfa_setup));
+        if (cancel) {
+          return;
         }
+        if (result.status === 401 && !result.step_up) {
+          void reload();
+          return;
+        }
+        setMfaBanner(Boolean(result.mfa_setup));
       })
       .catch(() => undefined);
     return () => {
       cancel = true;
     };
-  }, [current]);
+  }, [current, reload]);
 
   async function previewDiagnostics() {
     setError("");
@@ -154,6 +159,14 @@ export default function App() {
     }
   }
 
+  function reportError(message: string) {
+    if (message === "auth.session_expired" || message === "auth.unauthorized") {
+      void reload();
+      return;
+    }
+    setError(message);
+  }
+
   async function signOut() {
     if (!current) {
       return;
@@ -168,6 +181,11 @@ export default function App() {
 
   const banner = (
     <>
+      {current?.session === "reauth" ? (
+        <div className="border-b px-6 py-3 text-sm lg:px-8" role="status">
+          <p>{t("sessionExpired")}</p>
+        </div>
+      ) : null}
       {mfaBanner ? (
         <div className="border-b border-destructive/40 bg-destructive/10 px-6 py-3 text-sm lg:px-8" role="status">
           <div className="flex items-start gap-2">
@@ -209,12 +227,12 @@ export default function App() {
               <LoginPanel profile={current} notice={notice} onNotice={setNotice} onChanged={() => void reload()} onError={setError} />
             ) : null}
           </div>
-          {current ? <ResumeProgress profileId={current.id} /> : null}
+          {current ? <ResumeProgress profileId={current.id} onSessionExpired={() => void reload()} /> : null}
         </div>
       ) : null}
       {view === "buckets" ? (
         canBrowse && current ? (
-          <BucketBrowser profileId={current.id} features={current.server?.features} resetToken={bucketListToken} onError={setError} onMfaSetup={() => setMfaBanner(true)} />
+          <BucketBrowser profileId={current.id} features={current.server?.features} resetToken={bucketListToken} onError={reportError} onMfaSetup={() => setMfaBanner(true)} />
         ) : (
           <PageHeader title={t("nav:buckets")} description={t("subtitle")} />
         )
@@ -223,7 +241,7 @@ export default function App() {
         <div className="space-y-4">
           <PageHeader title={t("transfers")} description={transferNote || t("transferIdle")} />
           {current ? (
-            <ResumeProgress profileId={current.id} onSummary={setTransferNote} />
+            <ResumeProgress profileId={current.id} onSummary={setTransferNote} onSessionExpired={() => void reload()} />
           ) : (
             <p className="text-sm text-muted-foreground">{t("empty")}</p>
           )}

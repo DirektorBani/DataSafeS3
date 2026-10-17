@@ -284,7 +284,44 @@ func (a *App) finishLogin(profile Profile, result loginResult) (loginResult, err
 	if err := a.updateProfile(profile); err != nil {
 		return loginResult{}, err
 	}
+	if result.Status == "signed_in" {
+		a.resumeProfile(profile, result.Token)
+	}
 	return result, nil
+}
+
+// resumeProfile continues this profile's paused transfers from the sign-in
+// path. The window also calls transfer.resume; that second call only queues
+// rows that are still interrupted.
+func (a *App) resumeProfile(profile Profile, token string) {
+	if strings.TrimSpace(token) == "" {
+		return
+	}
+	eng, err := a.engine()
+	if err != nil || eng == nil {
+		return
+	}
+	_, _ = eng.Resume(profile, token, "", "")
+}
+
+func (a *App) closeTransfers() {
+	if a == nil || a.transfers == nil {
+		return
+	}
+	a.transfers.Close()
+}
+
+func (a *App) markReauth(id string) {
+	profile, err := a.profileByID(strings.TrimSpace(id))
+	if err != nil {
+		return
+	}
+	switch profile.Session {
+	case "reauth", "signed_out", "rejected", "blocked":
+		return
+	}
+	profile.Session = "reauth"
+	_ = a.updateProfile(profile)
 }
 
 func (a *App) logout(profile Profile, token string) (loginResult, error) {

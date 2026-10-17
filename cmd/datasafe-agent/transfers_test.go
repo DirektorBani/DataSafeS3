@@ -54,6 +54,13 @@ type fakeRemote struct {
 	gate             chan struct{}
 	inflight         int
 	maxInflight      int
+	partsLive        int
+	earlyAborts      int
+	abortFailLeft    int
+	abortTries       []string
+	partHold         chan struct{}
+	holding          bool
+	unauthorized     bool
 }
 
 func (f *fakeRemote) Put(ctx context.Context, key string, body io.Reader, n int64) (string, error) {
@@ -105,22 +112,42 @@ func (f *fakeRemote) Part(ctx context.Context, key, uploadID string, part int, b
 	_, _ = io.Copy(io.Discard, body)
 	f.mu.Lock()
 	f.partNums = append(f.partNums, part)
+	f.partsLive++
 	if f.netLeft > 0 {
 		f.netLeft--
+		f.partsLive--
 		f.mu.Unlock()
 		return "", errNetwork
 	}
+	if f.unauthorized {
+		f.partsLive--
+		f.mu.Unlock()
+		return "", &apiFault{Status: 401, Code: "auth.session_expired", Body: `{"error":"session expired"}`}
+	}
 	if f.notFoundOnce {
 		f.notFoundOnce = false
+		f.partsLive--
 		f.mu.Unlock()
 		return "", &apiFault{Status: 404, Code: "multipart.upload_not_found", Body: "upload not found"}
 	}
 	block := f.block
+	hold := f.partHold
 	f.mu.Unlock()
+	defer func() {
+		f.mu.Lock()
+		f.partsLive--
+		f.mu.Unlock()
+	}()
 	if block != nil {
 		select {
 		case <-block:
 		case <-ctx.Done():
+			if hold != nil {
+				f.mu.Lock()
+				f.holding = true
+				f.mu.Unlock()
+				<-hold
+			}
 			return "", ctx.Err()
 		}
 	}
@@ -178,6 +205,15 @@ func (f *fakeRemote) Stat(ctx context.Context, key string) (string, int64, error
 func (f *fakeRemote) Abort(ctx context.Context, key, uploadID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.abortTries = append(f.abortTries, uploadID)
+	if f.partsLive > 0 {
+		f.earlyAborts++
+		return &apiFault{Status: 400, Code: "request.invalid", Body: "unlinkat"}
+	}
+	if f.abortFailLeft > 0 {
+		f.abortFailLeft--
+		return &apiFault{Status: 400, Code: "request.invalid", Body: "unlinkat"}
+	}
 	f.aborts = append(f.aborts, uploadID)
 	return nil
 }
@@ -1573,5 +1609,176 @@ func TestLogoutPausesTransfers(t *testing.T) {
 	}
 	if got.State != "interrupted" || got.Message != "paused_signed_out" || got.UploadID != "up1" {
 		t.Fatalf("%+v", got)
+	}
+}
+
+func TestAbortRetriesUntilGone(t *testing.T) {
+	fake := &fakeRemote{abortFailLeft: 2}
+	e := testEngine(t, fake)
+	task := Task{
+		ID: "t1", State: "error", Bucket: "b", Key: "k", UploadID: "up1",
+		Files: []fileJob{{Key: "k", UploadID: "up1"}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.cancel("t1", creds{Token: "t", Profile: Profile{ID: "p"}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.journal.Get("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != "cancelled" || len(got.PendingAborts) != 0 {
+		t.Fatalf("state %s pending %v", got.State, got.PendingAborts)
+	}
+	if len(fake.aborts) != 1 || fake.aborts[0] != "up1" || len(fake.abortTries) != 3 {
+		t.Fatalf("success %v tries %v", fake.aborts, fake.abortTries)
+	}
+	e.abortAll(context.Background(), &got, fake)
+	if len(fake.aborts) != 1 || len(fake.abortTries) != 3 {
+		t.Fatalf("second delete success %v tries %v", fake.aborts, fake.abortTries)
+	}
+}
+
+func TestCancelWaitsForPartWorkers(t *testing.T) {
+	path := writeTemp(t, bytes.Repeat([]byte("x"), 20))
+	hold := make(chan struct{})
+	fake := &fakeRemote{block: make(chan struct{}), partHold: hold}
+	e := testEngine(t, fake)
+	e.syncRun = false
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := Task{
+		ID: "t1", Direction: "upload", State: "running", LocalPath: path, Bucket: "b", Key: "k",
+		Files: []fileJob{{Local: path, Key: "k", Size: info.Size(), MtimeUnix: info.ModTime().Unix()}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	e.live["t1"] = &liveTask{token: "t", decide: make(chan decision, 1)}
+	done := make(chan struct{})
+	go func() {
+		e.process("t1")
+		close(done)
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		fake.mu.Lock()
+		n := len(fake.partNums)
+		fake.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	go func() {
+		wait := time.Now().Add(2 * time.Second)
+		for time.Now().Before(wait) {
+			fake.mu.Lock()
+			ready := fake.holding
+			fake.mu.Unlock()
+			if ready {
+				close(hold)
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		close(hold)
+	}()
+	if err := e.Cancel("t1"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancel did not finish")
+	}
+	fake.mu.Lock()
+	early := fake.earlyAborts
+	success := append([]string(nil), fake.aborts...)
+	fake.mu.Unlock()
+	if early != 0 {
+		t.Fatalf("abort ran while a part worker was still in flight: %d", early)
+	}
+	if len(success) != 1 {
+		t.Fatalf("aborts %v", success)
+	}
+	got, err := e.journal.Get("t1")
+	if err != nil || got.State != "cancelled" || len(got.PendingAborts) != 0 {
+		t.Fatalf("%+v %v", got, err)
+	}
+}
+
+func TestPendingAbortSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "transfers.db")
+	journal, err := openJournal(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := Task{
+		ID: "t1", ProfileID: "p", State: "cancelled", Bucket: "b", Key: "k", UploadID: "up1",
+		PendingAborts: []pendingAbort{{Key: "k", UploadID: "up1"}},
+	}
+	if err := journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := openJournal(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	fake := &fakeRemote{}
+	e := newEngine(reopened)
+	e.sleep = func(time.Duration) {}
+	e.build = func(creds, string) (remote, error) { return fake, nil }
+	e.retryPendingAborts(Profile{ID: "p"}, "tok", "", "")
+	if len(fake.aborts) != 1 || fake.aborts[0] != "up1" {
+		t.Fatalf("aborts %v", fake.aborts)
+	}
+	got, err := reopened.Get("t1")
+	if err != nil || len(got.PendingAborts) != 0 || got.State != "cancelled" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	e.retryPendingAborts(Profile{ID: "p"}, "tok", "", "")
+	if len(fake.aborts) != 1 {
+		t.Fatalf("aborts after restart retry %v", fake.aborts)
+	}
+}
+
+func TestSessionExpiryPausesUpload(t *testing.T) {
+	path := writeTemp(t, bytes.Repeat([]byte("x"), 20))
+	fake := &fakeRemote{unauthorized: true}
+	e := testEngine(t, fake)
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := Task{
+		ID: "t1", ProfileID: "p", Direction: "upload", State: "running", Bucket: "b", Key: "k", LocalPath: path, UploadID: "up1",
+		Files: []fileJob{{Local: path, Key: "k", Size: info.Size(), MtimeUnix: info.ModTime().Unix(), UploadID: "up1"}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	e.live["t1"] = &liveTask{token: "t", profile: Profile{ID: "p"}, decide: make(chan decision, 1)}
+	var marked string
+	e.onSession = func(id string) { marked = id }
+	e.process("t1")
+	got, err := e.journal.Get("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != "interrupted" || got.Message != "auth.session_expired" || got.UploadID != "up1" {
+		t.Fatalf("%+v", got)
+	}
+	if len(fake.aborts) != 0 || marked != "p" {
+		t.Fatalf("aborts %v marked %s", fake.aborts, marked)
 	}
 }

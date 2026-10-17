@@ -19,6 +19,7 @@ fn main() {
                 "auth_logout",
                 "auth_oidc_password",
                 "auth_oidc_exchange",
+                "auth_oidc_browser",
                 "auth_api_token",
                 "auth_access_key",
                 "settings_load",

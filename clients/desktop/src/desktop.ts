@@ -91,6 +91,10 @@ export function oidcExchange(id: string, exchangeCode: string): Promise<LoginVie
   return invoke("auth_oidc_exchange", { id, exchangeCode });
 }
 
+export function oidcBrowser(id: string): Promise<void> {
+  return invoke("auth_oidc_browser", { id });
+}
+
 export function saveApiToken(id: string, token: string): Promise<LoginView> {
   return invoke("auth_api_token", { id, token });
 }

@@ -15,6 +15,17 @@ const PRESETS = [
 
 type ShareRow = { id?: string; expires_at?: string; has_password?: boolean };
 
+function localExpiry(value: string | undefined, lang: string): string {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat(lang, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
 type Policy = {
   links: boolean;
   presign: boolean;
@@ -262,7 +273,7 @@ export function ShareDialog(props: {
             </div>
             {mode === "link" && hasPolicy ? (
               <div className="space-y-1">
-                <Label htmlFor="share-password">{passwordRequired ? t("passwordRequired") : t("bucketDetail:share.password")}</Label>
+                <Label htmlFor="share-password">{passwordRequired ? t("password") : t("bucketDetail:share.password")}</Label>
                 <Input id="share-password" type="password" autoComplete="off" value={password} onChange={(event) => setPassword(event.target.value)} />
               </div>
             ) : null}
@@ -280,7 +291,7 @@ export function ShareDialog(props: {
                 <div className="flex gap-2">
                   <Input id="share-url" readOnly value={url} />
                   <Button type="button" variant="outline" onClick={() => void copy()}>
-                    {t("bucketDetail:toast.copied")}
+                    {t("copy")}
                   </Button>
                 </div>
               </div>
@@ -289,7 +300,7 @@ export function ShareDialog(props: {
               <ul className="space-y-1">
                 {shares.map((row) => (
                   <li key={row.id} className="flex items-center justify-between gap-2">
-                    <span className="truncate text-xs text-muted-foreground">{row.expires_at || row.id}</span>
+                    <span className="truncate text-xs text-muted-foreground">{localExpiry(row.expires_at, i18n.language) || row.id}</span>
                     <Button type="button" size="sm" variant="outline" onClick={() => void revoke(row.id || "")}>
                       {t("revokeOne")}
                     </Button>
