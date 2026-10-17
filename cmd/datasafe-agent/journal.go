@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -55,6 +57,8 @@ type Task struct {
 	Message        string     `json:"message,omitempty"`
 	Report         []PathNote `json:"report,omitempty"`
 	Files          []fileJob  `json:"files,omitempty"`
+	FilesDone      int        `json:"files_done,omitempty"`
+	FilesTotal     int        `json:"files_total,omitempty"`
 	FollowSymlinks bool       `json:"follow_symlinks,omitempty"`
 	Conflict       string     `json:"conflict,omitempty"`
 	ResumeMode     string     `json:"resume_mode,omitempty"`
@@ -78,7 +82,10 @@ func openJournal(path string) (*Journal, error) {
 		return nil, err
 	}
 	err = db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte("tasks"))
+		if _, err := tx.CreateBucketIfNotExists([]byte("tasks")); err != nil {
+			return err
+		}
+		_, err := tx.CreateBucketIfNotExists([]byte("files"))
 		return err
 	})
 	if err != nil {
@@ -118,6 +125,20 @@ func (j *Journal) interruptActive() error {
 }
 
 func (j *Journal) Save(task Task) error {
+	files := task.Files
+	if err := j.SaveMeta(task); err != nil {
+		return err
+	}
+	if len(files) == 0 {
+		return nil
+	}
+	return j.PutFiles(task.ID, files)
+}
+
+// SaveMeta writes the task row without its file list. Directory progress
+// must not rewrite every file on each update.
+func (j *Journal) SaveMeta(task Task) error {
+	task.Files = nil
 	task.UpdatedUnix = time.Now().Unix()
 	raw, err := json.Marshal(task)
 	if err != nil {
@@ -126,6 +147,83 @@ func (j *Journal) Save(task Task) error {
 	return j.db.Update(func(tx *bolt.Tx) error {
 		return tx.Bucket([]byte("tasks")).Put([]byte(task.ID), raw)
 	})
+}
+
+func fileStorageKey(taskID string, index int) []byte {
+	return []byte(fmt.Sprintf("%s\x00%08d", taskID, index))
+}
+
+// PutFiles replaces the per-file rows for one task.
+func (j *Journal) PutFiles(taskID string, files []fileJob) error {
+	prefix := []byte(taskID + "\x00")
+	return j.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("files"))
+		c := b.Cursor()
+		var stale [][]byte
+		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
+			stale = append(stale, append([]byte(nil), k...))
+		}
+		for _, k := range stale {
+			if err := b.Delete(k); err != nil {
+				return err
+			}
+		}
+		for i := range files {
+			raw, err := json.Marshal(files[i])
+			if err != nil {
+				return err
+			}
+			if err := b.Put(fileStorageKey(taskID, i), raw); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// SaveFileProgress writes one file row and the task summary in one commit.
+func (j *Journal) SaveFileProgress(task Task, index int) error {
+	if index < 0 || index >= len(task.Files) {
+		return j.SaveMeta(task)
+	}
+	job, err := json.Marshal(task.Files[index])
+	if err != nil {
+		return err
+	}
+	task.Files = nil
+	task.UpdatedUnix = time.Now().Unix()
+	raw, err := json.Marshal(task)
+	if err != nil {
+		return err
+	}
+	key := fileStorageKey(task.ID, index)
+	return j.db.Update(func(tx *bolt.Tx) error {
+		if err := tx.Bucket([]byte("files")).Put(key, job); err != nil {
+			return err
+		}
+		return tx.Bucket([]byte("tasks")).Put([]byte(task.ID), raw)
+	})
+}
+
+func (j *Journal) LoadFiles(taskID string) ([]fileJob, error) {
+	prefix := []byte(taskID + "\x00")
+	var out []fileJob
+	err := j.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("files"))
+		if b == nil {
+			return nil
+		}
+		c := b.Cursor()
+		for k, v := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
+			var job fileJob
+			if err := json.Unmarshal(v, &job); err != nil {
+				return err
+			}
+			out = append(out, job)
+		}
+		return nil
+	})
+	return out, err
 }
 
 func (j *Journal) Get(id string) (Task, error) {
@@ -137,7 +235,17 @@ func (j *Journal) Get(id string) (Task, error) {
 		}
 		return json.Unmarshal(raw, &task)
 	})
-	return task, err
+	if err != nil {
+		return Task{}, err
+	}
+	rows, err := j.LoadFiles(id)
+	if err != nil {
+		return Task{}, err
+	}
+	if len(rows) > 0 {
+		task.Files = rows
+	}
+	return task, nil
 }
 
 func (j *Journal) List() ([]Task, error) {

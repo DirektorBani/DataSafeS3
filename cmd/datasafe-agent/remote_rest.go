@@ -129,7 +129,7 @@ func (r *restRemote) Complete(ctx context.Context, key, uploadID string, parts [
 	body := map[string]any{"parts": partsJSON(parts)}
 	payload, _ := json.Marshal(body)
 	path := "/api/v1/buckets/" + url.PathEscape(r.bucket) + "/multipart/" + url.PathEscape(uploadID) + "/complete"
-	resp, err := r.client.stream(ctx, http.MethodPost, path, bytes.NewReader(payload), int64(len(payload)), map[string]string{"Content-Type": "application/json"})
+	resp, err := r.client.streamAssemble(ctx, http.MethodPost, path, bytes.NewReader(payload), int64(len(payload)), map[string]string{"Content-Type": "application/json"})
 	if err != nil {
 		return "", err
 	}
@@ -145,6 +145,29 @@ func (r *restRemote) Complete(ctx context.Context, key, uploadID string, parts [
 	}
 	_ = json.Unmarshal(raw, &out)
 	return strings.Trim(out.Object.ETag, `"`), nil
+}
+
+func (r *restRemote) Stat(ctx context.Context, key string) (string, int64, error) {
+	path := "/api/v1/buckets/" + url.PathEscape(r.bucket) + "/object-meta?key=" + url.QueryEscape(key)
+	resp, err := r.client.stream(ctx, http.MethodGet, path, nil, -1, nil)
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode >= 400 {
+		return "", 0, faultFrom(resp.StatusCode, raw, resp.Header)
+	}
+	var out struct {
+		Object struct {
+			ETag string `json:"etag"`
+			Size int64  `json:"size"`
+		} `json:"object"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", 0, err
+	}
+	return strings.Trim(out.Object.ETag, `"`), out.Object.Size, nil
 }
 
 func (r *restRemote) Abort(ctx context.Context, key, uploadID string) error {

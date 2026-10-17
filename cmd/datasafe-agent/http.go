@@ -23,7 +23,16 @@ type Client struct {
 	HTTP    *http.Client
 	// Stream has no overall timeout. Transfer bodies are larger than the
 	// JSON client allows, and a 10 GiB copy must not be cut off at 20s.
+	// ResponseHeaderTimeout still bounds how long a request waits for
+	// headers after its body has been written. That is fine for a part
+	// upload. It is not fine for CompleteMultipartUpload: server 1.6.1
+	// assembles at roughly 16–22s per GiB, so a multi-gigabyte complete
+	// never returns headers inside two minutes.
 	Stream *http.Client
+	// Assemble is the client for CompleteMultipartUpload. It has no
+	// response-header timeout. A dropped connection is retried; the
+	// upload id is kept.
+	Assemble *http.Client
 }
 
 func newClient(baseURL string, insecure bool) (*Client, error) {
@@ -43,6 +52,10 @@ func newClient(baseURL string, insecure bool) (*Client, error) {
 	}
 	streamTransport := transport.Clone()
 	streamTransport.ResponseHeaderTimeout = 2 * time.Minute
+	assembleTransport := transport.Clone()
+	noRedirect := func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 	return &Client{
 		BaseURL: strings.TrimRight(u.String(), "/"),
 		HTTP: &http.Client{
@@ -50,11 +63,14 @@ func newClient(baseURL string, insecure bool) (*Client, error) {
 			Transport: transport,
 		},
 		Stream: &http.Client{
-			Timeout:   0,
-			Transport: streamTransport,
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+			Timeout:       0,
+			Transport:     streamTransport,
+			CheckRedirect: noRedirect,
+		},
+		Assemble: &http.Client{
+			Timeout:       0,
+			Transport:     assembleTransport,
+			CheckRedirect: noRedirect,
 		},
 	}, nil
 }
@@ -108,6 +124,23 @@ func (c *Client) do(method, path string, payload any) (rawResponse, error) {
 // stream sends a body without the 1 MiB JSON cap. The caller closes the
 // response body. A dropped connection is errNetwork.
 func (c *Client) stream(ctx context.Context, method, path string, body io.Reader, n int64, header map[string]string) (*http.Response, error) {
+	return c.streamOn(ctx, c.Stream, method, path, body, n, header)
+}
+
+// streamAssemble is stream for CompleteMultipartUpload. The assemble client
+// waits for the server to finish joining parts.
+func (c *Client) streamAssemble(ctx context.Context, method, path string, body io.Reader, n int64, header map[string]string) (*http.Response, error) {
+	client := c.Assemble
+	if client == nil {
+		client = c.Stream
+	}
+	return c.streamOn(ctx, client, method, path, body, n, header)
+}
+
+func (c *Client) streamOn(ctx context.Context, client *http.Client, method, path string, body io.Reader, n int64, header map[string]string) (*http.Response, error) {
+	if client == nil {
+		client = c.Stream
+	}
 	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, body)
 	if err != nil {
 		return nil, err
@@ -124,7 +157,7 @@ func (c *Client) stream(ctx context.Context, method, path string, body io.Reader
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
-	resp, err := c.Stream.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()

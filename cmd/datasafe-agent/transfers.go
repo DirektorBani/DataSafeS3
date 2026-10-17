@@ -46,6 +46,7 @@ type remote interface {
 	Abort(ctx context.Context, key, uploadID string) error
 	Open(ctx context.Context, key string, offset int64) (io.ReadCloser, string, int64, int, error)
 	List(ctx context.Context, prefix, startAfter string) ([]listedObject, bool, string, error)
+	Stat(ctx context.Context, key string) (string, int64, error)
 }
 
 type decision struct {
@@ -72,26 +73,29 @@ type creds struct {
 // Engine runs transfers for the life of the agent process. Confirmed parts
 // are in the journal. The token and the access-key secret stay in memory.
 type Engine struct {
-	journal   *Journal
-	limits    Limits
-	mu        sync.Mutex
-	live      map[string]*liveTask
-	wake      chan struct{}
-	syncRun   bool
-	sleep     func(time.Duration)
-	build     func(creds, string) (remote, error)
-	osName    OSName
-	longPaths bool
+	journal       *Journal
+	limits        Limits
+	mu            sync.Mutex
+	live          map[string]*liveTask
+	wake          chan struct{}
+	syncRun       bool
+	sleep         func(time.Duration)
+	build         func(creds, string) (remote, error)
+	osName        OSName
+	longPaths     bool
+	progressEvery time.Duration
+	progressAt    time.Time
 }
 
 func newEngine(j *Journal) *Engine {
 	e := &Engine{
-		journal:   j,
-		limits:    defaultLimits(),
-		live:      map[string]*liveTask{},
-		wake:      make(chan struct{}, 1),
-		osName:    hostOS(),
-		longPaths: true,
+		journal:       j,
+		limits:        defaultLimits(),
+		live:          map[string]*liveTask{},
+		wake:          make(chan struct{}, 1),
+		osName:        hostOS(),
+		longPaths:     true,
+		progressEvery: 400 * time.Millisecond,
 	}
 	return e
 }
@@ -240,7 +244,7 @@ func (e *Engine) Cancel(id string) error {
 	}
 	if live == nil || live.cancel == nil {
 		task.State = "cancelled"
-		return e.journal.Save(task)
+		return e.journal.SaveMeta(task)
 	}
 	return nil
 }
@@ -315,14 +319,14 @@ func (e *Engine) process(id string) {
 	if e.build == nil {
 		task.State = "error"
 		task.Message = "request.invalid"
-		_ = e.journal.Save(task)
+		_ = e.journal.SaveMeta(task)
 		return
 	}
 	remote, err := e.build(creds{Profile: live.profile, Token: live.token, AccessKey: live.accessKey, Secret: live.secret}, task.Bucket)
 	if err != nil {
 		task.State = "error"
 		task.Message = "request.invalid"
-		_ = e.journal.Save(task)
+		_ = e.journal.SaveMeta(task)
 		return
 	}
 	backoff := time.Second
@@ -342,7 +346,7 @@ func (e *Engine) process(id string) {
 			if task.Message == "waiting_network" {
 				task.Message = ""
 			}
-			_ = e.journal.Save(task)
+			_ = e.journal.SaveMeta(task)
 			return
 		}
 		if errors.Is(runErr, context.Canceled) {
@@ -352,7 +356,7 @@ func (e *Engine) process(id string) {
 		if errors.Is(runErr, errNetwork) {
 			task.State = "waiting_network"
 			task.Message = "waiting_network"
-			_ = e.journal.Save(task)
+			_ = e.journal.SaveMeta(task)
 			if err := e.pause(ctx, backoff); err != nil {
 				e.finishCancel(ctx, &task, remote)
 				return
@@ -368,7 +372,7 @@ func (e *Engine) process(id string) {
 		}
 		task.State = "error"
 		task.Message = safeTransferMessage(runErr)
-		_ = e.journal.Save(task)
+		_ = e.journal.SaveMeta(task)
 		return
 	}
 }
@@ -393,7 +397,7 @@ func (e *Engine) finishCancel(ctx context.Context, task *Task, remote remote) {
 	actx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	e.abortAll(actx, task, remote)
-	_ = e.journal.Save(*task)
+	_ = e.journal.SaveMeta(*task)
 	_ = ctx
 }
 
@@ -415,7 +419,129 @@ func (e *Engine) abortAll(ctx context.Context, task *Task, remote remote) {
 func (e *Engine) save(task *Task) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	_ = e.journal.Save(*task)
+	_ = e.journal.SaveMeta(*task)
+}
+
+func (e *Engine) saveFile(task *Task, index int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.saveFileLocked(task, index)
+}
+
+func (e *Engine) saveFileLocked(task *Task, index int) {
+	task.FilesDone = countDone(task.Files)
+	if index >= 0 && index < len(task.Files) {
+		_ = e.journal.SaveFileProgress(*task, index)
+		return
+	}
+	_ = e.journal.SaveMeta(*task)
+}
+
+func (e *Engine) storeFiles(task *Task) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	task.FilesTotal = len(task.Files)
+	task.FilesDone = countDone(task.Files)
+	task.Size = sumJobSizes(task.Files)
+	_ = e.journal.PutFiles(task.ID, task.Files)
+	_ = e.journal.SaveMeta(*task)
+}
+
+func (e *Engine) syncProgress(task *Task) {
+	e.mu.Lock()
+	task.BytesDone = confirmedBytes(task, e.limits.PartSize)
+	e.mu.Unlock()
+	e.save(task)
+}
+
+func (e *Engine) addProgress(task *Task, index int, n int64) {
+	if n == 0 {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	task.BytesDone += n
+	if task.BytesDone < 0 {
+		task.BytesDone = 0
+	}
+	now := time.Now()
+	if n < 0 || e.progressEvery <= 0 || now.Sub(e.progressAt) >= e.progressEvery {
+		e.progressAt = now
+		e.saveFileLocked(task, index)
+	}
+}
+
+func countDone(files []fileJob) int {
+	n := 0
+	for i := range files {
+		if files[i].Done {
+			n++
+		}
+	}
+	return n
+}
+
+func sumJobSizes(files []fileJob) int64 {
+	var n int64
+	for i := range files {
+		if files[i].Size > 0 {
+			n += files[i].Size
+		}
+	}
+	return n
+}
+
+func confirmedBytes(task *Task, partSize int64) int64 {
+	var n int64
+	for i := range task.Files {
+		job := &task.Files[i]
+		if job.Done {
+			if job.Size > 0 {
+				n += job.Size
+			}
+			continue
+		}
+		if task.Direction == "download" {
+			n += job.Offset
+			continue
+		}
+		for _, part := range job.Parts {
+			if part.ETag == "" {
+				continue
+			}
+			_, sz := partBounds(job.Size, partSize, part.Number)
+			n += sz
+		}
+	}
+	return n
+}
+
+func retryableComplete(err error) bool {
+	return errors.Is(err, errNetwork) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded)
+}
+
+func (e *Engine) assembled(ctx context.Context, remote remote, key string, size int64) (string, bool) {
+	if size <= 0 {
+		return "", false
+	}
+	etag, got, err := remote.Stat(ctx, key)
+	if err != nil || got != size {
+		return "", false
+	}
+	return etag, true
+}
+
+type progressReader struct {
+	r  io.Reader
+	fn func(int)
+}
+
+func (p progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	if n > 0 && p.fn != nil {
+		p.fn(n)
+	}
+	return n, err
 }
 
 func (e *Engine) runUpload(ctx context.Context, task *Task, remote remote) error {
@@ -431,7 +557,6 @@ func (e *Engine) runUpload(ctx context.Context, task *Task, remote remote) error
 				}
 			}
 			task.Files = []fileJob{{Local: task.LocalPath, Key: key}}
-			e.save(task)
 		}
 	}
 	if len(task.Files) == 0 {
@@ -447,8 +572,12 @@ func (e *Engine) runUpload(ctx context.Context, task *Task, remote remote) error
 		for _, item := range items {
 			task.Files = append(task.Files, fileJob{Local: item.local, Key: item.key})
 		}
-		e.save(task)
 	}
+	if task.FilesTotal != len(task.Files) {
+		e.noteUploadSizes(task)
+		e.storeFiles(task)
+	}
+	e.syncProgress(task)
 	slots := e.limits.Transfers
 	if slots < 1 {
 		slots = 1
@@ -469,7 +598,7 @@ func (e *Engine) runUpload(ctx context.Context, task *Task, remote remote) error
 		go func(i int) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			err := e.uploadJob(ctx, task, &task.Files[i], remote)
+			err := e.uploadJob(ctx, task, i, remote)
 			if err != nil {
 				errMu.Lock()
 				if first == nil {
@@ -572,38 +701,83 @@ func isLinkPath(path string, info os.FileInfo) bool {
 	return isReparse(path, info)
 }
 
-func (e *Engine) uploadJob(ctx context.Context, task *Task, job *fileJob, remote remote) error {
+func (e *Engine) noteUploadSizes(task *Task) {
+	for i := range task.Files {
+		info, err := os.Stat(task.Files[i].Local)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		task.Files[i].Size = info.Size()
+		if task.Files[i].MtimeUnix == 0 {
+			task.Files[i].MtimeUnix = info.ModTime().Unix()
+		}
+	}
+}
+
+func (e *Engine) uploadJob(ctx context.Context, task *Task, index int, remote remote) error {
+	job := &task.Files[index]
 	info, err := os.Stat(job.Local)
 	if err != nil {
 		return err
 	}
 	size := info.Size()
 	mtime := info.ModTime().Unix()
-	if job.UploadID != "" && (job.Size != size || (job.MtimeUnix != 0 && job.MtimeUnix != mtime)) {
-		_ = remote.Abort(context.Background(), job.Key, job.UploadID)
+	e.mu.Lock()
+	prevSize := job.Size
+	changed := job.UploadID != "" && (prevSize != size || (job.MtimeUnix != 0 && job.MtimeUnix != mtime))
+	uploadID := job.UploadID
+	key := job.Key
+	if prevSize != size {
+		task.Size += size - prevSize
+	}
+	if changed {
+		var drop int64
+		for _, part := range job.Parts {
+			if part.ETag == "" {
+				continue
+			}
+			_, sz := partBounds(prevSize, e.limits.PartSize, part.Number)
+			drop += sz
+		}
+		task.BytesDone -= drop
+		if task.BytesDone < 0 {
+			task.BytesDone = 0
+		}
 		job.UploadID = ""
 		job.Parts = nil
+		task.UploadID = ""
+		task.Parts = nil
 		task.Message = "file_changed"
-		e.save(task)
 	}
 	job.Size = size
 	job.MtimeUnix = mtime
-	task.Size = size
 	task.MtimeUnix = mtime
+	e.mu.Unlock()
+	if changed {
+		_ = remote.Abort(context.Background(), key, uploadID)
+		e.saveFile(task, index)
+	}
 	if size <= e.limits.Threshold {
 		f, err := openLocal(job.Local)
 		if err != nil {
 			return err
 		}
 		defer f.Close()
-		etag, err := remote.Put(ctx, job.Key, f, size)
+		var read int64
+		body := progressReader{r: f, fn: func(n int) {
+			read += int64(n)
+			e.addProgress(task, index, int64(n))
+		}}
+		etag, err := remote.Put(ctx, key, body, size)
 		if err != nil {
+			e.addProgress(task, index, -read)
 			return err
 		}
+		e.mu.Lock()
 		job.Done = true
 		job.ETag = etag
-		task.BytesDone += size
-		e.save(task)
+		e.saveFileLocked(task, index)
+		e.mu.Unlock()
 		return nil
 	}
 	restarts := 0
@@ -611,30 +785,37 @@ func (e *Engine) uploadJob(ctx context.Context, task *Task, job *fileJob, remote
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		err := e.uploadParts(ctx, task, job, remote, size)
+		err := e.uploadParts(ctx, task, index, remote, size)
 		if err == nil {
+			e.mu.Lock()
 			job.Done = true
-			task.BytesDone += size
-			e.save(task)
+			e.saveFileLocked(task, index)
+			e.mu.Unlock()
 			return nil
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, errNetwork) {
 			return err
 		}
 		if faultNotFound(err) || faultETag(err) {
-			if job.UploadID != "" {
-				_ = remote.Abort(context.Background(), job.Key, job.UploadID)
+			e.mu.Lock()
+			uploadID = job.UploadID
+			if uploadID != "" {
+				job.UploadID = ""
+				job.Parts = nil
+				task.UploadID = ""
+				task.Parts = nil
 			}
-			job.UploadID = ""
-			job.Parts = nil
-			task.UploadID = ""
-			task.Parts = nil
 			if faultNotFound(err) {
 				task.Message = "upload_not_found"
 			} else {
 				task.Message = "etag_mismatch"
 			}
-			e.save(task)
+			task.BytesDone = confirmedBytes(task, e.limits.PartSize)
+			e.saveFileLocked(task, index)
+			e.mu.Unlock()
+			if uploadID != "" {
+				_ = remote.Abort(context.Background(), key, uploadID)
+			}
 			restarts++
 			if restarts > 3 {
 				return err
@@ -645,19 +826,30 @@ func (e *Engine) uploadJob(ctx context.Context, task *Task, job *fileJob, remote
 	}
 }
 
-func (e *Engine) uploadParts(ctx context.Context, task *Task, job *fileJob, remote remote, size int64) error {
-	if job.UploadID == "" {
-		id, err := remote.Initiate(ctx, job.Key)
+func (e *Engine) uploadParts(ctx context.Context, task *Task, index int, remote remote, size int64) error {
+	job := &task.Files[index]
+	e.mu.Lock()
+	uploadID := job.UploadID
+	key := job.Key
+	local := job.Local
+	e.mu.Unlock()
+	if uploadID == "" {
+		id, err := remote.Initiate(ctx, key)
 		if err != nil {
 			return err
 		}
+		e.mu.Lock()
 		job.UploadID = id
 		job.Parts = nil
 		task.UploadID = id
-		e.save(task)
+		uploadID = id
+		e.saveFileLocked(task, index)
+		e.mu.Unlock()
 	}
+	e.mu.Lock()
 	total := countParts(size, e.limits.PartSize)
 	missing := missingParts(job.Parts, total)
+	e.mu.Unlock()
 	slots := e.limits.PartParallel
 	if slots < 1 {
 		slots = 1
@@ -682,7 +874,7 @@ func (e *Engine) uploadParts(ctx context.Context, task *Task, job *fileJob, remo
 				return
 			}
 			offset, n := partBounds(size, e.limits.PartSize, number)
-			f, err := openLocal(job.Local)
+			f, err := openLocal(local)
 			if err != nil {
 				errMu.Lock()
 				if first == nil {
@@ -700,8 +892,14 @@ func (e *Engine) uploadParts(ctx context.Context, task *Task, job *fileJob, remo
 				errMu.Unlock()
 				return
 			}
-			etag, err := remote.Part(ctx, job.Key, job.UploadID, number, io.LimitReader(f, n), n)
+			var read int64
+			body := progressReader{r: io.LimitReader(f, n), fn: func(dn int) {
+				read += int64(dn)
+				e.addProgress(task, index, int64(dn))
+			}}
+			etag, err := remote.Part(ctx, key, uploadID, number, body, n)
 			if err != nil {
+				e.addProgress(task, index, -read)
 				errMu.Lock()
 				if first == nil {
 					first = err
@@ -713,7 +911,7 @@ func (e *Engine) uploadParts(ctx context.Context, task *Task, job *fileJob, remo
 			job.Parts = append(job.Parts, partRec{Number: number, ETag: etag})
 			task.UploadID = job.UploadID
 			task.Parts = append([]partRec(nil), job.Parts...)
-			_ = e.journal.Save(*task)
+			e.saveFileLocked(task, index)
 			e.mu.Unlock()
 		}(number)
 	}
@@ -724,13 +922,36 @@ func (e *Engine) uploadParts(ctx context.Context, task *Task, job *fileJob, remo
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	etag, err := remote.Complete(ctx, job.Key, job.UploadID, job.Parts)
+	e.mu.Lock()
+	parts := append([]partRec(nil), job.Parts...)
+	uploadID = job.UploadID
+	e.mu.Unlock()
+	etag, err := remote.Complete(ctx, key, uploadID, parts)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return err
+		}
+		if retryableComplete(err) || faultNotFound(err) {
+			if got, ok := e.assembled(ctx, remote, key, size); ok {
+				e.mu.Lock()
+				job.ETag = got
+				job.UploadID = ""
+				task.UploadID = ""
+				e.saveFileLocked(task, index)
+				e.mu.Unlock()
+				return nil
+			}
+		}
+		if retryableComplete(err) {
+			return errNetwork
+		}
 		return err
 	}
+	e.mu.Lock()
 	job.ETag = etag
 	job.UploadID = ""
 	task.UploadID = ""
+	e.mu.Unlock()
 	return nil
 }
 
@@ -788,8 +1009,22 @@ func (e *Engine) runDownload(ctx context.Context, task *Task, remote remote) err
 		for _, obj := range objects {
 			task.Files = append(task.Files, fileJob{Key: obj.Key, Size: obj.Size, ETag: obj.ETag})
 		}
-		e.save(task)
+		for i := range task.Files {
+			if task.Files[i].Size > 0 {
+				continue
+			}
+			etag, size, err := remote.Stat(ctx, task.Files[i].Key)
+			if err != nil || size <= 0 {
+				continue
+			}
+			task.Files[i].Size = size
+			if task.Files[i].ETag == "" {
+				task.Files[i].ETag = etag
+			}
+		}
+		e.storeFiles(task)
 	}
+	e.syncProgress(task)
 	used := map[string]struct{}{}
 	for i := range task.Files {
 		job := &task.Files[i]
@@ -799,7 +1034,7 @@ func (e *Engine) runDownload(ctx context.Context, task *Task, remote remote) err
 			}
 			continue
 		}
-		if err := e.downloadJob(ctx, task, job, remote, used); err != nil {
+		if err := e.downloadJob(ctx, task, i, remote, used); err != nil {
 			return err
 		}
 	}
@@ -826,7 +1061,8 @@ func (e *Engine) listAll(ctx context.Context, remote remote, prefix string) ([]l
 	return all, nil
 }
 
-func (e *Engine) downloadJob(ctx context.Context, task *Task, job *fileJob, remote remote, used map[string]struct{}) error {
+func (e *Engine) downloadJob(ctx context.Context, task *Task, index int, remote remote, used map[string]struct{}) error {
+	job := &task.Files[index]
 	relKey := job.Key
 	if strings.HasSuffix(task.Key, "/") && strings.HasPrefix(job.Key, task.Key) {
 		relKey = strings.TrimPrefix(job.Key, task.Key)
@@ -835,7 +1071,7 @@ func (e *Engine) downloadJob(ctx context.Context, task *Task, job *fileJob, remo
 	task.Report = append(task.Report, notes...)
 	if local == "" {
 		job.Done = true
-		e.save(task)
+		e.saveFile(task, index)
 		return nil
 	}
 	if _, err := os.Stat(local); err == nil {
@@ -861,7 +1097,7 @@ func (e *Engine) downloadJob(ctx context.Context, task *Task, job *fileJob, remo
 		case "skip":
 			task.Report = append(task.Report, PathNote{Action: "skip", From: job.Key, To: local, Reason: "exists"})
 			job.Done = true
-			e.save(task)
+			e.saveFile(task, index)
 			return nil
 		case "rename":
 			local = uniqueLocal(local, e.osName, used)
@@ -870,7 +1106,7 @@ func (e *Engine) downloadJob(ctx context.Context, task *Task, job *fileJob, remo
 		default:
 			task.Report = append(task.Report, PathNote{Action: "skip", From: job.Key, Reason: "exists"})
 			job.Done = true
-			e.save(task)
+			e.saveFile(task, index)
 			return nil
 		}
 	}
@@ -881,19 +1117,27 @@ func (e *Engine) downloadJob(ctx context.Context, task *Task, job *fileJob, remo
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		err := e.copyObject(ctx, task, job, remote)
+		err := e.copyObject(ctx, task, index, remote)
 		if err == nil {
+			e.mu.Lock()
 			job.Done = true
-			job.Offset = 0
-			e.save(task)
+			job.Offset = job.Size
+			if job.Size > 0 && task.BytesDone < sumJobSizes(task.Files) {
+				task.BytesDone = confirmedBytes(task, e.limits.PartSize)
+			}
+			e.saveFileLocked(task, index)
+			e.mu.Unlock()
 			return nil
 		}
 		if errors.Is(err, errNoRange) {
-			job.Offset = 0
 			_ = os.Remove(local + ".dspart")
+			e.mu.Lock()
+			job.Offset = 0
 			task.ResumeMode = "restart"
 			task.Message = "presign_unavailable"
-			e.save(task)
+			task.BytesDone = confirmedBytes(task, e.limits.PartSize)
+			e.saveFileLocked(task, index)
+			e.mu.Unlock()
 			restarts++
 			if restarts > 2 {
 				return err
@@ -901,10 +1145,13 @@ func (e *Engine) downloadJob(ctx context.Context, task *Task, job *fileJob, remo
 			continue
 		}
 		if errors.Is(err, errETagRestart) {
-			job.Offset = 0
 			_ = os.Remove(local + ".dspart")
+			e.mu.Lock()
+			job.Offset = 0
 			task.Message = "etag_mismatch"
-			e.save(task)
+			task.BytesDone = confirmedBytes(task, e.limits.PartSize)
+			e.saveFileLocked(task, index)
+			e.mu.Unlock()
 			restarts++
 			if restarts > 1 {
 				return err
@@ -915,14 +1162,15 @@ func (e *Engine) downloadJob(ctx context.Context, task *Task, job *fileJob, remo
 	}
 }
 
-func (e *Engine) copyObject(ctx context.Context, task *Task, job *fileJob, remote remote) error {
+func (e *Engine) copyObject(ctx context.Context, task *Task, index int, remote remote) error {
+	job := &task.Files[index]
 	tmp := job.Local + ".dspart"
 	if job.Offset > 0 {
 		if st, err := os.Stat(tmp); err == nil && st.Size() != job.Offset {
 			_ = os.Truncate(tmp, job.Offset)
 		}
 	}
-	body, etag, _, _, err := remote.Open(ctx, job.Key, job.Offset)
+	body, etag, nlen, _, err := remote.Open(ctx, job.Key, job.Offset)
 	if err != nil {
 		return err
 	}
@@ -932,6 +1180,10 @@ func (e *Engine) copyObject(ctx context.Context, task *Task, job *fileJob, remot
 	}
 	if job.ETag == "" && etag != "" {
 		job.ETag = etag
+	}
+	if job.Size == 0 && job.Offset == 0 && nlen > 0 {
+		job.Size = nlen
+		task.Size += nlen
 	}
 	if err := os.MkdirAll(filepath.Dir(tmp), 0o755); err != nil {
 		return err
@@ -955,18 +1207,20 @@ func (e *Engine) copyObject(ctx context.Context, task *Task, job *fileJob, remot
 		n, rerr := body.Read(buf)
 		if n > 0 {
 			if _, werr := f.Write(buf[:n]); werr != nil {
-				e.save(task)
+				e.saveFile(task, index)
 				return werr
 			}
+			e.mu.Lock()
 			job.Offset += int64(n)
-			task.BytesDone += int64(n)
 			task.Offset = job.Offset
+			e.mu.Unlock()
+			e.addProgress(task, index, int64(n))
 		}
 		if rerr == io.EOF {
 			break
 		}
 		if rerr != nil {
-			e.save(task)
+			e.saveFile(task, index)
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -1043,6 +1297,7 @@ func (a *App) openRemote(profile Profile, token, accessKey, secret string) (remo
 			secret:    secret,
 			region:    region,
 			client:    client.Stream,
+			assemble:  client.Assemble,
 		}, nil
 	}
 	client, err := newClient(profile.ServerURL, profile.TLS.InsecureDev)

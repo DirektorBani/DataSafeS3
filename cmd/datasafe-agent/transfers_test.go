@@ -3,30 +3,42 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	bolt "go.etcd.io/bbolt"
 )
 
 type fakeRemote struct {
-	mu           sync.Mutex
-	partNums     []int
-	aborts       []string
-	initiates    int
-	completes    int
-	puts         int
-	netLeft      int
-	notFoundOnce bool
-	etagFailOnce bool
-	block        chan struct{}
-	data         []byte
-	forceETag    string
-	noRange      bool
-	openOffsets  []int64
-	keys         []string
+	mu               sync.Mutex
+	partNums         []int
+	aborts           []string
+	initiates        int
+	completes        int
+	puts             int
+	netLeft          int
+	notFoundOnce     bool
+	etagFailOnce     bool
+	block            chan struct{}
+	data             []byte
+	forceETag        string
+	noRange          bool
+	openOffsets      []int64
+	keys             []string
+	completeDelay    time.Duration
+	completeFailLeft int
+	completeMissing  bool
+	statFound        bool
+	statSize         int64
+	statETag         string
 }
 
 func (f *fakeRemote) Put(ctx context.Context, key string, body io.Reader, n int64) (string, error) {
@@ -77,13 +89,45 @@ func (f *fakeRemote) Part(ctx context.Context, key, uploadID string, part int, b
 
 func (f *fakeRemote) Complete(ctx context.Context, key, uploadID string, parts []partRec) (string, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.completes++
 	if f.etagFailOnce {
 		f.etagFailOnce = false
+		f.mu.Unlock()
 		return "", &apiFault{Status: 400, Body: "etag mismatch"}
 	}
+	delay := f.completeDelay
+	var fail error
+	if f.completeFailLeft > 0 {
+		f.completeFailLeft--
+		fail = fmt.Errorf("%w: timeout awaiting response headers", context.DeadlineExceeded)
+	}
+	missing := f.completeMissing
+	f.mu.Unlock()
+	if fail != nil {
+		return "", fail
+	}
+	if missing {
+		return "", &apiFault{Status: 404, Code: "multipart.upload_not_found", Body: "upload not found"}
+	}
+	if delay > 0 {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-timer.C:
+		}
+	}
 	return "done", nil
+}
+
+func (f *fakeRemote) Stat(ctx context.Context, key string) (string, int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.statFound {
+		return "", 0, &apiFault{Status: 404, Code: "not_found", Body: "not found"}
+	}
+	return f.statETag, f.statSize, nil
 }
 
 func (f *fakeRemote) Abort(ctx context.Context, key, uploadID string) error {
@@ -128,6 +172,7 @@ func testEngine(t *testing.T, fake *fakeRemote) *Engine {
 	e := newEngine(j)
 	e.syncRun = true
 	e.limits = Limits{Threshold: 8, PartSize: 4, Transfers: 2, PartParallel: 2}
+	e.progressEvery = 0
 	e.build = func(creds, string) (remote, error) { return fake, nil }
 	e.sleep = func(time.Duration) {}
 	return e
@@ -372,5 +417,186 @@ func TestPresignUnavailableRestartsDownload(t *testing.T) {
 	body, err := os.ReadFile(filepath.Join(dest, "a.txt"))
 	if err != nil || string(body) != "abcd" {
 		t.Fatalf("body %q err %v", body, err)
+	}
+}
+
+func TestSlowCompleteRetriesWithoutAbort(t *testing.T) {
+	path := writeTemp(t, bytes.Repeat([]byte("x"), 10))
+	fake := &fakeRemote{completeDelay: 200 * time.Millisecond, completeFailLeft: 1}
+	e := testEngine(t, fake)
+	started := time.Now()
+	task, err := e.Enqueue(enqueueReq{Token: "t", Direction: "upload", Bucket: "b", Key: "k", LocalPath: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.State != "done" {
+		t.Fatalf("state %s %s", task.State, task.Message)
+	}
+	if time.Since(started) < 200*time.Millisecond {
+		t.Fatal("complete returned before the slow server finished")
+	}
+	if fake.completes < 2 || len(fake.aborts) != 0 {
+		t.Fatalf("completes %d aborts %v parts %v", fake.completes, fake.aborts, fake.partNums)
+	}
+	if len(fake.partNums) != 3 {
+		t.Fatalf("parts were sent again: %v", fake.partNums)
+	}
+	if task.BytesDone != 10 || task.Size != 10 {
+		t.Fatalf("progress %d/%d", task.BytesDone, task.Size)
+	}
+}
+
+func TestCompleteTimeoutUsesExistingObject(t *testing.T) {
+	path := writeTemp(t, bytes.Repeat([]byte("x"), 10))
+	fake := &fakeRemote{completeFailLeft: 1, statFound: true, statSize: 10, statETag: "assembled"}
+	e := testEngine(t, fake)
+	info, _ := os.Stat(path)
+	task := Task{
+		ID: "t1", Direction: "upload", State: "running", LocalPath: path, Bucket: "b",
+		Files: []fileJob{{
+			Local: path, Key: "k", Size: info.Size(), MtimeUnix: info.ModTime().Unix(),
+			UploadID: "up1",
+			Parts:    []partRec{{Number: 1, ETag: "e1"}, {Number: 2, ETag: "e2"}, {Number: 3, ETag: "e3"}},
+		}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	e.live["t1"] = &liveTask{token: "t", decide: make(chan decision, 1)}
+	e.process("t1")
+	got, _ := e.journal.Get("t1")
+	if got.State != "done" || len(fake.aborts) != 0 || fake.initiates != 0 {
+		t.Fatalf("state %s %s aborts %v initiates %d", got.State, got.Message, fake.aborts, fake.initiates)
+	}
+	if len(got.Files) != 1 || got.Files[0].ETag != "assembled" || got.Files[0].UploadID != "" {
+		t.Fatalf("file %+v", got.Files)
+	}
+}
+
+func TestProgressWhileUploadIsRunning(t *testing.T) {
+	path := writeTemp(t, bytes.Repeat([]byte("x"), 10))
+	fake := &fakeRemote{block: make(chan struct{})}
+	e := testEngine(t, fake)
+	e.syncRun = false
+	info, _ := os.Stat(path)
+	task := Task{
+		ID: "t1", Direction: "upload", State: "running", LocalPath: path, Bucket: "b",
+		Files: []fileJob{{Local: path, Key: "k", Size: info.Size(), MtimeUnix: info.ModTime().Unix()}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	e.live["t1"] = &liveTask{token: "t", decide: make(chan decision, 1)}
+	done := make(chan struct{})
+	go func() {
+		e.process("t1")
+		close(done)
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	var mid Task
+	for time.Now().Before(deadline) {
+		mid, _ = e.journal.Get("t1")
+		if mid.BytesDone > 0 && mid.State == "running" {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if mid.BytesDone <= 0 || mid.State != "running" {
+		t.Fatalf("no progress while running: %+v", mid)
+	}
+	close(fake.block)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("upload did not finish")
+	}
+	got, _ := e.journal.Get("t1")
+	if got.State != "done" || got.BytesDone != 10 || got.Size != 10 {
+		t.Fatalf("state %s progress %d/%d", got.State, got.BytesDone, got.Size)
+	}
+}
+
+func TestDownloadReportsSizeAndProgress(t *testing.T) {
+	fake := &fakeRemote{data: []byte("abcdefghi"), statFound: true, statSize: 9, statETag: "aaa"}
+	e := testEngine(t, fake)
+	dest := t.TempDir()
+	task, err := e.Enqueue(enqueueReq{Token: "t", Direction: "download", Bucket: "b", Key: "a.txt", DestPath: dest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.State != "done" || task.Size != 9 || task.BytesDone != 9 {
+		t.Fatalf("state %s progress %d/%d %s", task.State, task.BytesDone, task.Size, task.Message)
+	}
+	body, err := os.ReadFile(filepath.Join(dest, "a.txt"))
+	if err != nil || string(body) != "abcdefghi" {
+		t.Fatalf("body %q err %v", body, err)
+	}
+}
+
+func TestDirectoryJournalDoesNotRewriteEveryFile(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < 30; i++ {
+		name := filepath.Join(dir, "f"+itoa(i)+".txt")
+		if err := os.WriteFile(name, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fake := &fakeRemote{}
+	e := testEngine(t, fake)
+	task, err := e.Enqueue(enqueueReq{Token: "t", Direction: "upload", Bucket: "b", Key: "pre", LocalPath: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.State != "done" || task.BytesDone != 30 || task.FilesTotal != 30 || task.FilesDone != 30 {
+		t.Fatalf("state %s progress %d files %d/%d %s", task.State, task.BytesDone, task.FilesDone, task.FilesTotal, task.Message)
+	}
+	var taskBlob []byte
+	var files int
+	err = e.journal.db.View(func(tx *bolt.Tx) error {
+		taskBlob = append([]byte(nil), tx.Bucket([]byte("tasks")).Get([]byte(task.ID))...)
+		c := tx.Bucket([]byte("files")).Cursor()
+		prefix := []byte(task.ID + "\x00")
+		for k, v := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
+			files++
+			if files == 1 && !bytes.Contains(v, []byte(`"done":true`)) {
+				t.Fatalf("file row not done: %s", v)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files != 30 {
+		t.Fatalf("file rows %d", files)
+	}
+	if bytes.Contains(taskBlob, []byte("f0.txt")) || len(taskBlob) > 8192 {
+		t.Fatalf("task row embedded the file list (%d bytes)", len(taskBlob))
+	}
+}
+
+func TestSlowCompleteUsesUntimedClient(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/complete") {
+			time.Sleep(200 * time.Millisecond)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"object":{"etag":"abc"}}`)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	client, err := newClient(srv.URL, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.Stream.Transport.(*http.Transport).ResponseHeaderTimeout = 50 * time.Millisecond
+	if client.Assemble.Transport.(*http.Transport).ResponseHeaderTimeout != 0 {
+		t.Fatal("assemble client has a header timeout")
+	}
+	remote := &restRemote{client: client, bucket: "b"}
+	etag, err := remote.Complete(context.Background(), "k", "up", []partRec{{Number: 1, ETag: "e1"}})
+	if err != nil || etag != "abc" {
+		t.Fatalf("etag %q err %v", etag, err)
 	}
 }

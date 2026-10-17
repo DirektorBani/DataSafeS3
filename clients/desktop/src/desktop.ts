@@ -113,6 +113,8 @@ export type TransferTask = {
   key?: string;
   bytes_done?: number;
   size?: number;
+  files_done?: number;
+  files_total?: number;
   message?: string;
   report?: TransferNote[];
   pending_key?: string;

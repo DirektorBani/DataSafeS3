@@ -55,13 +55,19 @@ Transfers run in the agent for the life of the process. The journal is bbolt `tr
 
 Starting parameters, not yet measured on the owner's LAN or Wi-Fi: multipart above 64 MiB, part size 16 MiB, 4 transfers and 4 parts in flight. A later measurement can replace them; this step records the spec's starting values.
 
-An upload continues from the first part that has no stored ETag. The last part that got no response is sent again. A size or mtime change aborts the old upload id and starts over, and the task says why. `404` / `multipart.upload_not_found` and a complete error that mentions an ETag do the same. Cancel sends `DELETE` for the upload id. ListParts is not called; that route is not on 1.5 or 1.6.
+An upload continues from the first part that has no stored ETag. The last part that got no response is sent again. A size or mtime change aborts the old upload id and starts over, and the task says why. `404` / `multipart.upload_not_found` and a complete error that mentions an ETag do the same, unless a HEAD or object-meta check shows the object is already there at the uploaded size: then the upload is finished and is not started over. Cancel sends `DELETE` for the upload id. ListParts is not called; that route is not on 1.5 or 1.6.
+
+CompleteMultipartUpload uses a client with no response-header timeout. The ordinary transfer client still waits two minutes for headers, which is enough for a part and not enough for assembly: server 1.6.1 joins parts at about 16–22 seconds per GiB, so a complete of about 5 GiB or more used to fail and leave the multipart upload open. A timeout or a dropped connection during complete is retried. The upload id and the confirmed parts stay.
+
+`bytes_done` and `size` advance while a transfer is running. Upload progress is counted as each part or chunk is read. Download progress is counted as each chunk is written, and a download learns its size from object-meta or S3 HEAD when the listing did not carry one. The panel shows that as done/total. The download path is the destination folder.
+
+Each file in a directory transfer is its own journal row. The task row keeps the counters and the report, not the file list, so finishing one file does not rewrite the other files.
 
 A download writes `<name>.dspart` beside the target and renames it after the size and ETag agree. Resume uses `Range` on an S3 GET for an access-key profile, and a presigned GET for a JWT profile. REST `Range` is used only when the server advertises `objects.range`, which is not part of 1.6.1. Without a presign right and without `objects.range`, the download starts again and the panel says so. A network failure sets the task to waiting, with a pause of 1s that doubles up to 60s, and continues without restarting the app. Rows that were still running when the agent starts again are marked interrupted. Continuing them after a restart is E06; the confirmed parts stay in the journal for that step.
 
 Directory upload maps the tree to prefixes. Symlinks, and Windows reparse points, are skipped unless the user asks to follow them, and a followed link is not walked twice. Empty directories are not created. Download renames keys the target OS cannot store: Windows reserved names and illegal characters, Linux NUL, and a segment longer than 255 bytes. The macOS `:` and NFC rules are in the same function so a Linux test can check them; this release does not build macOS. A path that would leave the chosen directory is skipped. On Windows the agent opens files with the `\\?\` prefix. The executable has one application manifest: Tauri's Common Controls v6 manifest, with `longPathAware` added. A second manifest resource is not compiled. The linker rejects two `MANIFEST` resources with id 1 (`CVT1100`).
 
-Dropping files on the window enqueues an upload. Tauri 2.12 can move the window with `startDragging`, and it can receive a drop, but it has no API that drags a storage object out to Explorer. Download into a chosen folder is the way out.
+Dropping files on the window enqueues an upload. Tauri 2.12 can move the window with `startDragging`, and it can receive a drop, but it has no API that drags a storage object out to Explorer. Download into a chosen folder is the way out. The field is labeled as that destination folder.
 
 ### Versioning list bug (not changed)
 

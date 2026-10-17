@@ -4,6 +4,23 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Button } from "@datasafe/ui/ui/button";
 import { transfer, type TransferTask } from "../../desktop";
 
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) {
+    return "0 B";
+  }
+  if (n < 1024) {
+    return `${Math.round(n)} B`;
+  }
+  const units = ["KiB", "MiB", "GiB", "TiB"];
+  let value = n / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
+}
+
 const messages: Record<string, string> = {
   waiting_network: "waitingNetwork",
   file_changed: "fileChanged",
@@ -153,7 +170,10 @@ export function TransferPanel(props: {
         </div>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        <input className="min-w-64 rounded-md border bg-transparent px-2 py-1" placeholder={t("saveTo")} value={destPath} onChange={(event) => setDestPath(event.target.value)} />
+        <label className="flex items-center gap-2 text-sm">
+          <span>{t("destFolder")}</span>
+          <input className="min-w-64 rounded-md border bg-transparent px-2 py-1" aria-label={t("destFolder")} placeholder={t("destFolderHint")} value={destPath} onChange={(event) => setDestPath(event.target.value)} />
+        </label>
         <Button type="button" variant="outline" disabled={!props.selectedKey || !destPath.trim()} onClick={() => void download()}>
           {t("download")}
         </Button>
@@ -166,7 +186,8 @@ export function TransferPanel(props: {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="break-all">
                 {task.direction} · {task.key || task.local_path} · {explain(task)}
-                {task.bytes_done ? ` · ${task.bytes_done}` : ""}
+                {task.size ? ` · ${formatBytes(task.bytes_done ?? 0)} / ${formatBytes(task.size)}` : task.bytes_done ? ` · ${formatBytes(task.bytes_done)}` : ""}
+                {task.files_total && task.files_total > 1 ? ` · ${task.files_done ?? 0}/${task.files_total}` : ""}
               </span>
               {task.state === "queued" || task.state === "running" || task.state === "waiting_network" || task.state === "conflict" ? (
                 <Button type="button" variant="outline" onClick={() => void act("transfer.cancel", task.id)}>

@@ -21,6 +21,7 @@ type s3Remote struct {
 	secret    string
 	region    string
 	client    *http.Client
+	assemble  *http.Client
 	now       func() time.Time
 }
 
@@ -33,6 +34,10 @@ func (r *s3Remote) sign(req *http.Request) {
 }
 
 func (r *s3Remote) do(ctx context.Context, method, path string, query url.Values, body io.Reader, n int64, header map[string]string) (*http.Response, error) {
+	return r.doClient(ctx, r.client, method, path, query, body, n, header)
+}
+
+func (r *s3Remote) doClient(ctx context.Context, client *http.Client, method, path string, query url.Values, body io.Reader, n int64, header map[string]string) (*http.Response, error) {
 	u := strings.TrimRight(r.base, "/") + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
@@ -51,7 +56,10 @@ func (r *s3Remote) do(ctx context.Context, method, path string, query url.Values
 		req.Header.Set("Content-Type", "application/octet-stream")
 	}
 	r.sign(req)
-	resp, err := r.client.Do(req)
+	if client == nil {
+		client = r.client
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -126,7 +134,7 @@ func (r *s3Remote) Complete(ctx context.Context, key, uploadID string, parts []p
 	payload := []byte(b.String())
 	q := url.Values{}
 	q.Set("uploadId", uploadID)
-	resp, err := r.do(ctx, http.MethodPost, r.keyPath(key), q, bytes.NewReader(payload), int64(len(payload)), map[string]string{"Content-Type": "application/xml"})
+	resp, err := r.doClient(ctx, r.assemble, http.MethodPost, r.keyPath(key), q, bytes.NewReader(payload), int64(len(payload)), map[string]string{"Content-Type": "application/xml"})
 	if err != nil {
 		return "", err
 	}
@@ -136,6 +144,18 @@ func (r *s3Remote) Complete(ctx context.Context, key, uploadID string, parts []p
 		return "", faultFrom(resp.StatusCode, raw, resp.Header)
 	}
 	return strings.Trim(xmlText(raw, "ETag"), `"`), nil
+}
+
+func (r *s3Remote) Stat(ctx context.Context, key string) (string, int64, error) {
+	resp, err := r.do(ctx, http.MethodHead, r.keyPath(key), nil, nil, -1, nil)
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return "", 0, readFault(resp)
+	}
+	return strings.Trim(resp.Header.Get("ETag"), `"`), resp.ContentLength, nil
 }
 
 func (r *s3Remote) Abort(ctx context.Context, key, uploadID string) error {
