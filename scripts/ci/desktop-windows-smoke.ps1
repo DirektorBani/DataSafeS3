@@ -36,7 +36,17 @@ if (-not (Test-Path -LiteralPath $agent)) {
 
 function Stop-ProcessTree {
     param([int]$ProcessId)
-    & taskkill.exe /F /T /PID $ProcessId 1>$null 2>$null
+    # taskkill writes "not found" to stderr and exits 128 when the process
+    # has already ended. PowerShell turns that stderr into a failing error
+    # under ErrorAction Stop. Merge it into stdout and ignore a missing pid.
+    $out = & taskkill.exe /F /T /PID $ProcessId 2>&1
+    $text = ($out | Out-String).Trim()
+    if ($LASTEXITCODE -eq 0 -or $text -match "not found") {
+        return
+    }
+    if ($text) {
+        Write-Host $text
+    }
 }
 
 function Wait-OrKill {
