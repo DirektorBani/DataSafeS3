@@ -106,6 +106,9 @@ jobs:
           ) | Set-Content -Encoding ascii -Path nsis-size.txt
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "NSIS installer ``$($exe.Name)``: $bytes bytes"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "NSIS SHA256: ``$sha``"
+      - name: Imports and silent launch
+        shell: pwsh
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/ci/desktop-windows-smoke.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: datasafe-desktop-nsis
