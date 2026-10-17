@@ -15,6 +15,7 @@ func TestSecretsInLogs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer logger.Close()
 	const (
 		password  = "s3cret-password"
 		totp      = "918273"
@@ -95,6 +96,7 @@ func TestLogRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer logger.Close()
 	logger.maxBytes = 80
 	logger.maxFiles = 3
 	for i := 0; i < 30; i++ {
