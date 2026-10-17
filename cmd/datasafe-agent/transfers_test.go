@@ -48,6 +48,8 @@ type fakeRemote struct {
 	statSize         int64
 	statETag         string
 	statMiss         int
+	openStatus       int
+	openFails        int
 	gate             chan struct{}
 	inflight         int
 	maxInflight      int
@@ -183,6 +185,20 @@ func (f *fakeRemote) Open(ctx context.Context, key string, offset int64) (io.Rea
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.openOffsets = append(f.openOffsets, offset)
+	if f.openStatus >= 400 && f.openFails != 0 {
+		if f.openFails > 0 {
+			f.openFails--
+		}
+		status := f.openStatus
+		code := "internal"
+		if status == http.StatusForbidden {
+			code = "access.forbidden"
+		}
+		if status == http.StatusUnauthorized {
+			code = "auth.unauthorized"
+		}
+		return nil, "", 0, status, &apiFault{Status: status, Code: code}
+	}
 	if f.netLeft > 0 {
 		f.netLeft--
 		return nil, "", 0, 0, errNetwork
@@ -863,6 +879,21 @@ func TestWrapNetTreatsHeaderTimeoutAsNetwork(t *testing.T) {
 	if !errors.Is(canceled, context.Canceled) || errors.Is(canceled, errNetwork) || strings.Contains(canceled.Error(), "http") {
 		t.Fatalf("cancel: %v", canceled)
 	}
+	tlsErr := wrapNet(&url.Error{Op: "Get", URL: "https://storage.example/b/k", Err: errors.New("tls: failed to verify certificate: x509: certificate signed by unknown authority")})
+	if errors.Is(tlsErr, errNetwork) || errors.Is(tlsErr, context.DeadlineExceeded) || !strings.Contains(tlsErr.Error(), "certificate") {
+		t.Fatalf("tls should fail immediately: %v", tlsErr)
+	}
+	if retryableTransfer(&apiFault{Status: http.StatusUnauthorized, Code: "auth.unauthorized"}) ||
+		retryableTransfer(&apiFault{Status: http.StatusForbidden, Code: "access.forbidden"}) ||
+		retryableTransfer(&apiFault{Status: http.StatusBadRequest, Code: "request.invalid"}) ||
+		retryableTransfer(tlsErr) {
+		t.Fatal("permanent error was treated as a network wait")
+	}
+	if !retryableTransfer(&apiFault{Status: http.StatusInternalServerError, Code: "internal"}) ||
+		!retryableTransfer(&apiFault{Status: http.StatusTooManyRequests, Code: "rate_limited"}) ||
+		!retryableTransfer(got) {
+		t.Fatal("retryable error was treated as fatal")
+	}
 }
 
 func TestStalledHeadersWaitAndResume(t *testing.T) {
@@ -1065,5 +1096,211 @@ func TestRetryContinuesFailedDownload(t *testing.T) {
 	}
 	if strings.Contains(got.Message, "X-Amz-") {
 		t.Fatalf("message %s", got.Message)
+	}
+}
+
+func TestRetriedCompleteAcceptsFileMD5(t *testing.T) {
+	body := bytes.Repeat([]byte("x"), 10)
+	path := writeTemp(t, body)
+	sum := md5.Sum(body)
+	fileETag := hex.EncodeToString(sum[:])
+	info, _ := os.Stat(path)
+	parts := []partRec{{Number: 1, ETag: partMD5("a")}, {Number: 2, ETag: partMD5("b")}, {Number: 3, ETag: partMD5("c")}}
+	if multipartETag(parts) == fileETag {
+		t.Fatal("fixture etags collide")
+	}
+	fake := &fakeRemote{completeFailLeft: 1, completeStatus: http.StatusBadRequest, statFound: true, statSize: 10, statETag: fileETag}
+	e := testEngine(t, fake)
+	task := Task{
+		ID: "t1", Direction: "upload", State: "running", LocalPath: path, Bucket: "b", Message: "upload_not_found",
+		Files: []fileJob{{
+			Local: path, Key: "k", Size: info.Size(), MtimeUnix: info.ModTime().Unix(),
+			UploadID: "up1", Parts: parts,
+		}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	e.live["t1"] = &liveTask{token: "t", decide: make(chan decision, 1)}
+	e.process("t1")
+	got, _ := e.journal.Get("t1")
+	if got.State != "done" || got.Message != "" || len(fake.aborts) != 0 || fake.completes != 1 || fake.initiates != 0 {
+		t.Fatalf("state %s %q completes %d aborts %v initiates %d", got.State, got.Message, fake.completes, fake.aborts, fake.initiates)
+	}
+	if len(got.Files) != 1 || got.Files[0].ETag != fileETag || got.Files[0].ContentMD5 != fileETag || got.Files[0].UploadID != "" {
+		t.Fatalf("file %+v", got.Files)
+	}
+
+	missing := &fakeRemote{completeFailLeft: 1, completeStatus: http.StatusNotFound, statFound: true, statSize: 10, statETag: fileETag}
+	e2 := testEngine(t, missing)
+	task.ID = "t2"
+	task.State = "running"
+	task.Message = "upload_not_found"
+	task.Files[0].UploadID = "up1"
+	task.Files[0].ETag = ""
+	task.Files[0].ContentMD5 = ""
+	task.Files[0].Done = false
+	if err := e2.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	e2.live["t2"] = &liveTask{token: "t", decide: make(chan decision, 1)}
+	e2.process("t2")
+	again, _ := e2.journal.Get("t2")
+	if again.State != "done" || again.Message != "" || len(missing.aborts) != 0 || missing.initiates != 0 {
+		t.Fatalf("404 re-uploaded: state %s %q aborts %v initiates %d parts %v", again.State, again.Message, missing.aborts, missing.initiates, missing.partNums)
+	}
+	if len(again.Files) != 1 || again.Files[0].ETag != fileETag {
+		t.Fatalf("file %+v", again.Files)
+	}
+}
+
+func TestForbiddenDownloadFailsWithoutRetry(t *testing.T) {
+	fake := &fakeRemote{data: []byte("abcdefghij"), openStatus: http.StatusForbidden, openFails: 5}
+	e := testEngine(t, fake)
+	dest := t.TempDir()
+	local := filepath.Join(dest, "a.txt")
+	task := Task{
+		ID: "t1", Direction: "download", State: "running", DestPath: dest,
+		Files: []fileJob{{Key: "a.txt", Local: local, Size: 10, ETag: "aaa", Offset: 4}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(local+".dspart", []byte("abcd"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.live["t1"] = &liveTask{token: "t", decide: make(chan decision, 1)}
+	e.process("t1")
+	got, _ := e.journal.Get("t1")
+	if got.State != "error" || len(fake.openOffsets) != 1 || fake.openOffsets[0] != 4 {
+		t.Fatalf("state %s %s offsets %v", got.State, got.Message, fake.openOffsets)
+	}
+	if _, err := os.Stat(local + ".dspart"); err != nil {
+		t.Fatal("partial removed on a permanent error")
+	}
+}
+
+func TestServerErrorKeepsDownloadOffset(t *testing.T) {
+	fake := &fakeRemote{data: []byte("abcdefghij"), openStatus: http.StatusInternalServerError, openFails: 1}
+	e := testEngine(t, fake)
+	dest := t.TempDir()
+	local := filepath.Join(dest, "a.txt")
+	if err := os.WriteFile(local+".dspart", []byte("abcd"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := Task{
+		ID: "t1", Direction: "download", State: "running", DestPath: dest, Message: "waiting_network",
+		Files: []fileJob{{Key: "a.txt", Local: local, Size: 10, ETag: "aaa", Offset: 4}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	e.live["t1"] = &liveTask{token: "t", decide: make(chan decision, 1)}
+	e.process("t1")
+	got, _ := e.journal.Get("t1")
+	if got.State != "done" || got.Message != "" || len(fake.openOffsets) != 2 || fake.openOffsets[0] != 4 || fake.openOffsets[1] != 4 {
+		t.Fatalf("state %s %q offsets %v", got.State, got.Message, fake.openOffsets)
+	}
+	body, err := os.ReadFile(local)
+	if err != nil || string(body) != "abcdefghij" {
+		t.Fatalf("body %q err %v", body, err)
+	}
+}
+
+func TestPresignedServerErrorKeepsOffset(t *testing.T) {
+	payload := []byte("abcdefghij")
+	var signedGets atomic.Int32
+	var restGets atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/presign":
+			_, _ = io.WriteString(w, `{"url":"`+srvURLPlaceholder(r)+`/signed"}`)
+		case r.URL.Path == "/signed":
+			if signedGets.Add(1) == 1 {
+				http.Error(w, "internal", http.StatusInternalServerError)
+				return
+			}
+			if r.Header.Get("Range") != "bytes=4-" {
+				http.Error(w, "range", http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("ETag", `"aaa"`)
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write(payload[4:])
+		default:
+			restGets.Add(1)
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	client, err := newClient(srv.URL, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, err := openJournal(filepath.Join(t.TempDir(), "transfers.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = j.Close() })
+	e := newEngine(j)
+	e.syncRun = true
+	e.sleep = func(time.Duration) {}
+	e.build = func(c creds, bucket string) (remote, error) {
+		return &restRemote{client: client, bucket: bucket}, nil
+	}
+	dest := t.TempDir()
+	local := filepath.Join(dest, "a.txt")
+	if err := os.WriteFile(local+".dspart", payload[:4], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := Task{
+		ID: "t1", Direction: "download", State: "running", Bucket: "b", Key: "a.txt", DestPath: dest,
+		Files: []fileJob{{Key: "a.txt", Local: local, Size: int64(len(payload)), ETag: "aaa", Offset: 4}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	e.live["t1"] = &liveTask{token: "t", decide: make(chan decision, 1)}
+	e.process("t1")
+	got, _ := e.journal.Get("t1")
+	if got.State != "done" || signedGets.Load() < 2 || restGets.Load() != 0 {
+		t.Fatalf("state %s %s signed %d rest %d", got.State, got.Message, signedGets.Load(), restGets.Load())
+	}
+	body, err := os.ReadFile(local)
+	if err != nil || !bytes.Equal(body, payload) {
+		t.Fatalf("body %q err %v", body, err)
+	}
+}
+
+func srvURLPlaceholder(r *http.Request) string {
+	return "http://" + r.Host
+}
+
+func TestCancelRemovesPartialDownload(t *testing.T) {
+	fake := &fakeRemote{}
+	e := testEngine(t, fake)
+	dest := t.TempDir()
+	local := filepath.Join(dest, "a.txt")
+	if err := os.WriteFile(local+".dspart", []byte("abcd"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := Task{
+		ID: "t1", Direction: "download", State: "waiting_network", Message: "waiting_network", DestPath: dest,
+		Files: []fileJob{{Key: "a.txt", Local: local, Offset: 4}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := e.journal.Get("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.finishCancel(context.Background(), &loaded, fake)
+	if _, err := os.Stat(local + ".dspart"); !os.IsNotExist(err) {
+		t.Fatalf("partial still present: %v", err)
+	}
+	got, _ := e.journal.Get("t1")
+	if got.State != "cancelled" || got.Message == "waiting_network" {
+		t.Fatalf("state %s %s", got.State, got.Message)
 	}
 }

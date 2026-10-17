@@ -442,21 +442,19 @@ func (e *Engine) process(id string) {
 		}
 		if runErr == nil {
 			task.State = "done"
-			if task.Message == "waiting_network" {
-				task.Message = ""
-			}
+			clearStale(&task)
 			_ = e.journal.SaveMeta(task)
 			return
 		}
 		// A user cancel, or any other cancel of this task's context, stops
 		// the task. A header timeout is DeadlineExceeded inside url.Error;
-		// wrapNet turns that into errNetwork. A leftover deadline or i/o
-		// timeout is the same wait, not a failure.
+		// wrapNet turns that into errNetwork. A TLS failure, a 4xx auth or
+		// permission error, and an invalid request stop immediately.
 		if ctx.Err() != nil || (errors.Is(runErr, context.Canceled) && !errors.Is(runErr, errNetwork)) {
 			e.finishCancel(ctx, &task, remote)
 			return
 		}
-		if errors.Is(runErr, errNetwork) || errors.Is(runErr, context.DeadlineExceeded) || errors.Is(runErr, os.ErrDeadlineExceeded) {
+		if retryableTransfer(runErr) {
 			task.State = "waiting_network"
 			task.Message = "waiting_network"
 			_ = e.journal.SaveMeta(task)
@@ -471,6 +469,8 @@ func (e *Engine) process(id string) {
 				}
 			}
 			task.State = "running"
+			clearStale(&task)
+			_ = e.journal.SaveMeta(task)
 			continue
 		}
 		task.State = "error"
@@ -497,11 +497,63 @@ func (e *Engine) pause(ctx context.Context, d time.Duration) error {
 
 func (e *Engine) finishCancel(ctx context.Context, task *Task, remote remote) {
 	task.State = "cancelled"
+	clearStale(task)
+	e.removePartial(task)
 	actx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	e.abortAll(actx, task, remote)
 	_ = e.journal.SaveMeta(*task)
 	_ = ctx
+}
+
+// removePartial deletes a download's .dspart. Cancel used to leave that
+// file in the destination folder. The journal no longer points at it.
+func (e *Engine) removePartial(task *Task) {
+	if task == nil || task.Direction != "download" {
+		return
+	}
+	seen := map[string]struct{}{}
+	for _, job := range task.Files {
+		if job.Local == "" {
+			continue
+		}
+		path := job.Local + ".dspart"
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		_ = os.Remove(path)
+	}
+}
+
+// clearStale drops a status that belonged to the previous state. A task
+// that is running again is not still "waiting for network", and a finished
+// upload is not still "upload not found".
+func clearStale(task *Task) {
+	if task == nil {
+		return
+	}
+	switch task.Message {
+	case "waiting_network", "upload_not_found":
+		task.Message = ""
+	}
+}
+
+// retryableTransfer is a failure that can clear on its own: a dropped
+// connection, a timeout, a 5xx, or a 429. Certificate errors and 4xx
+// (auth, permission, invalid request) are not in this set.
+func retryableTransfer(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, errNoRange) || errors.Is(err, errETagRestart) {
+		return false
+	}
+	if errors.Is(err, errNetwork) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+	var fault *apiFault
+	if errors.As(err, &fault) {
+		return fault.Status == http.StatusTooManyRequests || fault.Status >= 500
+	}
+	return false
 }
 
 func (e *Engine) abortAll(ctx context.Context, task *Task, remote remote) {
@@ -642,17 +694,18 @@ func retryableComplete(err error) bool {
 }
 
 // maybeAssembled is a complete that may already have finished on the server.
-// A timeout is one case. A 400 or 404 while the server is still concatenating
-// parts is the other: the object row appears a few seconds later.
+// A timeout is one case. A 400 while the server is still concatenating parts
+// is the other: the object row appears a few seconds later. A 404 is handled
+// before the upload is started over, so it is not decided here.
 func maybeAssembled(err error) bool {
-	if retryableComplete(err) || faultNotFound(err) {
+	if retryableComplete(err) {
 		return true
 	}
 	f, ok := err.(*apiFault)
-	if !ok {
+	if !ok || faultNotFound(err) {
 		return false
 	}
-	return f.Status == http.StatusBadRequest || f.Status == http.StatusNotFound
+	return f.Status == http.StatusBadRequest
 }
 
 // multipartETag is the S3 multipart ETag: MD5 of the raw part MD5s in
@@ -683,11 +736,69 @@ func sameETag(got, want string) bool {
 	return strings.EqualFold(strings.Trim(got, `"`), strings.Trim(want, `"`))
 }
 
+// expectedETags is the identities a finished object may have. S3 uses the
+// multipart form. Server 1.6.1 stores the MD5 of the whole file instead.
+// An empty list means the client cannot tell this upload from another
+// object of the same size, so the object is not accepted.
+func expectedETags(parts []partRec, contentMD5 string) []string {
+	var wants []string
+	if multipart := multipartETag(parts); multipart != "" {
+		wants = append(wants, multipart)
+	}
+	sum := strings.ToLower(strings.Trim(strings.TrimSpace(contentMD5), `"`))
+	if len(sum) == 32 && !strings.Contains(sum, "-") {
+		if _, err := hex.DecodeString(sum); err == nil {
+			wants = append(wants, sum)
+		}
+	}
+	return wants
+}
+
+func etagOneOf(got string, wants []string) bool {
+	for _, want := range wants {
+		if want != "" && sameETag(got, want) {
+			return true
+		}
+	}
+	return false
+}
+
+// fileMD5 streams the local file. The digest is stored on the file row
+// before complete, so a restart can still recognise the object 1.6.1 built.
+func fileMD5(ctx context.Context, path string) (string, error) {
+	f, err := openLocal(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := md5.New()
+	buf := make([]byte, 32*1024)
+	for {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		n, err := f.Read(buf)
+		if n > 0 {
+			if _, werr := h.Write(buf[:n]); werr != nil {
+				return "", werr
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
 // waitAssembled polls object-meta until the object has the uploaded size and
-// the expected multipart ETag. Size alone is not identity: an overwrite of
-// the same length would otherwise be marked done with the old content.
-func (e *Engine) waitAssembled(ctx context.Context, remote remote, key string, size int64, want string) (string, bool) {
-	if want == "" || size <= 0 {
+// an ETag this upload could have produced. Size alone is not identity: an
+// overwrite of the same length would otherwise be marked done with the old
+// content.
+func (e *Engine) waitAssembled(ctx context.Context, remote remote, key string, size int64, wants []string) (string, bool) {
+	if len(wants) == 0 || size <= 0 {
 		return "", false
 	}
 	budget := e.assembleFor
@@ -704,7 +815,7 @@ func (e *Engine) waitAssembled(ctx context.Context, remote remote, key string, s
 			return "", false
 		}
 		etag, got, err := remote.Stat(ctx, key)
-		if err == nil && got == size && sameETag(etag, want) {
+		if err == nil && got == size && etagOneOf(etag, wants) {
 			return strings.Trim(etag, `"`), true
 		}
 		if !time.Now().Before(deadline) {
@@ -930,6 +1041,7 @@ func (e *Engine) uploadJob(ctx context.Context, task *Task, index int, remote re
 		}
 		job.UploadID = ""
 		job.Parts = nil
+		job.ContentMD5 = ""
 		task.UploadID = ""
 		task.Parts = nil
 		task.Message = "file_changed"
@@ -941,6 +1053,22 @@ func (e *Engine) uploadJob(ctx context.Context, task *Task, index int, remote re
 	if changed {
 		_ = remote.Abort(context.Background(), key, uploadID)
 		e.saveFile(task, index)
+	}
+	if size > e.limits.Threshold {
+		e.mu.Lock()
+		have := job.ContentMD5
+		e.mu.Unlock()
+		if have == "" {
+			sum, err := fileMD5(ctx, job.Local)
+			if err != nil {
+				return err
+			}
+			e.mu.Lock()
+			job.ContentMD5 = sum
+			e.saveFileLocked(task, index)
+			e.mu.Unlock()
+			e.flushProgress()
+		}
 	}
 	if size <= e.limits.Threshold {
 		f, err := openLocal(job.Local)
@@ -984,6 +1112,24 @@ func (e *Engine) uploadJob(ctx context.Context, task *Task, index int, remote re
 			return err
 		}
 		if faultNotFound(err) || faultETag(err) {
+			if faultNotFound(err) {
+				e.mu.Lock()
+				parts := append([]partRec(nil), job.Parts...)
+				sum := job.ContentMD5
+				e.mu.Unlock()
+				if got, ok := e.waitAssembled(ctx, remote, key, size, expectedETags(parts, sum)); ok {
+					e.mu.Lock()
+					job.ETag = got
+					job.Done = true
+					job.UploadID = ""
+					task.UploadID = ""
+					task.Message = ""
+					e.saveFileLocked(task, index)
+					e.mu.Unlock()
+					e.flushProgress()
+					return nil
+				}
+			}
 			e.mu.Lock()
 			uploadID = job.UploadID
 			if uploadID != "" {
@@ -1114,6 +1260,7 @@ func (e *Engine) uploadParts(ctx context.Context, task *Task, index int, remote 
 	}
 	e.mu.Lock()
 	parts := append([]partRec(nil), job.Parts...)
+	contentMD5 := job.ContentMD5
 	uploadID = job.UploadID
 	e.mu.Unlock()
 	etag, err := remote.Complete(ctx, key, uploadID, parts)
@@ -1122,8 +1269,7 @@ func (e *Engine) uploadParts(ctx context.Context, task *Task, index int, remote 
 			return err
 		}
 		if maybeAssembled(err) {
-			want := multipartETag(parts)
-			if got, ok := e.waitAssembled(ctx, remote, key, size, want); ok {
+			if got, ok := e.waitAssembled(ctx, remote, key, size, expectedETags(parts, contentMD5)); ok {
 				e.mu.Lock()
 				job.ETag = got
 				job.UploadID = ""

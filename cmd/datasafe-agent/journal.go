@@ -37,6 +37,10 @@ type fileJob struct {
 	Done      bool      `json:"done,omitempty"`
 	ETag      string    `json:"etag,omitempty"`
 	Offset    int64     `json:"offset,omitempty"`
+	// ContentMD5 is the MD5 of the local file, hex-encoded. Server 1.6.1
+	// stores that digest as the ETag of a completed multipart object.
+	// The S3 form (md5 of the part md5s, plus "-N") is not what 1.6.1 returns.
+	ContentMD5 string `json:"content_md5,omitempty"`
 }
 
 // Task is one transfer row. It has no token, password, or access-key secret.

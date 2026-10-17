@@ -231,13 +231,9 @@ func (r *restRemote) openHeaders(ctx context.Context, path string, offset int64,
 	if err != nil {
 		return nil, "", 0, 0, err
 	}
-	if offset > 0 && resp.StatusCode != http.StatusPartialContent {
+	if err := classifyStatus(offset, resp); err != nil {
 		resp.Body.Close()
-		return nil, "", 0, resp.StatusCode, errNoRange
-	}
-	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
-		return nil, "", 0, resp.StatusCode, readFault(resp)
+		return nil, "", 0, resp.StatusCode, err
 	}
 	return resp.Body, strings.Trim(resp.Header.Get("ETag"), `"`), resp.ContentLength, resp.StatusCode, nil
 }

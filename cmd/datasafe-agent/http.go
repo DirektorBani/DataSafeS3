@@ -221,15 +221,29 @@ func (c *Client) openURL(ctx context.Context, rawURL string, offset int64) (io.R
 		}
 		return nil, "", 0, 0, wrapNet(err)
 	}
-	if offset > 0 && resp.StatusCode != http.StatusPartialContent {
+	if err := classifyStatus(offset, resp); err != nil {
 		resp.Body.Close()
-		return nil, "", 0, resp.StatusCode, errNoRange
-	}
-	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
-		return nil, "", 0, resp.StatusCode, readFault(resp)
+		return nil, "", 0, resp.StatusCode, err
 	}
 	return resp.Body, strings.Trim(resp.Header.Get("ETag"), `"`), resp.ContentLength, resp.StatusCode, nil
+}
+
+// classifyStatus separates a ranged GET that the server answered in full
+// from a failure that should be retried or reported. A 5xx or 429 keeps the
+// download offset. A 200 where a range was requested is the only "no range"
+// signal. A 4xx is the fault itself, not a reason to start the file over.
+func classifyStatus(offset int64, resp *http.Response) error {
+	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+		fault := readFault(resp)
+		return fmt.Errorf("%w: %s", errNetwork, publicError(fault.Error()))
+	}
+	if resp.StatusCode >= 400 {
+		return readFault(resp)
+	}
+	if offset > 0 && resp.StatusCode != http.StatusPartialContent {
+		return errNoRange
+	}
+	return nil
 }
 
 // netReason classifies a dial failure. A bad certificate is not the same
@@ -280,7 +294,14 @@ func wrapNet(err error) error {
 	if errors.Is(err, context.Canceled) {
 		return context.Canceled
 	}
-	return fmt.Errorf("%w: %s", errNetwork, publicError(err.Error()))
+	text := publicError(err.Error())
+	// A certificate failure does not clear itself. Retrying it forever
+	// leaves the task in waiting_network. Timeouts, resets, and a host
+	// that does not answer are the network wait.
+	if netReason(err) == "certificate" {
+		return errors.New(text)
+	}
+	return fmt.Errorf("%w: %s", errNetwork, text)
 }
 
 func decodeObject(raw []byte) (map[string]any, bool) {
