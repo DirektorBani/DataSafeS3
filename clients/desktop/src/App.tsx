@@ -239,7 +239,17 @@ export default function App() {
       ) : null}
       {view === "transfers" ? (
         <div className="space-y-4">
-          <PageHeader title={t("transfers")} description={transferNote || t("transferIdle")} />
+          <PageHeader
+            title={t("transfers")}
+            description={transferNote || t("transferIdle")}
+            actions={
+              current ? (
+                <Button type="button" variant="outline" onClick={() => void transfer(current.id, "transfer.clear_finished").catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))}>
+                  {t("clearFinished")}
+                </Button>
+              ) : null
+            }
+          />
           {current ? (
             <ResumeProgress profileId={current.id} onSummary={setTransferNote} onSessionExpired={() => void reload()} />
           ) : (

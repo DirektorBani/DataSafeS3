@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,6 +52,9 @@ type pendingAbort struct {
 }
 
 // Task is one transfer row. It has no token, password, or access-key secret.
+// BytesSeen is the last byte count shown for the row. Resume resets BytesDone
+// to parts that have an ETag, and this floor keeps the journal progress on
+// screen until those bytes are sent again. It is not added into BytesDone.
 type Task struct {
 	ID             string         `json:"id"`
 	ProfileID      string         `json:"profile_id"`
@@ -75,6 +79,7 @@ type Task struct {
 	Conflict       string         `json:"conflict,omitempty"`
 	ResumeMode     string         `json:"resume_mode,omitempty"`
 	BytesDone      int64          `json:"bytes_done,omitempty"`
+	BytesSeen      int64          `json:"bytes_seen,omitempty"`
 	PendingKey     string         `json:"pending_key,omitempty"`
 	PendingLocal   string         `json:"pending_local,omitempty"`
 	PendingAborts  []pendingAbort `json:"pending_aborts,omitempty"`
@@ -471,6 +476,56 @@ func (j *Journal) PutFiles(taskID string, files []fileJob) error {
 				return err
 			}
 			if err := b.Put(fileStorageKey(taskID, i), raw); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if err := j.db.Sync(); err != nil {
+		return err
+	}
+	j.mu.Lock()
+	j.syncs++
+	j.lastFlush = time.Now()
+	j.mu.Unlock()
+	return nil
+}
+
+// Delete removes one task and its file rows. A cancelled task that still
+// has a pending abort is not passed here.
+func (j *Journal) Delete(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("transfer id is required")
+	}
+	j.mu.Lock()
+	if q := j.batch[id]; q != nil {
+		j.queued -= len(q.files)
+		if j.queued < 0 {
+			j.queued = 0
+		}
+	}
+	delete(j.batch, id)
+	delete(j.inflight, id)
+	j.mu.Unlock()
+	j.writeMu.Lock()
+	defer j.writeMu.Unlock()
+	err := j.db.Update(func(tx *bolt.Tx) error {
+		if err := tx.Bucket([]byte("tasks")).Delete([]byte(id)); err != nil {
+			return err
+		}
+		b := tx.Bucket([]byte("files"))
+		prefix := []byte(id + "\x00")
+		c := b.Cursor()
+		var stale [][]byte
+		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
+			stale = append(stale, append([]byte(nil), k...))
+		}
+		for _, k := range stale {
+			if err := b.Delete(k); err != nil {
 				return err
 			}
 		}

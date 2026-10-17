@@ -111,5 +111,30 @@ test("a paused transfer exposes a progress bar without serious axe violations", 
   await expect(bar).toHaveAttribute("aria-valuenow", "50");
   await page.getByRole("button", { name: "Buckets" }).click();
   await expect(page.getByText("photos")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Buckets" })).toHaveAttribute("aria-current", "page");
+  expect(await serious(page)).toEqual([]);
+});
+
+test("a bucket row and an object row open from the keyboard", async ({ page }) => {
+  await boot(page, {
+    id: "p1",
+    name: "Demo",
+    server_url: "https://example.invalid",
+    auth_method: "password",
+    username: "demo",
+    session: "signed_in",
+    server: { browse_allowed: true },
+  });
+  await page.getByRole("button", { name: "Buckets" }).click();
+  const bucket = page.getByRole("row", { name: /photos/ });
+  await bucket.focus();
+  await expect(bucket).toBeFocused();
+  await expect(bucket).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "photos" })).toBeVisible();
+  const objectRow = page.getByRole("row", { name: /readme\.txt/ });
+  await objectRow.focus();
+  await expect(objectRow).toBeFocused();
+  await expect(objectRow).toHaveAttribute("aria-selected", "true");
   expect(await serious(page)).toEqual([]);
 });

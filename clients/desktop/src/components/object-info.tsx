@@ -162,7 +162,7 @@ export function ObjectInfo(props: {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm">
-          <Info className="h-4 w-4" /> {t("bucketDetail:metadata.title")}
+          <Info className="h-4 w-4" aria-hidden="true" /> {t("bucketDetail:metadata.title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
@@ -185,8 +185,8 @@ export function ObjectInfo(props: {
           <p>{props.object.size ?? 0}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">{t("bucketDetail:metadata.contentType")}</span>
-          <Input className="mt-1 h-8 text-xs" value={contentType} readOnly={!props.canWrite} onChange={(event) => setContentType(event.target.value)} />
+          <span id="object-content-type" className="text-muted-foreground">{t("bucketDetail:metadata.contentType")}</span>
+          <Input aria-labelledby="object-content-type" className="mt-1 h-8 text-xs" value={contentType} readOnly={!props.canWrite} onChange={(event) => setContentType(event.target.value)} />
         </div>
         <div>
           <span className="text-muted-foreground">{t("bucketDetail:metadata.etag")}</span>
@@ -205,8 +205,8 @@ export function ObjectInfo(props: {
           {t("retention")}: {retention || props.object.retention_until || (props.object.legal_hold ? "legal hold" : "—")}
         </p>
         <div className="space-y-1">
-          <span className="text-muted-foreground">{t("metadata")}</span>
-          <Textarea rows={3} className="font-mono text-xs" value={meta} readOnly={!props.canWrite} onChange={(event) => setMeta(event.target.value)} />
+          <span id="object-metadata" className="text-muted-foreground">{t("metadata")}</span>
+          <Textarea aria-labelledby="object-metadata" rows={3} className="font-mono text-xs" value={meta} readOnly={!props.canWrite} onChange={(event) => setMeta(event.target.value)} />
         </div>
         {props.canWrite ? (
           <Button type="button" size="sm" variant="outline" onClick={() => void save("object.meta.put")}>
@@ -214,8 +214,8 @@ export function ObjectInfo(props: {
           </Button>
         ) : null}
         <div className="space-y-1">
-          <span className="text-muted-foreground">{t("tags")}</span>
-          <Textarea rows={3} className="font-mono text-xs" value={tags} readOnly={!props.canWrite} onChange={(event) => setTags(event.target.value)} />
+          <span id="object-tags" className="text-muted-foreground">{t("tags")}</span>
+          <Textarea aria-labelledby="object-tags" rows={3} className="font-mono text-xs" value={tags} readOnly={!props.canWrite} onChange={(event) => setTags(event.target.value)} />
         </div>
         {props.canWrite ? (
           <Button type="button" size="sm" variant="outline" onClick={() => void save("object.tags.put")}>

@@ -422,6 +422,40 @@ try {
         throw "datasafe-desktop.exe exited $($app.ExitCode) within 10s"
     }
     Write-Host "still running after 10s pid $($app.Id)"
+    $agentDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    while ([DateTime]::UtcNow -lt $agentDeadline) {
+        if (@(Get-Process -Name "datasafe-agent" -ErrorAction SilentlyContinue).Count -ge 1) {
+            break
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    Write-Host "second launch: $launched"
+    $second = [Diagnostics.Process]::Start($psi)
+    $secondDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    $oneDesktop = $false
+    $oneAgent = $false
+    while ([DateTime]::UtcNow -lt $secondDeadline) {
+        $desktopCount = @(Get-Process -Name "datasafe-desktop" -ErrorAction SilentlyContinue).Count
+        $agentCount = @(Get-Process -Name "datasafe-agent" -ErrorAction SilentlyContinue).Count
+        if ($second.HasExited -and $desktopCount -eq 1 -and $agentCount -eq 1) {
+            $oneDesktop = $true
+            $oneAgent = $true
+            break
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    if (-not $second.HasExited) {
+        throw "second datasafe-desktop.exe is still running pid $($second.Id)"
+    }
+    $desktops = @(Get-Process -Name "datasafe-desktop" -ErrorAction SilentlyContinue)
+    $agents = @(Get-Process -Name "datasafe-agent" -ErrorAction SilentlyContinue)
+    if (-not $oneDesktop -or $desktops.Count -ne 1) {
+        throw "expected one datasafe-desktop.exe, found $($desktops.Count)"
+    }
+    if (-not $oneAgent -or $agents.Count -ne 1) {
+        throw "expected one datasafe-agent.exe, found $($agents.Count)"
+    }
+    Write-Host "second launch exited; one desktop pid $($desktops[0].Id) and one agent pid $($agents[0].Id)"
     Stop-ProcessTree -ProcessId $app.Id
 } finally {
     if ($installed -and $installDir) {

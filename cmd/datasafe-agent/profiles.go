@@ -253,7 +253,7 @@ func (a *App) rememberList(id, key string, body map[string]any) {
 	_ = a.writeProfileCache(id, file)
 }
 
-func (a *App) cachedList(id, key string) (apiResult, bool) {
+func (a *App) cachedList(id, key string, exact bool) (apiResult, bool) {
 	file := a.readProfileCache(id)
 	kind := key
 	if cut := strings.IndexByte(key, '?'); cut >= 0 {
@@ -268,7 +268,10 @@ func (a *App) cachedList(id, key string) (apiResult, bool) {
 		if item.Key == key {
 			return cachedResult(item), true
 		}
-		if fallback == nil && strings.HasPrefix(item.Key, kind+"?") {
+		if exact || fallback != nil {
+			continue
+		}
+		if strings.HasPrefix(item.Key, kind+"?") {
 			fallback = item
 		}
 	}

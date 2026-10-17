@@ -65,10 +65,13 @@ type liveTask struct {
 	secret    string
 	cancel    context.CancelFunc
 	busy      bool
-	// pause is set when the profile signs out. The running task stops
-	// without aborting the multipart upload, so the next sign-in can resume.
-	pause  bool
-	decide chan decision
+	// pause is set when the profile signs out or the user pauses from the
+	// tray. The running task stops without aborting the multipart upload.
+	// pauseUser distinguishes a tray pause from a sign-out: sign-in resumes
+	// only the sign-out rows.
+	pause     bool
+	pauseUser bool
+	decide    chan decision
 }
 
 type creds struct {
@@ -374,14 +377,36 @@ func (e *Engine) Resume(profile Profile, token, accessKey, secret string) (int, 
 	if strings.TrimSpace(token) == "" && strings.TrimSpace(secret) == "" {
 		return 0, nil
 	}
+	e.retryPendingAborts(profile, token, accessKey, secret)
+	return e.resumeMatching(profile, token, accessKey, secret, func(task Task) bool {
+		return task.Message != "paused_user"
+	})
+}
+
+// ResumeUser continues transfers the user paused from the tray. Sign-in does
+// not call this: a paused_user row stays paused until Resume or Resume all.
+// An empty id resumes every paused_user row for the profile.
+func (e *Engine) ResumeUser(profile Profile, id, token, accessKey, secret string) (int, error) {
+	id = strings.TrimSpace(id)
+	return e.resumeMatching(profile, token, accessKey, secret, func(task Task) bool {
+		if task.Message != "paused_user" {
+			return false
+		}
+		return id == "" || task.ID == id
+	})
+}
+
+func (e *Engine) resumeMatching(profile Profile, token, accessKey, secret string, match func(Task) bool) (int, error) {
+	if strings.TrimSpace(token) == "" && strings.TrimSpace(secret) == "" {
+		return 0, nil
+	}
 	tasks, err := e.journal.List()
 	if err != nil {
 		return 0, err
 	}
-	e.retryPendingAborts(profile, token, accessKey, secret)
 	var ids []string
 	for _, task := range tasks {
-		if task.State != "interrupted" || task.ProfileID != profile.ID {
+		if task.State != "interrupted" || task.ProfileID != profile.ID || !match(task) {
 			continue
 		}
 		task.State = "queued"
@@ -396,6 +421,7 @@ func (e *Engine) Resume(profile Profile, token, accessKey, secret string) (int, 
 			e.live[task.ID] = live
 		}
 		live.pause = false
+		live.pauseUser = false
 		live.profile = profile
 		live.token = token
 		live.accessKey = accessKey
@@ -621,10 +647,20 @@ func (e *Engine) takePause(id string) bool {
 }
 
 // finishPause marks the task interrupted and leaves the multipart upload,
-// the confirmed parts, and a download's .dspart in place.
+// the confirmed parts, and a download's .dspart in place. A tray pause is
+// paused_user. Sign-out stays paused_signed_out.
 func (e *Engine) finishPause(task *Task) {
 	task.State = "interrupted"
 	task.Message = "paused_signed_out"
+	e.mu.Lock()
+	if live := e.live[task.ID]; live != nil {
+		if live.pauseUser {
+			task.Message = "paused_user"
+		}
+		live.pause = false
+		live.pauseUser = false
+	}
+	e.mu.Unlock()
 	_ = e.journal.SaveMeta(*task)
 }
 
@@ -635,19 +671,24 @@ func (e *Engine) PauseProfile(profileID string) error {
 	if profileID == "" || e.journal == nil {
 		return nil
 	}
-	return e.pauseMatching(profileID)
+	return e.pauseMatching(profileID, false)
 }
 
 // PauseAll stops every active transfer without aborting it. The tray uses
-// this. Sign-in of each profile resumes its own rows.
+// this. The rows stay paused_user until Resume or Resume all. Sign-in does
+// not continue them.
 func (e *Engine) PauseAll() error {
 	if e.journal == nil {
 		return nil
 	}
-	return e.pauseMatching("")
+	return e.pauseMatching("", true)
 }
 
-func (e *Engine) pauseMatching(profileID string) error {
+func (e *Engine) pauseMatching(profileID string, user bool) error {
+	message := "paused_signed_out"
+	if user {
+		message = "paused_user"
+	}
 	tasks, err := e.journal.List()
 	if err != nil {
 		return err
@@ -666,20 +707,62 @@ func (e *Engine) pauseMatching(profileID string) error {
 			e.live[task.ID] = live
 		}
 		live.pause = true
+		live.pauseUser = user
 		busy := live.busy
 		cancel := live.cancel
+		if !busy || cancel == nil {
+			live.pause = false
+			live.pauseUser = false
+		}
 		e.mu.Unlock()
 		if busy && cancel != nil {
 			cancel()
 			continue
 		}
 		task.State = "interrupted"
-		task.Message = "paused_signed_out"
+		task.Message = message
 		if err := e.journal.SaveMeta(task); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// ClearFinished removes done rows, and cancelled rows whose abort already
+// finished. A cancelled row with a pending abort stays so the next sign-in
+// can still DELETE it. Running, interrupted, and failed rows stay.
+func (e *Engine) ClearFinished(profileID string) (int, error) {
+	if e.journal == nil {
+		return 0, nil
+	}
+	profileID = strings.TrimSpace(profileID)
+	tasks, err := e.journal.List()
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, task := range tasks {
+		if profileID != "" && task.ProfileID != "" && task.ProfileID != profileID {
+			continue
+		}
+		switch task.State {
+		case "done":
+		case "cancelled":
+			if len(task.PendingAborts) > 0 {
+				continue
+			}
+		default:
+			continue
+		}
+		e.mu.Lock()
+		delete(e.live, task.ID)
+		e.mu.Unlock()
+		if err := e.journal.Delete(task.ID); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
 }
 
 func (e *Engine) finishCancel(ctx context.Context, task *Task, remote remote) {
@@ -1015,7 +1098,17 @@ func (e *Engine) storeFiles(task *Task) {
 
 func (e *Engine) syncProgress(task *Task) {
 	e.mu.Lock()
-	task.BytesDone = confirmedBytes(task, e.limits.PartSize)
+	shown := task.BytesDone
+	if task.BytesSeen > shown {
+		shown = task.BytesSeen
+	}
+	confirmed := confirmedBytes(task, e.limits.PartSize)
+	task.BytesDone = confirmed
+	if shown > confirmed {
+		task.BytesSeen = shown
+	} else {
+		task.BytesSeen = 0
+	}
 	e.mu.Unlock()
 	e.save(task)
 }
@@ -1046,6 +1139,9 @@ func (e *Engine) addProgress(task *Task, index int, n int64) {
 	task.BytesDone += n
 	if task.BytesDone < 0 {
 		task.BytesDone = 0
+	}
+	if task.BytesSeen > 0 && task.BytesDone >= task.BytesSeen {
+		task.BytesSeen = 0
 	}
 	now := time.Now()
 	write := n < 0 || e.progressEvery <= 0 || now.Sub(e.progressAt) >= e.progressEvery
@@ -2162,6 +2258,40 @@ func (a *App) transferResume(params map[string]any) (any, error) {
 	return map[string]any{"resumed": n}, nil
 }
 
+func (a *App) transferResumeUser(params map[string]any) (any, error) {
+	eng, err := a.engine()
+	if err != nil {
+		return nil, err
+	}
+	profile, err := a.profileFromParams(params)
+	if err != nil {
+		return nil, err
+	}
+	token, _ := params["token"].(string)
+	secret, _ := params["access_secret"].(string)
+	accessKey, _ := params["access_key"].(string)
+	if accessKey == "" {
+		accessKey = profile.Username
+	}
+	n, err := eng.ResumeUser(profile, strParam(params, "transfer_id"), token, accessKey, secret)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"resumed": n}, nil
+}
+
+func (a *App) transferClearFinished(params map[string]any) (any, error) {
+	eng, err := a.engine()
+	if err != nil {
+		return nil, err
+	}
+	n, err := eng.ClearFinished(strParam(params, "id"))
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"cleared": n}, nil
+}
+
 func (a *App) transferRetry(params map[string]any) (any, error) {
 	eng, err := a.engine()
 	if err != nil {
@@ -2210,12 +2340,16 @@ func (a *App) transferList(params map[string]any) (any, error) {
 			if full.BytesDone > items[i].BytesDone {
 				items[i].BytesDone = full.BytesDone
 			}
+			if full.BytesSeen > items[i].BytesDone {
+				items[i].BytesDone = full.BytesSeen
+			}
 			if partSize > 0 {
 				if n := confirmedBytes(&full, partSize); n > items[i].BytesDone {
 					items[i].BytesDone = n
 				}
 			}
 		}
+		items[i].BytesSeen = 0
 		scrubTask(&items[i])
 		items[i].Files = nil
 		items[i].Report = nil

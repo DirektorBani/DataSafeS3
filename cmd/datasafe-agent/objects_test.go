@@ -470,6 +470,21 @@ func TestOfflineListCacheKeepsTheSavedPage(t *testing.T) {
 	if !offline.Cached || offline.CachedAt == 0 || len(objects) != 1 {
 		t.Fatalf("offline objects %+v", offline)
 	}
+	if _, rpcErr = app.dispatch("object.list", map[string]any{"id": profile.ID, "token": "jwt", "bucket": "files"}); rpcErr == nil {
+		t.Fatal("another bucket reused the saved object list")
+	}
+	if _, rpcErr = app.dispatch("object.list", map[string]any{"id": profile.ID, "token": "jwt", "bucket": "photos", "prefix": "other/"}); rpcErr == nil {
+		t.Fatal("another prefix reused the saved object list")
+	}
+	raw, rpcErr = app.dispatch("object.list", params)
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	again := raw.(apiResult)
+	againObjects, _ := again.Body["objects"].([]any)
+	if !again.Cached || len(againObjects) != 1 {
+		t.Fatalf("photos list %+v", again)
+	}
 	raw, rpcErr = app.dispatch("bucket.list", map[string]any{"id": profile.ID, "token": "jwt", "filter": "owned"})
 	if rpcErr != nil {
 		t.Fatal(rpcErr.Message)

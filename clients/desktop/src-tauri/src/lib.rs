@@ -233,8 +233,53 @@ fn browse(state: State<Desktop>, id: String, method: String, params: Option<Valu
 fn transfer_method_allowed(method: &str) -> bool {
     matches!(
         method,
-        "transfer.list" | "transfer.enqueue" | "transfer.cancel" | "transfer.resolve" | "transfer.files" | "transfer.resume" | "transfer.retry"
+        "transfer.list"
+            | "transfer.enqueue"
+            | "transfer.cancel"
+            | "transfer.resolve"
+            | "transfer.files"
+            | "transfer.resume"
+            | "transfer.resume_user"
+            | "transfer.retry"
+            | "transfer.clear_finished"
     )
+}
+
+// resume_paused continues tray pauses for every signed-in profile. The token
+// stays in this process: the agent call is not written to the log by the
+// window wrapper, and the agent records only the method name.
+pub(crate) fn resume_paused(state: &Desktop) {
+    let Ok(mut agent) = state.agent.lock() else {
+        return;
+    };
+    let profiles = agent.call("profile.list", json!({})).unwrap_or(json!({}));
+    drop(agent);
+    let Some(items) = profiles.get("profiles").and_then(Value::as_array) else {
+        return;
+    };
+    for item in items {
+        if item.get("session").and_then(Value::as_str) != Some("signed_in") {
+            continue;
+        }
+        let Some(id) = item.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let token = token_for(state, id);
+        if token.is_empty() {
+            continue;
+        }
+        let mut body = json!({ "id": id, "token": token });
+        if let Ok(Some(secret)) = state.secrets.get(id, "access_secret") {
+            if !secret.is_empty() {
+                if let Some(obj) = body.as_object_mut() {
+                    obj.insert("access_secret".into(), Value::String(secret));
+                }
+            }
+        }
+        if let Ok(mut agent) = state.agent.lock() {
+            let _ = agent.call("transfer.resume_user", body);
+        }
+    }
 }
 
 fn strip_secrets(value: &mut Value) {
@@ -273,7 +318,7 @@ fn transfer(state: State<Desktop>, id: String, method: String, params: Option<Va
     obj.remove("access_secret");
     obj.insert("id".into(), Value::String(id.clone()));
     obj.insert("token".into(), Value::String(token));
-    if method == "transfer.enqueue" || method == "transfer.resume" || method == "transfer.retry" || method == "transfer.cancel" {
+    if method == "transfer.enqueue" || method == "transfer.resume" || method == "transfer.resume_user" || method == "transfer.retry" || method == "transfer.cancel" {
         if let Ok(Some(secret)) = state.secrets.get(&id, "access_secret") {
             if !secret.is_empty() {
                 obj.insert("access_secret".into(), Value::String(secret));
@@ -458,6 +503,9 @@ fn auth_oidc_browser(state: State<Desktop>, id: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tray::show_main(app);
+        }))
         .setup(|app| {
             SecretStore::require_native()?;
             let dir = profiles::data_dir();

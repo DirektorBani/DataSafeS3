@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, FolderOpen, Plus, Trash2 } from "lucide-react";
 import { Button } from "@datasafe/ui/ui/button";
@@ -37,6 +37,8 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
   const [encryption, setEncryption] = useState("");
   const [offline, setOffline] = useState(false);
   const [savedAt, setSavedAt] = useState(0);
+  const [cursor, setCursor] = useState(0);
+  const bucketRefs = useRef<Array<HTMLTableRowElement | null>>([]);
 
   const { profileId, onError } = props;
   const load = useCallback(async () => {
@@ -112,6 +114,38 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
     await load();
   }
 
+  function onBucketKey(event: KeyboardEvent<HTMLTableRowElement>, index: number) {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    const last = Math.max(buckets.length - 1, 0);
+    const go = (next: number) => {
+      const clamped = Math.max(0, Math.min(next, last));
+      setCursor(clamped);
+      bucketRefs.current[clamped]?.focus();
+    };
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      go(index + 1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      go(index - 1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      go(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      go(last);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const bucket = buckets[index];
+      if (bucket) {
+        setCursor(index);
+        setSelected(bucket.name);
+      }
+    }
+  }
+
   return (
     <section className="space-y-4">
       <StepUpDialog open={step.open} error={step.error} onCancel={step.cancel} onSubmit={(code) => void step.submit(code)} />
@@ -124,7 +158,7 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
         <>
           <div className="mb-4">
             <Button variant="ghost" size="sm" type="button" onClick={() => setSelected("")}>
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
               {t("bucketDetail:backToBuckets")}
             </Button>
           </div>
@@ -151,7 +185,7 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
                   </>
                 ) : (
                   <Button type="button" variant="outline" size="sm" onClick={() => setConfirm(true)}>
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
                     {t("deleteBucket")}
                   </Button>
                 )
@@ -168,7 +202,7 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
               <>
                 <Input className="w-48" aria-label={t("buckets:fields.bucketName")} placeholder={t("buckets:placeholder.bucketName")} value={name} onChange={(event) => setName(event.target.value)} />
                 <Button type="button" onClick={() => void createBucket()} disabled={!name.trim() || offline}>
-                  <Plus className="h-4 w-4" />
+                  <Plus className="h-4 w-4" aria-hidden="true" />
                   {t("buckets:actions.create")}
                 </Button>
               </>
@@ -186,33 +220,56 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
           </Tabs>
           <Card>
             <CardContent className="p-0">
-              <table className="w-full text-sm">
+              <table
+                className="w-full text-sm"
+                role="grid"
+                aria-label={t("buckets:title")}
+                aria-activedescendant={buckets.length > 0 ? `bucket-row-${Math.min(cursor, buckets.length - 1)}` : undefined}
+              >
                 <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="p-3">{t("buckets:columns.name")}</th>
-                    <th className="p-3">{t("buckets:columns.access")}</th>
+                  <tr role="row" className="border-b text-left text-muted-foreground">
+                    <th role="columnheader" className="p-3">{t("buckets:columns.name")}</th>
+                    <th role="columnheader" className="p-3">{t("buckets:columns.access")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {buckets.length === 0 ? (
-                    <tr>
-                      <td colSpan={2} className="p-8 text-center text-muted-foreground">
+                    <tr role="row">
+                      <td role="gridcell" colSpan={2} className="p-8 text-center text-muted-foreground">
                         {t("buckets:empty.owned")}
                       </td>
                     </tr>
                   ) : null}
-                  {buckets.map((bucket) => (
-                    <tr key={bucket.name} className="cursor-pointer border-b hover:bg-muted/50" onClick={() => setSelected(bucket.name)}>
-                      <td className="p-3">
-                        <span className="inline-flex items-center gap-2 font-medium text-primary">
-                          <FolderOpen className="h-4 w-4" />
-                          {bucket.name}
-                          {bucket.object_lock_enabled ? " · lock" : ""}
-                        </span>
-                      </td>
-                      <td className="p-3 capitalize text-muted-foreground">{bucket.access?.ownership || "—"}</td>
-                    </tr>
-                  ))}
+                  {buckets.map((bucket, index) => {
+                    const active = index === Math.min(cursor, buckets.length - 1);
+                    return (
+                      <tr
+                        key={bucket.name}
+                        id={`bucket-row-${index}`}
+                        role="row"
+                        tabIndex={active ? 0 : -1}
+                        aria-selected={active}
+                        ref={(node) => {
+                          bucketRefs.current[index] = node;
+                        }}
+                        className={`cursor-pointer border-b hover:bg-muted/50 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring${active ? " bg-muted/30" : ""}`}
+                        onClick={() => {
+                          setCursor(index);
+                          setSelected(bucket.name);
+                        }}
+                        onKeyDown={(event) => onBucketKey(event, index)}
+                      >
+                        <td role="gridcell" className="p-3">
+                          <span className="inline-flex items-center gap-2 font-medium text-primary">
+                            <FolderOpen className="h-4 w-4" aria-hidden="true" />
+                            {bucket.name}
+                            {bucket.object_lock_enabled ? " · lock" : ""}
+                          </span>
+                        </td>
+                        <td role="gridcell" className="p-3 capitalize text-muted-foreground">{bucket.access?.ownership || "—"}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </CardContent>

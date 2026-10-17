@@ -24,12 +24,14 @@ fn build(app: &App) -> Result<(), String> {
     let status = MenuItem::with_id(app, "status", status_line(&locale, 0, 0, 0, 0), false, None::<&str>).map_err(|err| err.to_string())?;
     let show = MenuItem::with_id(app, "show", label(&locale, "show"), true, None::<&str>).map_err(|err| err.to_string())?;
     let pause = MenuItem::with_id(app, "pause", label(&locale, "pause"), true, None::<&str>).map_err(|err| err.to_string())?;
+    let resume = MenuItem::with_id(app, "resume", label(&locale, "resume"), true, None::<&str>).map_err(|err| err.to_string())?;
     let quit = MenuItem::with_id(app, "quit", label(&locale, "quit"), true, None::<&str>).map_err(|err| err.to_string())?;
-    let menu = Menu::with_items(app, &[&status, &show, &pause, &quit]).map_err(|err| err.to_string())?;
+    let menu = Menu::with_items(app, &[&status, &show, &pause, &resume, &quit]).map_err(|err| err.to_string())?;
     let icon = app.default_window_icon().cloned().ok_or("window icon is missing")?;
     let tray = TrayIconBuilder::with_id("main")
         .menu(&menu)
         .icon(icon)
+        .tooltip("DataSafeS3 Desktop")
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main(app),
@@ -40,6 +42,14 @@ fn build(app: &App) -> Result<(), String> {
                         if let Ok(mut agent) = state.agent.lock() {
                             let _ = agent.call("transfer.pause_all", serde_json::json!({}));
                         }
+                    }
+                });
+            }
+            "resume" => {
+                let handle = app.clone();
+                thread::spawn(move || {
+                    if let Some(state) = handle.try_state::<Desktop>() {
+                        crate::resume_paused(&state);
                     }
                 });
             }
@@ -61,6 +71,7 @@ fn build(app: &App) -> Result<(), String> {
     let status_item = status.clone();
     let show_item = show.clone();
     let pause_item = pause.clone();
+    let resume_item = resume.clone();
     let quit_item = quit.clone();
     let handle = app.handle().clone();
     thread::spawn(move || loop {
@@ -75,6 +86,7 @@ fn build(app: &App) -> Result<(), String> {
         }
         let _ = show_item.set_text(label(&locale, "show"));
         let _ = pause_item.set_text(label(&locale, "pause"));
+        let _ = resume_item.set_text(label(&locale, "resume"));
         let _ = quit_item.set_text(label(&locale, "quit"));
     });
     // The icon is removed when this value is dropped. It has to outlive setup.
@@ -82,7 +94,7 @@ fn build(app: &App) -> Result<(), String> {
     Ok(())
 }
 
-fn show_main(app: &tauri::AppHandle) {
+pub(crate) fn show_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();
@@ -135,6 +147,8 @@ fn label(locale: &str, id: &str) -> String {
         "show" => "Show".to_string(),
         "pause" if ru => "Пауза всех".to_string(),
         "pause" => "Pause all".to_string(),
+        "resume" if ru => "Продолжить все".to_string(),
+        "resume" => "Resume all".to_string(),
         "quit" if ru => "Выход".to_string(),
         _ => "Quit".to_string(),
     }

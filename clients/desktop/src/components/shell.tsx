@@ -28,12 +28,13 @@ function NavItem(props: {
     <button
       type="button"
       onClick={props.onClick}
+      aria-current={props.active ? "page" : undefined}
       className={cn(
         "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
         props.active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
       )}
     >
-      <Icon className="h-4 w-4 shrink-0" />
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
       {props.label}
     </button>
   );
@@ -58,7 +59,7 @@ export function DesktopShell(props: {
     <div className="flex h-screen overflow-hidden">
       <aside className="flex h-full w-64 flex-col border-r bg-card">
         <div className="flex h-14 items-center gap-2 border-b px-4">
-          <Database className="h-5 w-5 text-primary" />
+          <Database className="h-5 w-5 text-primary" aria-hidden="true" />
           <div>
             <p className="text-sm font-semibold leading-none">{t("common:brand")}</p>
             <p className="text-xs text-muted-foreground">{t("common:tagline")}</p>
@@ -78,7 +79,7 @@ export function DesktopShell(props: {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="w-full justify-start gap-2">
-                {themeIcon === Moon ? <Moon className="h-4 w-4" /> : themeIcon === Sun ? <Sun className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
+                {themeIcon === Moon ? <Moon className="h-4 w-4" aria-hidden="true" /> : themeIcon === Sun ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Monitor className="h-4 w-4" aria-hidden="true" />}
                 {t("common:theme.label", { theme: t(`common:theme.${props.theme}`) })}
               </Button>
             </DropdownMenuTrigger>
@@ -86,18 +87,18 @@ export function DesktopShell(props: {
               <DropdownMenuLabel>{t("common:theme.appearance")}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => props.onTheme("dark")}>
-                <Moon className="mr-2 h-4 w-4" /> {t("common:theme.dark")}
+                <Moon className="mr-2 h-4 w-4" aria-hidden="true" /> {t("common:theme.dark")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => props.onTheme("light")}>
-                <Sun className="mr-2 h-4 w-4" /> {t("common:theme.light")}
+                <Sun className="mr-2 h-4 w-4" aria-hidden="true" /> {t("common:theme.light")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => props.onTheme("system")}>
-                <Monitor className="mr-2 h-4 w-4" /> {t("common:theme.system")}
+                <Monitor className="mr-2 h-4 w-4" aria-hidden="true" /> {t("common:theme.system")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <Button variant="ghost" size="sm" className="w-full justify-start gap-2" disabled={!props.signedIn} onClick={props.onSignOut}>
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-4 w-4" aria-hidden="true" />
             {t("common:signOut")}
           </Button>
         </div>

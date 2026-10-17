@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link2 } from "lucide-react";
 import { Button } from "@datasafe/ui/ui/button";
@@ -88,6 +88,7 @@ export function ShareDialog(props: {
   const [url, setUrl] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) {
@@ -240,12 +241,17 @@ export function ShareDialog(props: {
 
   return (
     <>
-      <Button type="button" size="sm" variant="outline" disabled={props.offline} onClick={() => setOpen(true)}>
-        <Link2 className="h-4 w-4" />
+      <Button ref={triggerRef} type="button" size="sm" variant="outline" disabled={props.offline} onClick={() => setOpen(true)}>
+        <Link2 className="h-4 w-4" aria-hidden="true" />
         {t("bucketDetail:tabs.share")}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            triggerRef.current?.focus();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{t("bucketDetail:share.title", { key: props.objectKey })}</DialogTitle>
             <DialogDescription>{mode === "link" ? t("shareLinkHint") : t("presignHint")}</DialogDescription>

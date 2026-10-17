@@ -249,8 +249,12 @@ func (a *App) dispatch(method string, params map[string]any) (any, *rpcError) {
 		return rpcCall(a.transferFiles(params))
 	case "transfer.resume":
 		return rpcCall(a.transferResume(params))
+	case "transfer.resume_user":
+		return rpcCall(a.transferResumeUser(params))
 	case "transfer.pause_all":
 		return rpcCall(a.transferPauseAll())
+	case "transfer.clear_finished":
+		return rpcCall(a.transferClearFinished(params))
 	case "transfer.retry":
 		return rpcCall(a.transferRetry(params))
 	case "diag.preview":

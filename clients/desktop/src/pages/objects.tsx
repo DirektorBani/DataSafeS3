@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronRight, File, Folder, FolderPlus, Trash2 } from "lucide-react";
 import { Button } from "@datasafe/ui/ui/button";
@@ -72,6 +72,7 @@ export function ObjectBrowser(props: {
   const [selectKey, setSelectKey] = useState("");
   const [listOffline, setListOffline] = useState(false);
   const [savedAt, setSavedAt] = useState(0);
+  const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
 
   const load = useCallback(
     async (nextPrefix: string, startAfter: string, recordFirst: boolean) => {
@@ -212,36 +213,46 @@ export function ObjectBrowser(props: {
     await openTrash();
   }
 
-  function onKey(event: KeyboardEvent<HTMLDivElement>) {
+  function onRowKey(event: KeyboardEvent<HTMLTableRowElement>, index: number) {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    const last = Math.max(visible.length - 1, 0);
+    const go = (next: number) => {
+      const clamped = Math.max(0, Math.min(next, last));
+      setSelected(clamped);
+      rowRefs.current[clamped]?.focus();
+    };
+    const row = visible[index];
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setSelected((index) => Math.min(index + 1, Math.max(visible.length - 1, 0)));
+      go(index + 1);
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      setSelected((index) => Math.max(index - 1, 0));
-    } else if (event.key === "Enter" && current?.kind === "folder") {
+      go(index - 1);
+    } else if (event.key === "Enter" && row?.kind === "folder") {
       event.preventDefault();
-      setPrefix(current.key);
+      setPrefix(row.key);
       setMarkers([""]);
-      void load(current.key, "", true);
-    } else if (event.key === "Delete" && canWrite && current) {
+      void load(row.key, "", true);
+    } else if (event.key === "Delete" && canWrite && row) {
       event.preventDefault();
-      setConfirmKey(current.key);
-    } else if (event.key === "F2" && canWrite && current?.kind === "object") {
+      setConfirmKey(row.key);
+    } else if (event.key === "F2" && canWrite && row?.kind === "object") {
       event.preventDefault();
-      setRenaming(current.name);
+      setRenaming(row.name);
     } else if (event.key === "Home") {
       event.preventDefault();
-      setSelected(0);
+      go(0);
     } else if (event.key === "End") {
       event.preventDefault();
-      setSelected(Math.max(visible.length - 1, 0));
+      go(last);
     } else if (event.key === "PageUp") {
       event.preventDefault();
-      setSelected((index) => Math.max(index - 10, 0));
+      go(index - 10);
     } else if (event.key === "PageDown") {
       event.preventDefault();
-      setSelected((index) => Math.min(index + 10, Math.max(visible.length - 1, 0)));
+      go(index + 10);
     } else if (event.key === "Backspace" && prefix) {
       event.preventDefault();
       const next = parentPrefix(prefix);
@@ -296,7 +307,7 @@ export function ObjectBrowser(props: {
           <div className="flex flex-wrap items-center gap-2 text-sm">
             {crumbItems.map((crumb, index) => (
               <span key={crumb.path || "root"} className="inline-flex items-center gap-1">
-                {index > 0 ? <ChevronRight className="h-3 w-3 text-muted-foreground" /> : null}
+                {index > 0 ? <ChevronRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" /> : null}
                 <button
                   type="button"
                   className={cn("hover:text-primary", index === crumbItems.length - 1 ? "font-medium text-foreground" : "text-muted-foreground")}
@@ -325,7 +336,7 @@ export function ObjectBrowser(props: {
               <>
                 <Input className="max-w-xs" placeholder={t("bucketDetail:actions.newFolder")} value={folderName} onChange={(event) => setFolderName(event.target.value)} />
                 <Button type="button" variant="outline" size="sm" onClick={() => void createFolder()}>
-                  <FolderPlus className="h-4 w-4" />
+                  <FolderPlus className="h-4 w-4" aria-hidden="true" />
                   {t("bucketDetail:actions.newFolder")}
                 </Button>
               </>
@@ -334,66 +345,81 @@ export function ObjectBrowser(props: {
           <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
             <Card>
               <CardContent className="p-0">
-                <div tabIndex={0} aria-label={t("objects")} className="max-h-[28rem] overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-ring" onKeyDown={onKey}>
-                  <table className="w-full text-sm">
+                <div className="max-h-[28rem] overflow-auto">
+                  <table
+                    className="w-full text-sm"
+                    role="grid"
+                    aria-label={t("objects")}
+                    aria-activedescendant={visible.length > 0 ? `object-row-${Math.min(selected, visible.length - 1)}` : undefined}
+                  >
                     <thead>
-                      <tr className="border-b text-left text-muted-foreground">
-                        <th className="p-3">{t("bucketDetail:table.name")}</th>
-                        <th className="p-3">{t("bucketDetail:table.size")}</th>
-                        <th className="p-3">{t("bucketDetail:table.modified")}</th>
-                        <th className="w-24 p-3" />
+                      <tr role="row" className="border-b text-left text-muted-foreground">
+                        <th role="columnheader" className="p-3">{t("bucketDetail:table.name")}</th>
+                        <th role="columnheader" className="p-3">{t("bucketDetail:table.size")}</th>
+                        <th role="columnheader" className="p-3">{t("bucketDetail:table.modified")}</th>
+                        <th role="columnheader" className="w-24 p-3" />
                       </tr>
                     </thead>
                     <tbody>
                       {visible.length === 0 ? (
-                        <tr>
-                          <td colSpan={4} className="p-8 text-center text-muted-foreground">
+                        <tr role="row">
+                          <td role="gridcell" colSpan={4} className="p-8 text-center text-muted-foreground">
                             {t("bucketDetail:emptyFolder")}
                           </td>
                         </tr>
                       ) : null}
-                      {visible.map((row, index) => (
-                        <tr
-                          key={row.key}
-                          aria-current={index === selected ? "true" : undefined}
-                          className={cn("cursor-pointer border-b hover:bg-muted/50", index === selected && "bg-muted/30")}
-                          onClick={() => {
-                            setSelected(index);
-                            if (row.kind === "folder") {
-                              setPrefix(row.key);
-                              setMarkers([""]);
-                              void load(row.key, "", true);
-                            }
-                          }}
-                        >
-                          <td className="p-3 font-mono">
-                            <span className="inline-flex items-center gap-2">
-                              {row.kind === "folder" ? <Folder className="h-4 w-4 text-amber-500" /> : <File className="h-4 w-4 text-muted-foreground" />}
-                              {row.name}
-                            </span>
-                          </td>
-                          <td className="p-3">{row.object?.size ?? ""}</td>
-                          <td className="p-3">{row.object?.last_modified || ""}</td>
-                          <td className="p-3">
-                            {canWrite ? (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-destructive"
-                                aria-label={t("common:delete")}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setSelected(index);
-                                  setConfirmKey(row.key);
-                                }}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            ) : null}
-                          </td>
-                        </tr>
-                      ))}
+                      {visible.map((row, index) => {
+                        const active = index === Math.min(selected, Math.max(visible.length - 1, 0));
+                        return (
+                          <tr
+                            key={row.key}
+                            id={`object-row-${index}`}
+                            role="row"
+                            tabIndex={active ? 0 : -1}
+                            aria-selected={active}
+                            ref={(node) => {
+                              rowRefs.current[index] = node;
+                            }}
+                            className={cn("cursor-pointer border-b hover:bg-muted/50 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", active && "bg-muted/30")}
+                            onClick={() => {
+                              setSelected(index);
+                              if (row.kind === "folder") {
+                                setPrefix(row.key);
+                                setMarkers([""]);
+                                void load(row.key, "", true);
+                              }
+                            }}
+                            onKeyDown={(event) => onRowKey(event, index)}
+                          >
+                            <td role="gridcell" className="p-3 font-mono">
+                              <span className="inline-flex items-center gap-2">
+                                {row.kind === "folder" ? <Folder className="h-4 w-4 text-amber-500" aria-hidden="true" /> : <File className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
+                                {row.name}
+                              </span>
+                            </td>
+                            <td role="gridcell" className="p-3">{row.object?.size ?? ""}</td>
+                            <td role="gridcell" className="p-3">{row.object?.last_modified || ""}</td>
+                            <td role="gridcell" className="p-3">
+                              {canWrite ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-destructive"
+                                  aria-label={t("deleteObject", { name: row.name })}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setSelected(index);
+                                    setConfirmKey(row.key);
+                                  }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                </Button>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

@@ -1608,9 +1608,104 @@ func TestPauseAllLeavesEveryProfile(t *testing.T) {
 	}
 	for _, id := range []string{"a", "b"} {
 		got, err := e.journal.Get(id)
-		if err != nil || got.State != "interrupted" || got.Message != "paused_signed_out" || got.UploadID == "" {
+		if err != nil || got.State != "interrupted" || got.Message != "paused_user" || got.UploadID == "" {
 			t.Fatalf("%s %+v %v", id, got, err)
 		}
+	}
+}
+
+func TestSignInLeavesAUserPause(t *testing.T) {
+	e := testEngine(t, &fakeRemote{})
+	e.syncRun = false
+	task := Task{ID: "a", ProfileID: "p", State: "running", Bucket: "b", Key: "k", UploadID: "up1"}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.PauseAll(); err != nil {
+		t.Fatal(err)
+	}
+	n, err := e.Resume(Profile{ID: "p"}, "tok", "", "")
+	if err != nil || n != 0 {
+		t.Fatalf("sign-in resumed %d %v", n, err)
+	}
+	got, err := e.journal.Get("a")
+	if err != nil || got.State != "interrupted" || got.Message != "paused_user" || got.UploadID != "up1" {
+		t.Fatalf("after sign-in %+v %v", got, err)
+	}
+	n, err = e.ResumeUser(Profile{ID: "p"}, "a", "tok", "", "")
+	if err != nil || n != 1 {
+		t.Fatalf("resume %d %v", n, err)
+	}
+	got, err = e.journal.Get("a")
+	if err != nil || got.State != "queued" || got.Message != "" {
+		t.Fatalf("queued %+v %v", got, err)
+	}
+}
+
+func TestSyncProgressKeepsADisplayFloor(t *testing.T) {
+	e := testEngine(t, &fakeRemote{})
+	task := Task{ID: "t1", ProfileID: "p", State: "running", BytesDone: 12, Files: []fileJob{{Key: "k", Size: 40}}}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := e.journal.Get("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.syncProgress(&loaded)
+	if loaded.BytesDone != 0 || loaded.BytesSeen != 12 {
+		t.Fatalf("floor done %d seen %d", loaded.BytesDone, loaded.BytesSeen)
+	}
+	app := &App{transfers: e}
+	raw, err := app.transferList(map[string]any{"id": "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := raw.(map[string]any)["transfers"].([]Task)
+	if len(items) != 1 || items[0].BytesDone != 12 || items[0].BytesSeen != 0 {
+		t.Fatalf("listed %+v", items)
+	}
+	stored, err := e.journal.Get("t1")
+	if err != nil || stored.BytesDone != 0 || stored.BytesSeen != 12 {
+		t.Fatalf("journal %+v %v", stored, err)
+	}
+	e.addProgress(&loaded, 0, 12)
+	if loaded.BytesDone != 12 || loaded.BytesSeen != 0 {
+		t.Fatalf("caught up done %d seen %d", loaded.BytesDone, loaded.BytesSeen)
+	}
+}
+
+func TestClearFinishedKeepsAPendingAbort(t *testing.T) {
+	e := testEngine(t, &fakeRemote{})
+	rows := []Task{
+		{ID: "done", ProfileID: "p", State: "done", Key: "a"},
+		{ID: "gone", ProfileID: "p", State: "cancelled", Key: "b"},
+		{ID: "wait", ProfileID: "p", State: "cancelled", Key: "c", PendingAborts: []pendingAbort{{UploadID: "up"}}},
+		{ID: "run", ProfileID: "p", State: "running", Key: "d"},
+		{ID: "other", ProfileID: "q", State: "done", Key: "e"},
+	}
+	for _, task := range rows {
+		if err := e.journal.Save(task); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := e.ClearFinished("p")
+	if err != nil || n != 2 {
+		t.Fatalf("cleared %d %v", n, err)
+	}
+	for _, id := range []string{"done", "gone"} {
+		if _, err := e.journal.Get(id); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%s %v", id, err)
+		}
+	}
+	if got, err := e.journal.Get("wait"); err != nil || len(got.PendingAborts) != 1 {
+		t.Fatalf("pending %+v %v", got, err)
+	}
+	if got, err := e.journal.Get("run"); err != nil || got.State != "running" {
+		t.Fatalf("running %+v %v", got, err)
+	}
+	if got, err := e.journal.Get("other"); err != nil || got.State != "done" {
+		t.Fatalf("other profile %+v %v", got, err)
 	}
 }
 

@@ -56,6 +56,7 @@ const messages: Record<string, string> = {
   presign_unavailable: "presignUnavailable",
   resume_after_restart: "resumeAfterRestart",
   paused_signed_out: "pausedSignedOut",
+  paused_user: "pausedUser",
   "tls.untrusted": "tlsUntrusted",
   "tls.failed": "tlsFailed",
   "request.invalid": "codeRequestInvalid",
@@ -97,6 +98,9 @@ function explain(task: TransferTask, t: (key: string, options?: { code: string }
 }
 
 function transferSummary(tasks: TransferTask[], t: (key: string) => string): string {
+  if (tasks.some((task) => task.message === "paused_user")) {
+    return t("pausedUser");
+  }
   if (tasks.some((task) => task.message === "paused_signed_out")) {
     return t("pausedSignedOut");
   }
@@ -236,7 +240,7 @@ export function TransferPanel(props: {
     }
   }
 
-  async function act(method: "transfer.cancel" | "transfer.resolve" | "transfer.retry", id: string, extra: Record<string, unknown> = {}) {
+  async function act(method: "transfer.cancel" | "transfer.resolve" | "transfer.retry" | "transfer.resume_user", id: string, extra: Record<string, unknown> = {}) {
     setError("");
     try {
       await transfer(props.profileId, method, { transfer_id: id, ...extra });
@@ -308,6 +312,11 @@ export function TransferPanel(props: {
                 <Button type="button" variant="outline" onClick={() => void toggleDetails(task.id)}>
                   {detailId === task.id ? t("hideDetails") : t("details")}
                 </Button>
+                {task.message === "paused_user" ? (
+                  <Button type="button" variant="outline" onClick={() => void act("transfer.resume_user", task.id)}>
+                    {t("resume")}
+                  </Button>
+                ) : null}
                 {task.state === "error" ? (
                   <Button type="button" variant="outline" onClick={() => void act("transfer.retry", task.id)}>
                     {t("retry")}
@@ -439,6 +448,11 @@ export function ResumeProgress(props: { profileId: string; onSummary?: (text: st
               {task.size ? ` · ${formatBytes(task.bytes_done ?? 0)} / ${formatBytes(task.size)}` : task.bytes_done ? ` · ${formatBytes(task.bytes_done)}` : ""}
             </span>
             <span className="flex gap-2">
+              {task.message === "paused_user" ? (
+                <Button type="button" size="sm" variant="outline" onClick={() => void transfer(props.profileId, "transfer.resume_user", { transfer_id: task.id })}>
+                  {t("resume")}
+                </Button>
+              ) : null}
               {task.state === "error" ? (
                 <Button type="button" size="sm" variant="outline" onClick={() => void transfer(props.profileId, "transfer.retry", { transfer_id: task.id })}>
                   {t("retry")}

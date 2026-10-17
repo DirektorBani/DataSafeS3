@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -28,6 +29,16 @@ func main() {
 		fmt.Fprintln(os.Stderr, "data-dir")
 		os.Exit(1)
 	}
+	lock, err := acquireAgentLock(*dataDir)
+	if err != nil {
+		if errors.Is(err, errAgentBusy) {
+			fmt.Fprintln(os.Stderr, errAgentBusy.Error())
+		} else {
+			fmt.Fprintln(os.Stderr, "data-dir")
+		}
+		os.Exit(1)
+	}
+	defer releaseAgentLock(lock)
 	logger, err := openLogger(filepath.Join(*dataDir, "logs"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "log")

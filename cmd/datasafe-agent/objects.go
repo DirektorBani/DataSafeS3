@@ -250,10 +250,10 @@ func (a *App) objectList(params map[string]any) (apiResult, error) {
 // A 401 or any other server answer is left as the server sent it.
 func (a *App) listOrCache(params map[string]any, kind string, query url.Values, call func() (apiResult, error)) (apiResult, error) {
 	id := strParam(params, "id")
-	key := kind + "?" + query.Encode()
+	key := listCacheKey(kind, params, query)
 	result, err := call()
 	if err != nil {
-		if cached, ok := a.cachedList(id, key); ok {
+		if cached, ok := a.cachedList(id, key, kind == "object.list"); ok {
 			return cached, nil
 		}
 		return result, err
@@ -262,6 +262,21 @@ func (a *App) listOrCache(params map[string]any, kind string, query url.Values, 
 		a.rememberList(id, key, result.Body)
 	}
 	return result, nil
+}
+
+// listCacheKey names one saved page. An object list includes the bucket and
+// the prefix: those live in the path and the query, and a page from another
+// bucket must not be returned when this one is missing. A bucket list is
+// keyed by its query, and a missing filter can still use another saved
+// bucket list for the same profile.
+func listCacheKey(kind string, params map[string]any, query url.Values) string {
+	encoded := query.Encode()
+	if kind != "object.list" {
+		return kind + "?" + encoded
+	}
+	bucket := url.QueryEscape(strParam(params, "bucket"))
+	prefix := url.QueryEscape(query.Get("prefix"))
+	return kind + "?bucket=" + bucket + "&prefix=" + prefix + "&" + encoded
 }
 
 func (a *App) objectMeta(params map[string]any, method string, payload any) (apiResult, error) {
