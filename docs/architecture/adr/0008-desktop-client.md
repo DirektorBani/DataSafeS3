@@ -61,7 +61,15 @@ CompleteMultipartUpload uses a client with no response-header timeout. The ordin
 
 `bytes_done` and `size` advance while a transfer is running. Upload progress is counted as each part or chunk is read. Download progress is counted as each chunk is written, and a download learns its size from object-meta or S3 HEAD when the listing did not carry one. The panel shows that as done/total. The download path is the destination folder.
 
-Each file in a directory transfer is its own journal row. The task row keeps the counters and the report, not the file list, so finishing one file does not rewrite the other files.
+Each file in a directory transfer is its own journal row. The task row keeps the counters and the report, not the file list, so finishing one file does not rewrite the other files. Small objects use the same transfer concurrency as large ones (4 by default). File-row updates are queued and synced in batches of 32, or every 200ms, whichever comes first. A state change (finished, waiting, cancelled) syncs immediately. The list and the progress read overlay the queue, so the counters move before the sync. The transfer list stays a summary. Per-file state and the rename/skip report are loaded on demand with `transfer.files`.
+
+### E04 logs, diagnostics, and TLS
+
+The agent writes `logs/agent.log` and the window writes `logs/desktop.log`. Each rotates at 5 × 10 MiB. `DATASAFE_DESKTOP_LOG_LEVEL`, `DATASAFE_DESKTOP_LOG_MAX_MB`, and `DATASAFE_DESKTOP_LOG_MAX_FILES` change the level and the rotation. Secrets are masked at every level: `Authorization`, `X-DataSafe-MFA-Token`, `X-Amz-Signature`, `X-Amz-Credential`, `password`, `secret`, `token`, and the query string of a presigned URL. The log line is the method name and a masked error. RPC parameters are not logged.
+
+Diagnostics show the log names, sizes, and version text first. Saving writes `datasafe-desktop-diagnostics.zip` containing those logs and `versions.txt` only. `profiles.json` and `transfers.db` are not in the archive. Windows `desktop-ci` runs `secrets-in-logs`.
+
+TLS is verified, with a minimum of TLS 1.2. A profile `ca_file` is added to the system trust pool. `insecure_dev` skips verification and the window says so. HTTP is allowed only to loopback. A self-signed certificate is refused unless the flag is set or the certificate is the configured CA.
 
 A download writes `<name>.dspart` beside the target and renames it after the size and ETag agree. Resume uses `Range` on an S3 GET for an access-key profile, and a presigned GET for a JWT profile. REST `Range` is used only when the server advertises `objects.range`, which is not part of 1.6.1. Without a presign right and without `objects.range`, the download starts again and the panel says so. A network failure sets the task to waiting, with a pause of 1s that doubles up to 60s, and continues without restarting the app. Rows that were still running when the agent starts again are marked interrupted. Continuing them after a restart is E06; the confirmed parts stay in the journal for that step.
 

@@ -39,19 +39,47 @@ type fakeRemote struct {
 	statFound        bool
 	statSize         int64
 	statETag         string
+	gate             chan struct{}
+	inflight         int
+	maxInflight      int
 }
 
 func (f *fakeRemote) Put(ctx context.Context, key string, body io.Reader, n int64) (string, error) {
 	_, _ = io.Copy(io.Discard, body)
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.puts++
 	f.keys = append(f.keys, key)
 	if f.netLeft > 0 {
 		f.netLeft--
+		f.mu.Unlock()
 		return "", errNetwork
 	}
+	f.inflight++
+	if f.inflight > f.maxInflight {
+		f.maxInflight = f.inflight
+	}
+	gate := f.gate
+	f.mu.Unlock()
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			f.mu.Lock()
+			f.inflight--
+			f.mu.Unlock()
+			return "", ctx.Err()
+		}
+	}
+	f.mu.Lock()
+	f.inflight--
+	f.mu.Unlock()
 	return "put", nil
+}
+
+func (f *fakeRemote) maxPuts() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.maxInflight
 }
 
 func (f *fakeRemote) Initiate(ctx context.Context, key string) (string, error) {
@@ -572,6 +600,71 @@ func TestDirectoryJournalDoesNotRewriteEveryFile(t *testing.T) {
 	}
 	if bytes.Contains(taskBlob, []byte("f0.txt")) || len(taskBlob) > 8192 {
 		t.Fatalf("task row embedded the file list (%d bytes)", len(taskBlob))
+	}
+}
+
+func TestSmallFilesOverlapAndBatchSync(t *testing.T) {
+	dir := t.TempDir()
+	const n = 40
+	for i := 0; i < n; i++ {
+		name := filepath.Join(dir, "f"+itoa(i)+".txt")
+		if err := os.WriteFile(name, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	release := make(chan struct{})
+	fake := &fakeRemote{gate: release}
+	e := testEngine(t, fake)
+	e.limits.Transfers = 4
+	e.progressEvery = time.Hour
+	e.journal.flushEvery = time.Hour
+	e.journal.batchSize = 32
+	before := e.journal.Syncs()
+	type enqueueResult struct {
+		task Task
+		err  error
+	}
+	errCh := make(chan enqueueResult, 1)
+	go func() {
+		task, err := e.Enqueue(enqueueReq{Token: "t", Direction: "upload", Bucket: "b", Key: "pre", LocalPath: dir})
+		errCh <- enqueueResult{task: task, err: err}
+	}()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && fake.maxPuts() < e.limits.Transfers {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if fake.maxPuts() < e.limits.Transfers {
+		t.Fatalf("in flight %d, want at least %d", fake.maxPuts(), e.limits.Transfers)
+	}
+	close(release)
+	var got Task
+	select {
+	case result := <-errCh:
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		got = result.task
+	case <-time.After(5 * time.Second):
+		t.Fatal("upload did not finish")
+	}
+	if got.State != "done" || got.FilesDone != n || got.FilesTotal != n {
+		t.Fatalf("state %s files %d/%d %s", got.State, got.FilesDone, got.FilesTotal, got.Message)
+	}
+	rows, err := e.journal.LoadFiles(got.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != n {
+		t.Fatalf("file rows %d", len(rows))
+	}
+	for i := range rows {
+		if !rows[i].Done {
+			t.Fatalf("row %d not done", i)
+		}
+	}
+	delta := e.journal.Syncs() - before
+	if delta < 1 || delta >= n {
+		t.Fatalf("syncs %d for %d files", delta, n)
 	}
 }
 

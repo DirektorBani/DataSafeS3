@@ -12,6 +12,7 @@ fn main() {
                 "profile_forget",
                 "browse",
                 "transfer",
+                "diag",
                 "server_info",
                 "auth_login",
                 "auth_mfa",

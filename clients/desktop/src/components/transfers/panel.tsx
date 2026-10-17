@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Button } from "@datasafe/ui/ui/button";
-import { transfer, type TransferTask } from "../../desktop";
+import { transfer, type TransferDetail, type TransferTask } from "../../desktop";
 
 function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n < 0) {
@@ -45,6 +45,8 @@ export function TransferPanel(props: {
   const [tasks, setTasks] = useState<TransferTask[]>([]);
   const [error, setError] = useState("");
   const [applyAll, setApplyAll] = useState(false);
+  const [detailId, setDetailId] = useState("");
+  const [detail, setDetail] = useState<TransferDetail | null>(null);
 
   useEffect(() => {
     let stop = false;
@@ -141,6 +143,22 @@ export function TransferPanel(props: {
     }
   }
 
+  async function toggleDetails(id: string) {
+    if (detailId === id) {
+      setDetailId("");
+      setDetail(null);
+      return;
+    }
+    setError("");
+    try {
+      const result = await transfer(props.profileId, "transfer.files", { transfer_id: id });
+      setDetailId(id);
+      setDetail(result.detail ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   function explain(task: TransferTask): string {
     const key = task.message ? messages[task.message] : "";
     if (key) {
@@ -189,11 +207,16 @@ export function TransferPanel(props: {
                 {task.size ? ` · ${formatBytes(task.bytes_done ?? 0)} / ${formatBytes(task.size)}` : task.bytes_done ? ` · ${formatBytes(task.bytes_done)}` : ""}
                 {task.files_total && task.files_total > 1 ? ` · ${task.files_done ?? 0}/${task.files_total}` : ""}
               </span>
-              {task.state === "queued" || task.state === "running" || task.state === "waiting_network" || task.state === "conflict" ? (
-                <Button type="button" variant="outline" onClick={() => void act("transfer.cancel", task.id)}>
-                  {t("cancel")}
+              <span className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => void toggleDetails(task.id)}>
+                  {detailId === task.id ? t("hideDetails") : t("details")}
                 </Button>
-              ) : null}
+                {task.state === "queued" || task.state === "running" || task.state === "waiting_network" || task.state === "conflict" ? (
+                  <Button type="button" variant="outline" onClick={() => void act("transfer.cancel", task.id)}>
+                    {t("cancel")}
+                  </Button>
+                ) : null}
+              </span>
             </div>
             {task.state === "conflict" ? (
               <div className="flex flex-wrap gap-2">
@@ -213,16 +236,31 @@ export function TransferPanel(props: {
                 </label>
               </div>
             ) : null}
-            {task.report && task.report.length > 0 ? (
-              <ul className="text-muted-foreground">
-                <li>{t("report")}</li>
-                {task.report.map((note, index) => (
-                  <li key={`${note.from}-${index}`} className="break-all">
-                    {note.action} {note.from}
-                    {note.to ? ` → ${note.to}` : ""} ({note.reason})
-                  </li>
-                ))}
-              </ul>
+            {detailId === task.id && detail ? (
+              <div className="space-y-1 text-muted-foreground">
+                {detail.report && detail.report.length > 0 ? (
+                  <ul>
+                    <li>{t("report")}</li>
+                    {detail.report.map((note, index) => (
+                      <li key={`${note.from}-${index}`} className="break-all">
+                        {note.action} {note.from}
+                        {note.to ? ` → ${note.to}` : ""} ({note.reason})
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {detail.files && detail.files.length > 0 ? (
+                  <ul>
+                    {detail.files.slice(0, 200).map((file, index) => (
+                      <li key={`${file.key ?? file.local ?? "file"}-${index}`} className="break-all">
+                        {file.key || file.local} · {file.done ? t("fileDone") : t("filePending")}
+                        {file.size ? ` · ${formatBytes(file.size)}` : ""}
+                      </li>
+                    ))}
+                    {detail.files.length > 200 ? <li>{t("filesShown", { shown: 200, total: detail.files.length })}</li> : null}
+                  </ul>
+                ) : null}
+              </div>
             ) : null}
           </li>
         ))}

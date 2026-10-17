@@ -1,5 +1,6 @@
 mod agent;
 mod keyring;
+mod logging;
 mod profiles;
 
 use agent::Agent;
@@ -21,7 +22,13 @@ struct Desktop {
 }
 
 fn call(state: &Desktop, method: &str, params: Value) -> Result<Value, String> {
-    state.agent.lock().map_err(|err| err.to_string())?.call(method, params)
+    let result = state.agent.lock().map_err(|err| err.to_string())?.call(method, params);
+    match &result {
+        Ok(_) if method == "transfer.list" => {}
+        Ok(_) => logging::info(method),
+        Err(err) => logging::error(&format!("{method} {err}")),
+    }
+    result
 }
 
 fn session_mut(state: &Desktop) -> Result<std::sync::MutexGuard<'_, HashMap<String, MemorySession>>, String> {
@@ -209,7 +216,10 @@ fn browse(state: State<Desktop>, id: String, method: String, params: Option<Valu
 }
 
 fn transfer_method_allowed(method: &str) -> bool {
-    matches!(method, "transfer.list" | "transfer.enqueue" | "transfer.cancel" | "transfer.resolve")
+    matches!(
+        method,
+        "transfer.list" | "transfer.enqueue" | "transfer.cancel" | "transfer.resolve" | "transfer.files"
+    )
 }
 
 fn strip_secrets(value: &mut Value) {
@@ -252,6 +262,28 @@ fn transfer(state: State<Desktop>, id: String, method: String, params: Option<Va
                 obj.insert("access_secret".into(), Value::String(secret));
             }
         }
+    }
+    let mut result = call(&state, &method, body)?;
+    strip_secrets(&mut result);
+    Ok(result)
+}
+
+fn diag_method_allowed(method: &str) -> bool {
+    matches!(method, "diag.preview" | "diag.export")
+}
+
+#[tauri::command]
+fn diag(state: State<Desktop>, method: String, params: Option<Value>) -> Result<Value, String> {
+    if !diag_method_allowed(&method) {
+        return Err("method is not a diagnostics call".into());
+    }
+    let mut body = params.unwrap_or_else(|| json!({}));
+    if let Some(obj) = body.as_object_mut() {
+        obj.remove("token");
+        obj.remove("password");
+        obj.remove("access_secret");
+    } else {
+        return Err("diagnostics params must be an object".into());
     }
     let mut result = call(&state, &method, body)?;
     strip_secrets(&mut result);
@@ -345,6 +377,7 @@ pub fn run() {
             SecretStore::require_native()?;
             let dir = profiles::data_dir();
             let _ = std::fs::create_dir_all(&dir);
+            logging::init(&dir.join("logs"));
             let resources = app.path().resource_dir().ok();
             app.manage(Desktop {
                 agent: Mutex::new(Agent::open(dir, resources)),
@@ -359,6 +392,7 @@ pub fn run() {
             profile_forget,
             browse,
             transfer,
+            diag,
             server_info,
             auth_login,
             auth_mfa,

@@ -18,6 +18,7 @@ export function ProfileList(props: {
   const [method, setMethod] = useState<AuthMethod>("password");
   const [username, setUsername] = useState("");
   const [insecure, setInsecure] = useState(false);
+  const [caFile, setCaFile] = useState("");
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -27,7 +28,7 @@ export function ProfileList(props: {
         server_url: server,
         auth_method: method,
         username,
-        tls: { insecure_dev: insecure },
+        tls: { insecure_dev: insecure, ca_file: caFile.trim() || undefined },
       });
       setName("");
       setUsername("");
@@ -83,10 +84,15 @@ export function ProfileList(props: {
             <input className="mt-1 w-full rounded-md border bg-background px-2 py-1" value={username} onChange={(event) => setUsername(event.target.value)} />
           </label>
         ) : null}
+        <label className="block text-sm">
+          {t("caFile")}
+          <input className="mt-1 w-full rounded-md border bg-background px-2 py-1" value={caFile} onChange={(event) => setCaFile(event.target.value)} />
+        </label>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={insecure} onChange={(event) => setInsecure(event.target.checked)} />
           {t("insecure")}
         </label>
+        {insecure ? <p className="text-sm text-destructive">{t("insecureWarning")}</p> : null}
         <Button type="submit">{t("save")}</Button>
       </form>
     </section>

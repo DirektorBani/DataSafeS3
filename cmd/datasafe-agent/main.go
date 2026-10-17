@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 func main() {
@@ -17,7 +18,18 @@ func main() {
 		fmt.Fprintln(os.Stderr, "data-dir")
 		os.Exit(1)
 	}
-	if err := serve(os.Stdin, os.Stdout, &App{dataDir: *dataDir}); err != nil {
+	logger, err := openLogger(filepath.Join(*dataDir, "logs"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "log")
+		os.Exit(1)
+	}
+	app := &App{dataDir: *dataDir, log: logger}
+	err = serve(os.Stdin, os.Stdout, app)
+	if app.transfers != nil && app.transfers.journal != nil {
+		_ = app.transfers.journal.Flush()
+	}
+	_ = logger.Close()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "agent stopped")
 		os.Exit(1)
 	}

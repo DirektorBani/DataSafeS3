@@ -22,7 +22,7 @@ export type Profile = {
   server_url: string;
   auth_method: AuthMethod;
   username?: string;
-  tls?: { insecure_dev?: boolean };
+  tls?: { ca_file?: string; insecure_dev?: boolean };
   session?: string;
   server?: ServerCard;
 };
@@ -47,7 +47,7 @@ export function saveProfile(profile: {
   server_url: string;
   auth_method: AuthMethod;
   username?: string;
-  tls?: { insecure_dev?: boolean };
+  tls?: { ca_file?: string; insecure_dev?: boolean };
 }): Promise<{ profile: Profile }> {
   return invoke("profile_save", { profile });
 }
@@ -102,6 +102,28 @@ export function browse(id: string, method: string, params: Record<string, unknow
 
 export type TransferNote = { action: string; from: string; to?: string; reason: string };
 
+export type TransferFile = {
+  key?: string;
+  local?: string;
+  size?: number;
+  done?: boolean;
+};
+
+export type TransferDetail = {
+  id: string;
+  report?: TransferNote[];
+  files?: TransferFile[];
+  files_done?: number;
+  files_total?: number;
+};
+
+export type DiagFile = { name: string; bytes: number };
+
+export type DiagPreview = {
+  files?: DiagFile[];
+  versions?: string;
+};
+
 export type TransferTask = {
   id: string;
   profile_id?: string;
@@ -121,6 +143,18 @@ export type TransferTask = {
   pending_local?: string;
 };
 
-export function transfer(id: string, method: string, params: Record<string, unknown> = {}): Promise<{ transfers?: TransferTask[]; transfer?: TransferTask }> {
+export function transfer(
+  id: string,
+  method: string,
+  params: Record<string, unknown> = {},
+): Promise<{ transfers?: TransferTask[]; transfer?: TransferTask; detail?: TransferDetail }> {
   return invoke("transfer", { id, method, params });
+}
+
+export function diagPreview(): Promise<DiagPreview> {
+  return invoke("diag", { method: "diag.preview", params: {} });
+}
+
+export function diagExport(destPath: string): Promise<{ path?: string; files?: string[] }> {
+  return invoke("diag", { method: "diag.export", params: { dest_path: destPath } });
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -36,6 +38,14 @@ type Client struct {
 }
 
 func newClient(baseURL string, insecure bool) (*Client, error) {
+	return newClientConfig(baseURL, insecure, "")
+}
+
+func clientFor(profile Profile) (*Client, error) {
+	return newClientConfig(profile.ServerURL, profile.TLS.InsecureDev, profile.TLS.CAFile)
+}
+
+func newClientConfig(baseURL string, insecure bool, caFile string) (*Client, error) {
 	u, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return nil, fmt.Errorf("server url is invalid")
@@ -47,9 +57,25 @@ func newClient(baseURL string, insecure bool) (*Client, error) {
 		return nil, fmt.Errorf("server url must not carry credentials")
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if insecure {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // profile flag insecure_dev
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	if strings.TrimSpace(caFile) != "" {
+		pem, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("ca file is invalid")
+		}
+		pool, err := x509.SystemCertPool()
+		if err != nil || pool == nil {
+			pool = x509.NewCertPool()
+		}
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("ca file is invalid")
+		}
+		tlsCfg.RootCAs = pool
 	}
+	if insecure {
+		tlsCfg.InsecureSkipVerify = true //nolint:gosec // profile flag insecure_dev
+	}
+	transport.TLSClientConfig = tlsCfg
 	streamTransport := transport.Clone()
 	streamTransport.ResponseHeaderTimeout = 2 * time.Minute
 	assembleTransport := transport.Clone()

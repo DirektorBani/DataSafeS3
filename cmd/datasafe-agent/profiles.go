@@ -74,7 +74,7 @@ func (a *App) putProfile(in Profile) (Profile, error) {
 	default:
 		return Profile{}, fmt.Errorf("auth_method is not supported")
 	}
-	if _, err := newClient(in.ServerURL, in.TLS.InsecureDev); err != nil {
+	if _, err := newClientConfig(in.ServerURL, in.TLS.InsecureDev, in.TLS.CAFile); err != nil {
 		return Profile{}, err
 	}
 	file, err := a.loadProfiles()

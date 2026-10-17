@@ -13,13 +13,14 @@ import (
 // the RPC call that is using them.
 type App struct {
 	dataDir      string
+	log          *Logger
 	transferOnce sync.Once
 	transfers    *Engine
 	transferErr  error
 }
 
 func (a *App) inspect(profile Profile, token string) (ServerCard, error) {
-	client, err := newClient(profile.ServerURL, profile.TLS.InsecureDev)
+	client, err := clientFor(profile)
 	if err != nil {
 		return ServerCard{}, err
 	}
@@ -210,7 +211,7 @@ func (a *App) login(profile Profile, path string, payload map[string]string, oid
 	if card.Blocked {
 		return loginResult{Status: "blocked", Message: card.Warning, Server: card}, nil
 	}
-	client, err := newClient(profile.ServerURL, profile.TLS.InsecureDev)
+	client, err := clientFor(profile)
 	if err != nil {
 		return loginResult{}, err
 	}
@@ -283,7 +284,7 @@ func (a *App) finishLogin(profile Profile, result loginResult) (loginResult, err
 func (a *App) logout(profile Profile, token string) (loginResult, error) {
 	revoked := false
 	if token != "" && (profile.Server == nil || !profile.Server.Blocked) {
-		client, err := newClient(profile.ServerURL, profile.TLS.InsecureDev)
+		client, err := clientFor(profile)
 		if err != nil {
 			return loginResult{}, err
 		}
@@ -318,7 +319,7 @@ func (a *App) probe(profile Profile, token string, retry bool) (loginResult, err
 	if profile.Server != nil && profile.Server.Rejected {
 		return loginResult{Status: "rejected", Message: profile.Server.Warning, Server: *profile.Server}, nil
 	}
-	client, err := newClient(profile.ServerURL, profile.TLS.InsecureDev)
+	client, err := clientFor(profile)
 	if err != nil {
 		return loginResult{}, err
 	}

@@ -26,7 +26,7 @@ func (a *App) browse(profile Profile, token, method, path string, query url.Valu
 	if strings.TrimSpace(token) == "" {
 		return apiResult{Status: http.StatusUnauthorized, Code: "auth.unauthorized", Message: "auth.unauthorized"}, nil
 	}
-	client, err := newClient(profile.ServerURL, profile.TLS.InsecureDev)
+	client, err := clientFor(profile)
 	if err != nil {
 		return apiResult{}, err
 	}

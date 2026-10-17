@@ -43,6 +43,7 @@ func serve(r io.Reader, w io.Writer, app *App) error {
 			continue
 		}
 		result, rpcErr := app.dispatch(req.Method, req.Params)
+		app.noteRPC(req.Method, rpcErr)
 		resp := rpcResponse{JSONRPC: "2.0", ID: req.ID}
 		if rpcErr != nil {
 			resp.Error = rpcErr
@@ -230,6 +231,12 @@ func (a *App) dispatch(method string, params map[string]any) (any, *rpcError) {
 		return rpcCall(a.transferCancel(params))
 	case "transfer.resolve":
 		return rpcCall(a.transferResolve(params))
+	case "transfer.files":
+		return rpcCall(a.transferFiles(params))
+	case "diag.preview":
+		return rpcCall(a.diagPreview())
+	case "diag.export":
+		return rpcCall(a.diagExport(params))
 	default:
 		return nil, &rpcError{Code: -32601, Message: "method not found"}
 	}
@@ -274,4 +281,19 @@ func rpcBrowse(result apiResult, err error) (any, *rpcError) {
 
 func rpcFail(err error) *rpcError {
 	return &rpcError{Code: -32000, Message: err.Error()}
+}
+
+func (a *App) noteRPC(method string, rpcErr *rpcError) {
+	if a == nil || a.log == nil || method == "" {
+		return
+	}
+	if rpcErr != nil {
+		a.log.Error(method + " " + rpcErr.Message)
+		return
+	}
+	if method == "transfer.list" {
+		a.log.Debug(method)
+		return
+	}
+	a.log.Info(method)
 }

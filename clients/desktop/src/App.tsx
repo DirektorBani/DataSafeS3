@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@datasafe/ui/ui/button";
-import { listProfiles, type Profile } from "./desktop";
+import { diagExport, diagPreview, listProfiles, type DiagPreview, type Profile } from "./desktop";
 import { setDesktopLocale, THEME_KEY, type DesktopLocale } from "./i18n";
 import { BucketBrowser } from "./pages/buckets";
 import { LoginPanel } from "./pages/login";
@@ -35,6 +35,32 @@ export default function App() {
   }, [reload]);
 
   const current = profiles.find((profile) => profile.id === selected);
+  const [diag, setDiag] = useState<DiagPreview | null>(null);
+  const [diagFolder, setDiagFolder] = useState("");
+  const [diagSaved, setDiagSaved] = useState("");
+
+  async function previewDiagnostics() {
+    setError("");
+    setDiagSaved("");
+    try {
+      setDiag(await diagPreview());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function saveDiagnostics() {
+    if (!diag || !diagFolder.trim()) {
+      return;
+    }
+    setError("");
+    try {
+      const saved = await diagExport(diagFolder.trim());
+      setDiagSaved(saved.path ?? "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   return (
     <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-8">
@@ -82,6 +108,30 @@ export default function App() {
             </Button>
           </div>
         </div>
+      </section>
+      {current?.tls?.insecure_dev ? <p className="text-sm text-destructive">{t("insecureWarning")}</p> : null}
+      <section className="space-y-2">
+        <h2 className="text-sm font-medium">{t("diagnostics")}</h2>
+        <p className="text-sm text-muted-foreground">{t("diagHint")}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" onClick={() => void previewDiagnostics()}>
+            {t("diagPreview")}
+          </Button>
+          <input
+            className="min-w-64 rounded-md border bg-transparent px-2 py-1"
+            aria-label={t("diagFolder")}
+            placeholder={t("diagFolder")}
+            value={diagFolder}
+            onChange={(event) => setDiagFolder(event.target.value)}
+          />
+          <Button type="button" variant="outline" disabled={!diag || !diagFolder.trim()} onClick={() => void saveDiagnostics()}>
+            {t("diagSave")}
+          </Button>
+        </div>
+        {diag ? (
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border p-2 text-xs">{`${diag.versions ?? ""}${diag.files?.length ? `\n${diag.files.map((file) => `${file.name} ${file.bytes}`).join("\n")}` : ""}`}</pre>
+        ) : null}
+        {diagSaved ? <p className="text-sm text-muted-foreground">{diagSaved}</p> : null}
       </section>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <div className="grid gap-8 md:grid-cols-2">

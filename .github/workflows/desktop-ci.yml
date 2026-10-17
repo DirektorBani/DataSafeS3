@@ -56,6 +56,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.9"
+      - name: secrets-in-logs
+        run: go test ./cmd/datasafe-agent -count=1 -run "TestSecretsInLogs|TestLogRotation|TestSelfSignedTLS"
       - name: Install workspaces
         run: npm ci
       - name: Build agent

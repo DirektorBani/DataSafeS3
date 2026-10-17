@@ -8,6 +8,7 @@
     "allow-profile-forget",
     "allow-browse",
     "allow-transfer",
+    "allow-diag",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "allow-server-info",
