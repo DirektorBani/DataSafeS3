@@ -1550,13 +1550,13 @@ func TestPauseProfileDoesNotAbort(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		fake.mu.Lock()
-		started := fake.initiates > 0
+		live := fake.partsLive
 		fake.mu.Unlock()
-		if started {
+		if live > 0 {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("upload did not start")
+			t.Fatal("upload did not read a part")
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -1575,11 +1575,67 @@ func TestPauseProfileDoesNotAbort(t *testing.T) {
 	if got.State != "interrupted" || got.Message != "paused_signed_out" || got.UploadID == "" {
 		t.Fatalf("state %s %s upload %s", got.State, got.Message, got.UploadID)
 	}
+	if got.BytesDone <= 0 {
+		t.Fatalf("paused progress %d", got.BytesDone)
+	}
+	for _, job := range got.Files {
+		for _, part := range job.Parts {
+			if part.ETag != "" {
+				t.Fatalf("part finished during pause: %+v", part)
+			}
+		}
+	}
 	fake.mu.Lock()
 	n := len(fake.aborts)
 	fake.mu.Unlock()
 	if n != 0 {
 		t.Fatalf("aborts %d", n)
+	}
+}
+
+func TestPauseAllLeavesEveryProfile(t *testing.T) {
+	e := testEngine(t, &fakeRemote{})
+	one := Task{ID: "a", ProfileID: "p", State: "running", Bucket: "b", Key: "k", UploadID: "up1"}
+	two := Task{ID: "b", ProfileID: "q", State: "queued", Bucket: "b", Key: "other", UploadID: "up2"}
+	if err := e.journal.Save(one); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.journal.Save(two); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.PauseAll(); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"a", "b"} {
+		got, err := e.journal.Get(id)
+		if err != nil || got.State != "interrupted" || got.Message != "paused_signed_out" || got.UploadID == "" {
+			t.Fatalf("%s %+v %v", id, got, err)
+		}
+	}
+}
+
+func TestCanceledReadStaysAndANetworkErrorDoesNot(t *testing.T) {
+	e := testEngine(t, &fakeRemote{})
+	task := Task{ID: "t1", State: "running", Files: []fileJob{{Key: "k", Size: 20}}}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := e.journal.Get("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.addProgress(&loaded, 0, 12)
+	e.rollbackRead(&loaded, 0, 12, context.Canceled)
+	if loaded.BytesDone != 12 {
+		t.Fatalf("cancel kept %d", loaded.BytesDone)
+	}
+	got, err := e.journal.Get("t1")
+	if err != nil || got.BytesDone != 12 {
+		t.Fatalf("journal %d %v", got.BytesDone, err)
+	}
+	e.rollbackRead(&loaded, 0, 12, errNetwork)
+	if loaded.BytesDone != 0 {
+		t.Fatalf("network kept %d", loaded.BytesDone)
 	}
 }
 

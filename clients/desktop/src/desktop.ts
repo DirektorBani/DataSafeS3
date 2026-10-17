@@ -109,6 +109,8 @@ export type BrowseResult = {
   message?: string;
   step_up?: boolean;
   mfa_setup?: boolean;
+  cached?: boolean;
+  cached_at?: number;
   body?: Record<string, unknown>;
 };
 

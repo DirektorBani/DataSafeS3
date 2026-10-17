@@ -4,7 +4,7 @@ import { ArrowLeft, FolderOpen, Plus, Trash2 } from "lucide-react";
 import { Button } from "@datasafe/ui/ui/button";
 import { Input } from "@datasafe/ui/ui/input";
 import { Card, CardContent } from "@datasafe/ui/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@datasafe/ui/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@datasafe/ui/ui/tabs";
 import { PageHeader } from "@datasafe/ui/page-header";
 import { StepUpDialog, useStepUp } from "../components/step-up";
 import { browse, type BrowseResult } from "../desktop";
@@ -27,7 +27,7 @@ function problem(result: BrowseResult): string {
 }
 
 export function BucketBrowser(props: { profileId: string; features?: Record<string, number>; resetToken: number; onError: (message: string) => void; onMfaSetup: () => void }) {
-  const { t } = useTranslation(["shell", "buckets", "common"]);
+  const { t, i18n } = useTranslation(["shell", "buckets", "common"]);
   const step = useStepUp(props.profileId, props.onMfaSetup);
   const [buckets, setBuckets] = useState<BucketItem[]>([]);
   const [filter, setFilter] = useState("all");
@@ -35,6 +35,8 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
   const [selected, setSelected] = useState("");
   const [confirm, setConfirm] = useState(false);
   const [encryption, setEncryption] = useState("");
+  const [offline, setOffline] = useState(false);
+  const [savedAt, setSavedAt] = useState(0);
 
   const { profileId, onError } = props;
   const load = useCallback(async () => {
@@ -44,6 +46,8 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
       onError(message);
       return;
     }
+    setOffline(Boolean(result.cached));
+    setSavedAt(typeof result.cached_at === "number" ? result.cached_at : 0);
     const items = Array.isArray(result.body?.buckets) ? (result.body.buckets as BucketItem[]) : [];
     setBuckets(items);
   }, [filter, onError, profileId]);
@@ -57,7 +61,8 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
   }, [props.resetToken]);
 
   const current = buckets.find((bucket) => bucket.name === selected);
-  const canWrite = current?.access?.can_write === true;
+  const canWrite = current?.access?.can_write === true && !offline;
+  const savedLabel = savedAt > 0 ? new Intl.DateTimeFormat(i18n.language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(savedAt * 1000)) : "";
 
   useEffect(() => {
     if (!selected) {
@@ -110,6 +115,11 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
   return (
     <section className="space-y-4">
       <StepUpDialog open={step.open} error={step.error} onCancel={step.cancel} onSubmit={(code) => void step.submit(code)} />
+      {offline ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          {t("offlineSaved", { time: savedLabel })}
+        </p>
+      ) : null}
       {selected ? (
         <>
           <div className="mb-4">
@@ -123,6 +133,7 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
             profileId={props.profileId}
             bucket={selected}
             canWrite={canWrite}
+            offline={offline}
             encryption={encryption}
             features={props.features}
             onError={props.onError}
@@ -156,7 +167,7 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
             actions={
               <>
                 <Input className="w-48" aria-label={t("buckets:fields.bucketName")} placeholder={t("buckets:placeholder.bucketName")} value={name} onChange={(event) => setName(event.target.value)} />
-                <Button type="button" onClick={() => void createBucket()} disabled={!name.trim()}>
+                <Button type="button" onClick={() => void createBucket()} disabled={!name.trim() || offline}>
                   <Plus className="h-4 w-4" />
                   {t("buckets:actions.create")}
                 </Button>
@@ -169,6 +180,9 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
               <TabsTrigger value="owned">{t("buckets:tabs.myFiles")}</TabsTrigger>
               <TabsTrigger value="shared">{t("buckets:tabs.shared")}</TabsTrigger>
             </TabsList>
+            <TabsContent value="all" className="hidden" />
+            <TabsContent value="owned" className="hidden" />
+            <TabsContent value="shared" className="hidden" />
           </Tabs>
           <Card>
             <CardContent className="p-0">

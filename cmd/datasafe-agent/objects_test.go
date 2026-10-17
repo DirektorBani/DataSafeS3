@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -401,5 +402,87 @@ func TestMFASetupRequiredIsABanner(t *testing.T) {
 	encoded, _ = json.Marshal(me)
 	if !me.MFASetup || me.Body["username"] != "alice" || strings.Contains(string(encoded), "jwt-should-stay") || strings.Contains(string(encoded), "mfa-should-stay") {
 		t.Fatalf("me %+v %s", me, encoded)
+	}
+}
+
+func TestOfflineListCacheKeepsTheSavedPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/buckets":
+			_, _ = w.Write([]byte(`{"buckets":[{"name":"photos","encryption":{"wrapped_dek":"super-secret-dek"}}]}`))
+		case "/api/v1/buckets/photos/objects":
+			_, _ = w.Write([]byte(`{"objects":[{"key":"a.txt","size":4}],"truncated":false}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	app := &App{dataDir: t.TempDir()}
+	profile, err := app.putProfile(Profile{Name: "One", ServerURL: srv.URL, AuthMethod: "password", Username: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile.Session = "signed_in"
+	if err := app.updateProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	params := map[string]any{"id": profile.ID, "token": "jwt", "bucket": "photos"}
+	raw, rpcErr := app.dispatch("bucket.list", params)
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	listed := raw.(apiResult)
+	if listed.Cached || listed.Status != http.StatusOK {
+		t.Fatalf("live list %+v", listed)
+	}
+	if _, rpcErr = app.dispatch("object.list", params); rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	if err := app.writeCache(profile.ID, ServerCard{ServerVersion: "1.6.1"}); err != nil {
+		t.Fatal(err)
+	}
+	disk, err := os.ReadFile(app.cachePath(profile.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(disk), "super-secret-dek") || strings.Contains(string(disk), "jwt") {
+		t.Fatal("list cache contains a secret")
+	}
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"code":"auth.session_expired","error":"session expired"}`))
+	})
+	raw, rpcErr = app.dispatch("bucket.list", params)
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	denied := raw.(apiResult)
+	if denied.Cached || denied.Status != http.StatusUnauthorized {
+		t.Fatalf("401 must not be served from cache %+v", denied)
+	}
+	srv.Close()
+	raw, rpcErr = app.dispatch("object.list", params)
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	offline := raw.(apiResult)
+	objects, _ := offline.Body["objects"].([]any)
+	if !offline.Cached || offline.CachedAt == 0 || len(objects) != 1 {
+		t.Fatalf("offline objects %+v", offline)
+	}
+	raw, rpcErr = app.dispatch("bucket.list", map[string]any{"id": profile.ID, "token": "jwt", "filter": "owned"})
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	other := raw.(apiResult)
+	names, _ := other.Body["buckets"].([]any)
+	if !other.Cached || len(names) != 1 {
+		t.Fatalf("offline buckets %+v", other)
+	}
+	if err := app.deleteProfile(profile.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(app.cachePath(profile.ID)); !os.IsNotExist(err) {
+		t.Fatal("forget should remove the list cache")
 	}
 }

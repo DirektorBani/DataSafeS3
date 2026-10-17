@@ -5,9 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Profile is the non-secret record stored in profiles.json.
@@ -178,19 +180,106 @@ func (a *App) cachePath(id string) string {
 	return filepath.Join(a.dataDir, "cache", id+".json")
 }
 
-func (a *App) writeCache(id string, card ServerCard) error {
+type cachedList struct {
+	Key       string         `json:"key"`
+	FetchedAt int64          `json:"fetched_at"`
+	Body      map[string]any `json:"body"`
+}
+
+type profileCache struct {
+	Server ServerCard   `json:"server"`
+	Lists  []cachedList `json:"lists"`
+}
+
+func (a *App) readProfileCache(id string) profileCache {
+	raw, err := os.ReadFile(a.cachePath(id))
+	if err != nil {
+		return profileCache{}
+	}
+	var file profileCache
+	if json.Unmarshal(raw, &file) != nil {
+		return profileCache{}
+	}
+	if file.Lists == nil {
+		file.Lists = []cachedList{}
+	}
+	return file
+}
+
+func (a *App) writeProfileCache(id string, file profileCache) error {
+	if file.Lists == nil {
+		file.Lists = []cachedList{}
+	}
 	dir := filepath.Join(a.dataDir, "cache")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(map[string]any{
-		"server": card,
-		"lists":  []any{},
-	}, "", "  ")
+	raw, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(a.cachePath(id), append(raw, '\n'), 0o600)
+}
+
+func (a *App) writeCache(id string, card ServerCard) error {
+	file := a.readProfileCache(id)
+	file.Server = card
+	return a.writeProfileCache(id, file)
+}
+
+func (a *App) rememberList(id, key string, body map[string]any) {
+	id = strings.TrimSpace(id)
+	key = strings.TrimSpace(key)
+	if id == "" || key == "" {
+		return
+	}
+	if body == nil {
+		body = map[string]any{}
+	}
+	body = dropWrapped(body)
+	file := a.readProfileCache(id)
+	next := cachedList{Key: key, FetchedAt: time.Now().Unix(), Body: body}
+	replaced := false
+	for i := range file.Lists {
+		if file.Lists[i].Key == key {
+			file.Lists[i] = next
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		file.Lists = append(file.Lists, next)
+	}
+	_ = a.writeProfileCache(id, file)
+}
+
+func (a *App) cachedList(id, key string) (apiResult, bool) {
+	file := a.readProfileCache(id)
+	kind := key
+	if cut := strings.IndexByte(key, '?'); cut >= 0 {
+		kind = key[:cut]
+	}
+	var fallback *cachedList
+	for i := range file.Lists {
+		item := &file.Lists[i]
+		if item.Body == nil {
+			continue
+		}
+		if item.Key == key {
+			return cachedResult(item), true
+		}
+		if fallback == nil && strings.HasPrefix(item.Key, kind+"?") {
+			fallback = item
+		}
+	}
+	if fallback != nil {
+		return cachedResult(fallback), true
+	}
+	return apiResult{}, false
+}
+
+func cachedResult(item *cachedList) apiResult {
+	return apiResult{Status: http.StatusOK, Body: item.Body, Cached: true, CachedAt: item.FetchedAt}
 }
 
 func newID() (string, error) {

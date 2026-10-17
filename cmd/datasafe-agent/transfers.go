@@ -635,12 +635,28 @@ func (e *Engine) PauseProfile(profileID string) error {
 	if profileID == "" || e.journal == nil {
 		return nil
 	}
+	return e.pauseMatching(profileID)
+}
+
+// PauseAll stops every active transfer without aborting it. The tray uses
+// this. Sign-in of each profile resumes its own rows.
+func (e *Engine) PauseAll() error {
+	if e.journal == nil {
+		return nil
+	}
+	return e.pauseMatching("")
+}
+
+func (e *Engine) pauseMatching(profileID string) error {
 	tasks, err := e.journal.List()
 	if err != nil {
 		return err
 	}
 	for _, task := range tasks {
-		if task.ProfileID != profileID || !activeStates[task.State] {
+		if profileID != "" && task.ProfileID != profileID {
+			continue
+		}
+		if !activeStates[task.State] {
 			continue
 		}
 		e.mu.Lock()
@@ -1002,6 +1018,24 @@ func (e *Engine) syncProgress(task *Task) {
 	task.BytesDone = confirmedBytes(task, e.limits.PartSize)
 	e.mu.Unlock()
 	e.save(task)
+}
+
+// rollbackRead gives back bytes from a part that did not finish, so a retry
+// does not count them twice. A canceled request is a pause or a sign-out:
+// those bytes are already in the journal and stay on the task until a part
+// actually completes.
+func (e *Engine) rollbackRead(task *Task, index int, read int64, err error) {
+	if read == 0 || err == nil {
+		return
+	}
+	if errors.Is(err, context.Canceled) {
+		e.mu.Lock()
+		e.saveFileLocked(task, index)
+		e.mu.Unlock()
+		e.flushProgress()
+		return
+	}
+	e.addProgress(task, index, -read)
 }
 
 func (e *Engine) addProgress(task *Task, index int, n int64) {
@@ -1467,7 +1501,7 @@ func (e *Engine) uploadJob(ctx context.Context, task *Task, index int, remote re
 		}}
 		etag, err := remote.Put(ctx, key, body, size)
 		if err != nil {
-			e.addProgress(task, index, -read)
+			e.rollbackRead(task, index, read, err)
 			return err
 		}
 		e.mu.Lock()
@@ -1618,7 +1652,7 @@ func (e *Engine) uploadParts(ctx context.Context, task *Task, index int, remote 
 			}}
 			etag, err := remote.Part(ctx, key, uploadID, number, body, n)
 			if err != nil {
-				e.addProgress(task, index, -read)
+				e.rollbackRead(task, index, read, err)
 				errMu.Lock()
 				if first == nil {
 					first = err
@@ -2166,10 +2200,21 @@ func (a *App) transferList(params map[string]any) (any, error) {
 		return nil, err
 	}
 	profileID := strParam(params, "id")
+	partSize := eng.limits.PartSize
 	out := make([]Task, 0, len(items))
 	for i := range items {
 		if !taskVisible(profileID, items[i].ProfileID) {
 			continue
+		}
+		if full, err := eng.journal.Get(items[i].ID); err == nil {
+			if full.BytesDone > items[i].BytesDone {
+				items[i].BytesDone = full.BytesDone
+			}
+			if partSize > 0 {
+				if n := confirmedBytes(&full, partSize); n > items[i].BytesDone {
+					items[i].BytesDone = n
+				}
+			}
 		}
 		scrubTask(&items[i])
 		items[i].Files = nil
@@ -2177,6 +2222,17 @@ func (a *App) transferList(params map[string]any) (any, error) {
 		out = append(out, items[i])
 	}
 	return map[string]any{"transfers": out}, nil
+}
+
+func (a *App) transferPauseAll() (any, error) {
+	eng, err := a.engine()
+	if err != nil {
+		return nil, err
+	}
+	if err := eng.PauseAll(); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
 }
 
 // taskVisible is the transfer.list scope. A named profile sees its own rows

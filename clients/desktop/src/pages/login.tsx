@@ -135,7 +135,6 @@ export function LoginPanel(props: {
 
       {profile.auth_method === "oidc" ? (
         <div className="space-y-3">
-          {profile.session === "reauth" ? <p className="text-sm">{t("sessionExpired")}</p> : null}
           <Button type="button" variant="outline" onClick={() => void run(() => oidcBrowser(profile.id))}>
             {t("oidcBrowser")}
           </Button>
@@ -147,7 +146,10 @@ export function LoginPanel(props: {
             }}
           >
             <p className="text-sm font-medium">{t("oidcPassword")}</p>
-            <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
+            <div className="space-y-1">
+              <Label htmlFor="oidc-password">{t("password")}</Label>
+              <Input id="oidc-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
+            </div>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
               {t("remember")}

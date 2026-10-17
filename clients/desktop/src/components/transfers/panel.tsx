@@ -7,6 +7,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@data
 import { cn } from "@datasafe/ui/cn";
 import { transfer, type TransferDetail, type TransferTask } from "../../desktop";
 
+function TransferMeter(props: { done: number; size: number; label: string; error?: boolean }) {
+  const pct = props.size > 0 ? Math.min(100, Math.round((props.done / props.size) * 100)) : 0;
+  const announced = useAnnounced(pct);
+  return (
+    <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={announced} aria-label={props.label}>
+      <div className={cn("h-full transition-all", props.error ? "bg-destructive" : "bg-primary")} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function useAnnounced(value: number) {
+  const [shown, setShown] = useState(value);
+  const at = useRef(0);
+  useEffect(() => {
+    const now = Date.now();
+    if (at.current === 0 || now - at.current >= 5000 || value <= 0 || value >= 100) {
+      at.current = now;
+      setShown(value);
+    }
+  }, [value]);
+  return shown;
+}
+
 function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n < 0) {
     return "0 B";
@@ -98,6 +121,7 @@ export function TransferPanel(props: {
   bucket: string;
   prefix: string;
   canWrite: boolean;
+  offline?: boolean;
   selectedKey: string;
   selectedFolder: boolean;
 }) {
@@ -265,7 +289,7 @@ export function TransferPanel(props: {
           <span>{t("destFolder")}</span>
           <Input className="max-w-sm" aria-label={t("destFolder")} placeholder={t("destFolderHint")} value={destPath} onChange={(event) => setDestPath(event.target.value)} autoComplete="off" />
         </label>
-        <Button type="button" variant="outline" disabled={!props.selectedKey || !destPath.trim()} onClick={() => void download()}>
+        <Button type="button" variant="outline" disabled={props.offline || !props.selectedKey || !destPath.trim()} onClick={() => void download()}>
           {t("download")}
         </Button>
       </div>
@@ -296,14 +320,7 @@ export function TransferPanel(props: {
                 ) : null}
               </span>
             </div>
-            {task.size ? (
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
-                <div
-                  className={cn("h-full transition-all", task.state === "error" ? "bg-destructive" : "bg-primary")}
-                  style={{ width: `${Math.min(100, Math.round(((task.bytes_done ?? 0) / task.size) * 100))}%` }}
-                />
-              </div>
-            ) : null}
+            {task.size ? <TransferMeter done={task.bytes_done ?? 0} size={task.size} label={t("progress")} error={task.state === "error"} /> : null}
             {task.state === "conflict" ? (
               <div className="flex flex-wrap gap-2">
                 <span className="break-all">{t("conflict")}: {task.pending_local}</span>
@@ -433,11 +450,7 @@ export function ResumeProgress(props: { profileId: string; onSummary?: (text: st
                 </Button>
               ) : null}
             </span>
-            {task.size ? (
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
-                <div className="h-full bg-primary transition-all" style={{ width: `${Math.min(100, Math.round(((task.bytes_done ?? 0) / task.size) * 100))}%` }} />
-              </div>
-            ) : null}
+            {task.size ? <TransferMeter done={task.bytes_done ?? 0} size={task.size} label={t("progress")} /> : null}
           </li>
         ))}
       </ul>

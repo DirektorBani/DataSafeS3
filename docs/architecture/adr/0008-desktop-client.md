@@ -147,7 +147,29 @@ The profile can open the system browser at `{server}/api/v1/auth/oidc/login`. Ke
 
 A deep link `datasafe://oidc?code=` is not implemented. The server accepts a redirect only at its configured `OIDC.RedirectURL` and then sends the browser to the console login page. Sending the code to the desktop instead would be a server change. TZ question Q2-2 is still open, and that redirect belongs to E12. This step does not add it.
 
-When an OIDC session expires, a request returns 401 `session expired`. The profile goes to `reauth`, active transfers pause without an abort, and the window asks the user to sign in again through the browser and the one-time code.
+When an OIDC session expires, a request returns 401 `session expired`. The profile goes to `reauth`, active transfers pause without an abort, and the window asks the user to sign in again through the browser and the one-time code. That sentence is the banner at the top of the window. The profile panel does not repeat it.
+
+A paused or signed-out upload keeps the bytes already written into the journal, including a part that has been read and has not received an ETag yet. The transfer list shows that number, or the bytes of parts that do have an ETag when that sum is larger. A part that fails for a reason other than cancel gives those bytes back, so a retry does not count them twice.
+
+### E10 tray, offline lists, accessibility
+
+Closing the window hides it when a tray icon was created. The menu shows how many profiles are signed in and how many transfers are running or paused, plus Show, Pause all, and Quit. Pause all asks the agent to pause every active transfer and does not abort. Quit exits the process. A left click shows the window again. If the tray cannot be created, closing the window still exits. The tray is built for Windows and Linux. Linux uses AppIndicator (`libayatana-appindicator`). macOS is not built.
+
+A bucket list or an object list that returns a status below 400 is stored in the profile cache next to the server card, with the time it was fetched. A later server check updates the card and leaves those lists in place. The file is mode 0600. Wrapped keys and tokens are removed before it is written. When the list request fails because the network failed, the agent returns the saved body with `cached` and `cached_at`. Another filter of the same list uses that copy when its own key is missing. A 401 is returned as the server sent it. The window shows the saved time and turns off create, delete, upload, download, share, and the other changes. Forgetting a profile deletes the cache file.
+
+Progress bars expose the progressbar role. The announced value changes at most every five seconds; the painted width can move sooner. Object rows stay a table, so a screen reader gets the row name from the cells. An axe-core run of the shell in a browser, with the agent calls stubbed, fails the Linux desktop job when a violation is serious or critical. NVDA, Orca, 200% scale, contrast on screenshots, and Windows high contrast stay manual checks for the owner. VoiceOver is out of scope.
+
+### Server: OIDC introspection uses the userinfo URL (not changed)
+
+This is a 1.6.1 server defect. No server code was changed.
+
+`OIDCIntrospect` in `internal/auth/oidc_session.go` takes the third value from `DiscoverOIDCEndpoints`. That function returns the authorization endpoint, the token endpoint, and the userinfo endpoint. The call then POSTs `token`, `client_id`, and `client_secret` as a form to the userinfo URL. A non-200 answer is treated as an inactive token. Keycloak userinfo is not the token introspection endpoint, so the answer is not 200. About 30 seconds after an OIDC sign-in, `GET /api/v1/me` returns 401 `session expired` while a real introspection of the same token is still active. The desktop already pauses the transfer without an abort and asks the user to sign in again. The server change, when it is made, is to POST that form to the discovered `introspection_endpoint`.
+
+### Server: the first abort DELETE can return 400 unlinkat (not changed)
+
+This is a 1.6.1 server defect. No server code was changed.
+
+After the client has finished closing in-flight part uploads, the first `DELETE` of the multipart upload can still return 400 `unlinkat` while the server process has the part file open. A later DELETE for the same upload returns 204. The desktop retries that DELETE until the status is below 400 or 404, and it sends the successful DELETE once. The server is unchanged.
 
 ### Server: GET stalls while parts are written (not changed)
 

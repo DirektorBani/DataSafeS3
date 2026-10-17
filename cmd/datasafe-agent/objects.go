@@ -14,6 +14,8 @@ type apiResult struct {
 	Message  string         `json:"message,omitempty"`
 	StepUp   bool           `json:"step_up,omitempty"`
 	MFASetup bool           `json:"mfa_setup,omitempty"`
+	Cached   bool           `json:"cached,omitempty"`
+	CachedAt int64          `json:"cached_at,omitempty"`
 	Body     map[string]any `json:"body,omitempty"`
 }
 
@@ -174,7 +176,9 @@ func (a *App) bucketList(params map[string]any) (apiResult, error) {
 	if filter := strParam(params, "filter"); filter != "" {
 		query.Set("filter", filter)
 	}
-	return a.browseCall(params, http.MethodGet, "/api/v1/buckets", query, nil)
+	return a.listOrCache(params, "bucket.list", query, func() (apiResult, error) {
+		return a.browseCall(params, http.MethodGet, "/api/v1/buckets", query, nil)
+	})
 }
 
 func (a *App) bucketCreate(params map[string]any) (apiResult, error) {
@@ -236,7 +240,28 @@ func (a *App) objectList(params map[string]any) (apiResult, error) {
 		maxKeys = 1000
 	}
 	query.Set("max_keys", itoa(maxKeys))
-	return a.browseCall(params, http.MethodGet, path+"/objects", query, nil)
+	return a.listOrCache(params, "object.list", query, func() (apiResult, error) {
+		return a.browseCall(params, http.MethodGet, path+"/objects", query, nil)
+	})
+}
+
+// listOrCache stores a successful bucket or object list and, when the
+// network call itself fails, returns that copy with the time it was saved.
+// A 401 or any other server answer is left as the server sent it.
+func (a *App) listOrCache(params map[string]any, kind string, query url.Values, call func() (apiResult, error)) (apiResult, error) {
+	id := strParam(params, "id")
+	key := kind + "?" + query.Encode()
+	result, err := call()
+	if err != nil {
+		if cached, ok := a.cachedList(id, key); ok {
+			return cached, nil
+		}
+		return result, err
+	}
+	if result.Status > 0 && result.Status < 400 {
+		a.rememberList(id, key, result.Body)
+	}
+	return result, nil
 }
 
 func (a *App) objectMeta(params map[string]any, method string, payload any) (apiResult, error) {

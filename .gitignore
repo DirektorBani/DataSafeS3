@@ -63,6 +63,8 @@ deploy/docker/oauth2-proxy-linux
 # Playwright / local test artifacts
 web/console/test-results/
 web/console/playwright-report/
+clients/desktop/test-results/
+clients/desktop/playwright-report/
 # --- Local test data ---
 data-local-test/
 

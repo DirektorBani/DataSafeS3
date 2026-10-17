@@ -46,13 +46,14 @@ export function ObjectBrowser(props: {
   profileId: string;
   bucket: string;
   canWrite: boolean;
+  offline?: boolean;
   encryption: string;
   features?: Record<string, number>;
   onError: (message: string) => void;
   confirmDangerous: (method: string, params: Record<string, unknown>) => Promise<BrowseResult>;
   headerActions?: ReactNode;
 }) {
-  const { t } = useTranslation(["shell", "bucketDetail", "common"]);
+  const { t, i18n } = useTranslation(["shell", "bucketDetail", "common"]);
   const { profileId, bucket, onError } = props;
   const [prefix, setPrefix] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
@@ -69,6 +70,8 @@ export function ObjectBrowser(props: {
   const [trash, setTrash] = useState<Array<Record<string, unknown>>>([]);
   const [showTrash, setShowTrash] = useState(false);
   const [selectKey, setSelectKey] = useState("");
+  const [listOffline, setListOffline] = useState(false);
+  const [savedAt, setSavedAt] = useState(0);
 
   const load = useCallback(
     async (nextPrefix: string, startAfter: string, recordFirst: boolean) => {
@@ -84,6 +87,8 @@ export function ObjectBrowser(props: {
         onError(message);
         return;
       }
+      setListOffline(Boolean(result.cached));
+      setSavedAt(typeof result.cached_at === "number" ? result.cached_at : 0);
       if (recordFirst) {
         setFirstPageMs(Math.round(performance.now() - started));
       }
@@ -219,10 +224,10 @@ export function ObjectBrowser(props: {
       setPrefix(current.key);
       setMarkers([""]);
       void load(current.key, "", true);
-    } else if (event.key === "Delete" && props.canWrite && current) {
+    } else if (event.key === "Delete" && canWrite && current) {
       event.preventDefault();
       setConfirmKey(current.key);
-    } else if (event.key === "F2" && props.canWrite && current?.kind === "object") {
+    } else if (event.key === "F2" && canWrite && current?.kind === "object") {
       event.preventDefault();
       setRenaming(current.name);
     } else if (event.key === "Home") {
@@ -246,6 +251,9 @@ export function ObjectBrowser(props: {
     }
   }
 
+  const offline = Boolean(props.offline || listOffline);
+  const canWrite = props.canWrite && !offline;
+  const savedLabel = savedAt > 0 ? new Intl.DateTimeFormat(i18n.language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(savedAt * 1000)) : "";
   const crumbItems = [{ label: t("bucketDetail:breadcrumb.root"), path: "" }];
   if (prefix) {
     let acc = "";
@@ -263,8 +271,13 @@ export function ObjectBrowser(props: {
         badge={props.encryption ? <span className="text-xs text-muted-foreground">{props.encryption}</span> : undefined}
         actions={props.headerActions}
       />
+      {offline && !props.offline ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          {t("offlineSaved", { time: savedLabel })}
+        </p>
+      ) : null}
       {firstPageMs !== null ? <p className="text-xs text-muted-foreground">{t("firstPage", { ms: firstPageMs })}</p> : null}
-      {!props.canWrite ? <p className="text-sm text-muted-foreground">{t("noWrite")}</p> : null}
+      {!canWrite && !offline ? <p className="text-sm text-muted-foreground">{t("noWrite")}</p> : null}
       <Tabs
         value={showTrash ? "trash" : "objects"}
         onValueChange={(next) => {
@@ -308,7 +321,7 @@ export function ObjectBrowser(props: {
                 <option value="modified">{t("bucketDetail:table.modified")}</option>
               </select>
             </label>
-            {props.canWrite ? (
+            {canWrite ? (
               <>
                 <Input className="max-w-xs" placeholder={t("bucketDetail:actions.newFolder")} value={folderName} onChange={(event) => setFolderName(event.target.value)} />
                 <Button type="button" variant="outline" size="sm" onClick={() => void createFolder()}>
@@ -321,7 +334,7 @@ export function ObjectBrowser(props: {
           <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
             <Card>
               <CardContent className="p-0">
-                <div role="listbox" tabIndex={0} aria-label={t("objects")} className="max-h-[28rem] overflow-auto outline-none focus-visible:ring-2" onKeyDown={onKey}>
+                <div tabIndex={0} aria-label={t("objects")} className="max-h-[28rem] overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-ring" onKeyDown={onKey}>
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-left text-muted-foreground">
@@ -342,8 +355,7 @@ export function ObjectBrowser(props: {
                       {visible.map((row, index) => (
                         <tr
                           key={row.key}
-                          role="option"
-                          aria-selected={index === selected}
+                          aria-current={index === selected ? "true" : undefined}
                           className={cn("cursor-pointer border-b hover:bg-muted/50", index === selected && "bg-muted/30")}
                           onClick={() => {
                             setSelected(index);
@@ -363,12 +375,13 @@ export function ObjectBrowser(props: {
                           <td className="p-3">{row.object?.size ?? ""}</td>
                           <td className="p-3">{row.object?.last_modified || ""}</td>
                           <td className="p-3">
-                            {props.canWrite ? (
+                            {canWrite ? (
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-destructive"
+                                aria-label={t("common:delete")}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   setSelected(index);
@@ -422,7 +435,8 @@ export function ObjectBrowser(props: {
                 profileId={props.profileId}
                 bucket={props.bucket}
                 object={current.object}
-                canWrite={props.canWrite}
+                canWrite={canWrite}
+                offline={offline}
                 features={props.features}
                 confirmDangerous={props.confirmDangerous}
                 onChanged={() => void load(prefix, markers[markers.length - 1] || "", false)}
@@ -437,7 +451,7 @@ export function ObjectBrowser(props: {
               </Card>
             )}
           </div>
-          {confirmKey && props.canWrite ? (
+          {confirmKey && canWrite ? (
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="font-mono">{confirmKey}</span>
               <Button type="button" variant="destructive" size="sm" onClick={() => void remove(confirmKey, confirmKey.endsWith("/"))}>
@@ -448,7 +462,7 @@ export function ObjectBrowser(props: {
               </Button>
             </div>
           ) : null}
-          {renaming && current?.kind === "object" && props.canWrite ? (
+          {renaming && current?.kind === "object" && canWrite ? (
             <div className="flex flex-wrap items-center gap-2">
               <Input className="max-w-xs" value={renaming} onChange={(event) => setRenaming(event.target.value)} />
               <Button type="button" size="sm" onClick={() => void rename(current)}>
@@ -469,7 +483,7 @@ export function ObjectBrowser(props: {
                 return (
                   <div key={id} className="flex flex-wrap items-center justify-between gap-2 border-b py-2">
                     <span className="break-all font-mono">{String(item.original_key || id)}</span>
-                    {props.canWrite ? (
+                    {canWrite ? (
                       <span className="flex gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={() => void trashAction("trash.restore", id)}>
                           {t("restoreTrash")}
@@ -486,7 +500,7 @@ export function ObjectBrowser(props: {
           </Card>
         </TabsContent>
       </Tabs>
-      <TransferPanel profileId={props.profileId} bucket={props.bucket} prefix={prefix} canWrite={props.canWrite} selectedKey={current?.key || ""} selectedFolder={current?.kind === "folder"} />
+      <TransferPanel profileId={props.profileId} bucket={props.bucket} prefix={prefix} canWrite={canWrite} offline={offline} selectedKey={current?.key || ""} selectedFolder={current?.kind === "folder"} />
     </section>
   );
 }

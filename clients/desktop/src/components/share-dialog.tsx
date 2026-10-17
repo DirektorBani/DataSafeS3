@@ -70,6 +70,7 @@ export function ShareDialog(props: {
   bucket: string;
   objectKey: string;
   canWrite: boolean;
+  offline?: boolean;
   features?: Record<string, number>;
   confirmDangerous: (method: string, params: Record<string, unknown>) => Promise<BrowseResult>;
   onError: (message: string) => void;
@@ -239,7 +240,7 @@ export function ShareDialog(props: {
 
   return (
     <>
-      <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
+      <Button type="button" size="sm" variant="outline" disabled={props.offline} onClick={() => setOpen(true)}>
         <Link2 className="h-4 w-4" />
         {t("bucketDetail:tabs.share")}
       </Button>

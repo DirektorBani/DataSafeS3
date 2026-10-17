@@ -8,19 +8,24 @@ use agent::Agent;
 use keyring::SecretStore;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{Manager, State};
+
+mod tray;
 
 struct MemorySession {
     token: String,
     mfa_token: String,
 }
 
-struct Desktop {
-    agent: Mutex<Agent>,
+pub(crate) struct Desktop {
+    pub(crate) agent: Mutex<Agent>,
     secrets: SecretStore,
     memory: Mutex<HashMap<String, MemorySession>>,
 }
+
+struct CloseHides(AtomicBool);
 
 fn call(state: &Desktop, method: &str, params: Value) -> Result<Value, String> {
     let result = state.agent.lock().map_err(|err| err.to_string())?.call(method, params);
@@ -464,7 +469,21 @@ pub fn run() {
                 secrets: SecretStore,
                 memory: Mutex::new(HashMap::new()),
             });
+            let hides = tray::install(app);
+            app.manage(CloseHides(AtomicBool::new(hides)));
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let hide = window
+                    .app_handle()
+                    .try_state::<CloseHides>()
+                    .is_some_and(|flag| flag.0.load(Ordering::Acquire));
+                if hide {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             profile_list,

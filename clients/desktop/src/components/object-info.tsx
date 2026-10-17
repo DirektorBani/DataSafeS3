@@ -74,6 +74,7 @@ export function ObjectInfo(props: {
   bucket: string;
   object: ListedObject;
   canWrite: boolean;
+  offline?: boolean;
   features?: Record<string, number>;
   confirmDangerous: (method: string, params: Record<string, unknown>) => Promise<BrowseResult>;
   onChanged: () => void;
@@ -170,6 +171,7 @@ export function ObjectInfo(props: {
           bucket={props.bucket}
           objectKey={props.object.key}
           canWrite={props.canWrite}
+          offline={props.offline}
           features={props.features}
           confirmDangerous={props.confirmDangerous}
           onError={props.onError}
