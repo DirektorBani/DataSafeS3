@@ -124,11 +124,14 @@ mod tests {
                 assert!(store.get(&id, "token").expect("token after forget").is_none());
             }
             Err(err) => {
-                // The native backend is linked. This machine has no Secret
-                // Service collection, so there is no entry to delete. A store
-                // that cannot be opened is not the mock.
+                // The native backend is linked. CI and a machine without a
+                // Secret Service daemon cannot open a collection. That error
+                // is not the mock, which would have stored the password.
+                let lower = err.to_ascii_lowercase();
                 assert!(
-                    err.contains("Couldn't access platform secure storage"),
+                    lower.contains("platform secure storage")
+                        || lower.contains("org.freedesktop.secrets")
+                        || lower.contains("dbus"),
                     "unexpected store error: {err}"
                 );
             }

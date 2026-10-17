@@ -237,6 +237,26 @@ func (j *Journal) Flush() error {
 	return j.commit(false)
 }
 
+// Close flushes queued rows and releases the database file. Windows cannot
+// delete an open bolt file, so tests close the journal before TempDir cleanup.
+func (j *Journal) Close() error {
+	if j == nil || j.db == nil {
+		return nil
+	}
+	flushErr := j.Flush()
+	j.writeMu.Lock()
+	defer j.writeMu.Unlock()
+	if j.db == nil {
+		return flushErr
+	}
+	err := j.db.Close()
+	j.db = nil
+	if flushErr != nil {
+		return flushErr
+	}
+	return err
+}
+
 func (j *Journal) commit(force bool) error {
 	j.writeMu.Lock()
 	defer j.writeMu.Unlock()

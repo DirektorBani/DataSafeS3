@@ -197,6 +197,7 @@ func testEngine(t *testing.T, fake *fakeRemote) *Engine {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = j.Close() })
 	e := newEngine(j)
 	e.syncRun = true
 	e.limits = Limits{Threshold: 8, PartSize: 4, Transfers: 2, PartParallel: 2}
