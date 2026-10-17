@@ -18,6 +18,8 @@
     "allow-auth-oidc-password",
     "allow-auth-oidc-exchange",
     "allow-auth-api-token",
-    "allow-auth-access-key"
+    "allow-auth-access-key",
+    "allow-settings-load",
+    "allow-settings-save"
   ]
 }

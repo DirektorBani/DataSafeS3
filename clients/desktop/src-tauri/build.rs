@@ -21,6 +21,8 @@ fn main() {
                 "auth_oidc_exchange",
                 "auth_api_token",
                 "auth_access_key",
+                "settings_load",
+                "settings_save",
             ])),
     )
     .expect("failed to run tauri-build");

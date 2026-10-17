@@ -14,6 +14,7 @@ export type ServerCard = {
   login_methods?: string[];
   expires_soon?: boolean;
   mfa_setup?: boolean;
+  features?: Record<string, number>;
 };
 
 export type Profile = {
@@ -70,6 +71,16 @@ export function confirmMfa(id: string, code: string): Promise<LoginView> {
 
 export function logout(id: string): Promise<LoginView> {
   return invoke("auth_logout", { id });
+}
+
+export type UiSettings = { locale?: string; theme?: string };
+
+export function loadSettings(): Promise<UiSettings> {
+  return invoke("settings_load");
+}
+
+export function saveSettings(prefs: { locale?: string; theme?: string }): Promise<void> {
+  return invoke("settings_save", prefs);
 }
 
 export function oidcPassword(id: string, username: string, password: string, remember: boolean): Promise<LoginView> {

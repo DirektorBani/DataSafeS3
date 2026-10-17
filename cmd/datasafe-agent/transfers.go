@@ -65,7 +65,10 @@ type liveTask struct {
 	secret    string
 	cancel    context.CancelFunc
 	busy      bool
-	decide    chan decision
+	// pause is set when the profile signs out. The running task stops
+	// without aborting the multipart upload, so the next sign-in can resume.
+	pause  bool
+	decide chan decision
 }
 
 type creds struct {
@@ -345,6 +348,7 @@ func (e *Engine) Resume(profile Profile, token, accessKey, secret string) (int, 
 			live = &liveTask{decide: make(chan decision, 1)}
 			e.live[task.ID] = live
 		}
+		live.pause = false
 		live.profile = profile
 		live.token = token
 		live.accessKey = accessKey
@@ -392,6 +396,7 @@ func (e *Engine) Retry(profile Profile, id, token, accessKey, secret string) err
 		live = &liveTask{decide: make(chan decision, 1)}
 		e.live[task.ID] = live
 	}
+	live.pause = false
 	live.profile = profile
 	live.token = token
 	live.accessKey = accessKey
@@ -455,6 +460,10 @@ func (e *Engine) process(id string) {
 		live.accessKey = ""
 		e.mu.Unlock()
 	}()
+	if e.takePause(id) {
+		e.finishPause(&task)
+		return
+	}
 	if e.build == nil {
 		task.State = "error"
 		task.Message = "request.invalid"
@@ -471,7 +480,7 @@ func (e *Engine) process(id string) {
 	backoff := time.Second
 	for {
 		if ctx.Err() != nil {
-			e.finishCancel(ctx, &task, remote)
+			e.stopped(ctx, &task, remote)
 			return
 		}
 		var runErr error
@@ -491,7 +500,7 @@ func (e *Engine) process(id string) {
 		// wrapNet turns that into errNetwork. A TLS failure, a 4xx auth or
 		// permission error, and an invalid request stop immediately.
 		if ctx.Err() != nil || (errors.Is(runErr, context.Canceled) && !errors.Is(runErr, errNetwork)) {
-			e.finishCancel(ctx, &task, remote)
+			e.stopped(ctx, &task, remote)
 			return
 		}
 		if retryableTransfer(runErr) {
@@ -499,7 +508,7 @@ func (e *Engine) process(id string) {
 			task.Message = "waiting_network"
 			_ = e.journal.SaveMeta(task)
 			if err := e.pause(ctx, backoff); err != nil {
-				e.finishCancel(ctx, &task, remote)
+				e.stopped(ctx, &task, remote)
 				return
 			}
 			if backoff < 60*time.Second {
@@ -537,6 +546,73 @@ func (e *Engine) pause(ctx context.Context, d time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+// stopped is a cancelled context. Sign-out sets pause and keeps the upload
+// id. A user cancel aborts it.
+func (e *Engine) stopped(ctx context.Context, task *Task, remote remote) {
+	if e.takePause(task.ID) {
+		e.finishPause(task)
+		return
+	}
+	e.finishCancel(ctx, task, remote)
+}
+
+func (e *Engine) takePause(id string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	live := e.live[id]
+	if live == nil || !live.pause {
+		return false
+	}
+	live.pause = false
+	return true
+}
+
+// finishPause marks the task interrupted and leaves the multipart upload,
+// the confirmed parts, and a download's .dspart in place.
+func (e *Engine) finishPause(task *Task) {
+	task.State = "interrupted"
+	task.Message = "paused_signed_out"
+	_ = e.journal.SaveMeta(*task)
+}
+
+// PauseProfile stops this profile's active transfers without aborting them.
+// Another profile is left running. The next sign-in resumes through Resume.
+func (e *Engine) PauseProfile(profileID string) error {
+	profileID = strings.TrimSpace(profileID)
+	if profileID == "" || e.journal == nil {
+		return nil
+	}
+	tasks, err := e.journal.List()
+	if err != nil {
+		return err
+	}
+	for _, task := range tasks {
+		if task.ProfileID != profileID || !activeStates[task.State] {
+			continue
+		}
+		e.mu.Lock()
+		live := e.live[task.ID]
+		if live == nil {
+			live = &liveTask{decide: make(chan decision, 1)}
+			e.live[task.ID] = live
+		}
+		live.pause = true
+		busy := live.busy
+		cancel := live.cancel
+		e.mu.Unlock()
+		if busy && cancel != nil {
+			cancel()
+			continue
+		}
+		task.State = "interrupted"
+		task.Message = "paused_signed_out"
+		if err := e.journal.SaveMeta(task); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (e *Engine) finishCancel(ctx context.Context, task *Task, remote remote) {
@@ -601,16 +677,29 @@ func retryableTransfer(err error) bool {
 }
 
 func (e *Engine) abortAll(ctx context.Context, task *Task, remote remote) {
+	// One DELETE per upload id. The task row and a file row often carry the
+	// same id; aborting both made the server answer 404 on the second call.
 	seen := map[string]string{}
-	if task.UploadID != "" {
-		seen[task.Key] = task.UploadID
+	add := func(key, id string) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return
+		}
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = key
 	}
-	for _, job := range task.Files {
-		if job.UploadID != "" && !job.Done {
-			seen[job.Key] = job.UploadID
+	if task != nil {
+		add(task.Key, task.UploadID)
+		for _, job := range task.Files {
+			if job.Done {
+				continue
+			}
+			add(job.Key, job.UploadID)
 		}
 	}
-	for key, id := range seen {
+	for id, key := range seen {
 		_ = remote.Abort(ctx, key, id)
 	}
 }

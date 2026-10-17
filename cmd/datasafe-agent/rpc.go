@@ -225,6 +225,18 @@ func (a *App) dispatch(method string, params map[string]any) (any, *rpcError) {
 		return rpcBrowse(a.trashRestore(params))
 	case "trash.purge":
 		return rpcBrowse(a.trashPurge(params))
+	case "share.list":
+		return rpcBrowse(a.shareList(params))
+	case "share.create":
+		return rpcBrowse(a.shareCreate(params))
+	case "share.revoke":
+		return rpcBrowse(a.shareRevoke(params))
+	case "share.revoke_all":
+		return rpcBrowse(a.shareRevokeAll(params))
+	case "share.policy":
+		return rpcBrowse(a.sharePolicy(params))
+	case "presign.create":
+		return rpcBrowse(a.presignCreate(params))
 	case "transfer.list":
 		return rpcCall(a.transferList(params))
 	case "transfer.enqueue":

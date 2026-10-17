@@ -6,6 +6,7 @@ import { Input } from "@datasafe/ui/ui/input";
 import { Textarea } from "@datasafe/ui/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
 import { browse, type BrowseResult } from "../desktop";
+import { ShareDialog } from "./share-dialog";
 
 type MapValue = Record<string, string>;
 
@@ -73,6 +74,8 @@ export function ObjectInfo(props: {
   bucket: string;
   object: ListedObject;
   canWrite: boolean;
+  features?: Record<string, number>;
+  confirmDangerous: (method: string, params: Record<string, unknown>) => Promise<BrowseResult>;
   onChanged: () => void;
   onError: (message: string) => void;
 }) {
@@ -162,6 +165,15 @@ export function ObjectInfo(props: {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
+        <ShareDialog
+          profileId={props.profileId}
+          bucket={props.bucket}
+          objectKey={props.object.key}
+          canWrite={props.canWrite}
+          features={props.features}
+          confirmDangerous={props.confirmDangerous}
+          onError={props.onError}
+        />
         <div>
           <span className="text-muted-foreground">{t("bucketDetail:metadata.key")}</span>
           <p className="break-all font-mono">{props.object.key}</p>

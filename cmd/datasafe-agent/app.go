@@ -288,15 +288,28 @@ func (a *App) finishLogin(profile Profile, result loginResult) (loginResult, err
 }
 
 func (a *App) logout(profile Profile, token string) (loginResult, error) {
+	if eng, err := a.engine(); err == nil && eng != nil {
+		_ = eng.PauseProfile(profile.ID)
+	}
+	resume := func() {
+		if strings.TrimSpace(token) == "" {
+			return
+		}
+		if eng, err := a.engine(); err == nil && eng != nil {
+			_, _ = eng.Resume(profile, token, "", "")
+		}
+	}
 	revoked := false
 	if token != "" && (profile.Server == nil || !profile.Server.Blocked) {
 		client, err := clientFor(profile)
 		if err != nil {
+			resume()
 			return loginResult{}, err
 		}
 		client.Token = token
 		resp, err := client.do(http.MethodPost, "/api/v1/admin/logout", map[string]any{})
 		if err != nil {
+			resume()
 			return loginResult{}, err
 		}
 		revoked = resp.Status == http.StatusNoContent || resp.Status == http.StatusOK
@@ -307,6 +320,7 @@ func (a *App) logout(profile Profile, token string) (loginResult, error) {
 	profile.Session = "signed_out"
 	profile.ExpiresAtUnix = 0
 	if err := a.updateProfile(profile); err != nil {
+		resume()
 		return loginResult{}, err
 	}
 	message := ""

@@ -47,6 +47,7 @@ export function ObjectBrowser(props: {
   bucket: string;
   canWrite: boolean;
   encryption: string;
+  features?: Record<string, number>;
   onError: (message: string) => void;
   confirmDangerous: (method: string, params: Record<string, unknown>) => Promise<BrowseResult>;
   headerActions?: ReactNode;
@@ -417,7 +418,16 @@ export function ObjectBrowser(props: {
               </CardContent>
             </Card>
             {current?.kind === "object" && current.object ? (
-              <ObjectInfo profileId={props.profileId} bucket={props.bucket} object={current.object} canWrite={props.canWrite} onChanged={() => void load(prefix, markers[markers.length - 1] || "", false)} onError={props.onError} />
+              <ObjectInfo
+                profileId={props.profileId}
+                bucket={props.bucket}
+                object={current.object}
+                canWrite={props.canWrite}
+                features={props.features}
+                confirmDangerous={props.confirmDangerous}
+                onChanged={() => void load(prefix, markers[markers.length - 1] || "", false)}
+                onError={props.onError}
+              />
             ) : (
               <Card>
                 <CardHeader className="pb-2">

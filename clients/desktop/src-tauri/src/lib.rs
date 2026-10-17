@@ -2,6 +2,7 @@ mod agent;
 mod keyring;
 mod logging;
 mod profiles;
+mod settings;
 
 use agent::Agent;
 use keyring::SecretStore;
@@ -195,6 +196,12 @@ fn browse_method_allowed(method: &str) -> bool {
             | "trash.list"
             | "trash.restore"
             | "trash.purge"
+            | "share.list"
+            | "share.create"
+            | "share.revoke"
+            | "share.revoke_all"
+            | "share.policy"
+            | "presign.create"
     )
 }
 
@@ -302,6 +309,16 @@ fn server_info(state: State<Desktop>, id: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
+fn settings_load() -> Result<Value, String> {
+    Ok(settings::load())
+}
+
+#[tauri::command]
+fn settings_save(locale: Option<String>, theme: Option<String>) -> Result<(), String> {
+    settings::save(locale.as_deref(), theme.as_deref())
+}
+
+#[tauri::command]
 fn auth_login(state: State<Desktop>, id: String, username: String, password: String, remember: bool) -> Result<Value, String> {
     let password = if password.is_empty() {
         state.secrets.get(&id, "password")?.filter(|value| !value.is_empty()).ok_or("password is required")?
@@ -405,7 +422,9 @@ pub fn run() {
             auth_oidc_password,
             auth_oidc_exchange,
             auth_api_token,
-            auth_access_key
+            auth_access_key,
+            settings_load,
+            settings_save
         ])
         .run(tauri::generate_context!())
         .expect("error while running DataSafeS3 Desktop");

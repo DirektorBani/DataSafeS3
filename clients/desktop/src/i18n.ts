@@ -1,5 +1,6 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+import { saveSettings } from "./desktop";
 import enCommon from "../../../web/console/src/locales/en/common.json";
 import ruCommon from "../../../web/console/src/locales/ru/common.json";
 import enNav from "../../../web/console/src/locales/en/nav.json";
@@ -124,6 +125,7 @@ const resources = {
       etagMismatch: "The file did not match, so the transfer started over.",
       presignUnavailable: "The download started again. This server cannot resume it.",
       resumeAfterRestart: "This transfer stopped when the app closed. It continues when this profile is signed in.",
+      pausedSignedOut: "This profile's transfers paused when you signed out. They continue when you sign in again.",
       codeRequestInvalid: "The server rejected the upload. A folder made with New folder on this server can be an empty file, and files uploaded into it are refused. Upload into the bucket root instead. ({{code}})",
       codeGeneric: "The transfer failed. ({{code}})",
       codeAuth: "Sign in again. This session was not accepted. ({{code}})",
@@ -150,6 +152,18 @@ const resources = {
       diagSave: "Save archive",
       diagFolder: "Folder for the archive",
       diagHint: "The archive contains logs and versions only. Review the list, then save it.",
+      prefsKept: "Language and theme are stored with the profiles and stay after the app is removed.",
+      shareLink: "Share link",
+      shareLinkHint: "A share link can be revoked. Anyone with the link can download until it expires or the download limit is reached.",
+      presignUrl: "Presigned URL",
+      presignHint: "A presigned URL cannot be revoked. It stops working only when it expires, or when the key that signed it changes.",
+      presignCreate: "Create presigned URL",
+      shareDisabled: "Share links are turned off for this bucket.",
+      presignDisabled: "Presigned URLs are turned off for this bucket.",
+      passwordRequired: "This bucket requires a password on the share link.",
+      ttlOver: "That lifetime is longer than this bucket allows.",
+      revokeAll: "Revoke all links",
+      revokeOne: "Revoke",
       methods: {
         password: "Password",
         oidc: "OIDC",
@@ -269,6 +283,7 @@ const resources = {
       etagMismatch: "Файл не совпал, передача начата заново.",
       presignUnavailable: "Скачивание начато заново. Этот сервер не умеет его продолжать.",
       resumeAfterRestart: "Передача остановилась при закрытии приложения. Она продолжится, когда этот профиль войдёт.",
+      pausedSignedOut: "Передачи этого профиля поставлены на паузу при выходе. Они продолжатся после следующего входа.",
       codeRequestInvalid: "Сервер отклонил загрузку. Папка, созданная кнопкой «Новая папка», на этом сервере может оказаться пустым файлом и не принимать файлы. Загрузите в корень бакета. ({{code}})",
       codeGeneric: "Передача не выполнена. ({{code}})",
       codeAuth: "Войдите снова. Сессия не принята. ({{code}})",
@@ -295,6 +310,18 @@ const resources = {
       diagSave: "Сохранить архив",
       diagFolder: "Папка для архива",
       diagHint: "Архив содержит только журналы и версии. Сначала посмотрите список, потом сохраните.",
+      prefsKept: "Язык и тема хранятся вместе с профилями и остаются после удаления приложения.",
+      shareLink: "Ссылка для обмена",
+      shareLinkHint: "Ссылку для обмена можно отозвать. По ней можно скачать файл, пока срок не истёк и не исчерпан лимит скачиваний.",
+      presignUrl: "Presigned-ссылка",
+      presignHint: "Presigned-ссылку нельзя отозвать. Она перестаёт работать, только когда истекает срок или меняется ключ, которым она подписана.",
+      presignCreate: "Создать presigned-ссылку",
+      shareDisabled: "Обмен ссылками для этого бакета выключен.",
+      presignDisabled: "Presigned-ссылки для этого бакета выключены.",
+      passwordRequired: "Для ссылки этого бакета нужен пароль.",
+      ttlOver: "Этот срок больше, чем разрешено для бакета.",
+      revokeAll: "Отозвать все ссылки",
+      revokeOne: "Отозвать",
       methods: {
         password: "Пароль",
         oidc: "OIDC",
@@ -324,10 +351,13 @@ void i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 });
 
-export function setDesktopLocale(locale: DesktopLocale) {
+export function setDesktopLocale(locale: DesktopLocale, persist = true) {
   localStorage.setItem(LOCALE_KEY, locale);
   void i18n.changeLanguage(locale);
   document.documentElement.lang = locale;
+  if (persist) {
+    void saveSettings({ locale }).catch(() => undefined);
+  }
 }
 
 export default i18n;

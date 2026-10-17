@@ -1,0 +1,13 @@
+[package]
+name = "ci-keyring"
+version = "1.0.0-dev"
+description = "Windows smoke helper. Not part of the desktop installer."
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "ci-keyring"
+path = "src/main.rs"
+
+[dependencies]
+keyring = { version = "3.6.3", features = ["windows-native"] }

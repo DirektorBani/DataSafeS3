@@ -32,6 +32,7 @@ const messages: Record<string, string> = {
   etag_mismatch: "etagMismatch",
   presign_unavailable: "presignUnavailable",
   resume_after_restart: "resumeAfterRestart",
+  paused_signed_out: "pausedSignedOut",
   "tls.untrusted": "tlsUntrusted",
   "tls.failed": "tlsFailed",
   "request.invalid": "codeRequestInvalid",
@@ -73,6 +74,9 @@ function explain(task: TransferTask, t: (key: string, options?: { code: string }
 }
 
 function transferSummary(tasks: TransferTask[], t: (key: string) => string): string {
+  if (tasks.some((task) => task.message === "paused_signed_out")) {
+    return t("pausedSignedOut");
+  }
   if (tasks.some((task) => task.state === "interrupted" || task.message === "resume_after_restart")) {
     return t("resumeAfterRestart");
   }

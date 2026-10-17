@@ -4,9 +4,11 @@
 # libunwind.dll; neither is a Windows system DLL, and the Start Menu launch
 # then fails.
 #
-# Before the install, seed Credential Manager through the desktop keyring
-# crate and assert datasafe-agent.exe --purge-secrets removes those entries
-# and leaves an unrelated generic credential.
+# Before the install, seed Credential Manager through the separate ci-keyring
+# crate (it is not a binary of the app, so NSIS does not ship it) and assert
+# datasafe-agent.exe --purge-secrets removes those entries and leaves an
+# unrelated generic credential. After install, the file list must be exactly
+# datasafe-desktop.exe, uninstall.exe, and binaries\datasafe-agent.exe.
 #
 # Windows PowerShell 5.1 runs this file. WaitForExit(int) and an unbounded
 # LOCALAPPDATA walk have hung this step past its own timeouts, so every
@@ -232,6 +234,39 @@ function Find-InstallDir {
     throw "installed datasafe-desktop.exe was not found under $known or the uninstall registry"
 }
 
+function Assert-InstallFiles {
+    param([string]$Dir)
+    $root = $Dir.TrimEnd('\')
+    $required = @("datasafe-desktop.exe", "uninstall.exe", "binaries\datasafe-agent.exe")
+    $found = @(Get-ChildItem -LiteralPath $root -Recurse -File | ForEach-Object {
+            $_.FullName.Substring($root.Length).TrimStart('\')
+        })
+    Write-Host "installed files ($($found.Count)):"
+    foreach ($rel in ($found | Sort-Object)) {
+        Write-Host "  $rel"
+    }
+    $have = @{}
+    foreach ($rel in $found) {
+        $have[$rel.ToLowerInvariant()] = $true
+    }
+    foreach ($name in $required) {
+        if (-not $have.ContainsKey($name.ToLowerInvariant())) {
+            throw "installer is missing $name"
+        }
+    }
+    foreach ($rel in $found) {
+        $ok = $false
+        foreach ($name in $required) {
+            if ($rel.Equals($name, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $ok = $true
+            }
+        }
+        if (-not $ok) {
+            throw "installer shipped an unexpected file: $rel"
+        }
+    }
+}
+
 function Trust-TestSigner {
     # CurrentUser\Root prompts for consent and blocks this non-interactive
     # runner. TrustedPublisher does not. The exe is started directly, so a
@@ -255,15 +290,11 @@ function Trust-TestSigner {
 }
 
 function Get-KeyringTool {
-    $tool = Join-Path $repo "clients\desktop\src-tauri\target\release\ci-keyring.exe"
-    if (Test-Path -LiteralPath $tool) {
-        return $tool
-    }
+    $tool = Join-Path $repo "clients\desktop\ci-keyring\target\release\ci-keyring.exe"
     Write-Host "building ci-keyring"
     $cargo = (Get-Command cargo -ErrorAction Stop).Source
     $builtTool = Invoke-Captured -File $cargo -ArgumentList @(
-        "build", "--release", "--bin", "ci-keyring",
-        "--manifest-path", "clients/desktop/src-tauri/Cargo.toml"
+        "build", "--release", "--manifest-path", "clients/desktop/ci-keyring/Cargo.toml"
     ) -Seconds 300
     if ($builtTool.Code -ne 0 -or -not (Test-Path -LiteralPath $tool)) {
         Write-Host $builtTool.Text
@@ -351,6 +382,7 @@ try {
     }
     $installed = $true
     $installDir = Find-InstallDir
+    Assert-InstallFiles -Dir $installDir
     $launched = Join-Path $installDir "datasafe-desktop.exe"
     if (-not (Test-Path -LiteralPath $launched)) {
         throw "installer did not copy datasafe-desktop.exe to $installDir"

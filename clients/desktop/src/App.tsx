@@ -5,8 +5,8 @@ import { Button } from "@datasafe/ui/ui/button";
 import { Input } from "@datasafe/ui/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
 import { PageHeader } from "@datasafe/ui/page-header";
-import { browse, diagExport, diagPreview, listProfiles, logout, transfer, type DiagPreview, type Profile } from "./desktop";
-import { THEME_KEY } from "./i18n";
+import { browse, diagExport, diagPreview, listProfiles, loadSettings, logout, saveSettings, transfer, type DiagPreview, type Profile } from "./desktop";
+import { setDesktopLocale, THEME_KEY } from "./i18n";
 import { ResumeProgress } from "./components/transfers/panel";
 import { DesktopShell, type DesktopTheme, type DesktopView } from "./components/shell";
 import { BucketBrowser } from "./pages/buckets";
@@ -23,10 +23,13 @@ function storedTheme(): DesktopTheme {
   return "dark";
 }
 
-function applyTheme(theme: DesktopTheme) {
+function applyTheme(theme: DesktopTheme, persist = true) {
   const dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.classList.toggle("dark", dark);
   localStorage.setItem(THEME_KEY, theme);
+  if (persist) {
+    void saveSettings({ theme }).catch(() => undefined);
+  }
 }
 
 export default function App() {
@@ -61,9 +64,36 @@ export default function App() {
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    let cancel = false;
+    void loadSettings()
+      .then((saved) => {
+        if (cancel) {
+          return;
+        }
+        if (saved.locale === "en" || saved.locale === "ru") {
+          setDesktopLocale(saved.locale, false);
+        }
+        if (saved.theme === "light" || saved.theme === "dark" || saved.theme === "system") {
+          applyTheme(saved.theme, false);
+          setTheme(saved.theme);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
   const current = profiles.find((profile) => profile.id === selected);
   const signedIn = Boolean(current && current.session === "signed_in" && !current.server?.rejected);
   const canBrowse = Boolean(signedIn && current && !current.server?.blocked && current.server?.browse_allowed !== false);
+
+  useEffect(() => {
+    if (!current) {
+      setTransferNote("");
+    }
+  }, [current]);
 
   useEffect(() => {
     const signed = new Set(
@@ -179,12 +209,12 @@ export default function App() {
               <LoginPanel profile={current} notice={notice} onNotice={setNotice} onChanged={() => void reload()} onError={setError} />
             ) : null}
           </div>
-          {signedIn && current ? <ResumeProgress profileId={current.id} /> : null}
+          {current ? <ResumeProgress profileId={current.id} /> : null}
         </div>
       ) : null}
       {view === "buckets" ? (
         canBrowse && current ? (
-          <BucketBrowser profileId={current.id} resetToken={bucketListToken} onError={setError} onMfaSetup={() => setMfaBanner(true)} />
+          <BucketBrowser profileId={current.id} features={current.server?.features} resetToken={bucketListToken} onError={setError} onMfaSetup={() => setMfaBanner(true)} />
         ) : (
           <PageHeader title={t("nav:buckets")} description={t("subtitle")} />
         )
@@ -192,7 +222,7 @@ export default function App() {
       {view === "transfers" ? (
         <div className="space-y-4">
           <PageHeader title={t("transfers")} description={transferNote || t("transferIdle")} />
-          {signedIn && current ? (
+          {current ? (
             <ResumeProgress profileId={current.id} onSummary={setTransferNote} />
           ) : (
             <p className="text-sm text-muted-foreground">{t("empty")}</p>
@@ -231,12 +261,15 @@ export default function App() {
             <CardHeader>
               <CardTitle className="text-base">{t("common:theme.appearance")}</CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {(["light", "dark", "system"] as const).map((item) => (
-                <Button key={item} type="button" variant={theme === item ? "default" : "outline"} onClick={() => { applyTheme(item); setTheme(item); }}>
-                  {t(`common:theme.${item}`)}
-                </Button>
-              ))}
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">{t("prefsKept")}</p>
+              <div className="flex flex-wrap gap-2">
+                {(["light", "dark", "system"] as const).map((item) => (
+                  <Button key={item} type="button" variant={theme === item ? "default" : "outline"} onClick={() => { applyTheme(item); setTheme(item); }}>
+                    {t(`common:theme.${item}`)}
+                  </Button>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </div>

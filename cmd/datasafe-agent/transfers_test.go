@@ -1442,3 +1442,133 @@ func TestTransferListKeepsOneProfile(t *testing.T) {
 		t.Fatalf("unscoped list %d", len(every))
 	}
 }
+
+func TestAbortOncePerUpload(t *testing.T) {
+	fake := &fakeRemote{}
+	e := testEngine(t, fake)
+	task := Task{
+		ID: "t1", State: "error", Bucket: "b", Key: "folder", UploadID: "up1",
+		Files: []fileJob{{Key: "folder/file", UploadID: "up1"}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	e.live["t1"] = &liveTask{decide: make(chan decision, 1)}
+	if err := e.cancel("t1", creds{Token: "t", Profile: Profile{ID: "p"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.aborts) != 1 || fake.aborts[0] != "up1" {
+		t.Fatalf("aborts %v", fake.aborts)
+	}
+}
+
+func TestPauseProfileLeavesUpload(t *testing.T) {
+	e := testEngine(t, &fakeRemote{})
+	keep := Task{
+		ID: "mine", ProfileID: "p", State: "running", Bucket: "b", Key: "k", UploadID: "up1",
+		Files: []fileJob{{Key: "k", UploadID: "up1", Local: "local"}},
+	}
+	other := Task{ID: "theirs", ProfileID: "q", State: "running", Bucket: "b", Key: "other", UploadID: "up2"}
+	if err := e.journal.Save(keep); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.journal.Save(other); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.PauseProfile("p"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.journal.Get("mine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != "interrupted" || got.Message != "paused_signed_out" || got.UploadID != "up1" {
+		t.Fatalf("paused %+v", got)
+	}
+	if len(got.Files) != 1 || got.Files[0].UploadID != "up1" {
+		t.Fatalf("files %+v", got.Files)
+	}
+	left, err := e.journal.Get("theirs")
+	if err != nil || left.State != "running" {
+		t.Fatalf("other profile %+v %v", left, err)
+	}
+}
+
+func TestPauseProfileDoesNotAbort(t *testing.T) {
+	path := writeTemp(t, bytes.Repeat([]byte("a"), 20))
+	block := make(chan struct{})
+	fake := &fakeRemote{block: block}
+	e := testEngine(t, fake)
+	e.syncRun = false
+	task, err := e.Enqueue(enqueueReq{
+		Profile: Profile{ID: "p"}, Token: "tok", Direction: "upload", Bucket: "b", Key: "k", LocalPath: path,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		e.process(task.ID)
+		close(done)
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		fake.mu.Lock()
+		started := fake.initiates > 0
+		fake.mu.Unlock()
+		if started {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("upload did not start")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := e.PauseProfile("p"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("pause did not stop the upload")
+	}
+	got, err := e.journal.Get(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != "interrupted" || got.Message != "paused_signed_out" || got.UploadID == "" {
+		t.Fatalf("state %s %s upload %s", got.State, got.Message, got.UploadID)
+	}
+	fake.mu.Lock()
+	n := len(fake.aborts)
+	fake.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("aborts %d", n)
+	}
+}
+
+func TestLogoutPausesTransfers(t *testing.T) {
+	app := &App{dataDir: t.TempDir()}
+	profile, err := app.putProfile(Profile{Name: "One", ServerURL: "http://127.0.0.1:9", AuthMethod: "password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng, err := app.engine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := Task{ID: "t1", ProfileID: profile.ID, State: "queued", Bucket: "b", Key: "k", UploadID: "up1"}
+	if err := eng.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.logout(profile, ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := eng.journal.Get("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != "interrupted" || got.Message != "paused_signed_out" || got.UploadID != "up1" {
+		t.Fatalf("%+v", got)
+	}
+}
