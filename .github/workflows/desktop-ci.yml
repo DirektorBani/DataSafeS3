@@ -74,8 +74,6 @@ jobs:
             profile: "1.5.0"
           - image: ghcr.io/direktorbani/datasafe-storage-server:v1.6.0
             profile: "1.6.0"
-          - image: ghcr.io/direktorbani/datasafe-storage-server:v1.6.1
-            profile: "1.6.1"
           - image: ghcr.io/direktorbani/datasafe-storage-server:main
             profile: main
     permissions:
@@ -93,6 +91,23 @@ jobs:
         env:
           DATASAFE_COMPAT_IMAGE: ${{ matrix.image }}
           DATASAFE_CONTRACT_PROFILE: ${{ matrix.profile }}
+        run: bash scripts/ci/desktop-compat.sh
+
+  # GHCR has no :v1.6.1 tag. release.yml publishes on a git tag, and v1.6.1
+  # was not tagged (the GitHub release list stops at v1.6.0). The branch
+  # origin/release/1.6.1 is that server. The job links Version=1.6.1.
+  desktop-compat-161:
+    name: desktop-compat (1.6.1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+      - name: Release branch 1.6.1
+        env:
+          DATASAFE_COMPAT_MODE: src161
+          DATASAFE_CONTRACT_PROFILE: "1.6.1"
         run: bash scripts/ci/desktop-compat.sh
 
   desktop-compat-dev150:

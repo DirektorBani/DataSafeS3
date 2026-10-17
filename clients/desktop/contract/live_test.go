@@ -178,8 +178,22 @@ func probe(t *testing.T, client *http.Client, base, token, bucket, feature strin
 		status, _ := call(t, client, http.MethodPost, base+"/api/v1/mfa/login", "", map[string]any{})
 		expectRoute(t, status, on)
 	case "auth.oidc":
-		status, _ := call(t, client, http.MethodGet, base+"/api/v1/auth/login-options", "", nil)
-		expectRoute(t, status, on)
+		// The route exists on 1.6.1 even when OIDC is not configured.
+		// Table 4.6.6 says to hide OIDC when login-options omits it.
+		status, body := call(t, client, http.MethodGet, base+"/api/v1/auth/login-options", "", nil)
+		if on {
+			expectRoute(t, status, true)
+			return
+		}
+		if status == 404 {
+			return
+		}
+		if status != 200 {
+			t.Fatalf("login-options status %d", status)
+		}
+		if oidcOffered(body) {
+			t.Fatal("login-options offers oidc while auth.oidc is off")
+		}
 	case "auth.refresh":
 		status, _ := call(t, client, http.MethodPost, base+"/api/v1/auth/refresh", token, map[string]any{})
 		expectRoute(t, status, on)
@@ -307,6 +321,42 @@ func probe(t *testing.T, client *http.Client, base, token, bucket, feature strin
 		}
 	default:
 		t.Fatalf("no probe for %s", feature)
+	}
+}
+
+func oidcOffered(body []byte) bool {
+	obj, ok := asObject(body)
+	if !ok {
+		return false
+	}
+	for _, key := range []string{"oidc", "oidc_enabled"} {
+		if v, ok := obj[key].(bool); ok && v {
+			return true
+		}
+	}
+	for _, key := range []string{"methods", "login_methods"} {
+		items, ok := obj[key].([]any)
+		if !ok {
+			continue
+		}
+		for _, item := range items {
+			if s, ok := item.(string); ok && strings.EqualFold(s, "oidc") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func TestOIDCOffered(t *testing.T) {
+	if oidcOffered([]byte(`{"local_login_enabled":true}`)) {
+		t.Fatal("a local-login body does not offer oidc")
+	}
+	if !oidcOffered([]byte(`{"methods":["password","oidc"]}`)) {
+		t.Fatal("a methods list can offer oidc")
+	}
+	if oidcOffered([]byte(`not json`)) {
+		t.Fatal("a body that is not an object does not offer oidc")
 	}
 }
 

@@ -2,6 +2,8 @@
 # Live Desktop contract against one storage-server.
 # DATASAFE_COMPAT_MODE=image pulls DATASAFE_COMPAT_IMAGE (GHCR tags use the v prefix).
 # DATASAFE_COMPAT_MODE=dev150 builds tag v1.5.0 with no -ldflags and expects healthz version dev.
+# DATASAFE_COMPAT_MODE=src161 builds origin/release/1.6.1 with Version=1.6.1.
+# That tag is not in GHCR.
 set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 cd "$root"
@@ -63,6 +65,18 @@ if [ "$mode" = "dev150" ]; then
     "$work/storage-server" >"$work/server.log" 2>&1 &
   pid=$!
   export DATASAFE_CONTRACT_DEV=1
+elif [ "$mode" = "src161" ]; then
+  git fetch --depth 1 origin release/1.6.1
+  work=$(mktemp -d)
+  git worktree add --detach "$work" origin/release/1.6.1
+  (cd "$work" && CGO_ENABLED=0 go build \
+    -ldflags "-X github.com/DirektorBani/datasafe/internal/buildinfo.Version=1.6.1" \
+    -o "$work/storage-server" ./cmd/storage-server)
+  data=$(mktemp -d)
+  server_env
+  STORAGE_ADDR=":${port}" STORAGE_DATA_DIR="$data" \
+    "$work/storage-server" >"$work/server.log" 2>&1 &
+  pid=$!
 else
   image="${DATASAFE_COMPAT_IMAGE:?DATASAFE_COMPAT_IMAGE is required}"
   docker rm -f datasafe-compat >/dev/null 2>&1 || true
