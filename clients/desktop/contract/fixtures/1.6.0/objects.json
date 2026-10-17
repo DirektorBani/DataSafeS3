@@ -1,0 +1,16 @@
+{
+  "method": "GET",
+  "path": "/api/v1/buckets/contract/objects",
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "key": "readme.txt",
+        "size": 12,
+        "etag": "<masked>"
+      }
+    ],
+    "folders": ["docs/"],
+    "truncated": false
+  }
+}

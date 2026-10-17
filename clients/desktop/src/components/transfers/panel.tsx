@@ -77,7 +77,10 @@ function explain(task: TransferTask, t: (key: string, options?: { code: string }
   const key = code ? messages[code] : "";
   if (key) {
     const text = t(key, { code });
-    return code && text.includes(code) ? text : `${text} (${code})`;
+    if (task.state === "error" && code && !text.includes(code)) {
+      return `${text} (${code})`;
+    }
+    return text;
   }
   if (pathLike(code)) {
     return t("codeRequestInvalid", { code: "request.invalid" });
@@ -88,7 +91,7 @@ function explain(task: TransferTask, t: (key: string, options?: { code: string }
   if (task.state === "interrupted") {
     return t("resumeAfterRestart");
   }
-  if (code && /^[A-Za-z0-9_.-]+$/.test(code)) {
+  if (task.state === "error" && code && /^[A-Za-z0-9_.-]+$/.test(code)) {
     return t("codeGeneric", { code });
   }
   if (task.state === "error") {

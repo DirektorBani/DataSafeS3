@@ -11,11 +11,13 @@ type MockProfile = {
   server?: { browse_allowed?: boolean; features?: Record<string, number> };
 };
 
-async function boot(page: Page, profile: MockProfile, transfers: unknown[] = [], theme = "light") {
+type ObjectList = { status?: number; body?: unknown; error?: string; cached?: boolean; cached_at?: number };
+
+async function boot(page: Page, profile: MockProfile, transfers: unknown[] = [], theme = "light", objectLists?: Record<string, ObjectList>) {
   await page.addInitScript(
-    ({ profile, transfers, theme }) => {
+    ({ profile, transfers, theme, objectLists }) => {
       localStorage.setItem("datasafe-desktop.theme", theme);
-      const invoke = async (cmd: string, args?: { method?: string }) => {
+      const invoke = async (cmd: string, args?: { method?: string; params?: { prefix?: string } }) => {
         if (cmd === "profile_list") {
           return { profiles: [profile] };
         }
@@ -36,6 +38,14 @@ async function boot(page: Page, profile: MockProfile, transfers: unknown[] = [],
             return { status: 200, body: { buckets: [{ name: "photos", access: { can_write: false, ownership: "owner" } }] } };
           }
           if (args?.method === "object.list") {
+            const prefix = args.params?.prefix ?? "";
+            const listed = objectLists?.[prefix];
+            if (listed?.error) {
+              throw new Error(listed.error);
+            }
+            if (listed) {
+              return { status: listed.status ?? 200, body: listed.body, cached: listed.cached, cached_at: listed.cached_at };
+            }
             return { status: 200, body: { objects: [{ key: "readme.txt", size: 12 }], folders: [], truncated: false } };
           }
           return { status: 200, body: {} };
@@ -50,7 +60,7 @@ async function boot(page: Page, profile: MockProfile, transfers: unknown[] = [],
         },
       });
     },
-    { profile, transfers, theme },
+    { profile, transfers, theme, objectLists },
   );
   await page.goto("/");
 }
@@ -109,6 +119,8 @@ test("a paused transfer exposes a progress bar without serious axe violations", 
   const bar = page.getByRole("progressbar", { name: "Transfer progress" });
   await expect(bar).toBeVisible();
   await expect(bar).toHaveAttribute("aria-valuenow", "50");
+  await expect(page.getByText(/paused when you signed out/)).toBeVisible();
+  await expect(page.getByText("(paused_signed_out)")).toHaveCount(0);
   await page.getByRole("button", { name: "Buckets" }).click();
   await expect(page.getByText("photos")).toBeVisible();
   await expect(page.getByRole("button", { name: "Buckets" })).toHaveAttribute("aria-current", "page");
@@ -116,25 +128,78 @@ test("a paused transfer exposes a progress bar without serious axe violations", 
 });
 
 test("a bucket row and an object row open from the keyboard", async ({ page }) => {
-  await boot(page, {
-    id: "p1",
-    name: "Demo",
-    server_url: "https://example.invalid",
-    auth_method: "password",
-    username: "demo",
-    session: "signed_in",
-    server: { browse_allowed: true },
-  });
+  await boot(
+    page,
+    {
+      id: "p1",
+      name: "Demo",
+      server_url: "https://example.invalid",
+      auth_method: "password",
+      username: "demo",
+      session: "signed_in",
+      server: { browse_allowed: true },
+    },
+    [],
+    "light",
+    {
+      "": { status: 200, body: { folders: ["docs/"], objects: [{ key: "readme.txt", size: 12 }], truncated: false } },
+      "docs/": { status: 200, body: { folders: [], objects: [{ key: "docs/inside.txt", size: 4 }], truncated: false } },
+    },
+  );
   await page.getByRole("button", { name: "Buckets" }).click();
+  const buckets = page.getByRole("grid", { name: "Buckets" });
+  await expect(buckets).toHaveAttribute("aria-multiselectable", "false");
   const bucket = page.getByRole("row", { name: /photos/ });
   await bucket.focus();
   await expect(bucket).toBeFocused();
   await expect(bucket).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "photos" })).toBeVisible();
-  const objectRow = page.getByRole("row", { name: /readme\.txt/ });
-  await objectRow.focus();
-  await expect(objectRow).toBeFocused();
-  await expect(objectRow).toHaveAttribute("aria-selected", "true");
+  const objects = page.getByRole("grid", { name: "Objects" });
+  await expect(objects).toHaveAttribute("aria-multiselectable", "false");
+  const folder = page.getByRole("row", { name: /docs/ });
+  await folder.focus();
+  await expect(folder).toBeFocused();
+  await expect(folder).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  const inside = page.getByRole("row", { name: /inside\.txt/ });
+  await expect(inside).toBeVisible();
+  await expect(inside).toBeFocused();
+  await expect(inside).toHaveAttribute("aria-selected", "true");
+  await expect(objects).toHaveAttribute("aria-activedescendant", "object-row-0");
+  expect(await serious(page)).toEqual([]);
+});
+
+test("an uncached folder clears the parent rows", async ({ page }) => {
+  await boot(
+    page,
+    {
+      id: "p1",
+      name: "Demo",
+      server_url: "https://example.invalid",
+      auth_method: "password",
+      username: "demo",
+      session: "signed_in",
+      server: { browse_allowed: true },
+    },
+    [],
+    "light",
+    {
+      "": {
+        status: 200,
+        cached: true,
+        cached_at: 1700000000,
+        body: { folders: ["docs/"], objects: [{ key: "readme.txt", size: 12 }], truncated: false },
+      },
+      "docs/": { error: 'Get "http://127.0.0.1:9/objects": dial tcp 127.0.0.1:9: connectex: No connection could be made because the target machine actively refused it.' },
+    },
+  );
+  await page.getByRole("button", { name: "Buckets" }).click();
+  await page.getByRole("row", { name: /photos/ }).click();
+  await expect(page.getByRole("row", { name: /readme\.txt/ })).toBeVisible();
+  await page.getByRole("row", { name: /docs/ }).click();
+  await expect(page.getByRole("status").filter({ hasText: "This folder is not available offline." })).toBeVisible();
+  await expect(page.getByRole("row", { name: /readme\.txt/ })).toHaveCount(0);
+  await expect(page.getByText("docs", { exact: true })).toBeVisible();
   expect(await serious(page)).toEqual([]);
 });

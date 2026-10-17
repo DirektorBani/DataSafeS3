@@ -1,0 +1,15 @@
+{
+  "method": "GET",
+  "path": "/api/v1/buckets/contract/sharing",
+  "status": 200,
+  "body": {
+    "policy": {
+      "share_links_allowed": true
+    },
+    "effective": {
+      "share_links_allowed": true,
+      "share_password_required": false
+    },
+    "locked": []
+  }
+}

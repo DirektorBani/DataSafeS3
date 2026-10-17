@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/api/v1/capabilities",
+  "status": 404,
+  "body": {
+    "error": "not found"
+  }
+}

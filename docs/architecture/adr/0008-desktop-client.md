@@ -167,6 +167,14 @@ Progress bars expose the progressbar role. The announced value changes at most e
 
 Finished transfers can be removed from the Transfers view. That deletes `done` rows and `cancelled` rows whose abort already finished. A cancelled row that still has `pending_aborts` stays, so the next sign-in can still DELETE the upload.
 
+Opening a folder whose list is not in the cache clears the table. The empty row says the folder is not available offline, in English and Russian. The breadcrumb stays, so the cached parent is one step back. Enter and Backspace move focus to the first row of the list that just opened, or to that empty row when the list is missing. Bucket and object grids set `aria-multiselectable="false"` and keep `aria-selected` on the active row, which is the selection pattern UI Automation reads. A transfer row appends the raw code only when the task is an error. Paused and waiting rows stay sentences.
+
+### E11 compatibility matrix
+
+`clients/desktop/contract` is the suite from spec 4.6.8. `matrix.go` is table 4.6.6. `cmd/datasafe-agent/compat_test.go` checks `features150` and `features160` against that table. Fixtures for 1.5.0 and 1.6.0, plus a partial capabilities body, a broken body, and a body that renames `api` to `apiVersion`, live under `fixtures/`. `record.sh` refreshes a version directory from a live server and replaces tokens, passwords, signatures, etags, and `request_id` with `<masked>`. The checker reads `api/openapi/v1.yaml`. Health and a capabilities 200 must have the required fields. A 1.5.0 or 1.6.0 error fixture keeps the legacy `error` string. Those servers do not send `code`. The renamed-field fixture fails the checker, which is the incompatible-change gate, without editing the server.
+
+`desktop-contract` in `ci.yml` runs that suite and uploads `desktop-contract-1.0.0-dev.tar.gz`. No Desktop release is published yet, so the job does not download an older tarball. `desktop-compat` in `desktop-ci.yml` runs the live probes against `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0` and `:v1.6.0` (those fail the workflow) and `:main` (the job is allowed to fail). The registry tags use the `v` prefix. A separate job builds tag `v1.5.0` with no `-ldflags`. That process answers `/healthz` with `version: dev` and no `kms` key, and the probes expect the 1.5.0 column. The live test does not print tokens. No server package was changed.
+
 ### Server: OIDC introspection uses the userinfo URL (not changed)
 
 This is a 1.6.1 server defect. No server code was changed.

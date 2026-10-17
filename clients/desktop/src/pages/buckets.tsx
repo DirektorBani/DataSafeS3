@@ -224,6 +224,7 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
                 className="w-full text-sm"
                 role="grid"
                 aria-label={t("buckets:title")}
+                aria-multiselectable="false"
                 aria-activedescendant={buckets.length > 0 ? `bucket-row-${Math.min(cursor, buckets.length - 1)}` : undefined}
               >
                 <thead>

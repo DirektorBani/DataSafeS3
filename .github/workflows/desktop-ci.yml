@@ -55,6 +55,57 @@ jobs:
           rm -f clients/desktop/src-tauri/binaries/.gitkeep
       - name: Linux deb
         run: npm run tauri -w datasafe-desktop -- build --bundles deb
+      - name: Pack the Desktop contract suite
+        run: bash scripts/ci/desktop-contract.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-contract-1.0.0-dev
+          path: desktop-contract-1.0.0-dev.tar.gz
+
+  desktop-compat:
+    name: desktop-compat (${{ matrix.profile }})
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.profile == 'main' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+            profile: "1.5.0"
+          - image: ghcr.io/direktorbani/datasafe-storage-server:v1.6.0
+            profile: "1.6.0"
+          - image: ghcr.io/direktorbani/datasafe-storage-server:main
+            profile: main
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+      - name: Log in to GHCR
+        continue-on-error: true
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Contract against ${{ matrix.image }}
+        env:
+          DATASAFE_COMPAT_IMAGE: ${{ matrix.image }}
+          DATASAFE_CONTRACT_PROFILE: ${{ matrix.profile }}
+        run: bash scripts/ci/desktop-compat.sh
+
+  desktop-compat-dev150:
+    name: desktop-compat (v1.5.0 without ldflags)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+      - name: Unstamped v1.5.0 binary
+        env:
+          DATASAFE_COMPAT_MODE: dev150
+          DATASAFE_CONTRACT_PROFILE: "1.5.0"
+        run: bash scripts/ci/desktop-compat.sh
 
   windows-build:
     runs-on: windows-latest

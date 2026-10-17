@@ -1,0 +1,11 @@
+{
+  "method": "POST",
+  "path": "/api/v1/admin/login",
+  "status": 200,
+  "body": {
+    "token": "<masked>",
+    "expires_in": 86400,
+    "username": "admin",
+    "role": "administrator"
+  }
+}

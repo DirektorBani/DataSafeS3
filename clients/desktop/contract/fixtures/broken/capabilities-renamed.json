@@ -1,0 +1,14 @@
+{
+  "method": "GET",
+  "path": "/api/v1/capabilities",
+  "status": 200,
+  "body": {
+    "apiVersion": "v1",
+    "server_version": "1.6.1",
+    "spec_version": "1.6.1",
+    "login_methods": ["password"],
+    "features": {
+      "auth.password": 1
+    }
+  }
+}

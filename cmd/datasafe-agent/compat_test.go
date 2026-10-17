@@ -1,23 +1,43 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/DirektorBani/datasafe/clients/desktop/contract"
+)
 
 func TestFeatureColumns(t *testing.T) {
 	v15 := features150()
-	for _, key := range []string{"auth.password", "auth.totp", "auth.oidc", "objects.multipart", "sharing.links"} {
-		if v15[key] != 1 {
-			t.Fatalf("1.5.0 missing %s", key)
-		}
-	}
-	for _, key := range []string{"sharing.policy", "sharing.revoke_all", "auth.step_up", "encryption.kms", "errors.codes", "auth.refresh"} {
-		if _, ok := v15[key]; ok {
-			t.Fatalf("1.5.0 should not include %s", key)
-		}
-	}
 	v16 := features160()
-	for _, key := range []string{"sharing.policy", "sharing.revoke_all", "auth.step_up", "encryption.kms"} {
-		if v16[key] != 1 {
-			t.Fatalf("1.6.0 missing %s", key)
+	seen := map[string]bool{}
+	for _, row := range contract.Matrix {
+		seen[row.Name] = true
+		if row.In150 {
+			if v15[row.Name] != 1 {
+				t.Fatalf("1.5.0 missing %s", row.Name)
+			}
+		} else if _, ok := v15[row.Name]; ok {
+			t.Fatalf("1.5.0 should not include %s", row.Name)
+		}
+		if row.In160 {
+			if v16[row.Name] != 1 {
+				t.Fatalf("1.6.0 missing %s", row.Name)
+			}
+		} else if _, ok := v16[row.Name]; ok {
+			t.Fatalf("1.6.0 should not include %s", row.Name)
+		}
+	}
+	for key := range v15 {
+		if !seen[key] {
+			t.Fatalf("1.5.0 has %s, which is not in table 4.6.6", key)
+		}
+	}
+	for key := range v16 {
+		if !seen[key] {
+			t.Fatalf("1.6.0 has %s, which is not in table 4.6.6", key)
 		}
 	}
 	if _, ok := v16["errors.codes"]; ok {
@@ -187,6 +207,90 @@ func TestClientVersionPolicy(t *testing.T) {
 	if card.Blocked || card.Warning == "" {
 		t.Fatalf("non-security floor is a warning: %+v", card)
 	}
+}
+
+func TestParseCapsFixtures(t *testing.T) {
+	subset := fixtureBody(t, "partial/capabilities-subset.json")
+	parsed := parseCaps(200, subset)
+	parsed.Reached = true
+	if !parsed.HasFeatures || parsed.API != "v1" || parsed.Features["auth.password"] != 1 {
+		t.Fatalf("partial features: %+v", parsed)
+	}
+	if _, ok := parsed.Features["sharing.links"]; ok {
+		t.Fatal("a missing feature key is off")
+	}
+	card := detect(nil, parsed, healthInfo{Reached: true, Version: "1.5.0"}, false, DesktopVersion, "")
+	if card.Profile != "features" || card.Features["future.widget"] != 2 || card.Features["sharing.policy"] != 0 {
+		t.Fatalf("unknown keys stay inert and missing keys stay off: %+v", card)
+	}
+
+	plain := fixtureBody(t, "partial/capabilities-no-features.json")
+	public := parseCaps(200, plain)
+	public.Reached = true
+	if public.HasFeatures || public.API != "v1" {
+		t.Fatalf("body without features: %+v", public)
+	}
+	card = detect(public, nil, healthInfo{Reached: true, Version: "1.6.1"}, false, DesktopVersion, "")
+	if card.Profile != "1.6.0" || card.Features["sharing.policy"] != 1 {
+		t.Fatalf("no features falls through to healthz: %+v", card)
+	}
+	if _, ok := card.Features["errors.codes"]; ok {
+		t.Fatal("healthz 1.6 must not invent errors.codes")
+	}
+
+	broken := fixtureRaw(t, "partial/capabilities-broken.json")
+	parsed = parseCaps(200, broken)
+	if parsed.HasFeatures || parsed.API != "" {
+		t.Fatalf("broken JSON must not invent features: %+v", parsed)
+	}
+	card = detect(&capsInfo{Reached: true, Status: 200}, nil, healthInfo{Reached: true, Version: "1.5.0"}, false, DesktopVersion, "")
+	if card.Profile != "1.5.0" || card.Features["sharing.links"] != 1 {
+		t.Fatalf("unparsed capabilities use healthz: %+v", card)
+	}
+	if _, ok := card.Features["sharing.policy"]; ok {
+		t.Fatal("1.5.0 column includes sharing.policy")
+	}
+
+	missing := fixtureBody(t, "1.5.0/capabilities.json")
+	parsed = parseCaps(404, missing)
+	if parsed.HasFeatures {
+		t.Fatal("404 capabilities is not a feature map")
+	}
+	health := fixtureBody(t, "1.6.0/healthz.json")
+	var healthObj map[string]any
+	if err := json.Unmarshal(health, &healthObj); err != nil {
+		t.Fatal(err)
+	}
+	version, _ := healthObj["version"].(string)
+	card = detect(&capsInfo{Reached: true, Status: 404}, nil, healthInfo{Reached: true, Version: version}, false, DesktopVersion, "")
+	if card.Profile != "1.6.0" || card.Features["encryption.kms"] != 1 {
+		t.Fatalf("404 capabilities plus 1.6.0 healthz: %+v", card)
+	}
+}
+
+func fixtureBody(t *testing.T, name string) []byte {
+	t.Helper()
+	var env struct {
+		Body json.RawMessage `json:"body"`
+	}
+	raw := fixtureRaw(t, name)
+	if err := json.Unmarshal(raw, &env); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Body) == 0 {
+		t.Fatalf("%s has no body", name)
+	}
+	return env.Body
+}
+
+func fixtureRaw(t *testing.T, name string) []byte {
+	t.Helper()
+	path := filepath.Join("..", "..", "clients", "desktop", "contract", "fixtures", name)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 func TestBelow(t *testing.T) {

@@ -69,13 +69,25 @@ func (a *App) readCaps(client *Client, token string) (*capsInfo, string) {
 	if err != nil {
 		return info, netReason(err)
 	}
-	info.Status = resp.Status
-	if resp.Header.Get("Deprecation") != "" && info.Status == http.StatusOK {
-		// Recorded below when the body has no deprecations list.
+	parsed := parseCaps(resp.Status, resp.Body)
+	parsed.Reached = true
+	if parsed.Deprecations == nil && resp.Header.Get("Deprecation") != "" && parsed.Status == http.StatusOK {
+		parsed.Deprecations = []map[string]any{{
+			"method": "",
+			"path":   "Deprecation",
+		}}
 	}
-	obj, ok := decodeObject(resp.Body)
+	return parsed, ""
+}
+
+// parseCaps reads one capabilities body. A parse error, a missing features
+// object, or a non-object features value leaves HasFeatures false so detect
+// falls through to /healthz (spec 4.6.5 points 1–2).
+func parseCaps(status int, body []byte) *capsInfo {
+	info := &capsInfo{Status: status}
+	obj, ok := decodeObject(body)
 	if !ok {
-		return info, ""
+		return info
 	}
 	api, _ := obj["api"].(string)
 	info.API = api
@@ -118,13 +130,7 @@ func (a *App) readCaps(client *Client, token string) (*capsInfo, string) {
 			}
 		}
 	}
-	if info.Deprecations == nil && resp.Header.Get("Deprecation") != "" {
-		info.Deprecations = []map[string]any{{
-			"method": "",
-			"path":   "Deprecation",
-		}}
-	}
-	return info, ""
+	return info
 }
 
 func (a *App) readHealth(client *Client) (healthInfo, bool, string) {

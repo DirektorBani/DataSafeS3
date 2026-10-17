@@ -42,6 +42,23 @@ function parentPrefix(prefix: string): string {
   return cut >= 0 ? trimmed.slice(0, cut + 1) : "";
 }
 
+function isTransport(message: string): boolean {
+  const text = message.toLowerCase();
+  return (
+    text.includes("connection refused") ||
+    text.includes("connectex") ||
+    text.includes("actively refused") ||
+    text.includes("dial tcp") ||
+    text.includes("no such host") ||
+    text.includes("i/o timeout") ||
+    text.includes("timeout") ||
+    text.includes("network is unreachable") ||
+    text.includes("connection reset") ||
+    text.includes("wsarecv") ||
+    text.includes("eof")
+  );
+}
+
 export function ObjectBrowser(props: {
   profileId: string;
   bucket: string;
@@ -72,24 +89,63 @@ export function ObjectBrowser(props: {
   const [selectKey, setSelectKey] = useState("");
   const [listOffline, setListOffline] = useState(false);
   const [savedAt, setSavedAt] = useState(0);
+  const [folderOffline, setFolderOffline] = useState(false);
+  const [listError, setListError] = useState("");
+  const [focusNonce, setFocusNonce] = useState(0);
   const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
+  const emptyRef = useRef<HTMLTableRowElement | null>(null);
+  const listOfflineRef = useRef(false);
+  const keyboardOpen = useRef(false);
+  if (props.offline) {
+    listOfflineRef.current = true;
+  }
 
   const load = useCallback(
     async (nextPrefix: string, startAfter: string, recordFirst: boolean) => {
+      const focusAfter = keyboardOpen.current;
+      keyboardOpen.current = false;
+      const miss = (message: string) => {
+        setRows([]);
+        setSelected(0);
+        setTruncated(false);
+        setMarker("");
+        const offlineMiss = listOfflineRef.current || Boolean(props.offline) || isTransport(message);
+        if (offlineMiss) {
+          setFolderOffline(true);
+          setListError("");
+        } else {
+          setFolderOffline(false);
+          setListError(message);
+          onError(message);
+        }
+        if (focusAfter) {
+          setFocusNonce((n) => n + 1);
+        }
+      };
       const started = performance.now();
-      const result = await browse(profileId, "object.list", {
-        bucket,
-        prefix: nextPrefix,
-        start_after: startAfter,
-        max_keys: 100,
-      });
-      const message = problem(result);
-      if (message) {
-        onError(message);
+      let result: BrowseResult;
+      try {
+        result = await browse(profileId, "object.list", {
+          bucket,
+          prefix: nextPrefix,
+          start_after: startAfter,
+          max_keys: 100,
+        });
+      } catch (err) {
+        miss(err instanceof Error ? err.message : String(err));
         return;
       }
-      setListOffline(Boolean(result.cached));
+      const message = problem(result);
+      if (message) {
+        miss(message);
+        return;
+      }
+      const cached = Boolean(result.cached);
+      setListOffline(cached);
+      listOfflineRef.current = cached || Boolean(props.offline);
       setSavedAt(typeof result.cached_at === "number" ? result.cached_at : 0);
+      setFolderOffline(false);
+      setListError("");
       if (recordFirst) {
         setFirstPageMs(Math.round(performance.now() - started));
       }
@@ -105,8 +161,11 @@ export function ObjectBrowser(props: {
       setSelected(0);
       setTruncated(result.body?.truncated === true);
       setMarker(typeof result.body?.next_marker === "string" ? result.body.next_marker : "");
+      if (focusAfter) {
+        setFocusNonce((n) => n + 1);
+      }
     },
-    [bucket, onError, profileId],
+    [bucket, onError, profileId, props.offline],
   );
 
   useEffect(() => {
@@ -143,6 +202,23 @@ export function ObjectBrowser(props: {
   }, [selectKey, visible]);
 
   const current = visible[selected];
+
+  useEffect(() => {
+    if (focusNonce === 0) {
+      return;
+    }
+    const node = visible.length > 0 ? rowRefs.current[0] : emptyRef.current;
+    node?.focus();
+  }, [focusNonce, visible]);
+
+  function openPrefix(next: string, fromKeyboard: boolean) {
+    if (fromKeyboard) {
+      keyboardOpen.current = true;
+    }
+    setPrefix(next);
+    setMarkers([""]);
+    void load(next, "", true);
+  }
 
   async function remove(key: string, folder: boolean) {
     const result = await browse(props.profileId, folder ? "folder.delete" : "object.delete", {
@@ -232,9 +308,7 @@ export function ObjectBrowser(props: {
       go(index - 1);
     } else if (event.key === "Enter" && row?.kind === "folder") {
       event.preventDefault();
-      setPrefix(row.key);
-      setMarkers([""]);
-      void load(row.key, "", true);
+      openPrefix(row.key, true);
     } else if (event.key === "Delete" && canWrite && row) {
       event.preventDefault();
       setConfirmKey(row.key);
@@ -255,14 +329,11 @@ export function ObjectBrowser(props: {
       go(index + 10);
     } else if (event.key === "Backspace" && prefix) {
       event.preventDefault();
-      const next = parentPrefix(prefix);
-      setPrefix(next);
-      setMarkers([""]);
-      void load(next, "", true);
+      openPrefix(parentPrefix(prefix), true);
     }
   }
 
-  const offline = Boolean(props.offline || listOffline);
+  const offline = Boolean(props.offline || listOffline || folderOffline);
   const canWrite = props.canWrite && !offline;
   const savedLabel = savedAt > 0 ? new Intl.DateTimeFormat(i18n.language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(savedAt * 1000)) : "";
   const crumbItems = [{ label: t("bucketDetail:breadcrumb.root"), path: "" }];
@@ -282,7 +353,7 @@ export function ObjectBrowser(props: {
         badge={props.encryption ? <span className="text-xs text-muted-foreground">{props.encryption}</span> : undefined}
         actions={props.headerActions}
       />
-      {offline && !props.offline ? (
+      {listOffline && !props.offline ? (
         <p className="text-sm text-muted-foreground" role="status">
           {t("offlineSaved", { time: savedLabel })}
         </p>
@@ -311,11 +382,7 @@ export function ObjectBrowser(props: {
                 <button
                   type="button"
                   className={cn("hover:text-primary", index === crumbItems.length - 1 ? "font-medium text-foreground" : "text-muted-foreground")}
-                  onClick={() => {
-                    setPrefix(crumb.path);
-                    setMarkers([""]);
-                    void load(crumb.path, "", true);
-                  }}
+                  onClick={() => openPrefix(crumb.path, false)}
                 >
                   {crumb.label}
                 </button>
@@ -350,7 +417,8 @@ export function ObjectBrowser(props: {
                     className="w-full text-sm"
                     role="grid"
                     aria-label={t("objects")}
-                    aria-activedescendant={visible.length > 0 ? `object-row-${Math.min(selected, visible.length - 1)}` : undefined}
+                    aria-multiselectable="false"
+                    aria-activedescendant={visible.length > 0 ? `object-row-${Math.min(selected, visible.length - 1)}` : "object-row-empty"}
                   >
                     <thead>
                       <tr role="row" className="border-b text-left text-muted-foreground">
@@ -362,9 +430,15 @@ export function ObjectBrowser(props: {
                     </thead>
                     <tbody>
                       {visible.length === 0 ? (
-                        <tr role="row">
+                        <tr id="object-row-empty" role="row" tabIndex={0} aria-selected ref={emptyRef}>
                           <td role="gridcell" colSpan={4} className="p-8 text-center text-muted-foreground">
-                            {t("bucketDetail:emptyFolder")}
+                            {folderOffline ? (
+                              <span role="status">{t("folderOffline")}</span>
+                            ) : listError ? (
+                              <span role="status">{listError}</span>
+                            ) : (
+                              t("bucketDetail:emptyFolder")
+                            )}
                           </td>
                         </tr>
                       ) : null}
@@ -384,9 +458,7 @@ export function ObjectBrowser(props: {
                             onClick={() => {
                               setSelected(index);
                               if (row.kind === "folder") {
-                                setPrefix(row.key);
-                                setMarkers([""]);
-                                void load(row.key, "", true);
+                                openPrefix(row.key, false);
                               }
                             }}
                             onKeyDown={(event) => onRowKey(event, index)}
