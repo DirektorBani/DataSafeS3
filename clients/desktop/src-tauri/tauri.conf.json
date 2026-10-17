@@ -52,7 +52,7 @@
           "-ExecutionPolicy",
           "Bypass",
           "-File",
-          "src-tauri/windows/sign-test.ps1",
+          "windows/sign-test.ps1",
           "%1"
         ]
       }
