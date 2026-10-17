@@ -261,7 +261,7 @@ fn transfer(state: State<Desktop>, id: String, method: String, params: Option<Va
     obj.remove("access_secret");
     obj.insert("id".into(), Value::String(id.clone()));
     obj.insert("token".into(), Value::String(token));
-    if method == "transfer.enqueue" || method == "transfer.resume" || method == "transfer.retry" {
+    if method == "transfer.enqueue" || method == "transfer.resume" || method == "transfer.retry" || method == "transfer.cancel" {
         if let Ok(Some(secret)) = state.secrets.get(&id, "access_secret") {
             if !secret.is_empty() {
                 obj.insert("access_secret".into(), Value::String(secret));

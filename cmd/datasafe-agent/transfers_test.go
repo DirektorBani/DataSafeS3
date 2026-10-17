@@ -504,6 +504,31 @@ func TestCancelAbortsMultipart(t *testing.T) {
 	}
 }
 
+func TestCancelFailedMultipartAborts(t *testing.T) {
+	fake := &fakeRemote{}
+	e := testEngine(t, fake)
+	task := Task{
+		ID: "t1", State: "error", Message: "tls.untrusted", Bucket: "b", Key: "k", UploadID: "up1",
+		Files: []fileJob{{Key: "k", UploadID: "up1"}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	// A finished task used to keep its cancel func. Cancel treated that as
+	// "still running" and returned without aborting or changing the state.
+	e.live["t1"] = &liveTask{cancel: func() {}, decide: make(chan decision, 1)}
+	if err := e.cancel("t1", creds{Token: "t", Profile: Profile{ID: "p"}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.journal.Get("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != "cancelled" || len(fake.aborts) != 1 || fake.aborts[0] != "up1" {
+		t.Fatalf("state %s aborts %v", got.State, fake.aborts)
+	}
+}
+
 func TestDownloadETagMismatchRestarts(t *testing.T) {
 	fake := &fakeRemote{data: []byte("abcd"), forceETag: "bbb"}
 	e := testEngine(t, fake)

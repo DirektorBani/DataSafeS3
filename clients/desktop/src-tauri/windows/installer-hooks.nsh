@@ -22,7 +22,13 @@
     Goto datasafe_secrets_decided
     forget_datasafe_secrets:
       IfFileExists "$INSTDIR\binaries\datasafe-agent.exe" 0 datasafe_secrets_decided
-      ExecWait '"$INSTDIR\binaries\datasafe-agent.exe" --purge-secrets'
+      ClearErrors
+      ExecWait '"$INSTDIR\binaries\datasafe-agent.exe" --purge-secrets' $R9
+      ${If} ${Errors}
+        MessageBox MB_OK|MB_ICONEXCLAMATION "Saved sign-in secrets could not be removed. / Не удалось удалить сохранённые секреты входа."
+      ${ElseIf} $R9 <> 0
+        MessageBox MB_OK|MB_ICONEXCLAMATION "Saved sign-in secrets could not be removed. / Не удалось удалить сохранённые секреты входа."
+      ${EndIf}
     datasafe_secrets_decided:
   ${EndIf}
 !macroend

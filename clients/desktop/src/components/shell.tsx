@@ -79,7 +79,7 @@ export function DesktopShell(props: {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="w-full justify-start gap-2">
                 {themeIcon === Moon ? <Moon className="h-4 w-4" /> : themeIcon === Sun ? <Sun className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
-                {t("common:theme.label", { theme: props.theme })}
+                {t("common:theme.label", { theme: t(`common:theme.${props.theme}`) })}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">

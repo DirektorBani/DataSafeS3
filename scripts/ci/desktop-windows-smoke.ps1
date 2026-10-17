@@ -2,7 +2,15 @@
 # the installer does not ship, then install /S, start that exe with a system
 # PATH, and uninstall /S. A gnullvm link imports WebView2Loader.dll and
 # libunwind.dll; neither is a Windows system DLL, and the Start Menu launch
-# then fails. This script is the check CI was missing.
+# then fails.
+#
+# Before the install, seed Credential Manager through the desktop keyring
+# crate and assert datasafe-agent.exe --purge-secrets removes those entries
+# and leaves an unrelated generic credential.
+#
+# Windows PowerShell 5.1 runs this file. WaitForExit(int) and an unbounded
+# LOCALAPPDATA walk have hung this step past its own timeouts, so every
+# external process is polled and then taskkill /F /T.
 $ErrorActionPreference = "Stop"
 if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -Scope Global -ErrorAction SilentlyContinue) {
     $PSNativeCommandUseErrorActionPreference = $false
@@ -19,24 +27,71 @@ $setup = Get-ChildItem -Path (Join-Path $repo "clients\desktop\src-tauri\target\
 if (-not $setup) {
     throw "NSIS installer not found"
 }
-
-function Invoke-Timed {
-    param([string]$File, [string[]]$ArgumentList, [int]$Seconds)
-    $proc = Start-Process -FilePath $File -ArgumentList $ArgumentList -PassThru
-    if (-not $proc.WaitForExit($Seconds * 1000)) {
-        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-        throw "timed out after ${Seconds}s: $File"
-    }
-    return $proc.ExitCode
+$agent = Join-Path $repo "clients\desktop\src-tauri\binaries\datasafe-agent.exe"
+if (-not (Test-Path -LiteralPath $agent)) {
+    throw "datasafe-agent.exe was not built at $agent"
 }
 
 function Stop-ProcessTree {
     param([int]$ProcessId)
-    $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$ProcessId" -ErrorAction SilentlyContinue)
-    foreach ($child in $children) {
-        Stop-ProcessTree -ProcessId $child.ProcessId
+    & taskkill.exe /F /T /PID $ProcessId 1>$null 2>$null
+}
+
+function Wait-OrKill {
+    param([System.Diagnostics.Process]$Proc, [int]$Seconds, [string]$Label)
+    $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
+    while (-not $Proc.HasExited) {
+        if ([DateTime]::UtcNow -gt $deadline) {
+            Stop-ProcessTree -ProcessId $Proc.Id
+            throw "timed out after ${Seconds}s: $Label"
+        }
+        Start-Sleep -Milliseconds 250
     }
-    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+}
+
+function Quote-Arg {
+    param([string]$Text)
+    if ($Text -match '[\s"]') {
+        return '"' + ($Text -replace '"', '\"') + '"'
+    }
+    return $Text
+}
+
+function Invoke-Captured {
+    param([string]$File, [string[]]$ArgumentList, [int]$Seconds)
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $File
+    $quoted = @()
+    foreach ($arg in $ArgumentList) {
+        $quoted += (Quote-Arg -Text $arg)
+    }
+    $psi.Arguments = ($quoted -join " ")
+    $psi.WorkingDirectory = $repo
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    if (-not $proc.Start()) {
+        throw "failed to start $File"
+    }
+    $outTask = $proc.StandardOutput.ReadToEndAsync()
+    $errTask = $proc.StandardError.ReadToEndAsync()
+    Wait-OrKill -Proc $proc -Seconds $Seconds -Label $File
+    $outTask.Wait(5000) | Out-Null
+    $errTask.Wait(5000) | Out-Null
+    return @{
+        Code = $proc.ExitCode
+        Text = ($outTask.Result + "`n" + $errTask.Result).Trim()
+    }
+}
+
+function Invoke-Timed {
+    param([string]$File, [string[]]$ArgumentList, [int]$Seconds)
+    $proc = Start-Process -FilePath $File -ArgumentList $ArgumentList -PassThru -WindowStyle Hidden
+    Wait-OrKill -Proc $proc -Seconds $Seconds -Label $File
+    return $proc.ExitCode
 }
 
 function Get-PeDependents {
@@ -44,16 +99,22 @@ function Get-PeDependents {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
     $dumpbin = $null
     if (Test-Path -LiteralPath $vswhere) {
-        $dumpbin = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find "VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
+        $found = Invoke-Captured -File $vswhere -ArgumentList @(
+            "-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "-find", "VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe"
+        ) -Seconds 30
+        $dumpbin = ($found.Text -split "`r?`n" | Where-Object { $_ -like "*dumpbin.exe" } | Select-Object -First 1)
+        if ($dumpbin) { $dumpbin = $dumpbin.Trim() }
     }
     $text = $null
-    if ($dumpbin) {
+    if ($dumpbin -and (Test-Path -LiteralPath $dumpbin)) {
         Write-Host "imports: dumpbin /dependents"
         $binDir = Split-Path -Parent $dumpbin
         $oldPath = $env:PATH
         $env:PATH = "$binDir;$oldPath"
         try {
-            $text = (& $dumpbin /dependents $Exe | Out-String)
+            $ran = Invoke-Captured -File $dumpbin -ArgumentList @("/dependents", $Exe) -Seconds 60
+            $text = $ran.Text
         } finally {
             $env:PATH = $oldPath
         }
@@ -74,10 +135,12 @@ function Get-PeDependents {
             throw "neither dumpbin nor llvm-objdump is available"
         }
         Write-Host "imports: llvm-objdump -p"
-        $text = (& $objdump -p $Exe | Out-String)
-        if ($LASTEXITCODE -ne 0) {
-            throw "llvm-objdump failed ($LASTEXITCODE)"
+        $ran = Invoke-Captured -File $objdump -ArgumentList @("-p", $Exe) -Seconds 60
+        if ($ran.Code -ne 0) {
+            Write-Host $ran.Text
+            throw "llvm-objdump failed ($($ran.Code))"
         }
+        $text = $ran.Text
     }
     $seen = @{}
     $names = @()
@@ -166,11 +229,7 @@ function Find-InstallDir {
             return $loc.TrimEnd('\')
         }
     }
-    $found = Get-ChildItem -Path $env:LOCALAPPDATA -Filter "datasafe-desktop.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($found) {
-        return $found.DirectoryName
-    }
-    throw "installed datasafe-desktop.exe was not found"
+    throw "installed datasafe-desktop.exe was not found under $known or the uninstall registry"
 }
 
 function Trust-TestSigner {
@@ -183,6 +242,92 @@ function Trust-TestSigner {
         $store.Close()
     }
 }
+
+function Get-KeyringTool {
+    $tool = Join-Path $repo "clients\desktop\src-tauri\target\release\ci-keyring.exe"
+    if (Test-Path -LiteralPath $tool) {
+        return $tool
+    }
+    Write-Host "building ci-keyring"
+    $cargo = (Get-Command cargo -ErrorAction Stop).Source
+    $builtTool = Invoke-Captured -File $cargo -ArgumentList @(
+        "build", "--release", "--bin", "ci-keyring",
+        "--manifest-path", "clients/desktop/src-tauri/Cargo.toml"
+    ) -Seconds 300
+    if ($builtTool.Code -ne 0 -or -not (Test-Path -LiteralPath $tool)) {
+        Write-Host $builtTool.Text
+        throw "ci-keyring build failed ($($builtTool.Code))"
+    }
+    return $tool
+}
+
+function Test-GenericCredential {
+    param([string]$Target)
+    if (-not ("DsCredRead" -as [type])) {
+        $src = "using System; using System.Runtime.InteropServices; public static class DsCredRead { [DllImport(`"advapi32.dll`", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool CredRead(string target, uint type, uint flags, out IntPtr credential); [DllImport(`"advapi32.dll`")] public static extern void CredFree(IntPtr credential); public static bool Exists(string target) { IntPtr credential; if (!CredRead(target, 1, 0, out credential)) return false; CredFree(credential); return true; } }"
+        Add-Type -TypeDefinition $src
+    }
+    return [DsCredRead]::Exists($Target)
+}
+
+function Test-PurgeSecrets {
+    $tool = Get-KeyringTool
+    $id = "ci" + [guid]::NewGuid().ToString("N")
+    $control = "ci-control-$id.not-datasafe"
+    Write-Host "purge probe id $id"
+    try {
+        $seeded = Invoke-Captured -File $tool -ArgumentList @("seed", $id) -Seconds 60
+        if ($seeded.Code -ne 0) {
+            Write-Host $seeded.Text
+            throw "keyring seed failed ($($seeded.Code))"
+        }
+        $present = Invoke-Captured -File $tool -ArgumentList @("expect-present", $id) -Seconds 60
+        if ($present.Code -ne 0) {
+            Write-Host $present.Text
+            throw "keyring entries were not readable before purge"
+        }
+        $cmdkey = Join-Path $env:SystemRoot "System32\cmdkey.exe"
+        $added = Invoke-Captured -File $cmdkey -ArgumentList @("/generic:$control", "/user:ci", "/pass:ci-unrelated") -Seconds 30
+        if ($added.Code -ne 0) {
+            Write-Host $added.Text
+            throw "cmdkey could not add the unrelated credential"
+        }
+        if (-not (Test-GenericCredential -Target $control)) {
+            throw "unrelated credential $control was not stored"
+        }
+        $purged = Invoke-Captured -File $agent -ArgumentList @("--purge-secrets") -Seconds 60
+        Write-Host "purge-secrets exit $($purged.Code): $($purged.Text)"
+        if ($purged.Code -ne 0) {
+            throw "purge-secrets exited $($purged.Code)"
+        }
+        if ($purged.Text -notmatch "removed ([1-9][0-9]*)") {
+            throw "purge-secrets did not report a removed credential: $($purged.Text)"
+        }
+        $after = Invoke-Captured -File $tool -ArgumentList @("expect-purged", $id) -Seconds 60
+        if ($after.Code -ne 0) {
+            Write-Host $after.Text
+            throw "desktop credentials were not purged"
+        }
+        if (-not (Test-GenericCredential -Target $control)) {
+            throw "purge-secrets removed the unrelated credential $control"
+        }
+        Write-Host "purge-secrets removed desktop credentials and left $control"
+    } finally {
+        try {
+            Invoke-Captured -File $tool -ArgumentList @("cleanup", $id) -Seconds 60 | Out-Null
+        } catch {
+            Write-Host "keyring cleanup: $_"
+        }
+        try {
+            $cmdkey = Join-Path $env:SystemRoot "System32\cmdkey.exe"
+            Invoke-Captured -File $cmdkey -ArgumentList @("/delete:$control") -Seconds 30 | Out-Null
+        } catch {
+            Write-Host "credential cleanup: $_"
+        }
+    }
+}
+
+Test-PurgeSecrets
 
 $installed = $false
 $installDir = $null
@@ -208,7 +353,18 @@ try {
     $psi.EnvironmentVariables["PATH"] = "$env:SystemRoot\System32;$env:SystemRoot"
     Write-Host "launch: $launched"
     $app = [Diagnostics.Process]::Start($psi)
-    Start-Sleep -Seconds 10
+    $alive = $true
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if ($app.HasExited) {
+            $alive = $false
+            break
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    if (-not $alive) {
+        throw "datasafe-desktop.exe exited $($app.ExitCode) within 10s"
+    }
     if ($app.HasExited) {
         throw "datasafe-desktop.exe exited $($app.ExitCode) within 10s"
     }
@@ -217,11 +373,8 @@ try {
 } finally {
     if ($installed -and $installDir) {
         try {
-            $installRoot = $installDir.TrimEnd('\') + '\'
-            Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-                $_.ExecutablePath -and $_.ExecutablePath.StartsWith($installRoot, [StringComparison]::OrdinalIgnoreCase)
-            } | ForEach-Object {
-                Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+            Get-Process -Name "datasafe-desktop", "datasafe-agent" -ErrorAction SilentlyContinue | ForEach-Object {
+                Stop-ProcessTree -ProcessId $_.Id
             }
             Start-Sleep -Seconds 2
             $uninstaller = Join-Path $installDir "uninstall.exe"

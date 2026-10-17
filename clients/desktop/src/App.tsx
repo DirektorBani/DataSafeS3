@@ -33,6 +33,8 @@ export default function App() {
   const { t } = useTranslation();
   const [theme, setTheme] = useState<DesktopTheme>(storedTheme);
   const [view, setView] = useState<DesktopView>("profiles");
+  const [bucketListToken, setBucketListToken] = useState(0);
+  const [transferNote, setTransferNote] = useState("");
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selected, setSelected] = useState("");
   const [error, setError] = useState("");
@@ -152,7 +154,12 @@ export default function App() {
   return (
     <DesktopShell
       view={view}
-      onView={setView}
+      onView={(next) => {
+        if (next === "buckets") {
+          setBucketListToken((n) => n + 1);
+        }
+        setView(next);
+      }}
       theme={theme}
       onTheme={(next) => {
         applyTheme(next);
@@ -177,15 +184,19 @@ export default function App() {
       ) : null}
       {view === "buckets" ? (
         canBrowse && current ? (
-          <BucketBrowser profileId={current.id} onError={setError} onMfaSetup={() => setMfaBanner(true)} />
+          <BucketBrowser profileId={current.id} resetToken={bucketListToken} onError={setError} onMfaSetup={() => setMfaBanner(true)} />
         ) : (
           <PageHeader title={t("nav:buckets")} description={t("subtitle")} />
         )
       ) : null}
       {view === "transfers" ? (
         <div className="space-y-4">
-          <PageHeader title={t("transfers")} description={t("resumeAfterRestart")} />
-          {signedIn && current ? <ResumeProgress profileId={current.id} /> : <p className="text-sm text-muted-foreground">{t("empty")}</p>}
+          <PageHeader title={t("transfers")} description={transferNote || t("transferIdle")} />
+          {signedIn && current ? (
+            <ResumeProgress profileId={current.id} onSummary={setTransferNote} />
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("empty")}</p>
+          )}
         </div>
       ) : null}
       {view === "diagnostics" ? (

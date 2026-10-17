@@ -2,6 +2,11 @@ package main
 
 import "strings"
 
+// legacyGenericPrefix is the TargetName form CredEnumerateW returns when
+// called with CRED_ENUMERATE_ALL_CREDENTIALS. CredDeleteW does not accept
+// that form; it wants the bare generic target.
+const legacyGenericPrefix = "LegacyGeneric:target="
+
 // desktopCredentialSuffix is the Windows Credential Manager target suffix
 // the keyring crate builds: "<profile_id>/<kind>.datasafe-desktop".
 const desktopCredentialSuffix = ".datasafe-desktop"
@@ -26,6 +31,16 @@ func isDesktopCredential(target string) bool {
 		return false
 	}
 	return true
+}
+
+// bareCredentialTarget strips the CRED_ENUMERATE_ALL_CREDENTIALS prefix.
+// A cmdkey display line is not a target: it has spaces, so the prefix
+// check does not apply and isDesktopCredential still rejects it.
+func bareCredentialTarget(name string) string {
+	if strings.HasPrefix(name, legacyGenericPrefix) {
+		return strings.TrimPrefix(name, legacyGenericPrefix)
+	}
+	return name
 }
 
 // selectDesktopTargets keeps credential target names this app created.

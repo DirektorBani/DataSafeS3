@@ -30,4 +30,14 @@ func TestDesktopCredentialSelectionIgnoresUILanguage(t *testing.T) {
 	if !reflect.DeepEqual(got, real) {
 		t.Fatalf("got %q", got)
 	}
+	prefixed := legacyGenericPrefix + real[0]
+	if isDesktopCredential(prefixed) {
+		t.Fatal("prefixed name must not match until the prefix is removed")
+	}
+	if bare := bareCredentialTarget(prefixed); bare != real[0] || !isDesktopCredential(bare) {
+		t.Fatalf("bare %q", bare)
+	}
+	if bareCredentialTarget("    Target: "+prefixed) != "    Target: "+prefixed {
+		t.Fatal("a display line is not a prefixed target")
+	}
 }

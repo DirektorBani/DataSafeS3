@@ -10,12 +10,13 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// CredEnumerateW's filter is a name prefix plus a trailing asterisk. Our
-// targets share a suffix, not a prefix, so the filter "*.datasafe-desktop"
-// would not match them. CRED_ENUMERATE_ALL_CREDENTIALS with a nil filter
-// returns every target name and omits credential blobs. The suffix check
-// then decides what CredDeleteW removes.
-const credEnumerateAll = 0x1
+// CRED_ENUMERATE_ALL_CREDENTIALS returns TargetName as
+// "LegacyGeneric:target=<name>". CredDeleteW rejects that form, and the
+// suffix check rejects ':' and '='. Enumerate with filter "*" and flags 0
+// so TargetName is the bare generic name the keyring crate wrote
+// ("<profile>/<kind>.datasafe-desktop"). The prefixed form is still
+// accepted: the prefix is stripped and CredDeleteW gets the bare name.
+const credTypeGeneric = 1
 
 var (
 	errPurgeSecrets = errors.New("purge-secrets")
@@ -45,34 +46,45 @@ type credentialW struct {
 }
 
 func purgeDesktopSecrets() (int, error) {
-	n, err := purgeDesktopSecretsFlags(credEnumerateAll)
+	removed, err := deleteDesktopCredentials("*", 0)
 	if errors.Is(err, errPurgeFlags) {
-		return purgeDesktopSecretsFlags(0)
+		removed, err = deleteDesktopCredentials("", 0)
 	}
-	return n, err
+	if err != nil {
+		return removed, err
+	}
+	left, err := desktopCredentialNames("*", 0)
+	if errors.Is(err, errPurgeFlags) {
+		left, err = desktopCredentialNames("", 0)
+	}
+	if err != nil {
+		return removed, err
+	}
+	if len(left) > 0 {
+		return removed, errPurgeSecrets
+	}
+	return removed, nil
 }
 
-func purgeDesktopSecretsFlags(flags uintptr) (int, error) {
-	buf, count, err := credEnumerate(flags)
+func deleteDesktopCredentials(filter string, flags uintptr) (int, error) {
+	buf, count, err := credEnumerate(filter, flags)
 	if err != nil || buf == 0 || count == 0 {
 		return 0, err
 	}
 	defer procCredFree.Call(buf)
 	ptrs := unsafe.Slice((*uintptr)(unsafe.Pointer(buf)), count)
 	removed := 0
+	seen := map[string]struct{}{}
 	for _, p := range ptrs {
-		if p == 0 {
+		bare, credType, ok := desktopCredentialAt(p)
+		if !ok {
 			continue
 		}
-		cred := (*credentialW)(unsafe.Pointer(p))
-		if cred.TargetName == nil {
+		if _, dup := seen[bare]; dup {
 			continue
 		}
-		name := windows.UTF16PtrToString(cred.TargetName)
-		if !isDesktopCredential(name) {
-			continue
-		}
-		if err := credDelete(name, cred.Type); err != nil {
+		seen[bare] = struct{}{}
+		if err := credDelete(bare, credType); err != nil {
 			return removed, err
 		}
 		removed++
@@ -80,10 +92,55 @@ func purgeDesktopSecretsFlags(flags uintptr) (int, error) {
 	return removed, nil
 }
 
-func credEnumerate(flags uintptr) (uintptr, uint32, error) {
+func desktopCredentialNames(filter string, flags uintptr) ([]string, error) {
+	buf, count, err := credEnumerate(filter, flags)
+	if err != nil || buf == 0 || count == 0 {
+		return nil, err
+	}
+	defer procCredFree.Call(buf)
+	ptrs := unsafe.Slice((*uintptr)(unsafe.Pointer(buf)), count)
+	var names []string
+	for _, p := range ptrs {
+		bare, _, ok := desktopCredentialAt(p)
+		if ok {
+			names = append(names, bare)
+		}
+	}
+	return names, nil
+}
+
+func desktopCredentialAt(p uintptr) (string, uint32, bool) {
+	if p == 0 {
+		return "", 0, false
+	}
+	cred := (*credentialW)(unsafe.Pointer(p))
+	if cred.TargetName == nil {
+		return "", 0, false
+	}
+	raw := windows.UTF16PtrToString(cred.TargetName)
+	bare := bareCredentialTarget(raw)
+	if !isDesktopCredential(bare) {
+		return "", 0, false
+	}
+	credType := cred.Type
+	if credType == 0 || raw != bare {
+		credType = credTypeGeneric
+	}
+	return bare, credType, true
+}
+
+func credEnumerate(filter string, flags uintptr) (uintptr, uint32, error) {
+	var filterPtr uintptr
+	if filter != "" {
+		name, err := windows.UTF16PtrFromString(filter)
+		if err != nil {
+			return 0, 0, errPurgeSecrets
+		}
+		filterPtr = uintptr(unsafe.Pointer(name))
+	}
 	var count uint32
 	var buf uintptr
-	r, _, callErr := procCredEnumerate.Call(0, flags, uintptr(unsafe.Pointer(&count)), uintptr(unsafe.Pointer(&buf)))
+	r, _, callErr := procCredEnumerate.Call(filterPtr, flags, uintptr(unsafe.Pointer(&count)), uintptr(unsafe.Pointer(&buf)))
 	if r == 0 {
 		errno, _ := callErr.(syscall.Errno)
 		if errno == windows.ERROR_NOT_FOUND {
@@ -102,8 +159,12 @@ func credDelete(target string, credType uint32) error {
 	if err != nil {
 		return errPurgeSecrets
 	}
-	r, _, _ := procCredDelete.Call(uintptr(unsafe.Pointer(name)), uintptr(credType), 0)
+	r, _, callErr := procCredDelete.Call(uintptr(unsafe.Pointer(name)), uintptr(credType), 0)
 	if r == 0 {
+		errno, _ := callErr.(syscall.Errno)
+		if errno == windows.ERROR_NOT_FOUND {
+			return nil
+		}
 		return errPurgeSecrets
 	}
 	return nil

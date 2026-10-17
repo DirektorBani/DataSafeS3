@@ -26,7 +26,7 @@ function problem(result: BrowseResult): string {
   return "";
 }
 
-export function BucketBrowser(props: { profileId: string; onError: (message: string) => void; onMfaSetup: () => void }) {
+export function BucketBrowser(props: { profileId: string; resetToken: number; onError: (message: string) => void; onMfaSetup: () => void }) {
   const { t } = useTranslation(["shell", "buckets", "common"]);
   const step = useStepUp(props.profileId, props.onMfaSetup);
   const [buckets, setBuckets] = useState<BucketItem[]>([]);
@@ -51,6 +51,10 @@ export function BucketBrowser(props: { profileId: string; onError: (message: str
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    setSelected("");
+  }, [props.resetToken]);
 
   const current = buckets.find((bucket) => bucket.name === selected);
   const canWrite = current?.access?.can_write === true;

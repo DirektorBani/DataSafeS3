@@ -28,12 +28,66 @@ const messages: Record<string, string> = {
   waiting_network: "waitingNetwork",
   file_changed: "fileChanged",
   upload_not_found: "uploadNotFound",
+  "multipart.upload_not_found": "uploadNotFound",
   etag_mismatch: "etagMismatch",
   presign_unavailable: "presignUnavailable",
   resume_after_restart: "resumeAfterRestart",
   "tls.untrusted": "tlsUntrusted",
   "tls.failed": "tlsFailed",
+  "request.invalid": "codeRequestInvalid",
+  "auth.unauthorized": "codeAuth",
+  "auth.session_expired": "codeAuth",
+  "access.forbidden": "forbidden",
+  "resource.not_found": "codeNotFound",
+  internal: "codeInternal",
+  rate_limited: "codeRate",
 };
+
+function pathLike(text: string): boolean {
+  return /[A-Za-z]:\\/.test(text) || text.includes("\\\\") || /\bmkdir\b/i.test(text);
+}
+
+function explain(task: TransferTask, t: (key: string, options?: { code: string }) => string): string {
+  const code = (task.message || "").trim();
+  const key = code ? messages[code] : "";
+  if (key) {
+    const text = t(key, { code });
+    return code && text.includes(code) ? text : `${text} (${code})`;
+  }
+  if (pathLike(code)) {
+    return t("codeRequestInvalid", { code: "request.invalid" });
+  }
+  if (task.state === "waiting_network") {
+    return t("waitingNetwork");
+  }
+  if (task.state === "interrupted") {
+    return t("resumeAfterRestart");
+  }
+  if (code && /^[A-Za-z0-9_.-]+$/.test(code)) {
+    return t("codeGeneric", { code });
+  }
+  if (task.state === "error") {
+    return t("codeGeneric", { code: "error" });
+  }
+  return task.state;
+}
+
+function transferSummary(tasks: TransferTask[], t: (key: string) => string): string {
+  if (tasks.some((task) => task.state === "interrupted" || task.message === "resume_after_restart")) {
+    return t("resumeAfterRestart");
+  }
+  if (tasks.some((task) => task.state === "error")) {
+    return t("transferFailed");
+  }
+  if (tasks.some((task) => task.state === "running" || task.state === "queued" || task.state === "waiting_network" || task.state === "conflict")) {
+    return t("transferActive");
+  }
+  return t("transferIdle");
+}
+
+function canCancel(state: string): boolean {
+  return state === "error" || state === "queued" || state === "running" || state === "waiting_network" || state === "conflict";
+}
 
 export function TransferPanel(props: {
   profileId: string;
@@ -179,16 +233,7 @@ export function TransferPanel(props: {
     }
   }
 
-  function explain(task: TransferTask): string {
-    const key = task.message ? messages[task.message] : "";
-    if (key) {
-      return t(key);
-    }
-    if (task.state === "waiting_network") {
-      return t("waitingNetwork");
-    }
-    return task.message || task.state;
-  }
+  const visible = tasks.filter((task) => task.state !== "cancelled");
 
   return (
     <Card>
@@ -221,13 +266,13 @@ export function TransferPanel(props: {
         </Button>
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {tasks.length === 0 ? <p className="text-sm text-muted-foreground">{t("noTransfers")}</p> : null}
+      {visible.length === 0 ? <p className="text-sm text-muted-foreground">{t("noTransfers")}</p> : null}
       <ul className="space-y-2 text-sm">
-        {tasks.map((task) => (
+        {visible.map((task) => (
           <li key={task.id} className="space-y-2 rounded-md border p-3 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="break-all">
-                {task.direction} · {task.key || task.local_path} · {explain(task)}
+                {task.direction} · {task.key || task.local_path} · {explain(task, t)}
                 {task.size ? ` · ${formatBytes(task.bytes_done ?? 0)} / ${formatBytes(task.size)}` : task.bytes_done ? ` · ${formatBytes(task.bytes_done)}` : ""}
                 {task.files_total && task.files_total > 1 ? ` · ${task.files_done ?? 0}/${task.files_total}` : ""}
               </span>
@@ -240,7 +285,7 @@ export function TransferPanel(props: {
                     {t("retry")}
                   </Button>
                 ) : null}
-                {task.state === "queued" || task.state === "running" || task.state === "waiting_network" || task.state === "conflict" ? (
+                {canCancel(task.state) ? (
                   <Button type="button" variant="outline" onClick={() => void act("transfer.cancel", task.id)}>
                     {t("cancel")}
                   </Button>
@@ -307,9 +352,14 @@ export function TransferPanel(props: {
   );
 }
 
-export function ResumeProgress(props: { profileId: string }) {
+export function ResumeProgress(props: { profileId: string; onSummary?: (text: string) => void }) {
   const { t } = useTranslation();
   const [tasks, setTasks] = useState<TransferTask[]>([]);
+  const onSummary = props.onSummary;
+
+  useEffect(() => {
+    onSummary?.(transferSummary(tasks, t));
+  }, [tasks, onSummary, t]);
 
   useEffect(() => {
     let stop = false;
@@ -352,14 +402,21 @@ export function ResumeProgress(props: { profileId: string }) {
         {tasks.map((task) => (
           <li key={task.id} className="space-y-2 rounded-md border p-3">
             <span className="break-all">
-              {task.direction} · {task.key || task.local_path} · {task.state}
+              {task.direction} · {task.key || task.local_path} · {explain(task, t)}
               {task.size ? ` · ${formatBytes(task.bytes_done ?? 0)} / ${formatBytes(task.size)}` : task.bytes_done ? ` · ${formatBytes(task.bytes_done)}` : ""}
             </span>
-            {task.state === "error" ? (
-              <Button type="button" size="sm" variant="outline" onClick={() => void transfer(props.profileId, "transfer.retry", { transfer_id: task.id })}>
-                {t("retry")}
-              </Button>
-            ) : null}
+            <span className="flex gap-2">
+              {task.state === "error" ? (
+                <Button type="button" size="sm" variant="outline" onClick={() => void transfer(props.profileId, "transfer.retry", { transfer_id: task.id })}>
+                  {t("retry")}
+                </Button>
+              ) : null}
+              {canCancel(task.state) ? (
+                <Button type="button" size="sm" variant="outline" onClick={() => void transfer(props.profileId, "transfer.cancel", { transfer_id: task.id })}>
+                  {t("cancel")}
+                </Button>
+              ) : null}
+            </span>
             {task.size ? (
               <div className="h-2 overflow-hidden rounded-full bg-muted">
                 <div className="h-full bg-primary transition-all" style={{ width: `${Math.min(100, Math.round(((task.bytes_done ?? 0) / task.size) * 100))}%` }} />

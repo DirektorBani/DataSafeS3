@@ -1,6 +1,11 @@
 name: desktop-ci
 
 # Windows and Linux only. macOS is out of Desktop 1.0.
+# A new push cancels a previous run on the same ref. The Windows smoke
+# step used to sit for hours after its own timeouts never fired.
+concurrency:
+  group: desktop-ci-${{ github.ref }}
+  cancel-in-progress: true
 on:
   push:
     branches:
@@ -107,6 +112,7 @@ jobs:
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "NSIS installer ``$($exe.Name)``: $bytes bytes"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "NSIS SHA256: ``$sha``"
       - name: Imports and silent launch
+        timeout-minutes: 20
         shell: pwsh
         run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/ci/desktop-windows-smoke.ps1
       - uses: actions/upload-artifact@v4

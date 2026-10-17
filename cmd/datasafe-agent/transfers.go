@@ -64,6 +64,7 @@ type liveTask struct {
 	accessKey string
 	secret    string
 	cancel    context.CancelFunc
+	busy      bool
 	decide    chan decision
 }
 
@@ -243,10 +244,25 @@ func (e *Engine) List() ([]Task, error) {
 }
 
 func (e *Engine) Cancel(id string) error {
+	return e.cancel(id, creds{})
+}
+
+// cancel stops a running transfer, or removes one that has already failed.
+// A failed multipart upload is aborted on the server when the call still
+// has the profile's credentials. A leftover cancel func from a finished
+// task is not treated as "still running": that used to make Cancel a no-op
+// on an error row.
+func (e *Engine) cancel(id string, extra creds) error {
 	e.mu.Lock()
 	live := e.live[id]
-	if live != nil && live.cancel != nil {
+	if live != nil && live.busy && live.cancel != nil {
 		live.cancel()
+		e.mu.Unlock()
+		return nil
+	}
+	var remembered creds
+	if live != nil {
+		remembered = creds{Profile: live.profile, Token: live.token, AccessKey: live.accessKey, Secret: live.secret}
 	}
 	e.mu.Unlock()
 	task, err := e.journal.Get(id)
@@ -256,11 +272,27 @@ func (e *Engine) Cancel(id string) error {
 	if task.State == "done" || task.State == "cancelled" {
 		return nil
 	}
-	if live == nil || live.cancel == nil {
-		task.State = "cancelled"
-		return e.journal.SaveMeta(task)
+	use := extra
+	if use.Token == "" && use.Secret == "" {
+		use = remembered
 	}
-	return nil
+	if use.Profile.ID == "" {
+		use.Profile = remembered.Profile
+	}
+	if use.AccessKey == "" {
+		use.AccessKey = remembered.AccessKey
+	}
+	if e.build != nil && task.Bucket != "" && (use.Token != "" || use.Secret != "") {
+		if remote, err := e.build(use, task.Bucket); err == nil && remote != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			e.abortAll(ctx, &task, remote)
+			cancel()
+		}
+	}
+	task.State = "cancelled"
+	clearStale(&task)
+	e.removePartial(&task)
+	return e.journal.SaveMeta(task)
 }
 
 func (e *Engine) Resolve(id, choice string, all bool) error {
@@ -410,11 +442,14 @@ func (e *Engine) process(id string) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e.mu.Lock()
+	live.busy = true
 	live.cancel = cancel
 	e.mu.Unlock()
-	defer cancel()
 	defer func() {
+		cancel()
 		e.mu.Lock()
+		live.busy = false
+		live.cancel = nil
 		live.token = ""
 		live.secret = ""
 		live.accessKey = ""
@@ -1852,11 +1887,21 @@ func (a *App) transferCancel(params map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	profile, err := a.profileFromParams(params)
+	if err != nil {
+		return nil, err
+	}
 	id := strParam(params, "transfer_id")
 	if id == "" {
 		return nil, fmt.Errorf("transfer id is required")
 	}
-	if err := eng.Cancel(id); err != nil {
+	token, _ := params["token"].(string)
+	secret, _ := params["access_secret"].(string)
+	accessKey, _ := params["access_key"].(string)
+	if accessKey == "" {
+		accessKey = profile.Username
+	}
+	if err := eng.cancel(id, creds{Profile: profile, Token: token, AccessKey: accessKey, Secret: secret}); err != nil {
 		return nil, err
 	}
 	task, err := eng.journal.Get(id)
