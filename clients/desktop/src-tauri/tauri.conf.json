@@ -17,7 +17,8 @@
         "width": 960,
         "height": 640,
         "resizable": true,
-        "additionalBrowserArgs": "--disable-background-networking --disable-component-update --disable-domain-reliability --disable-sync --disable-client-side-phishing-detection --no-pings --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,ComponentUpdater,AutofillServerCommunication,OptimizationHints,Translate"
+        "generalAutofillEnabled": false,
+        "additionalBrowserArgs": "--disable-background-networking --disable-component-update --disable-domain-reliability --disable-sync --disable-client-side-phishing-detection --no-pings --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,ComponentUpdater,AutofillServerCommunication,OptimizationHints,Translate,Autofill,PasswordManager,PasswordManagerOnboarding"
       }
     ],
     "security": {

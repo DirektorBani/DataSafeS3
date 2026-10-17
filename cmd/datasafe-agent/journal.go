@@ -132,6 +132,10 @@ func openJournal(path string) (*Journal, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := j.scrubStored(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	if err := j.db.Sync(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -180,6 +184,7 @@ func (j *Journal) Save(task Task) error {
 // is durable. Directory progress must not rewrite every file on each update.
 func (j *Journal) SaveMeta(task Task) error {
 	task.Files = nil
+	scrubTask(&task)
 	task.UpdatedUnix = time.Now().Unix()
 	j.mu.Lock()
 	q := j.ensure(task.ID)
@@ -206,10 +211,54 @@ func (j *Journal) queueFile(task Task, index int) error {
 		j.queued++
 	}
 	task.Files = nil
+	scrubTask(&task)
 	task.UpdatedUnix = time.Now().Unix()
 	q.meta = task
 	q.hasMeta = true
 	return nil
+}
+
+// scrubStored rewrites error text that was saved before query strings were
+// removed. A failed download used to store the presigned URL, including
+// X-Amz-Credential and X-Amz-Signature. Opening the journal drops them.
+func (j *Journal) scrubStored() error {
+	return j.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("tasks"))
+		return b.ForEach(func(k, v []byte) error {
+			var task Task
+			if err := json.Unmarshal(v, &task); err != nil {
+				return nil
+			}
+			if !scrubTask(&task) {
+				return nil
+			}
+			raw, err := json.Marshal(task)
+			if err != nil {
+				return err
+			}
+			return b.Put(k, raw)
+		})
+	})
+}
+
+// scrubTask removes credentials from the message and the report. It reports
+// whether the row changed so an open can skip a rewrite.
+func scrubTask(task *Task) bool {
+	if task == nil {
+		return false
+	}
+	changed := false
+	if next := publicError(task.Message); next != task.Message {
+		task.Message = next
+		changed = true
+	}
+	for i := range task.Report {
+		if next := publicError(task.Report[i].Reason); next != task.Report[i].Reason {
+			task.Report[i].Reason = next
+			changed = true
+		}
+	}
+	return changed
 }
 
 func (j *Journal) ensure(id string) *queuedTask {

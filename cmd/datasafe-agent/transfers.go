@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -85,6 +89,11 @@ type Engine struct {
 	longPaths     bool
 	progressEvery time.Duration
 	progressAt    time.Time
+	// assembleFor is how long a retried complete polls object-meta before
+	// giving up. Zero means 30s. Tests set a short budget: their sleep is a
+	// no-op, so a full 30s would spin on the wall clock.
+	assembleFor   time.Duration
+	assembleEvery time.Duration
 }
 
 func newEngine(j *Journal) *Engine {
@@ -318,6 +327,47 @@ func (e *Engine) Resume(profile Profile, token, accessKey, secret string) (int, 
 	return len(ids), nil
 }
 
+// Retry queues one failed task again. Confirmed parts, the upload id, and
+// the download offset stay. The token and the access-key secret are attached
+// in memory, the same way Resume does for an interrupted task.
+func (e *Engine) Retry(profile Profile, id, token, accessKey, secret string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("transfer id is required")
+	}
+	if strings.TrimSpace(token) == "" && strings.TrimSpace(secret) == "" {
+		return fmt.Errorf("transfer is not waiting")
+	}
+	task, err := e.journal.Get(id)
+	if err != nil {
+		return fmt.Errorf("transfer was not found")
+	}
+	if task.State != "error" || (task.ProfileID != "" && task.ProfileID != profile.ID) {
+		return fmt.Errorf("transfer is not waiting")
+	}
+	task.State = "queued"
+	task.Message = ""
+	if err := e.journal.SaveMeta(task); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	live := e.live[task.ID]
+	if live == nil {
+		live = &liveTask{decide: make(chan decision, 1)}
+		e.live[task.ID] = live
+	}
+	live.profile = profile
+	live.token = token
+	live.accessKey = accessKey
+	live.secret = secret
+	e.mu.Unlock()
+	if e.syncRun {
+		e.process(task.ID)
+		return nil
+	}
+	e.signal()
+	return nil
+}
+
 func (e *Engine) take() string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -398,11 +448,15 @@ func (e *Engine) process(id string) {
 			_ = e.journal.SaveMeta(task)
 			return
 		}
-		if errors.Is(runErr, context.Canceled) {
+		// A user cancel, or any other cancel of this task's context, stops
+		// the task. A header timeout is DeadlineExceeded inside url.Error;
+		// wrapNet turns that into errNetwork. A leftover deadline or i/o
+		// timeout is the same wait, not a failure.
+		if ctx.Err() != nil || (errors.Is(runErr, context.Canceled) && !errors.Is(runErr, errNetwork)) {
 			e.finishCancel(ctx, &task, remote)
 			return
 		}
-		if errors.Is(runErr, errNetwork) {
+		if errors.Is(runErr, errNetwork) || errors.Is(runErr, context.DeadlineExceeded) || errors.Is(runErr, os.ErrDeadlineExceeded) {
 			task.State = "waiting_network"
 			task.Message = "waiting_network"
 			_ = e.journal.SaveMeta(task)
@@ -587,15 +641,79 @@ func retryableComplete(err error) bool {
 	return errors.Is(err, errNetwork) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded)
 }
 
-func (e *Engine) assembled(ctx context.Context, remote remote, key string, size int64) (string, bool) {
-	if size <= 0 {
+// maybeAssembled is a complete that may already have finished on the server.
+// A timeout is one case. A 400 or 404 while the server is still concatenating
+// parts is the other: the object row appears a few seconds later.
+func maybeAssembled(err error) bool {
+	if retryableComplete(err) || faultNotFound(err) {
+		return true
+	}
+	f, ok := err.(*apiFault)
+	if !ok {
+		return false
+	}
+	return f.Status == http.StatusBadRequest || f.Status == http.StatusNotFound
+}
+
+// multipartETag is the S3 multipart ETag: MD5 of the raw part MD5s in
+// part-number order, then "-" and the part count. A part ETag that is not
+// 16 bytes of hex cannot be checked, and the caller must not fall back to size.
+func multipartETag(parts []partRec) string {
+	sorted := sortedParts(parts)
+	if len(sorted) == 0 {
+		return ""
+	}
+	raw := make([]byte, 0, len(sorted)*16)
+	for _, part := range sorted {
+		etag := strings.Trim(strings.TrimSpace(part.ETag), `"`)
+		if etag == "" || strings.Contains(etag, "-") {
+			return ""
+		}
+		sum, err := hex.DecodeString(etag)
+		if err != nil || len(sum) != 16 {
+			return ""
+		}
+		raw = append(raw, sum...)
+	}
+	sum := md5.Sum(raw)
+	return hex.EncodeToString(sum[:]) + "-" + strconv.Itoa(len(sorted))
+}
+
+func sameETag(got, want string) bool {
+	return strings.EqualFold(strings.Trim(got, `"`), strings.Trim(want, `"`))
+}
+
+// waitAssembled polls object-meta until the object has the uploaded size and
+// the expected multipart ETag. Size alone is not identity: an overwrite of
+// the same length would otherwise be marked done with the old content.
+func (e *Engine) waitAssembled(ctx context.Context, remote remote, key string, size int64, want string) (string, bool) {
+	if want == "" || size <= 0 {
 		return "", false
 	}
-	etag, got, err := remote.Stat(ctx, key)
-	if err != nil || got != size {
-		return "", false
+	budget := e.assembleFor
+	if budget <= 0 {
+		budget = 30 * time.Second
 	}
-	return etag, true
+	every := e.assembleEvery
+	if every <= 0 {
+		every = time.Second
+	}
+	deadline := time.Now().Add(budget)
+	for {
+		if ctx.Err() != nil {
+			return "", false
+		}
+		etag, got, err := remote.Stat(ctx, key)
+		if err == nil && got == size && sameETag(etag, want) {
+			return strings.Trim(etag, `"`), true
+		}
+		if !time.Now().Before(deadline) {
+			return "", false
+		}
+		if err := e.pause(ctx, every); err != nil {
+			return "", false
+		}
+	}
 }
 
 type progressReader struct {
@@ -1003,8 +1121,9 @@ func (e *Engine) uploadParts(ctx context.Context, task *Task, index int, remote 
 		if errors.Is(err, context.Canceled) {
 			return err
 		}
-		if retryableComplete(err) || faultNotFound(err) {
-			if got, ok := e.assembled(ctx, remote, key, size); ok {
+		if maybeAssembled(err) {
+			want := multipartETag(parts)
+			if got, ok := e.waitAssembled(ctx, remote, key, size, want); ok {
 				e.mu.Lock()
 				job.ETag = got
 				job.UploadID = ""
@@ -1407,7 +1526,7 @@ func safeTransferMessage(err error) string {
 	}
 	if f, ok := err.(*apiFault); ok {
 		if f.Code != "" {
-			return f.Code
+			return publicError(f.Code)
 		}
 	}
 	if errors.Is(err, errNoRange) {
@@ -1416,11 +1535,7 @@ func safeTransferMessage(err error) string {
 	if errors.Is(err, errETagRestart) {
 		return "etag_mismatch"
 	}
-	text := err.Error()
-	if strings.Contains(strings.ToLower(text), "secret") || strings.Contains(strings.ToLower(text), "token") {
-		return "request failed"
-	}
-	return text
+	return publicError(err.Error())
 }
 
 func (a *App) transferEnqueue(params map[string]any) (any, error) {
@@ -1479,6 +1594,34 @@ func (a *App) transferResume(params map[string]any) (any, error) {
 	return map[string]any{"resumed": n}, nil
 }
 
+func (a *App) transferRetry(params map[string]any) (any, error) {
+	eng, err := a.engine()
+	if err != nil {
+		return nil, err
+	}
+	profile, err := a.profileFromParams(params)
+	if err != nil {
+		return nil, err
+	}
+	token, _ := params["token"].(string)
+	secret, _ := params["access_secret"].(string)
+	accessKey, _ := params["access_key"].(string)
+	if accessKey == "" {
+		accessKey = profile.Username
+	}
+	id := strParam(params, "transfer_id")
+	if err := eng.Retry(profile, id, token, accessKey, secret); err != nil {
+		return nil, err
+	}
+	task, err := eng.journal.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	scrubTask(&task)
+	task.Files = nil
+	return map[string]any{"transfer": task}, nil
+}
+
 func (a *App) transferList() (any, error) {
 	eng, err := a.engine()
 	if err != nil {
@@ -1489,6 +1632,7 @@ func (a *App) transferList() (any, error) {
 		return nil, err
 	}
 	for i := range items {
+		scrubTask(&items[i])
 		items[i].Files = nil
 		items[i].Report = nil
 	}
@@ -1518,6 +1662,7 @@ func (a *App) transferFiles(params map[string]any) (any, error) {
 			"done":  job.Done,
 		})
 	}
+	scrubTask(&task)
 	return map[string]any{"detail": map[string]any{
 		"id":          task.ID,
 		"report":      task.Report,

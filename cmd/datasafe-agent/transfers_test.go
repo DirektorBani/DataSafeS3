@@ -3,14 +3,21 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -35,10 +42,12 @@ type fakeRemote struct {
 	keys             []string
 	completeDelay    time.Duration
 	completeFailLeft int
+	completeStatus   int
 	completeMissing  bool
 	statFound        bool
 	statSize         int64
 	statETag         string
+	statMiss         int
 	gate             chan struct{}
 	inflight         int
 	maxInflight      int
@@ -124,16 +133,17 @@ func (f *fakeRemote) Complete(ctx context.Context, key, uploadID string, parts [
 		return "", &apiFault{Status: 400, Body: "etag mismatch"}
 	}
 	delay := f.completeDelay
-	var fail error
 	if f.completeFailLeft > 0 {
 		f.completeFailLeft--
-		fail = fmt.Errorf("%w: timeout awaiting response headers", context.DeadlineExceeded)
+		status := f.completeStatus
+		f.mu.Unlock()
+		if status >= 400 {
+			return "", &apiFault{Status: status, Body: "complete rejected"}
+		}
+		return "", fmt.Errorf("%w: timeout awaiting response headers", context.DeadlineExceeded)
 	}
 	missing := f.completeMissing
 	f.mu.Unlock()
-	if fail != nil {
-		return "", fail
-	}
 	if missing {
 		return "", &apiFault{Status: 404, Code: "multipart.upload_not_found", Body: "upload not found"}
 	}
@@ -152,6 +162,10 @@ func (f *fakeRemote) Complete(ctx context.Context, key, uploadID string, parts [
 func (f *fakeRemote) Stat(ctx context.Context, key string) (string, int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.statMiss > 0 {
+		f.statMiss--
+		return "", 0, &apiFault{Status: 404, Code: "not_found", Body: "not found"}
+	}
 	if !f.statFound {
 		return "", 0, &apiFault{Status: 404, Code: "not_found", Body: "not found"}
 	}
@@ -204,6 +218,8 @@ func testEngine(t *testing.T, fake *fakeRemote) *Engine {
 	e.progressEvery = 0
 	e.build = func(creds, string) (remote, error) { return fake, nil }
 	e.sleep = func(time.Duration) {}
+	e.assembleFor = 40 * time.Millisecond
+	e.assembleEvery = time.Millisecond
 	return e
 }
 
@@ -591,9 +607,16 @@ func TestSlowCompleteRetriesWithoutAbort(t *testing.T) {
 	}
 }
 
+func partMD5(body string) string {
+	sum := md5.Sum([]byte(body))
+	return hex.EncodeToString(sum[:])
+}
+
 func TestCompleteTimeoutUsesExistingObject(t *testing.T) {
 	path := writeTemp(t, bytes.Repeat([]byte("x"), 10))
-	fake := &fakeRemote{completeFailLeft: 1, statFound: true, statSize: 10, statETag: "assembled"}
+	parts := []partRec{{Number: 1, ETag: partMD5("a")}, {Number: 2, ETag: partMD5("b")}, {Number: 3, ETag: partMD5("c")}}
+	want := multipartETag(parts)
+	fake := &fakeRemote{completeFailLeft: 1, statFound: true, statSize: 10, statETag: want}
 	e := testEngine(t, fake)
 	info, _ := os.Stat(path)
 	task := Task{
@@ -601,7 +624,7 @@ func TestCompleteTimeoutUsesExistingObject(t *testing.T) {
 		Files: []fileJob{{
 			Local: path, Key: "k", Size: info.Size(), MtimeUnix: info.ModTime().Unix(),
 			UploadID: "up1",
-			Parts:    []partRec{{Number: 1, ETag: "e1"}, {Number: 2, ETag: "e2"}, {Number: 3, ETag: "e3"}},
+			Parts:    parts,
 		}},
 	}
 	if err := e.journal.Save(task); err != nil {
@@ -613,7 +636,7 @@ func TestCompleteTimeoutUsesExistingObject(t *testing.T) {
 	if got.State != "done" || len(fake.aborts) != 0 || fake.initiates != 0 {
 		t.Fatalf("state %s %s aborts %v initiates %d", got.State, got.Message, fake.aborts, fake.initiates)
 	}
-	if len(got.Files) != 1 || got.Files[0].ETag != "assembled" || got.Files[0].UploadID != "" {
+	if len(got.Files) != 1 || got.Files[0].ETag != want || got.Files[0].UploadID != "" {
 		t.Fatalf("file %+v", got.Files)
 	}
 }
@@ -808,5 +831,239 @@ func TestSlowCompleteUsesUntimedClient(t *testing.T) {
 	etag, err := remote.Complete(context.Background(), "k", "up", []partRec{{Number: 1, ETag: "e1"}})
 	if err != nil || etag != "abc" {
 		t.Fatalf("etag %q err %v", etag, err)
+	}
+}
+
+const signedURL = "https://storage.example/b/k?X-Amz-Credential=AKIASECRET&X-Amz-Signature=deadbeef"
+
+func TestWrapNetTreatsHeaderTimeoutAsNetwork(t *testing.T) {
+	header := &url.Error{Op: "Get", URL: signedURL, Err: context.DeadlineExceeded}
+	if !errors.Is(header, context.DeadlineExceeded) {
+		t.Fatal("fixture is not a header timeout")
+	}
+	got := wrapNet(header)
+	if !errors.Is(got, errNetwork) || errors.Is(got, context.DeadlineExceeded) {
+		t.Fatalf("header timeout: %v", got)
+	}
+	if strings.Contains(got.Error(), "AKIASECRET") || strings.Contains(got.Error(), "deadbeef") || strings.Contains(got.Error(), "X-Amz-") {
+		t.Fatalf("credential in error: %s", got)
+	}
+	if !strings.Contains(got.Error(), "storage.example/b/k") {
+		t.Fatalf("host was dropped: %s", got)
+	}
+	reset := wrapNet(&url.Error{Op: "Get", URL: signedURL, Err: errors.New("read tcp 127.0.0.1:1->127.0.0.1:2: connection reset by peer")})
+	if !errors.Is(reset, errNetwork) || strings.Contains(reset.Error(), "X-Amz-Signature") {
+		t.Fatalf("reset: %v", reset)
+	}
+	ioTimeout := wrapNet(&url.Error{Op: "Get", URL: signedURL, Err: errors.New("i/o timeout")})
+	if !errors.Is(ioTimeout, errNetwork) || errors.Is(ioTimeout, context.DeadlineExceeded) || strings.Contains(ioTimeout.Error(), "deadbeef") {
+		t.Fatalf("i/o timeout: %v", ioTimeout)
+	}
+	canceled := wrapNet(&url.Error{Op: "Get", URL: signedURL, Err: context.Canceled})
+	if !errors.Is(canceled, context.Canceled) || errors.Is(canceled, errNetwork) || strings.Contains(canceled.Error(), "http") {
+		t.Fatalf("cancel: %v", canceled)
+	}
+}
+
+func TestStalledHeadersWaitAndResume(t *testing.T) {
+	payload := []byte("0123456789")
+	var gets atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/objects/") {
+			http.NotFound(w, r)
+			return
+		}
+		if gets.Add(1) == 1 {
+			select {
+			case <-r.Context().Done():
+			case <-time.After(200 * time.Millisecond):
+			}
+			return
+		}
+		w.Header().Set("ETag", `"abc"`)
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+	client, err := newClient(srv.URL, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.Stream.Transport.(*http.Transport).ResponseHeaderTimeout = 50 * time.Millisecond
+	j, err := openJournal(filepath.Join(t.TempDir(), "transfers.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = j.Close() })
+	e := newEngine(j)
+	e.syncRun = true
+	e.sleep = func(time.Duration) {}
+	e.build = func(c creds, bucket string) (remote, error) {
+		return &restRemote{client: client, bucket: bucket}, nil
+	}
+	dest := t.TempDir()
+	task := Task{
+		ID: "t1", Direction: "download", State: "running", Bucket: "b", Key: "k", DestPath: dest,
+		Files: []fileJob{{Key: "k", Size: int64(len(payload)), ETag: "abc"}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	e.live["t1"] = &liveTask{token: "t", decide: make(chan decision, 1)}
+	e.process("t1")
+	got, err := e.journal.Get("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != "done" || gets.Load() < 2 {
+		t.Fatalf("state %s %s gets %d", got.State, got.Message, gets.Load())
+	}
+	body, err := os.ReadFile(filepath.Join(dest, "k"))
+	if err != nil || !bytes.Equal(body, payload) {
+		t.Fatalf("body %q err %v", body, err)
+	}
+}
+
+func TestJournalScrubsPresignedURL(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "transfers.db")
+	db, err := bolt.Open(path, 0o600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := `Get "` + signedURL + `": net/http: timeout awaiting response headers`
+	task := Task{ID: "t1", State: "error", Message: msg, Report: []PathNote{{Reason: msg}}}
+	raw, err := json.Marshal(task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucket([]byte("tasks"))
+		if err != nil {
+			return err
+		}
+		if _, err := tx.CreateBucket([]byte("files")); err != nil {
+			return err
+		}
+		return b.Put([]byte("t1"), raw)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	j, err := openJournal(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = j.Close() })
+	got, err := j.Get("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got.Message, "X-Amz-") || strings.Contains(got.Message, "AKIASECRET") || strings.Contains(got.Message, "deadbeef") {
+		t.Fatalf("message %s", got.Message)
+	}
+	if len(got.Report) != 1 || strings.Contains(got.Report[0].Reason, "X-Amz-Signature") {
+		t.Fatalf("report %+v", got.Report)
+	}
+	var stored []byte
+	err = j.db.View(func(tx *bolt.Tx) error {
+		stored = append([]byte(nil), tx.Bucket([]byte("tasks")).Get([]byte("t1"))...)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(stored, []byte("X-Amz-Credential")) || bytes.Contains(stored, []byte("deadbeef")) {
+		t.Fatalf("row %s", stored)
+	}
+	shown := safeTransferMessage(&url.Error{Op: "Get", URL: signedURL, Err: errors.New("broken pipe")})
+	if strings.Contains(shown, "deadbeef") || strings.Contains(shown, "X-Amz-Credential") {
+		t.Fatalf("list text %s", shown)
+	}
+}
+
+func TestRetriedCompleteRequiresMultipartETag(t *testing.T) {
+	path := writeTemp(t, bytes.Repeat([]byte("x"), 10))
+	info, _ := os.Stat(path)
+	parts := []partRec{{Number: 1, ETag: partMD5("a")}, {Number: 2, ETag: partMD5("b")}, {Number: 3, ETag: partMD5("c")}}
+	want := multipartETag(parts)
+	fake := &fakeRemote{completeFailLeft: 1, completeStatus: 400, statMiss: 2, statFound: true, statSize: 10, statETag: `"` + want + `"`}
+	e := testEngine(t, fake)
+	task := Task{
+		ID: "t1", Direction: "upload", State: "running", LocalPath: path, Bucket: "b",
+		Files: []fileJob{{
+			Local: path, Key: "k", Size: info.Size(), MtimeUnix: info.ModTime().Unix(),
+			UploadID: "up1", Parts: parts,
+		}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	e.live["t1"] = &liveTask{token: "t", decide: make(chan decision, 1)}
+	e.process("t1")
+	got, _ := e.journal.Get("t1")
+	if got.State != "done" || len(fake.aborts) != 0 || fake.completes != 1 {
+		t.Fatalf("state %s %s completes %d aborts %v", got.State, got.Message, fake.completes, fake.aborts)
+	}
+	if len(got.Files) != 1 || got.Files[0].ETag != want || got.Files[0].UploadID != "" {
+		t.Fatalf("file %+v", got.Files)
+	}
+
+	other := &fakeRemote{completeFailLeft: 1, completeStatus: 400, statFound: true, statSize: 10, statETag: "old-object"}
+	e2 := testEngine(t, other)
+	task.ID = "t2"
+	task.State = "running"
+	task.Files[0].UploadID = "up1"
+	task.Files[0].ETag = ""
+	if err := e2.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	e2.live["t2"] = &liveTask{token: "t", decide: make(chan decision, 1)}
+	e2.process("t2")
+	miss, _ := e2.journal.Get("t2")
+	if miss.State == "done" || len(other.aborts) != 0 {
+		t.Fatalf("same-size object was accepted: %+v aborts %v", miss, other.aborts)
+	}
+	if len(miss.Files) != 1 || miss.Files[0].UploadID == "" {
+		t.Fatalf("upload id cleared: %+v", miss.Files)
+	}
+}
+
+func TestRetryContinuesFailedDownload(t *testing.T) {
+	fake := &fakeRemote{data: []byte("abcdefghij")}
+	e := testEngine(t, fake)
+	dest := t.TempDir()
+	local := filepath.Join(dest, "a.txt")
+	if err := os.WriteFile(local+".dspart", []byte("abcd"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	task := Task{
+		ID: "t1", ProfileID: "p", Direction: "download", State: "error", Bucket: "b", Key: "a.txt", DestPath: dest,
+		Message: `Get "` + signedURL + `": net/http: timeout awaiting response headers`,
+		Files:   []fileJob{{Key: "a.txt", Local: local, Size: 10, ETag: "aaa", Offset: 4}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := e.journal.Get("t1")
+	if strings.Contains(saved.Message, "AKIASECRET") || strings.Contains(saved.Message, "deadbeef") {
+		t.Fatalf("saved %s", saved.Message)
+	}
+	if err := e.Retry(Profile{ID: "p"}, "t1", "token", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.journal.Get("t1")
+	if got.State != "done" || len(fake.openOffsets) == 0 || fake.openOffsets[0] != 4 {
+		t.Fatalf("state %s %s offsets %v", got.State, got.Message, fake.openOffsets)
+	}
+	body, err := os.ReadFile(local)
+	if err != nil || string(body) != "abcdefghij" {
+		t.Fatalf("body %q err %v", body, err)
+	}
+	if strings.Contains(got.Message, "X-Amz-") {
+		t.Fatalf("message %s", got.Message)
 	}
 }

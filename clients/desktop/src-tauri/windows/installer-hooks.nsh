@@ -5,10 +5,12 @@
 ; Silent uninstall is uninstall.exe /S. That skips the checkbox, so
 ; %APPDATA%\DataSafeS3 (profiles, journal, logs) is left in place. There is
 ; no /S option that also deletes it. The checkbox itself only removes
-; %APPDATA%\com.datasafe.desktop and %LOCALAPPDATA%\com.datasafe.desktop,
-; which are not the data directory. This hook does not touch either.
-; Skip the delete during an update so the new installer can still read the
-; previous install directory.
+; %APPDATA%\com.datasafe.desktop and %LOCALAPPDATA%\com.datasafe.desktop.
+; Those are not the data directory. This hook also removes
+; %LOCALAPPDATA%\com.datasafe.desktop, the WebView2 profile. It holds no
+; user data, and it is where saved codes were stored. %APPDATA%\DataSafeS3
+; stays. Skip the delete during an update so the new installer can still
+; read the previous install directory.
 
 !macro NSIS_HOOK_POSTUNINSTALL
   ${If} $UpdateMode <> 1
@@ -16,5 +18,6 @@
     DeleteRegKey /ifempty HKCU "Software\datasafe"
     DeleteRegKey HKLM "Software\datasafe\DataSafeS3 Desktop"
     DeleteRegKey /ifempty HKLM "Software\datasafe"
+    RMDir /r "$LOCALAPPDATA\com.datasafe.desktop"
   ${EndIf}
 !macroend

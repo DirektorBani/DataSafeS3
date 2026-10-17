@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@datasafe/ui/ui/button";
 import { browse, diagExport, diagPreview, listProfiles, transfer, type DiagPreview, type Profile } from "./desktop";
 import { setDesktopLocale, THEME_KEY, type DesktopLocale } from "./i18n";
+import { ResumeProgress } from "./components/transfers/panel";
 import { BucketBrowser } from "./pages/buckets";
 import { LoginPanel } from "./pages/login";
 import { ProfileList } from "./pages/profiles";
@@ -195,6 +196,7 @@ export default function App() {
           />
         ) : null}
       </div>
+      {current && current.session === "signed_in" && !current.server?.rejected ? <ResumeProgress profileId={current.id} /> : null}
       {current && current.session === "signed_in" && !current.server?.rejected && !current.server?.blocked && current.server?.browse_allowed !== false ? (
         <BucketBrowser profileId={current.id} onError={setError} onMfaSetup={() => setMfaBanner(true)} />
       ) : null}

@@ -146,10 +146,20 @@ func (a *App) accountMe(params map[string]any) (apiResult, error) {
 	if err != nil || result.Status != http.StatusOK {
 		return result, err
 	}
-	if setup, _ := result.Body["mfa_setup_required"].(bool); setup {
-		result.MFASetup = true
-	}
+	result.MFASetup = mfaPolicyBanner(result.Body)
 	return result, nil
+}
+
+// mfaPolicyBanner is the flag 1.6.1 sends for a user who has no local factor.
+// mfa_setup_required is a different flag (an administrator who must enroll,
+// or an MFA reset) and is not this banner.
+func mfaPolicyBanner(body map[string]any) bool {
+	policy, ok := body["mfa_policy"].(map[string]any)
+	if !ok {
+		return false
+	}
+	banner, _ := policy["banner"].(bool)
+	return banner
 }
 
 func (a *App) bucketList(params map[string]any) (apiResult, error) {

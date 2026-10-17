@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -169,4 +170,29 @@ func maskText(s string) string {
 	})
 	s = logAuth.ReplaceAllString(s, "${1}[redacted]")
 	return logField.ReplaceAllString(s, "${1}[redacted]")
+}
+
+// publicError is the text stored on a task and returned to the window.
+// Every http(s) URL loses its userinfo, query, and fragment, so a presigned
+// GET cannot leave X-Amz-Credential or X-Amz-Signature in transfers.db.
+// maskText then redacts header and field values that are not part of a URL.
+func publicError(s string) string {
+	if s == "" {
+		return ""
+	}
+	s = logURL.ReplaceAllStringFunc(s, func(raw string) string {
+		parsed, err := url.Parse(raw)
+		if err != nil || parsed.Host == "" {
+			if cut := strings.IndexAny(raw, "?#"); cut >= 0 {
+				return raw[:cut]
+			}
+			return raw
+		}
+		parsed.User = nil
+		parsed.RawQuery = ""
+		parsed.Fragment = ""
+		parsed.ForceQuery = false
+		return parsed.String()
+	})
+	return maskText(s)
 }

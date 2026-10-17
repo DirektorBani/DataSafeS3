@@ -143,7 +143,7 @@ export function TransferPanel(props: {
     }
   }
 
-  async function act(method: "transfer.cancel" | "transfer.resolve", id: string, extra: Record<string, unknown> = {}) {
+  async function act(method: "transfer.cancel" | "transfer.resolve" | "transfer.retry", id: string, extra: Record<string, unknown> = {}) {
     setError("");
     try {
       await transfer(props.profileId, method, { transfer_id: id, ...extra });
@@ -220,6 +220,11 @@ export function TransferPanel(props: {
                 <Button type="button" variant="outline" onClick={() => void toggleDetails(task.id)}>
                   {detailId === task.id ? t("hideDetails") : t("details")}
                 </Button>
+                {task.state === "error" ? (
+                  <Button type="button" variant="outline" onClick={() => void act("transfer.retry", task.id)}>
+                    {t("retry")}
+                  </Button>
+                ) : null}
                 {task.state === "queued" || task.state === "running" || task.state === "waiting_network" || task.state === "conflict" ? (
                   <Button type="button" variant="outline" onClick={() => void act("transfer.cancel", task.id)}>
                     {t("cancel")}
@@ -270,6 +275,63 @@ export function TransferPanel(props: {
                   </ul>
                 ) : null}
               </div>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+export function ResumeProgress(props: { profileId: string }) {
+  const { t } = useTranslation();
+  const [tasks, setTasks] = useState<TransferTask[]>([]);
+
+  useEffect(() => {
+    let stop = false;
+    async function tick() {
+      try {
+        const result = await transfer(props.profileId, "transfer.list");
+        if (stop) {
+          return;
+        }
+        setTasks(
+          (result.transfers ?? []).filter((task) => {
+            if (task.profile_id && task.profile_id !== props.profileId) {
+              return false;
+            }
+            return task.state !== "done" && task.state !== "cancelled";
+          }),
+        );
+      } catch {
+        // The start screen stays quiet when the agent is not there.
+      }
+    }
+    void tick();
+    const timer = window.setInterval(() => void tick(), 1000);
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+    };
+  }, [props.profileId]);
+
+  if (tasks.length === 0) {
+    return null;
+  }
+  return (
+    <section className="space-y-2">
+      <h2 className="text-sm font-medium">{t("transfers")}</h2>
+      <ul className="space-y-2 text-sm">
+        {tasks.map((task) => (
+          <li key={task.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2">
+            <span className="break-all">
+              {task.direction} · {task.key || task.local_path} · {task.state}
+              {task.size ? ` · ${formatBytes(task.bytes_done ?? 0)} / ${formatBytes(task.size)}` : task.bytes_done ? ` · ${formatBytes(task.bytes_done)}` : ""}
+            </span>
+            {task.state === "error" ? (
+              <Button type="button" variant="outline" onClick={() => void transfer(props.profileId, "transfer.retry", { transfer_id: task.id })}>
+                {t("retry")}
+              </Button>
             ) : null}
           </li>
         ))}

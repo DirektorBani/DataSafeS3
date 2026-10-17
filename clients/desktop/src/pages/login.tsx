@@ -120,7 +120,7 @@ export function LoginPanel(props: {
         >
           <label className="block text-sm">
             {t("code")}
-            <input className="mt-1 w-full rounded-md border bg-background px-2 py-1" value={code} onChange={(event) => setCode(event.target.value)} inputMode="numeric" autoComplete="one-time-code" />
+            <input className="mt-1 w-full rounded-md border bg-background px-2 py-1" value={code} onChange={(event) => setCode(event.target.value)} inputMode="numeric" autoComplete="off" />
           </label>
           <Button type="submit">{t("confirmCode")}</Button>
         </form>

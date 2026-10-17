@@ -130,7 +130,7 @@ export function StepUpDialog(props: {
             className="mt-1 w-full rounded-md border bg-background px-2 py-1"
             value={code}
             onChange={(event) => setCode(event.target.value)}
-            autoComplete="one-time-code"
+            autoComplete="off"
             autoFocus
           />
         </label>

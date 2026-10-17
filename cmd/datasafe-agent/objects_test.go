@@ -350,12 +350,17 @@ func TestReplayedStepUpTokenOpensDialog(t *testing.T) {
 
 func TestMFASetupRequiredIsABanner(t *testing.T) {
 	var steps atomic.Int32
+	var meCalls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/auth/step-up" {
 			steps.Add(1)
 		}
 		if r.URL.Path == "/api/v1/me" {
-			_, _ = w.Write([]byte(`{"username":"alice","mfa_setup_required":true,"token":"jwt-should-stay","mfa_token":"mfa-should-stay"}`))
+			if meCalls.Add(1) == 1 {
+				_, _ = w.Write([]byte(`{"username":"alice","mfa_setup_required":true,"token":"jwt-should-stay","mfa_token":"mfa-should-stay"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"username":"alice","mfa_policy":{"banner":true,"applies":true,"has_local_factor":false},"token":"jwt-should-stay","mfa_token":"mfa-should-stay"}`))
 			return
 		}
 		w.WriteHeader(http.StatusForbidden)
@@ -385,6 +390,15 @@ func TestMFASetupRequiredIsABanner(t *testing.T) {
 	}
 	me := raw.(apiResult)
 	encoded, _ := json.Marshal(me)
+	if me.MFASetup || me.Body["username"] != "alice" || strings.Contains(string(encoded), "jwt-should-stay") || strings.Contains(string(encoded), "mfa-should-stay") {
+		t.Fatalf("setup flag is not the banner %+v %s", me, encoded)
+	}
+	raw, rpcErr = app.dispatch("account.me", map[string]any{"id": profile.ID, "token": "jwt"})
+	if rpcErr != nil {
+		t.Fatal(rpcErr.Message)
+	}
+	me = raw.(apiResult)
+	encoded, _ = json.Marshal(me)
 	if !me.MFASetup || me.Body["username"] != "alice" || strings.Contains(string(encoded), "jwt-should-stay") || strings.Contains(string(encoded), "mfa-should-stay") {
 		t.Fatalf("me %+v %s", me, encoded)
 	}

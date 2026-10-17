@@ -266,18 +266,21 @@ func preferNetReason(reasons ...string) string {
 	return ""
 }
 
+// wrapNet turns a transport failure into errNetwork. Go's
+// ResponseHeaderTimeout error implements Is(context.DeadlineExceeded) and is
+// wrapped in url.Error, whose own Error() includes the full request URL.
+// Returning that value made a header timeout fatal and stored the presigned
+// query string. A real cancel stays context.Canceled. A header timeout, an
+// i/o timeout, and a connection reset are network waits: the task retries
+// from its offset or confirmed parts.
 func wrapNet(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return err
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
 	}
-	var ue *url.Error
-	if errors.As(err, &ue) && ue.Err != nil && (errors.Is(ue.Err, context.Canceled) || errors.Is(ue.Err, context.DeadlineExceeded)) {
-		return ue.Err
-	}
-	return fmt.Errorf("%w: %s", errNetwork, err.Error())
+	return fmt.Errorf("%w: %s", errNetwork, publicError(err.Error()))
 }
 
 func decodeObject(raw []byte) (map[string]any, bool) {
