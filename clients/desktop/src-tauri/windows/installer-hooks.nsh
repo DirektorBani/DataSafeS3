@@ -16,6 +16,12 @@
 ; profile inside the app removes one profile's secrets. Skip both deletes
 ; during an update.
 
+!macro NSIS_HOOK_POSTINSTALL
+  ; The resources directory is copied as a tree, including the placeholder
+  ; that keeps it in git. That file is not part of the install.
+  Delete "$INSTDIR\binaries\.gitkeep"
+!macroend
+
 !macro NSIS_HOOK_PREUNINSTALL
   ${If} $UpdateMode <> 1
     MessageBox MB_YESNO|MB_DEFBUTTON2 "Remove saved sign-in secrets from Windows Credential Manager? / Удалить сохранённые секреты входа из диспетчера учётных данных?$\n$\nLeave this as No to sign in again after reinstalling. / Оставьте «Нет», чтобы войти снова после переустановки.$\n$\n%APPDATA%\DataSafeS3 is kept either way." /SD IDNO IDYES forget_datasafe_secrets

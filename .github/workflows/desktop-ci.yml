@@ -48,6 +48,7 @@ jobs:
           mkdir -p clients/desktop/src-tauri/binaries
           sha=$(git rev-parse --short=12 HEAD)
           go build -ldflags "-X main.DesktopCommit=$sha" -o clients/desktop/src-tauri/binaries/datasafe-agent ./cmd/datasafe-agent
+          rm -f clients/desktop/src-tauri/binaries/.gitkeep
       - name: Linux deb
         run: npm run tauri -w datasafe-desktop -- build --bundles deb
 
@@ -76,6 +77,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path clients/desktop/src-tauri/binaries | Out-Null
           $sha = (git rev-parse --short=12 HEAD).Trim()
           go build -ldflags "-H windowsgui -X main.DesktopCommit=$sha" -o clients/desktop/src-tauri/binaries/datasafe-agent.exe ./cmd/datasafe-agent
+          Remove-Item -Force -ErrorAction SilentlyContinue clients/desktop/src-tauri/binaries/.gitkeep
       - name: Test signing certificate
         shell: pwsh
         run: |
