@@ -2,6 +2,8 @@
 # The certificate is created in the Windows job and is not a production
 # publisher. Q4-3 replaces it. Without DATASAFE_TEST_PFX the build stays
 # unsigned so a local Windows build still works.
+# Tauri passes the binary as its own argument. A "%1" buried in -Command
+# is not replaced.
 param(
   [Parameter(Mandatory = $true, Position = 0)]
   [string]$Path
@@ -12,7 +14,7 @@ if (-not $env:DATASAFE_TEST_PFX) {
   exit 0
 }
 if (-not (Test-Path -LiteralPath $Path)) {
-  throw "file to sign was not found"
+  throw "file to sign was not found: $Path"
 }
 $tool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
   Where-Object { $_.FullName -like "*\x64\signtool.exe" } |
