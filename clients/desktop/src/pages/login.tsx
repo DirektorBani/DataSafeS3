@@ -72,7 +72,9 @@ export function LoginPanel(props: {
         {server?.server_version ? ` · ${server.server_version}` : ""}
         {server?.profile ? ` · ${server.profile}` : ""}
       </p>
-      {server?.rejected ? <p>{t("rejected")}</p> : null}
+      {server?.warning === "the server certificate could not be verified" ? <p>{t("tlsCertificate")}</p> : null}
+      {server?.warning === "server is unreachable" ? <p>{t("unreachable")}</p> : null}
+      {server?.rejected && server.warning !== "the server certificate could not be verified" && server.warning !== "server is unreachable" ? <p>{t("rejected")}</p> : null}
       {server?.blocked ? (
         <p>
           {t("blocked")}{" "}

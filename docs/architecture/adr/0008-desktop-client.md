@@ -69,7 +69,15 @@ The agent writes `logs/agent.log` and the window writes `logs/desktop.log`. Each
 
 Diagnostics show the log names, sizes, and version text first. Saving writes `datasafe-desktop-diagnostics.zip` containing those logs and `versions.txt` only. `profiles.json` and `transfers.db` are not in the archive. Windows `desktop-ci` runs `secrets-in-logs`.
 
-TLS is verified, with a minimum of TLS 1.2. A profile `ca_file` is added to the system trust pool. `insecure_dev` skips verification and the window says so. HTTP is allowed only to loopback. A self-signed certificate is refused unless the flag is set or the certificate is the configured CA.
+TLS is verified, with a minimum of TLS 1.2. A profile `ca_file` is added to the system trust pool. `insecure_dev` skips verification and the window says so. HTTP is allowed only to loopback. A self-signed certificate is refused unless the flag is set or the certificate is the configured CA. A certificate failure is reported as “the server certificate could not be verified”. A host that does not answer stays “server is unreachable”.
+
+Each log line is synced as it is written, in UTC ISO 8601 (`2026-10-17T03:34:00Z`) in both `agent.log` and `desktop.log`. A crash keeps the lines already written. `versions.txt` names the product version, the git commit baked into the agent (`-X main.DesktopCommit`, or `unknown` for a local build), the OS name and version, and the connected profile’s server version.
+
+### E05 Windows installer
+
+`desktop-ci` builds Linux (`.deb`) and Windows (NSIS) and runs the agent tests plus the desktop library tests. macOS is not in this release. The NSIS installer is per-user (`currentUser`). If WebView2 is missing it downloads the silent bootstrapper. CI creates a self-signed Authenticode certificate, `CN=DataSafeS3 Desktop Test`, and signs the agent and the installer with it. The signature is only for checking that signing works. It is not a trusted publisher. `Get-AuthenticodeSignature` shows that subject; the status stays untrusted until the certificate is in the user’s trust store. A real publisher certificate waits on Q4-3. A Windows build without `DATASAFE_TEST_PFX` stays unsigned.
+
+The owner’s Windows check, against a 1.6.x server, is still manual: install without an administrator prompt, confirm the test signer, sign in, browse, upload and download, then uninstall and confirm `HKCU\Software\datasafe\DataSafeS3 Desktop` is gone.
 
 A download writes `<name>.dspart` beside the target and renames it after the size and ETag agree. Resume uses `Range` on an S3 GET for an access-key profile, and a presigned GET for a JWT profile. REST `Range` is used only when the server advertises `objects.range`, which is not part of 1.6.1. Without a presign right and without `objects.range`, the download starts again and the panel says so. A network failure sets the task to waiting, with a pause of 1s that doubles up to 60s, and continues without restarting the app. Rows that were still running when the agent starts again are marked interrupted. Continuing them after a restart is E06; the confirmed parts stay in the journal for that step.
 

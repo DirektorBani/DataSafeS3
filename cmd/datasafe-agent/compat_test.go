@@ -114,7 +114,7 @@ func TestDetectVersions(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			card := detect(tc.public, tc.authed, tc.health, tc.me, DesktopVersion)
+			card := detect(tc.public, tc.authed, tc.health, tc.me, DesktopVersion, "")
 			if card.Profile != tc.profile {
 				t.Fatalf("profile %s, want %s (%+v)", card.Profile, tc.profile, card)
 			}
@@ -152,7 +152,7 @@ func TestClientVersionPolicy(t *testing.T) {
 		Reached: true, Status: 200, API: "v1", HasFeatures: true,
 		Features: map[string]int{"auth.password": 1},
 		Desktop:  desktop,
-	}, healthInfo{}, false, "1.0.0-dev")
+	}, healthInfo{}, false, "1.0.0-dev", "")
 	if card.Blocked || card.Warning == "" || !card.BrowseAllowed {
 		t.Fatalf("min_supported should warn and keep working: %+v", card)
 	}
@@ -161,7 +161,7 @@ func TestClientVersionPolicy(t *testing.T) {
 		Reached: true, Status: 200, API: "v1", HasFeatures: true,
 		Features: map[string]int{"auth.password": 1},
 		Desktop:  map[string]any{"min_supported": "1.0.0"},
-	}, healthInfo{}, false, "1.0.0-dev")
+	}, healthInfo{}, false, "1.0.0-dev", "")
 	if card.Warning != "" || card.Blocked {
 		t.Fatalf("dev build of 1.0.0 should satisfy min_supported 1.0.0: %+v", card)
 	}
@@ -174,7 +174,7 @@ func TestClientVersionPolicy(t *testing.T) {
 			"min_required_reason": "security",
 			"advisory_url":        "https://example.test/advisory",
 		},
-	}, healthInfo{}, false, DesktopVersion)
+	}, healthInfo{}, false, DesktopVersion, "")
 	if !card.Blocked || card.BrowseAllowed || card.AdvisoryURL == "" {
 		t.Fatalf("security floor should block: %+v", card)
 	}
@@ -183,7 +183,7 @@ func TestClientVersionPolicy(t *testing.T) {
 		Reached: true, Status: 200, API: "v1", HasFeatures: true,
 		Features: map[string]int{"auth.password": 1},
 		Desktop:  map[string]any{"min_required": "9.0.0", "min_required_reason": "other"},
-	}, healthInfo{}, false, DesktopVersion)
+	}, healthInfo{}, false, DesktopVersion, "")
 	if card.Blocked || card.Warning == "" {
 		t.Fatalf("non-security floor is a warning: %+v", card)
 	}

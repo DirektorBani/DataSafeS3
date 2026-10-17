@@ -93,14 +93,40 @@ fn write_line(level: u8, name: &str, msg: &str) {
     if level < log.min_level {
         return;
     }
-    let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let line = format!("{secs} {name} {}\n", mask(msg));
+    let line = format!("{} {name} {}\n", iso8601_utc(SystemTime::now()), mask(msg));
     if log.size > 0 && log.size + line.len() as u64 > log.max_bytes {
         rotate(log);
     }
     if log.file.write_all(line.as_bytes()).is_ok() {
         log.size += line.len() as u64;
+        // Sync each line so a crash keeps what was already written.
+        let _ = log.file.sync_all();
     }
+}
+
+fn iso8601_utc(now: SystemTime) -> String {
+    let secs = now.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) as i64;
+    let days = secs.div_euclid(86400);
+    let tod = secs.rem_euclid(86400) as u64;
+    let hour = tod / 3600;
+    let min = (tod % 3600) / 60;
+    let sec = tod % 60;
+    let (year, month, day) = civil_from_days(days);
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{min:02}:{sec:02}Z")
+}
+
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let year = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32;
+    let year = if month <= 2 { year + 1 } else { year };
+    (year, month, day)
 }
 
 fn rotate(log: &mut RotatingLog) {
@@ -224,6 +250,16 @@ fn secret_value(input: &str, i: usize) -> Option<(&str, usize)> {
 #[cfg(test)]
 mod tests {
     use super::mask;
+
+    #[test]
+    fn epoch_is_iso8601() {
+        use std::time::UNIX_EPOCH;
+        assert_eq!(super::iso8601_utc(UNIX_EPOCH), "1970-01-01T00:00:00Z");
+        assert_eq!(
+            super::iso8601_utc(UNIX_EPOCH + std::time::Duration::from_secs(86400)),
+            "1970-01-02T00:00:00Z"
+        );
+    }
 
     #[test]
     fn masks_password_totp_and_presign() {

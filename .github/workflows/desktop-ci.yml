@@ -32,12 +32,17 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.9"
+      - name: Agent unit tests
+        run: go test ./cmd/datasafe-agent -count=1
+      - name: Desktop library tests
+        run: cargo test --lib --manifest-path clients/desktop/src-tauri/Cargo.toml
       - name: Install workspaces
         run: npm ci
       - name: Build agent
         run: |
           mkdir -p clients/desktop/src-tauri/binaries
-          go build -o clients/desktop/src-tauri/binaries/datasafe-agent ./cmd/datasafe-agent
+          sha=$(git rev-parse --short=12 HEAD)
+          go build -ldflags "-X main.DesktopCommit=$sha" -o clients/desktop/src-tauri/binaries/datasafe-agent ./cmd/datasafe-agent
       - name: Linux deb
         run: npm run tauri -w datasafe-desktop -- build --bundles deb
 
@@ -56,14 +61,30 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.9"
-      - name: secrets-in-logs
-        run: go test ./cmd/datasafe-agent -count=1 -run "TestSecretsInLogs|TestLogRotation|TestSelfSignedTLS"
+      - name: Agent unit tests
+        run: go test ./cmd/datasafe-agent -count=1
       - name: Install workspaces
         run: npm ci
       - name: Build agent
+        shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path clients/desktop/src-tauri/binaries | Out-Null
-          go build -ldflags "-H windowsgui" -o clients/desktop/src-tauri/binaries/datasafe-agent.exe ./cmd/datasafe-agent
+          $sha = (git rev-parse --short=12 HEAD).Trim()
+          go build -ldflags "-H windowsgui -X main.DesktopCommit=$sha" -o clients/desktop/src-tauri/binaries/datasafe-agent.exe ./cmd/datasafe-agent
+      - name: Test signing certificate
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=DataSafeS3 Desktop Test" -CertStoreLocation Cert:\CurrentUser\My -KeyExportPolicy Exportable -HashAlgorithm SHA256 -NotAfter (Get-Date).AddYears(1)
+          $pass = "datasafe-test-sign"
+          $pwd = ConvertTo-SecureString -String $pass -Force -AsPlainText
+          $pfx = Join-Path $env:RUNNER_TEMP "datasafe-test-sign.pfx"
+          Export-PfxCertificate -Cert $cert -FilePath $pfx -Password $pwd | Out-Null
+          Add-Content -Path $env:GITHUB_ENV -Value "DATASAFE_TEST_PFX=$pfx" -Encoding utf8NoBOM
+          Add-Content -Path $env:GITHUB_ENV -Value "DATASAFE_TEST_PFX_PASSWORD=$pass" -Encoding utf8NoBOM
+          Write-Host "Test signer: $($cert.Subject) $($cert.Thumbprint)"
+      - name: Sign agent
+        shell: pwsh
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File clients/desktop/src-tauri/windows/sign-test.ps1 (Resolve-Path clients/desktop/src-tauri/binaries/datasafe-agent.exe).Path
       - name: NSIS bundle (MSVC)
         run: npm run tauri -w datasafe-desktop -- build --bundles nsis
       - name: Record installer size and SHA256
@@ -75,6 +96,10 @@ jobs:
           $sha = (Get-FileHash -Algorithm SHA256 $exe.FullName).Hash.ToLower()
           Write-Host "NSIS installer: $($exe.FullName) $bytes bytes"
           Write-Host "NSIS SHA256: $sha"
+          $sig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
+          if (-not $sig.SignerCertificate) { throw "NSIS installer is not signed" }
+          if ($sig.SignerCertificate.Subject -notlike "*DataSafeS3 Desktop Test*") { throw "unexpected signer $($sig.SignerCertificate.Subject)" }
+          Write-Host "NSIS signer: $($sig.SignerCertificate.Subject) status $($sig.Status)"
           @(
             "$bytes $($exe.Name)"
             "sha256 $sha $($exe.Name)"

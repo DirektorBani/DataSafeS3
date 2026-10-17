@@ -25,8 +25,31 @@ func (a *App) logDir() string {
 	return filepath.Join(a.dataDir, "logs")
 }
 
-func versionsText() string {
-	return fmt.Sprintf("product: DataSafeS3 Desktop\nversion: %s\ngo: %s\n", DesktopVersion, runtime.Version())
+func versionsText(server string) string {
+	server = strings.TrimSpace(server)
+	if server == "" {
+		server = "none"
+	}
+	commit := strings.TrimSpace(DesktopCommit)
+	if commit == "" {
+		commit = "unknown"
+	}
+	return fmt.Sprintf("product: DataSafeS3 Desktop\nversion: %s\ncommit: %s\nos: %s\nserver: %s\ngo: %s\n", DesktopVersion, commit, osDescription(), server, runtime.Version())
+}
+
+func (a *App) connectedServer(params map[string]any) string {
+	if a == nil || params == nil {
+		return ""
+	}
+	id := strParam(params, "id")
+	if id == "" {
+		return ""
+	}
+	profile, err := a.profileByID(id)
+	if err != nil || profile.Server == nil {
+		return ""
+	}
+	return profile.Server.ServerVersion
 }
 
 func isLogName(name string) bool {
@@ -68,7 +91,7 @@ func listLogFiles(dir string) ([]logEntry, error) {
 
 // diagPreview lists the log files and the version text. The window shows
 // this before it asks the agent to write the archive (S12).
-func (a *App) diagPreview() (any, error) {
+func (a *App) diagPreview(params map[string]any) (any, error) {
 	if a.log != nil {
 		a.log.Sync()
 	}
@@ -81,7 +104,7 @@ func (a *App) diagPreview() (any, error) {
 	}
 	return map[string]any{
 		"files":    files,
-		"versions": versionsText(),
+		"versions": versionsText(a.connectedServer(params)),
 	}, nil
 }
 
@@ -113,7 +136,7 @@ func (a *App) diagExport(params map[string]any) (any, error) {
 		_ = zw.Close()
 		return nil, err
 	}
-	if _, err := io.WriteString(vw, versionsText()); err != nil {
+	if _, err := io.WriteString(vw, versionsText(a.connectedServer(params))); err != nil {
 		_ = zw.Close()
 		return nil, err
 	}

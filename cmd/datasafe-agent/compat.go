@@ -9,6 +9,10 @@ import (
 // DesktopVersion is the Desktop 1.0 scaffold compared with clients.desktop.
 const DesktopVersion = "1.0.0-dev"
 
+// DesktopCommit is the git SHA of the desktop build. CI sets it with
+// -X main.DesktopCommit. A plain go build leaves it unknown.
+var DesktopCommit = "unknown"
+
 // Feature columns from spec 4.6.6. A test checks these maps.
 func features150() map[string]int {
 	return map[string]int{
@@ -70,7 +74,7 @@ type capsInfo struct {
 // detect applies spec 4.6.5. A public capabilities body without features
 // (the accepted 1.6.1 shape) falls through to /healthz. An authenticated
 // body with features replaces that column.
-func detect(public, authed *capsInfo, health healthInfo, meReached bool, clientVersion string) ServerCard {
+func detect(public, authed *capsInfo, health healthInfo, meReached bool, clientVersion, reason string) ServerCard {
 	if clientVersion == "" {
 		clientVersion = DesktopVersion
 	}
@@ -99,7 +103,7 @@ func detect(public, authed *capsInfo, health healthInfo, meReached bool, clientV
 			card.ServerVersion = public.ServerVersion
 			card.SpecVersion = public.SpecVersion
 		}
-		classifyHealth(&card, health, meReached)
+		classifyHealth(&card, health, meReached, reason)
 	}
 	if card.Rejected || card.Blocked {
 		card.BrowseAllowed = false
@@ -110,15 +114,20 @@ func detect(public, authed *capsInfo, health healthInfo, meReached bool, clientV
 	return card
 }
 
-func classifyHealth(card *ServerCard, health healthInfo, meReached bool) {
+func classifyHealth(card *ServerCard, health healthInfo, meReached bool, reason string) {
 	if !health.Reached {
 		if meReached {
 			card.Profile = "basic"
 			card.Features = features150()
 			return
 		}
-		card.Profile = "unreachable"
 		card.Rejected = true
+		if reason == "certificate" {
+			card.Profile = "tls"
+			card.Warning = "the server certificate could not be verified"
+			return
+		}
+		card.Profile = "unreachable"
 		card.Warning = "server is unreachable"
 		return
 	}

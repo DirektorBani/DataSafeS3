@@ -234,7 +234,7 @@ func (a *App) dispatch(method string, params map[string]any) (any, *rpcError) {
 	case "transfer.files":
 		return rpcCall(a.transferFiles(params))
 	case "diag.preview":
-		return rpcCall(a.diagPreview())
+		return rpcCall(a.diagPreview(params))
 	case "diag.export":
 		return rpcCall(a.diagExport(params))
 	default:

@@ -221,6 +221,40 @@ func (c *Client) openURL(ctx context.Context, rawURL string, offset int64) (io.R
 	return resp.Body, strings.Trim(resp.Header.Get("ETag"), `"`), resp.ContentLength, resp.StatusCode, nil
 }
 
+// netReason classifies a dial failure. A bad certificate is not the same
+// as a host that never answered.
+func netReason(err error) string {
+	if err == nil {
+		return ""
+	}
+	var unknown x509.UnknownAuthorityError
+	var invalid x509.CertificateInvalidError
+	var host x509.HostnameError
+	var roots x509.SystemRootsError
+	if errors.As(err, &unknown) || errors.As(err, &invalid) || errors.As(err, &host) || errors.As(err, &roots) {
+		return "certificate"
+	}
+	text := strings.ToLower(err.Error())
+	if strings.Contains(text, "certificate") || strings.Contains(text, "x509:") {
+		return "certificate"
+	}
+	return "unreachable"
+}
+
+func preferNetReason(reasons ...string) string {
+	for _, reason := range reasons {
+		if reason == "certificate" {
+			return reason
+		}
+	}
+	for _, reason := range reasons {
+		if reason != "" {
+			return reason
+		}
+	}
+	return ""
+}
+
 func wrapNet(err error) error {
 	if err == nil {
 		return nil

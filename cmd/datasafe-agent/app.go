@@ -24,12 +24,14 @@ func (a *App) inspect(profile Profile, token string) (ServerCard, error) {
 	if err != nil {
 		return ServerCard{}, err
 	}
-	public := a.readCaps(client, "")
+	public, publicReason := a.readCaps(client, "")
 	var authed *capsInfo
+	authedReason := ""
 	reauth := false
 	if token != "" {
 		client.Token = token
-		got := a.readCaps(client, token)
+		got, reason := a.readCaps(client, token)
+		authedReason = reason
 		if got.Status == http.StatusUnauthorized {
 			reauth = true
 		} else {
@@ -37,8 +39,8 @@ func (a *App) inspect(profile Profile, token string) (ServerCard, error) {
 		}
 		client.Token = ""
 	}
-	health, meReached := a.readHealth(client)
-	card := detect(public, authed, health, meReached, DesktopVersion)
+	health, meReached, healthReason := a.readHealth(client)
+	card := detect(public, authed, health, meReached, DesktopVersion, preferNetReason(publicReason, authedReason, healthReason))
 	card.Reauth = reauth
 	if profile.ExpiresAtUnix > 0 {
 		left := time.Until(time.Unix(profile.ExpiresAtUnix, 0))
@@ -60,12 +62,12 @@ func (a *App) inspect(profile Profile, token string) (ServerCard, error) {
 	return card, nil
 }
 
-func (a *App) readCaps(client *Client, token string) *capsInfo {
+func (a *App) readCaps(client *Client, token string) (*capsInfo, string) {
 	client.Token = token
 	resp, err := client.do(http.MethodGet, "/api/v1/capabilities", nil)
 	info := &capsInfo{Reached: err == nil}
 	if err != nil {
-		return info
+		return info, netReason(err)
 	}
 	info.Status = resp.Status
 	if resp.Header.Get("Deprecation") != "" && info.Status == http.StatusOK {
@@ -73,7 +75,7 @@ func (a *App) readCaps(client *Client, token string) *capsInfo {
 	}
 	obj, ok := decodeObject(resp.Body)
 	if !ok {
-		return info
+		return info, ""
 	}
 	api, _ := obj["api"].(string)
 	info.API = api
@@ -122,12 +124,13 @@ func (a *App) readCaps(client *Client, token string) *capsInfo {
 			"path":   "Deprecation",
 		}}
 	}
-	return info
+	return info, ""
 }
 
-func (a *App) readHealth(client *Client) (healthInfo, bool) {
+func (a *App) readHealth(client *Client) (healthInfo, bool, string) {
 	client.Token = ""
 	resp, err := client.do(http.MethodGet, "/healthz", nil)
+	reason := netReason(err)
 	health := healthInfo{}
 	if err == nil && resp.Status == http.StatusOK {
 		health.Reached = true
@@ -139,8 +142,11 @@ func (a *App) readHealth(client *Client) (healthInfo, bool) {
 		}
 	}
 	me, err := client.do(http.MethodGet, "/api/v1/me", nil)
+	if reason == "" {
+		reason = netReason(err)
+	}
 	meReached := err == nil && me.Status != 0
-	return health, meReached
+	return health, meReached, reason
 }
 
 type loginResult struct {

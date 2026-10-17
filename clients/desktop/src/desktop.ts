@@ -151,10 +151,10 @@ export function transfer(
   return invoke("transfer", { id, method, params });
 }
 
-export function diagPreview(): Promise<DiagPreview> {
-  return invoke("diag", { method: "diag.preview", params: {} });
+export function diagPreview(profileId = ""): Promise<DiagPreview> {
+  return invoke("diag", { method: "diag.preview", params: { id: profileId } });
 }
 
-export function diagExport(destPath: string): Promise<{ path?: string; files?: string[] }> {
-  return invoke("diag", { method: "diag.export", params: { dest_path: destPath } });
+export function diagExport(destPath: string, profileId = ""): Promise<{ path?: string; files?: string[] }> {
+  return invoke("diag", { method: "diag.export", params: { dest_path: destPath, id: profileId } });
 }

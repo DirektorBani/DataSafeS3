@@ -43,7 +43,7 @@ export default function App() {
     setError("");
     setDiagSaved("");
     try {
-      setDiag(await diagPreview());
+      setDiag(await diagPreview(selected));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -55,7 +55,7 @@ export default function App() {
     }
     setError("");
     try {
-      const saved = await diagExport(diagFolder.trim());
+      const saved = await diagExport(diagFolder.trim(), selected);
       setDiagSaved(saved.path ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

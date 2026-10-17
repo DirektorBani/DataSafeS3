@@ -87,6 +87,9 @@ func (l *Logger) write(level int, name, msg string) {
 	n, err := l.file.WriteString(line)
 	if err == nil {
 		l.size += int64(n)
+		// Sync each line. A crash then keeps the lines already written;
+		// Close is not the only flush.
+		_ = l.file.Sync()
 	}
 }
 

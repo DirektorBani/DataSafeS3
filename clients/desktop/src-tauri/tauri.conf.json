@@ -37,8 +37,23 @@
       "binaries/": "binaries/"
     },
     "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
       "nsis": {
+        "installMode": "currentUser",
         "installerHooks": "windows/installer-hooks.nsh"
+      },
+      "signCommand": {
+        "cmd": "powershell.exe",
+        "args": [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-Command",
+          "$dir = (Get-Location).Path; $script = $null; for ($i = 0; $i -lt 8 -and -not $script; $i++) { foreach ($rel in @('windows\\sign-test.ps1','src-tauri\\windows\\sign-test.ps1','clients\\desktop\\src-tauri\\windows\\sign-test.ps1')) { $cand = Join-Path $dir $rel; if (Test-Path -LiteralPath $cand) { $script = $cand; break } }; if ($script) { break }; $parent = Split-Path -Parent $dir; if (-not $parent -or $parent -eq $dir) { break }; $dir = $parent }; if (-not $script) { throw 'sign-test.ps1 was not found' }; & $script '%1'"
+        ]
       }
     }
   }

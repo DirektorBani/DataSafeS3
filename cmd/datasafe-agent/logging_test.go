@@ -86,8 +86,22 @@ func TestSecretsInLogs(t *testing.T) {
 			t.Fatalf("secret %q leaked into the archive", secret)
 		}
 	}
-	if !strings.Contains(text, "DataSafeS3 Desktop") || !strings.Contains(text, DesktopVersion) {
-		t.Fatalf("versions missing: %s", text)
+	for _, part := range []string{"DataSafeS3 Desktop", DesktopVersion, "commit:", "os:", "server: none"} {
+		if !strings.Contains(text, part) {
+			t.Fatalf("versions missing %q: %s", part, text)
+		}
+	}
+}
+
+func TestVersionsTextNamesCommitOSAndServer(t *testing.T) {
+	prev := DesktopCommit
+	DesktopCommit = "abc123def456"
+	t.Cleanup(func() { DesktopCommit = prev })
+	text := versionsText("1.6.1")
+	for _, part := range []string{"commit: abc123def456", "server: 1.6.1", "os:", "version: " + DesktopVersion} {
+		if !strings.Contains(text, part) {
+			t.Fatalf("missing %q in %s", part, text)
+		}
 	}
 }
 
