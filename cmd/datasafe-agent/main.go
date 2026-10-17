@@ -9,7 +9,17 @@ import (
 
 func main() {
 	dataDir := flag.String("data-dir", "", "directory for profiles.json (no secrets)")
+	purge := flag.Bool("purge-secrets", false, "delete Windows credentials whose target ends in .datasafe-desktop")
 	flag.Parse()
+	if *purge {
+		n, err := purgeDesktopSecrets()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "purge-secrets")
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stdout, "removed %d\n", n)
+		return
+	}
 	if *dataDir == "" {
 		fmt.Fprintln(os.Stderr, "data-dir is required")
 		os.Exit(2)

@@ -226,7 +226,7 @@ func (a *App) dispatch(method string, params map[string]any) (any, *rpcError) {
 	case "trash.purge":
 		return rpcBrowse(a.trashPurge(params))
 	case "transfer.list":
-		return rpcCall(a.transferList())
+		return rpcCall(a.transferList(params))
 	case "transfer.enqueue":
 		return rpcCall(a.transferEnqueue(params))
 	case "transfer.cancel":

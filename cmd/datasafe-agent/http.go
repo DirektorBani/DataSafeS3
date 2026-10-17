@@ -252,6 +252,10 @@ func netReason(err error) string {
 	if err == nil {
 		return ""
 	}
+	var tlsFail *tlsError
+	if errors.As(err, &tlsFail) {
+		return "certificate"
+	}
 	var unknown x509.UnknownAuthorityError
 	var invalid x509.CertificateInvalidError
 	var host x509.HostnameError
@@ -297,11 +301,48 @@ func wrapNet(err error) error {
 	text := publicError(err.Error())
 	// A certificate failure does not clear itself. Retrying it forever
 	// leaves the task in waiting_network. Timeouts, resets, and a host
-	// that does not answer are the network wait.
+	// that does not answer are the network wait. The task stores a short
+	// code. The x509 text, without the request URL, is only for the log.
 	if netReason(err) == "certificate" {
-		return errors.New(text)
+		return &tlsError{code: tlsCode(err), detail: tlsDetail(err)}
 	}
 	return fmt.Errorf("%w: %s", errNetwork, text)
+}
+
+// tlsError is the task-facing certificate failure. Error is the short code.
+// detail is the x509 reason with no request URL.
+type tlsError struct {
+	code   string
+	detail string
+}
+
+func (e *tlsError) Error() string {
+	if e == nil || e.code == "" {
+		return "tls.failed"
+	}
+	return e.code
+}
+
+func tlsCode(err error) string {
+	var unknown x509.UnknownAuthorityError
+	if errors.As(err, &unknown) {
+		return "tls.untrusted"
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "unknown authority") {
+		return "tls.untrusted"
+	}
+	return "tls.failed"
+}
+
+func tlsDetail(err error) string {
+	var uerr *url.Error
+	if errors.As(err, &uerr) && uerr.Err != nil {
+		inner := uerr.Err.Error()
+		if !strings.Contains(inner, "://") {
+			return inner
+		}
+	}
+	return strings.TrimSpace(logURL.ReplaceAllString(err.Error(), ""))
 }
 
 func decodeObject(raw []byte) (map[string]any, bool) {

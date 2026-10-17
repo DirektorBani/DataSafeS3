@@ -50,6 +50,7 @@ type fakeRemote struct {
 	statMiss         int
 	openStatus       int
 	openFails        int
+	openErr          error
 	gate             chan struct{}
 	inflight         int
 	maxInflight      int
@@ -185,6 +186,9 @@ func (f *fakeRemote) Open(ctx context.Context, key string, offset int64) (io.Rea
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.openOffsets = append(f.openOffsets, offset)
+	if f.openErr != nil {
+		return nil, "", 0, 0, f.openErr
+	}
 	if f.openStatus >= 400 && f.openFails != 0 {
 		if f.openFails > 0 {
 			f.openFails--
@@ -880,8 +884,11 @@ func TestWrapNetTreatsHeaderTimeoutAsNetwork(t *testing.T) {
 		t.Fatalf("cancel: %v", canceled)
 	}
 	tlsErr := wrapNet(&url.Error{Op: "Get", URL: "https://storage.example/b/k", Err: errors.New("tls: failed to verify certificate: x509: certificate signed by unknown authority")})
-	if errors.Is(tlsErr, errNetwork) || errors.Is(tlsErr, context.DeadlineExceeded) || !strings.Contains(tlsErr.Error(), "certificate") {
+	if errors.Is(tlsErr, errNetwork) || errors.Is(tlsErr, context.DeadlineExceeded) || tlsErr.Error() != "tls.untrusted" {
 		t.Fatalf("tls should fail immediately: %v", tlsErr)
+	}
+	if strings.Contains(tlsErr.Error(), "storage.example") || strings.Contains(tlsErr.Error(), "/b/k") {
+		t.Fatalf("tls path leaked: %v", tlsErr)
 	}
 	if retryableTransfer(&apiFault{Status: http.StatusUnauthorized, Code: "auth.unauthorized"}) ||
 		retryableTransfer(&apiFault{Status: http.StatusForbidden, Code: "access.forbidden"}) ||
@@ -1302,5 +1309,111 @@ func TestCancelRemovesPartialDownload(t *testing.T) {
 	got, _ := e.journal.Get("t1")
 	if got.State != "cancelled" || got.Message == "waiting_network" {
 		t.Fatalf("state %s %s", got.State, got.Message)
+	}
+}
+
+func TestTLSFailureStoresShortCode(t *testing.T) {
+	const uploadID = "upload-deadbeef"
+	raw := &url.Error{
+		Op:  "Put",
+		URL: "https://127.0.0.1:19443/api/v1/buckets/e07/multipart/" + uploadID + "/parts/36",
+		Err: errors.New("tls: failed to verify certificate: x509: certificate signed by unknown authority"),
+	}
+	wrapped := wrapNet(raw)
+	if wrapped.Error() != "tls.untrusted" || safeTransferMessage(wrapped) != "tls.untrusted" {
+		t.Fatalf("code %v", wrapped)
+	}
+	if strings.Contains(wrapped.Error(), uploadID) || strings.Contains(wrapped.Error(), "/parts/") {
+		t.Fatalf("path in task text: %v", wrapped)
+	}
+	var tlsFail *tlsError
+	if !errors.As(wrapped, &tlsFail) || tlsFail == nil {
+		t.Fatalf("type %T", wrapped)
+	}
+	if strings.Contains(tlsFail.detail, uploadID) || strings.Contains(tlsFail.detail, "/parts/") || !strings.Contains(tlsFail.detail, "unknown authority") {
+		t.Fatalf("detail %q", tlsFail.detail)
+	}
+	if netReason(wrapped) != "certificate" || retryableTransfer(wrapped) {
+		t.Fatalf("reason %s retryable %v", netReason(wrapped), retryableTransfer(wrapped))
+	}
+	host := wrapNet(&url.Error{Op: "Get", URL: "https://storage.example/b/" + uploadID, Err: errors.New("tls: failed to verify certificate: x509: certificate is valid for example.com, not storage.example")})
+	if host.Error() != "tls.failed" || strings.Contains(host.Error(), uploadID) || strings.Contains(host.Error(), "storage.example") {
+		t.Fatalf("host mismatch: %v", host)
+	}
+
+	fake := &fakeRemote{data: []byte("abcdefghij"), openErr: wrapped}
+	e := testEngine(t, fake)
+	logDir := t.TempDir()
+	logger, err := openLogger(logDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logger.Close() })
+	e.log = logger
+	dest := t.TempDir()
+	task := Task{
+		ID: "t1", ProfileID: "p", Direction: "download", State: "running", Bucket: "b", Key: "k", DestPath: dest,
+		Files: []fileJob{{Key: "k", Size: 10, ETag: "abc"}},
+	}
+	if err := e.journal.Save(task); err != nil {
+		t.Fatal(err)
+	}
+	e.live["t1"] = &liveTask{token: "t", decide: make(chan decision, 1)}
+	e.process("t1")
+	got, err := e.journal.Get("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != "error" || got.Message != "tls.untrusted" {
+		t.Fatalf("state %s message %s", got.State, got.Message)
+	}
+	if strings.Contains(got.Message, uploadID) || strings.Contains(got.Message, "http") {
+		t.Fatalf("stored %s", got.Message)
+	}
+	logger.Sync()
+	body, err := os.ReadFile(filepath.Join(logDir, "agent.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(body, []byte("unknown authority")) || bytes.Contains(body, []byte(uploadID)) || bytes.Contains(body, []byte("/parts/36")) {
+		t.Fatalf("log %s", body)
+	}
+}
+
+func TestTransferListKeepsOneProfile(t *testing.T) {
+	e := testEngine(t, &fakeRemote{})
+	tasks := []Task{
+		{ID: "a", ProfileID: "p1", State: "running", Bucket: "b", Key: "from-p1"},
+		{ID: "b", ProfileID: "p2", State: "running", Bucket: "b", Key: "from-p2"},
+		{ID: "c", ProfileID: "", State: "interrupted", Bucket: "b", Key: "legacy"},
+	}
+	for _, task := range tasks {
+		if err := e.journal.Save(task); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app := &App{transfers: e}
+	one, err := app.transferList(map[string]any{"id": "p1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := one.(map[string]any)["transfers"].([]Task)
+	got := map[string]bool{}
+	for _, row := range rows {
+		got[row.ID] = true
+		if row.Key == "from-p2" {
+			t.Fatalf("other profile returned: %+v", row)
+		}
+	}
+	if !got["a"] || !got["c"] || got["b"] {
+		t.Fatalf("ids %v", got)
+	}
+	all, err := app.transferList(map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	every, _ := all.(map[string]any)["transfers"].([]Task)
+	if len(every) != 3 {
+		t.Fatalf("unscoped list %d", len(every))
 	}
 }

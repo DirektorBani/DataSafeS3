@@ -63,6 +63,14 @@ if ! grep -F 'Software\datasafe\DataSafeS3 Desktop' "$hook" >/dev/null; then
   echo "S5: NSIS hook must remove HKCU\\Software\\datasafe\\DataSafeS3 Desktop" >&2
   exit 1
 fi
+if ! grep -F -- '--purge-secrets' "$hook" >/dev/null; then
+  echo "S5: NSIS hook must purge credentials with --purge-secrets" >&2
+  exit 1
+fi
+if grep -F 'Target:' "$hook" >/dev/null; then
+  echo "S5: NSIS hook must not parse localized cmdkey Target labels" >&2
+  exit 1
+fi
 echo "S5 nsis hook: ok"
 
 if grep -R -n --include='*.rs' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.json' -e '--password' -e 'shell:default' "$app" >/dev/null; then

@@ -89,6 +89,7 @@ type Engine struct {
 	longPaths     bool
 	progressEvery time.Duration
 	progressAt    time.Time
+	log           *Logger
 	// assembleFor is how long a retried complete polls object-meta before
 	// giving up. Zero means 30s. Tests set a short budget: their sleep is a
 	// no-op, so a full 30s would spin on the wall clock.
@@ -142,12 +143,16 @@ func (e *Engine) signal() {
 
 func (a *App) engine() (*Engine, error) {
 	a.transferOnce.Do(func() {
+		if a.transfers != nil {
+			return
+		}
 		j, err := openJournal(filepath.Join(a.dataDir, "transfers.db"))
 		if err != nil {
 			a.transferErr = err
 			return
 		}
 		eng := newEngine(j)
+		eng.log = a.log
 		eng.build = a.remoteFor
 		eng.start()
 		a.transfers = eng
@@ -474,6 +479,10 @@ func (e *Engine) process(id string) {
 			continue
 		}
 		task.State = "error"
+		var tlsFail *tlsError
+		if errors.As(runErr, &tlsFail) && tlsFail != nil && tlsFail.detail != "" && e.log != nil {
+			e.log.Warn(tlsFail.detail)
+		}
 		task.Message = safeTransferMessage(runErr)
 		_ = e.journal.SaveMeta(task)
 		return
@@ -1670,6 +1679,10 @@ func safeTransferMessage(err error) string {
 	if err == nil {
 		return ""
 	}
+	var tlsFail *tlsError
+	if errors.As(err, &tlsFail) && tlsFail != nil {
+		return tlsFail.Error()
+	}
 	if f, ok := err.(*apiFault); ok {
 		if f.Code != "" {
 			return publicError(f.Code)
@@ -1768,7 +1781,7 @@ func (a *App) transferRetry(params map[string]any) (any, error) {
 	return map[string]any{"transfer": task}, nil
 }
 
-func (a *App) transferList() (any, error) {
+func (a *App) transferList(params map[string]any) (any, error) {
 	eng, err := a.engine()
 	if err != nil {
 		return nil, err
@@ -1777,12 +1790,28 @@ func (a *App) transferList() (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	profileID := strParam(params, "id")
+	out := make([]Task, 0, len(items))
 	for i := range items {
+		if !taskVisible(profileID, items[i].ProfileID) {
+			continue
+		}
 		scrubTask(&items[i])
 		items[i].Files = nil
 		items[i].Report = nil
+		out = append(out, items[i])
 	}
-	return map[string]any{"transfers": items}, nil
+	return map[string]any{"transfers": out}, nil
+}
+
+// taskVisible is the transfer.list scope. A named profile sees its own rows
+// and rows written before profile_id existed. Another profile's rows stay
+// out. An empty id is the whole journal; the window always sends the id.
+func taskVisible(requested, stored string) bool {
+	if requested == "" {
+		return true
+	}
+	return stored == "" || stored == requested
 }
 
 func (a *App) transferFiles(params map[string]any) (any, error) {

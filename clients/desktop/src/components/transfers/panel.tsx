@@ -28,6 +28,8 @@ const messages: Record<string, string> = {
   etag_mismatch: "etagMismatch",
   presign_unavailable: "presignUnavailable",
   resume_after_restart: "resumeAfterRestart",
+  "tls.untrusted": "tlsUntrusted",
+  "tls.failed": "tlsFailed",
 };
 
 export function TransferPanel(props: {
