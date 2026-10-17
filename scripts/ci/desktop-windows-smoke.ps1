@@ -233,14 +233,25 @@ function Find-InstallDir {
 }
 
 function Trust-TestSigner {
-    $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -like "*DataSafeS3 Desktop Test*" } | Select-Object -First 1
-    if (-not $cert) { return }
-    foreach ($name in @("TrustedPublisher", "Root")) {
-        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store($name, "CurrentUser")
+    # CurrentUser\Root prompts for consent and blocks this non-interactive
+    # runner. TrustedPublisher does not. The exe is started directly, so a
+    # missing trust must not stop the launch check.
+    Write-Host "trust signer"
+    $job = Start-Job -ScriptBlock {
+        $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -like "*DataSafeS3 Desktop Test*" } | Select-Object -First 1
+        if (-not $cert) { return }
+        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store("TrustedPublisher", "CurrentUser")
         $store.Open("ReadWrite")
         $store.Add($cert)
         $store.Close()
     }
+    if (-not (Wait-Job $job -Timeout 15)) {
+        Stop-Job $job -ErrorAction SilentlyContinue
+        Write-Host "trust signer skipped"
+        return
+    }
+    Receive-Job $job -ErrorAction SilentlyContinue | Out-Null
+    Remove-Job $job -Force -ErrorAction SilentlyContinue
 }
 
 function Get-KeyringTool {
