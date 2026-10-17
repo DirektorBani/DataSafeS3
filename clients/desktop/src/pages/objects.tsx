@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@datasafe/ui/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@datasafe/ui/ui/tabs";
 import { PageHeader } from "@datasafe/ui/page-header";
 import { cn } from "@datasafe/ui/cn";
+import { formatBytes, formatDate, type ByteUnits } from "@datasafe/ui/format";
 import { ObjectInfo, type ListedObject } from "../components/object-info";
 import { SelectionList, SelectionOption, objectColumns } from "../components/selection-list";
 import { TransferPanel } from "../components/transfers/panel";
@@ -31,25 +32,14 @@ function problem(result: BrowseResult): string {
   return "";
 }
 
-function conciseSize(bytes: number | undefined): string {
+function listedSize(bytes: number | undefined, units: ByteUnits): string {
   if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) {
     return "";
   }
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  const shown = value >= 10 ? Math.round(value).toString() : value.toFixed(1);
-  return `${shown} ${units[unit]}`;
+  return formatBytes(bytes, units);
 }
 
-function conciseDate(iso: string, locale: string): string {
+function listedDate(iso: string, locale: string): string {
   if (!iso) {
     return "";
   }
@@ -57,7 +47,7 @@ function conciseDate(iso: string, locale: string): string {
   if (Number.isNaN(date.getTime())) {
     return "";
   }
-  return date.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
+  return formatDate(iso, locale);
 }
 
 function displayName(key: string): string {
@@ -413,7 +403,14 @@ export function ObjectBrowser(props: {
 
   const offline = Boolean(props.offline || listOffline || folderOffline);
   const canWrite = props.canWrite && !offline;
-  const savedLabel = savedAt > 0 ? new Intl.DateTimeFormat(i18n.language, { dateStyle: "medium", timeStyle: "short" }).format(new Date(savedAt * 1000)) : "";
+  const units: ByteUnits = {
+    bytes: t("common:units.bytes"),
+    kilobytes: t("common:units.kilobytes"),
+    megabytes: t("common:units.megabytes"),
+    gigabytes: t("common:units.gigabytes"),
+    terabytes: t("common:units.terabytes"),
+  };
+  const savedLabel = savedAt > 0 ? formatDate(new Date(savedAt * 1000).toISOString(), i18n.language) : "";
   const crumbItems = [{ label: t("bucketDetail:breadcrumb.root"), path: "" }];
   if (prefix) {
     let acc = "";
@@ -510,8 +507,8 @@ export function ObjectBrowser(props: {
                       const nameId = `object-name-${index}`;
                       const sizeId = `object-size-${index}`;
                       const dateId = `object-date-${index}`;
-                      const sizeText = row.kind === "object" ? conciseSize(row.object?.size) : "";
-                      const dateText = row.kind === "object" ? conciseDate(row.object?.last_modified || "", i18n.language) : "";
+                      const sizeText = row.kind === "object" ? listedSize(row.object?.size, units) : "";
+                      const dateText = row.kind === "object" ? listedDate(row.object?.last_modified || "", i18n.language) : "";
                       const labelledBy = [nameId, sizeText ? sizeId : "", dateText ? dateId : ""].filter(Boolean).join(" ");
                       return (
                         <SelectionOption
@@ -555,19 +552,14 @@ export function ObjectBrowser(props: {
                                   setActionKey("");
                                   setConfirmKey(row.key);
                                 }}
+                                onBlur={() => {
+                                  setActionKey((current) => (current === row.key ? "" : current));
+                                }}
                                 onKeyDown={(event) => {
                                   if (event.key === "Tab" && event.shiftKey) {
                                     event.preventDefault();
                                     setActionKey("");
                                     rowRefs.current[index]?.focus();
-                                  } else if (event.key === "Tab") {
-                                    setActionKey("");
-                                    const next = index + 1;
-                                    if (next < visible.length) {
-                                      event.preventDefault();
-                                      setSelected(next);
-                                      rowRefs.current[next]?.focus();
-                                    }
                                   } else if (event.key === "Enter" || event.key === " ") {
                                     event.preventDefault();
                                     setSelected(index);
@@ -640,9 +632,9 @@ export function ObjectBrowser(props: {
             )}
           </div>
           {confirmKey && canWrite ? (
-            <div role="group" aria-label={t("deleteObject", { name: displayName(confirmKey) })} className="flex flex-wrap items-center gap-2 text-sm">
+            <div role="group" aria-label={t("confirmDeleteObject", { name: displayName(confirmKey) })} className="flex flex-wrap items-center gap-2 text-sm">
               <span className="font-mono">{confirmKey}</span>
-              <Button ref={confirmDeleteRef} type="button" variant="destructive" size="sm" aria-label={t("deleteObject", { name: displayName(confirmKey) })} onClick={() => void remove(confirmKey, confirmKey.endsWith("/"))}>
+              <Button ref={confirmDeleteRef} type="button" variant="destructive" size="sm" aria-label={t("confirmDeleteObject", { name: displayName(confirmKey) })} onClick={() => void remove(confirmKey, confirmKey.endsWith("/"))}>
                 {t("common:delete")}
               </Button>
               <Button

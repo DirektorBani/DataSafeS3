@@ -1,4 +1,5 @@
 import i18n, { normalizeLocale } from "@/i18n";
+import { formatBytes as formatByteCount, formatDate as formatLocaleDate, type ByteUnits } from "@datasafe/ui/format";
 
 export { cn } from "@datasafe/ui/cn";
 
@@ -19,10 +20,14 @@ function byteUnits(locale: string): string[] {
 export function formatBytes(bytes: number, locale?: string): string {
   const lng = resolveLocale(locale);
   const sizes = byteUnits(lng);
-  if (!Number.isFinite(bytes) || bytes <= 0) return `0 ${sizes[0]}`;
-  const k = 1024;
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  const units: ByteUnits = {
+    bytes: sizes[0],
+    kilobytes: sizes[1],
+    megabytes: sizes[2],
+    gigabytes: sizes[3],
+    terabytes: sizes[4],
+  };
+  return formatByteCount(bytes, units);
 }
 
 /** Recharts Y-axis tick formatter — keeps chart data in raw bytes. */
@@ -31,11 +36,7 @@ export function formatBytesAxis(value: number, locale?: string): string {
 }
 
 export function formatDate(iso: string, locale?: string): string {
-  try {
-    return new Date(iso).toLocaleString(resolveLocale(locale));
-  } catch {
-    return iso;
-  }
+  return formatLocaleDate(iso, resolveLocale(locale));
 }
 
 export function formatSpeed(bytesPerSec: number, locale?: string): string {

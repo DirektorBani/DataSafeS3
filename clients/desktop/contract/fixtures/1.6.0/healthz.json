@@ -3,10 +3,10 @@
   "path": "/healthz",
   "status": 200,
   "body": {
-    "status": "ok",
-    "version": "1.6.0",
     "commit": "<masked>",
+    "object_backend": "fs",
     "read_only_mode": false,
-    "object_backend": "fs"
+    "status": "ok",
+    "version": "1.6.0"
   }
 }

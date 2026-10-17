@@ -285,6 +285,9 @@ async function expectConsoleColumns(page: Page) {
   await expect(bucketHeader).toBeVisible();
   const bucketWeight = await bucketHeader.evaluate((el) => Number(getComputedStyle(el).fontWeight));
   expect(bucketWeight).toBeGreaterThanOrEqual(700);
+  const accessWidth = await page.locator("#buckets-col-1").evaluate((el) => el.getBoundingClientRect().width);
+  expect(accessWidth).toBeGreaterThan(150);
+  expect(accessWidth).toBeLessThan(170);
   expect(await bucketHeader.evaluate((el) => el.closest("[aria-hidden='true']") !== null)).toBe(false);
   await page.getByRole("option", { name: /photos/ }).click();
   const modifiedHeader = page.locator("#objects-col-2");
@@ -316,8 +319,10 @@ async function expectConsoleColumns(page: Page) {
   expect(Math.abs(metrics.headerSizeLeft - metrics.rowSizeLeft)).toBeLessThan(2);
   const option = page.getByRole("option", { name: /readme\.txt/ });
   await expect(option).toHaveAccessibleName(/readme\.txt/);
-  await expect(option).toHaveAccessibleName(/15 B/);
+  await expect(option).toHaveAccessibleName(/12\.4 KB/);
+  await expect(option).toHaveAccessibleName(/\d{1,2}[./]\d{1,2}[./]\d{4}/);
   await expect(option).not.toHaveAccessibleName(/2026-10-17T/);
+  await expect(option).not.toHaveAccessibleName(/Oct /);
   await expect(option).not.toHaveAccessibleName(/Delete/);
   await expect(page.getByRole("listbox", { name: "Objects" })).toHaveAttribute("aria-describedby", /objects-col-0/);
   expect(await serious(page)).toEqual([]);
@@ -328,7 +333,7 @@ const longObject = {
     status: 200,
     body: {
       folders: [],
-      objects: [{ key: "readme.txt", size: 15, last_modified: "2026-10-17T21:23:44.3860237Z" }],
+      objects: [{ key: "readme.txt", size: 12698, last_modified: "2026-10-17T21:23:44.3860237Z" }],
       truncated: false,
     },
   },
@@ -383,15 +388,24 @@ test("delete confirmation takes focus and the trash icon is reached with Tab", a
   await page.getByRole("option", { name: /photos/ }).click();
   const first = page.getByRole("option", { name: /a\.txt/ });
   await first.focus();
+  await expect(page.getByRole("option", { name: /b\.txt/ })).toHaveAttribute("tabindex", "-1");
   expect(await serious(page)).toEqual([]);
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Delete a.txt" })).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(first).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Delete a.txt" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect.poll(async () => page.evaluate(() => document.activeElement?.closest("[role='listbox']") != null)).toBe(false);
+  await page.keyboard.press("Shift+Tab");
+  await expect(first).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Delete");
-  const confirm = page.getByRole("group", { name: "Delete b.txt" }).getByRole("button", { name: "Delete b.txt" });
+  const confirm = page.getByRole("group", { name: "Confirm delete b.txt" }).getByRole("button", { name: "Confirm delete b.txt" });
   await expect(confirm).toBeFocused();
+  await expect(page.getByRole("button", { name: "Delete b.txt", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Confirm delete b.txt", exact: true })).toHaveCount(1);
   await page.keyboard.press("Enter");
   await expect(page.getByRole("option", { name: /b\.txt/ })).toHaveCount(0);
   await expect(page.getByRole("option", { name: /a\.txt/ })).toBeFocused();

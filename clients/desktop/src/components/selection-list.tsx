@@ -3,7 +3,9 @@ import { cn } from "@datasafe/ui/cn";
 
 // Header and options share one template, the way the console table shares a column.
 // max-content keeps the date on one line. A fixed 11rem column wrapped the timestamp.
-export const bucketColumns = "minmax(0,1fr) max-content";
+// 10rem keeps Access in the middle-right, the same place as the old table.
+// max-content pinned that word to the right edge.
+export const bucketColumns = "minmax(0,1fr) 10rem";
 export const objectColumns = "minmax(0,1fr) max-content max-content auto";
 
 // Chromium's UIA ISelectionProvider::GetSelection walks descendants and
