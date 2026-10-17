@@ -28,6 +28,9 @@ var (
 	errNetwork     = errors.New("network")
 	errNoRange     = errors.New("no range")
 	errETagRestart = errors.New("etag restart")
+	// errLocalFileMissing is a path the user named that is not on this computer.
+	// The window maps this code. It is not a server 400.
+	errLocalFileMissing = errors.New("local.file_missing")
 )
 
 // Limits are the starting queue sizes from spec 4.7.1. Tests shrink them.
@@ -836,7 +839,7 @@ func clearStale(task *Task) {
 // connection, a timeout, a 5xx, or a 429. Certificate errors and 4xx
 // (auth, permission, invalid request) are not in this set.
 func retryableTransfer(err error) bool {
-	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, errNoRange) || errors.Is(err, errETagRestart) {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, errNoRange) || errors.Is(err, errETagRestart) || errors.Is(err, errLocalFileMissing) {
 		return false
 	}
 	if errors.Is(err, errNetwork) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
@@ -1430,6 +1433,9 @@ type uploadItem struct {
 func collectUpload(root, prefix string, follow bool) ([]uploadItem, []PathNote, error) {
 	info, err := os.Lstat(root)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil, errLocalFileMissing
+		}
 		return nil, nil, err
 	}
 	var items []uploadItem
@@ -1528,6 +1534,9 @@ func (e *Engine) uploadJob(ctx context.Context, task *Task, index int, remote re
 	job := &task.Files[index]
 	info, err := os.Stat(job.Local)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return errLocalFileMissing
+		}
 		return err
 	}
 	size := info.Size()
@@ -2195,6 +2204,9 @@ func safeTransferMessage(err error) string {
 	}
 	if errors.Is(err, errNoRange) {
 		return "presign_unavailable"
+	}
+	if errors.Is(err, errLocalFileMissing) {
+		return "local.file_missing"
 	}
 	if errors.Is(err, errETagRestart) {
 		return "etag_mismatch"

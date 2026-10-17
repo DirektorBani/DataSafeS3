@@ -260,14 +260,14 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
                         }}
                         onKeyDown={(event) => onBucketKey(event, index)}
                       >
-                        <td role="gridcell" className="p-3">
+                        <td role="gridcell" aria-selected={active} className="p-3">
                           <span className="inline-flex items-center gap-2 font-medium text-primary">
                             <FolderOpen className="h-4 w-4" aria-hidden="true" />
                             {bucket.name}
                             {bucket.object_lock_enabled ? " · lock" : ""}
                           </span>
                         </td>
-                        <td role="gridcell" className="p-3 capitalize text-muted-foreground">{bucket.access?.ownership || "—"}</td>
+                        <td role="gridcell" aria-selected={active} className="p-3 capitalize text-muted-foreground">{bucket.access?.ownership || "—"}</td>
                       </tr>
                     );
                   })}

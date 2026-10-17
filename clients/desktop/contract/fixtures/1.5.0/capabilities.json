@@ -3,6 +3,6 @@
   "path": "/api/v1/capabilities",
   "status": 404,
   "body": {
-    "error": "not found"
+    "raw": "404 page not found\n"
   }
 }

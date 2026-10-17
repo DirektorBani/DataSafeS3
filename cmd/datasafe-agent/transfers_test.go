@@ -288,6 +288,35 @@ func writeTemp(t *testing.T, body []byte) string {
 	return path
 }
 
+func TestUploadMissingLocalFile(t *testing.T) {
+	fake := &fakeRemote{}
+	e := testEngine(t, fake)
+	missing := filepath.Join(t.TempDir(), "does-not-exist.bin")
+	task, err := e.Enqueue(enqueueReq{
+		Profile:   Profile{ID: "p"},
+		Direction: "upload",
+		Bucket:    "photos",
+		LocalPath: missing,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.State != "error" || task.Message != "local.file_missing" {
+		t.Fatalf("state %s message %q", task.State, task.Message)
+	}
+	if fake.puts != 0 {
+		t.Fatal("a missing file must not be uploaded")
+	}
+	gone := &Task{Files: []fileJob{{Local: missing, Key: "gone.bin"}}}
+	err = e.uploadJob(context.Background(), gone, 0, fake)
+	if !errors.Is(err, errLocalFileMissing) {
+		t.Fatalf("uploadJob: %v", err)
+	}
+	if safeTransferMessage(err) != "local.file_missing" {
+		t.Fatalf("message %q", safeTransferMessage(err))
+	}
+}
+
 func TestResumeSkipsConfirmedParts(t *testing.T) {
 	path := writeTemp(t, bytes.Repeat([]byte("x"), 10))
 	info, _ := os.Stat(path)

@@ -167,16 +167,20 @@ export function ObjectBrowser(props: {
     },
     [bucket, onError, profileId, props.offline],
   );
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   useEffect(() => {
+    // A language change rebuilds load. The open folder stays. A new bucket
+    // or profile still starts at the bucket root.
     setPrefix("");
     setMarkers([""]);
     setFirstPageMs(null);
     setShowTrash(false);
     setTrash([]);
     setSelectKey("");
-    void load("", "", true);
-  }, [bucket, load, profileId]);
+    void loadRef.current("", "", true);
+  }, [bucket, profileId]);
 
   const visible = useMemo(() => {
     const needle = filter.trim().toLowerCase();
@@ -431,7 +435,7 @@ export function ObjectBrowser(props: {
                     <tbody>
                       {visible.length === 0 ? (
                         <tr id="object-row-empty" role="row" tabIndex={0} aria-selected ref={emptyRef}>
-                          <td role="gridcell" colSpan={4} className="p-8 text-center text-muted-foreground">
+                          <td role="gridcell" aria-selected="true" colSpan={4} className="p-8 text-center text-muted-foreground">
                             {folderOffline ? (
                               <span role="status">{t("folderOffline")}</span>
                             ) : listError ? (
@@ -463,15 +467,15 @@ export function ObjectBrowser(props: {
                             }}
                             onKeyDown={(event) => onRowKey(event, index)}
                           >
-                            <td role="gridcell" className="p-3 font-mono">
+                            <td role="gridcell" aria-selected={active} className="p-3 font-mono">
                               <span className="inline-flex items-center gap-2">
                                 {row.kind === "folder" ? <Folder className="h-4 w-4 text-amber-500" aria-hidden="true" /> : <File className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
                                 {row.name}
                               </span>
                             </td>
-                            <td role="gridcell" className="p-3">{row.object?.size ?? ""}</td>
-                            <td role="gridcell" className="p-3">{row.object?.last_modified || ""}</td>
-                            <td role="gridcell" className="p-3">
+                            <td role="gridcell" aria-selected={active} className="p-3">{row.object?.size ?? ""}</td>
+                            <td role="gridcell" aria-selected={active} className="p-3">{row.object?.last_modified || ""}</td>
+                            <td role="gridcell" aria-selected={active} className="p-3">
                               {canWrite ? (
                                 <Button
                                   type="button"

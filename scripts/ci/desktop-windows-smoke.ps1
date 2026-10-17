@@ -10,6 +10,10 @@
 # unrelated generic credential. After install, the file list must be exactly
 # datasafe-desktop.exe, uninstall.exe, and binaries\datasafe-agent.exe.
 #
+# The object and bucket grids are not in this smoke. The window is not signed
+# in, so UI Automation cannot read Selection on those grids. The browser test
+# checks aria-selected on the active row's cells.
+#
 # Windows PowerShell 5.1 runs this file. WaitForExit(int) and an unbounded
 # LOCALAPPDATA walk have hung this step past its own timeouts, so every
 # external process is polled and then taskkill /F /T.

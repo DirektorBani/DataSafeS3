@@ -20,9 +20,9 @@ type Envelope struct {
 }
 
 // CheckFile validates one fixture against the shapes in v1.yaml.
-// A 1.5.0 or 1.6.0 error body is the legacy `error` string. `code`,
-// `message`, and `request_id` are required only when errors.codes is on,
-// which those servers do not advertise.
+// A legacy error body is the `error` string. A plain-text 404 is
+// `body.raw`. `code`, `message`, and `request_id` are required only when
+// errors.codes is on, which 1.5.0 and 1.6.0 do not advertise.
 func CheckFile(specPath, fixturePath string) error {
 	raw, err := os.ReadFile(fixturePath)
 	if err != nil {
@@ -76,8 +76,14 @@ func CheckEnvelope(specPath string, env Envelope) error {
 		}
 		return nil
 	case env.Status >= 400:
+		// A legacy server sends {"error":"..."}. Go's default mux answers
+		// an unknown route with text/plain "404 page not found", which
+		// record.sh stores as body.raw.
+		if raw, ok := obj["raw"].(string); ok && strings.TrimSpace(raw) != "" {
+			return nil
+		}
 		if _, ok := obj["error"].(string); !ok {
-			return fmt.Errorf("%s: error status needs a string error field", env.Path)
+			return fmt.Errorf("%s: error status needs a string error field or a raw body", env.Path)
 		}
 		return nil
 	default:

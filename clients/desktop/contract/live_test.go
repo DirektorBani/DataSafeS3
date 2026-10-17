@@ -3,6 +3,7 @@ package contract
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -66,14 +67,9 @@ func TestLive(t *testing.T) {
 	authed, _ := asObject(authedBody)
 	profile, features := Classify(pubStatus, pub, authedStatus, authed, version, hasKMS)
 	t.Logf("profile %s version %s public_caps %d authed_caps %d", profile, version, pubStatus, authedStatus)
-	switch want {
-	case "1.5.0", "1.6.0":
-		if profile != want {
-			t.Fatalf("profile %s, want %s", profile, want)
-		}
-	case "", "main":
-	default:
-		t.Fatalf("unknown DATASAFE_CONTRACT_PROFILE %q", want)
+	serverVersion, _ := authed["server_version"].(string)
+	if err := profileAllowed(want, profile, version, serverVersion); err != nil {
+		t.Fatal(err)
 	}
 
 	bucket := "contract-e11"
@@ -105,6 +101,69 @@ func TestLive(t *testing.T) {
 		t.Run(row.Name, func(t *testing.T) {
 			probe(t, client, base, token, bucket, row.Name, on)
 		})
+	}
+}
+
+// profileAllowed is the DATASAFE_CONTRACT_PROFILE check. 1.6.1 is released
+// and answers capabilities with a features object, so its column is
+// "features" plus healthz or server_version 1.6.1. "features" is that same
+// profile on any version, which is what :main uses when the tip has moved on.
+func profileAllowed(want, profile, version, serverVersion string) error {
+	switch want {
+	case "1.5.0", "1.6.0":
+		if profile != want {
+			return fmt.Errorf("profile %s, want %s", profile, want)
+		}
+	case "1.6.1":
+		if profile != "features" {
+			return fmt.Errorf("profile %s, want features", profile)
+		}
+		if !versionIs(version, "1.6.1") && !versionIs(serverVersion, "1.6.1") {
+			return fmt.Errorf("version %s, want 1.6.1", version)
+		}
+	case "features":
+		if profile != "features" {
+			return fmt.Errorf("profile %s, want features", profile)
+		}
+	case "", "main":
+	default:
+		return fmt.Errorf("unknown DATASAFE_CONTRACT_PROFILE %q", want)
+	}
+	return nil
+}
+
+func versionIs(got, want string) bool {
+	got = strings.TrimPrefix(strings.TrimSpace(got), "v")
+	return got == want
+}
+
+func TestProfileValues(t *testing.T) {
+	if err := profileAllowed("1.6.1", "features", "1.6.1", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := profileAllowed("1.6.1", "features", "dev", "v1.6.1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := profileAllowed("1.6.1", "1.6.0", "1.6.1", "1.6.1"); err == nil {
+		t.Fatal("1.6.1 must classify as features")
+	}
+	if err := profileAllowed("1.6.1", "features", "1.6.0", ""); err == nil {
+		t.Fatal("1.6.1 requires version 1.6.1")
+	}
+	if err := profileAllowed("features", "features", "9.9.9", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := profileAllowed("features", "1.6.0", "1.6.0", ""); err == nil {
+		t.Fatal("features requires the features profile")
+	}
+	if err := profileAllowed("1.5.0", "1.5.0", "dev", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := profileAllowed("main", "features", "1.6.1", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := profileAllowed("nope", "features", "1.6.1", ""); err == nil {
+		t.Fatal("unknown profile value")
 	}
 }
 

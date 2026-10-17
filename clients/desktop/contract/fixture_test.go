@@ -60,6 +60,23 @@ func TestFixturesMatchSpec(t *testing.T) {
 	}
 }
 
+func TestPlainTextErrorBody(t *testing.T) {
+	ok := Envelope{
+		Method: "GET",
+		Path:   "/api/v1/capabilities",
+		Status: 404,
+		Body:   json.RawMessage(`{"raw":"404 page not found\n"}`),
+	}
+	if err := CheckEnvelope("unused", ok); err != nil {
+		t.Fatal(err)
+	}
+	empty := ok
+	empty.Body = json.RawMessage(`{}`)
+	if err := CheckEnvelope("unused", empty); err == nil {
+		t.Fatal("an error body with neither error nor raw must fail")
+	}
+}
+
 func TestRenamedFieldFailsContract(t *testing.T) {
 	root := repoRoot(t)
 	spec := filepath.Join(root, "api", "openapi", "v1.yaml")

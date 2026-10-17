@@ -60,6 +60,7 @@ const messages: Record<string, string> = {
   "tls.untrusted": "tlsUntrusted",
   "tls.failed": "tlsFailed",
   "request.invalid": "codeRequestInvalid",
+  "local.file_missing": "fileMissing",
   "auth.unauthorized": "codeAuth",
   "auth.session_expired": "sessionExpired",
   "access.forbidden": "forbidden",
