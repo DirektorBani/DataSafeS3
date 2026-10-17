@@ -6,14 +6,14 @@ import { SelectionList, SelectionOption, bucketColumns, objectColumns } from "./
 export function UiaFixture() {
   return (
     <main className="space-y-6 p-6">
-      <SelectionList label="Buckets" activeId="bucket-row-0" columns={["Name", "Access"]} template={bucketColumns}>
-        <SelectionOption id="bucket-row-0" selected tabIndex={0} template={bucketColumns}>
+      <SelectionList label="Buckets" idPrefix="fixture-buckets" activeId="bucket-row-0" columns={["Name", "Access"]} template={bucketColumns}>
+        <SelectionOption id="bucket-row-0" selected tabIndex={0}>
           <span className="p-3 font-medium">files</span>
           <span className="p-3 text-muted-foreground">Owned</span>
         </SelectionOption>
       </SelectionList>
-      <SelectionList label="Objects" activeId="object-row-0" columns={["Name", "Size", "Modified", ""]} template={objectColumns}>
-        <SelectionOption id="object-row-0" selected tabIndex={0} template={objectColumns}>
+      <SelectionList label="Objects" idPrefix="fixture-objects" activeId="object-row-0" columns={["Name", "Size", "Modified", ""]} template={objectColumns}>
+        <SelectionOption id="object-row-0" selected tabIndex={0}>
           <span className="p-3 font-mono">readme.txt</span>
           <span className="p-3">12</span>
           <span className="p-3" />

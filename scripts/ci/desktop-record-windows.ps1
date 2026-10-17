@@ -142,7 +142,13 @@ try {
     if ([string]::IsNullOrEmpty([string]$login.body.user_id)) {
         throw "recorded login body has no user_id"
     }
-    Write-Host "record.sh exit 0; login token masked; user_id present"
+    $rawLogin = [System.IO.File]::ReadAllBytes($loginPath)
+    foreach ($byte in $rawLogin) {
+        if ($byte -eq 13) {
+            throw "record.sh wrote CR in $loginPath"
+        }
+    }
+    Write-Host "record.sh exit 0; login token masked; user_id present; fixtures are LF"
 } finally {
     Stop-Server
 }

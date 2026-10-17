@@ -5,6 +5,7 @@
 # Tokens, passwords, signatures, and request_id are replaced with <masked>.
 # A body that is not JSON, such as Go's text/plain "404 page not found",
 # is stored as body.raw. Temp files are removed on exit.
+# Fixtures are written as bytes so Windows Python does not turn LF into CRLF.
 set -eu
 # Git for Windows rewrites an argument that starts with /api or /healthz
 # into a Windows path before python and curl see it. The exclusion is only
@@ -88,7 +89,8 @@ else:
     except json.JSONDecodeError:
         body = {"raw": raw}
 doc = {"method": method, "path": path, "status": int(status), "body": body}
-pathlib.Path(out).write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+text = json.dumps(doc, indent=2) + "\n"
+pathlib.Path(out).write_bytes(text.encode("utf-8"))
 PY
 }
 

@@ -223,17 +223,18 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
             <CardContent className="p-0">
               <SelectionList
                 label={t("buckets:title")}
+                idPrefix="buckets"
                 template={bucketColumns}
                 activeId={buckets.length > 0 ? `bucket-row-${Math.min(cursor, buckets.length - 1)}` : undefined}
                 columns={[t("buckets:columns.name"), t("buckets:columns.access")]}
-              >
-                {buckets.length === 0 ? (
-                  <SelectionOption id="bucket-row-empty" selected={false} tabIndex={-1} template={bucketColumns}>
-                    <div className="p-8 text-center text-muted-foreground" style={{ gridColumn: "1 / -1" }}>
+                empty={
+                  buckets.length === 0 ? (
+                    <div role="status" className="p-8 text-center text-muted-foreground">
                       {t("buckets:empty.owned")}
                     </div>
-                  </SelectionOption>
-                ) : null}
+                  ) : undefined
+                }
+              >
                 {buckets.map((bucket, index) => {
                   const active = index === Math.min(cursor, buckets.length - 1);
                   return (
@@ -242,7 +243,7 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
                       id={`bucket-row-${index}`}
                       selected={active}
                       tabIndex={active ? 0 : -1}
-                      template={bucketColumns}
+                      describedBy="buckets-col-0 buckets-col-1"
                       optionRef={(node) => {
                         bucketRefs.current[index] = node;
                       }}

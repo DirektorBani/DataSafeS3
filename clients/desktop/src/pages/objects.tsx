@@ -31,6 +31,35 @@ function problem(result: BrowseResult): string {
   return "";
 }
 
+function conciseSize(bytes: number | undefined): string {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) {
+    return "";
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const shown = value >= 10 ? Math.round(value).toString() : value.toFixed(1);
+  return `${shown} ${units[unit]}`;
+}
+
+function conciseDate(iso: string, locale: string): string {
+  if (!iso) {
+    return "";
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
+}
+
 function displayName(key: string): string {
   const trimmed = key.endsWith("/") ? key.slice(0, -1) : key;
   const cut = trimmed.lastIndexOf("/");
@@ -83,6 +112,7 @@ export function ObjectBrowser(props: {
   const [selected, setSelected] = useState(0);
   const [firstPageMs, setFirstPageMs] = useState<number | null>(null);
   const [confirmKey, setConfirmKey] = useState("");
+  const [actionKey, setActionKey] = useState("");
   const [renaming, setRenaming] = useState("");
   const [folderName, setFolderName] = useState("");
   const [trash, setTrash] = useState<Array<Record<string, unknown>>>([]);
@@ -95,6 +125,9 @@ export function ObjectBrowser(props: {
   const [focusNonce, setFocusNonce] = useState(0);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const emptyRef = useRef<HTMLDivElement | null>(null);
+  const actionRef = useRef<HTMLSpanElement | null>(null);
+  const confirmDeleteRef = useRef<HTMLButtonElement | null>(null);
+  const focusAfterDelete = useRef("");
   const listOfflineRef = useRef(false);
   const keyboardOpen = useRef(false);
   if (props.offline) {
@@ -216,6 +249,38 @@ export function ObjectBrowser(props: {
     node?.focus();
   }, [focusNonce, visible]);
 
+  useEffect(() => {
+    const pending = focusAfterDelete.current;
+    if (!pending) {
+      return;
+    }
+    focusAfterDelete.current = "";
+    if (pending === "empty") {
+      emptyRef.current?.focus();
+      return;
+    }
+    const index = visible.findIndex((row) => row.key === pending);
+    if (index < 0) {
+      return;
+    }
+    setSelected(index);
+    rowRefs.current[index]?.focus();
+  }, [visible]);
+
+  useEffect(() => {
+    if (!actionKey) {
+      return;
+    }
+    actionRef.current?.focus();
+  }, [actionKey]);
+
+  useEffect(() => {
+    if (!confirmKey) {
+      return;
+    }
+    confirmDeleteRef.current?.focus();
+  }, [confirmKey]);
+
   function openPrefix(next: string, fromKeyboard: boolean) {
     if (fromKeyboard) {
       keyboardOpen.current = true;
@@ -226,6 +291,9 @@ export function ObjectBrowser(props: {
   }
 
   async function remove(key: string, folder: boolean) {
+    const index = visible.findIndex((row) => row.key === key);
+    const rest = visible.filter((row) => row.key !== key);
+    const neighbor = rest.length === 0 ? "empty" : rest[Math.min(Math.max(index, 0), rest.length - 1)].key;
     const result = await browse(props.profileId, folder ? "folder.delete" : "object.delete", {
       bucket: props.bucket,
       prefix: key,
@@ -237,7 +305,9 @@ export function ObjectBrowser(props: {
       props.onError(message);
       return;
     }
+    focusAfterDelete.current = neighbor;
     setConfirmKey("");
+    setActionKey("");
     await load(prefix, markers[markers.length - 1] || "", false);
   }
 
@@ -335,6 +405,9 @@ export function ObjectBrowser(props: {
     } else if (event.key === "Backspace" && prefix) {
       event.preventDefault();
       openPrefix(parentPrefix(prefix), true);
+    } else if (event.key === "Tab" && !event.shiftKey && canWrite && row) {
+      event.preventDefault();
+      setActionKey(row.key);
     }
   }
 
@@ -420,32 +493,35 @@ export function ObjectBrowser(props: {
                 <div className="max-h-[28rem] overflow-auto">
                   <SelectionList
                     label={t("objects")}
+                    idPrefix="objects"
                     template={objectColumns}
-                    activeId={visible.length > 0 ? `object-row-${Math.min(selected, visible.length - 1)}` : "object-row-empty"}
+                    activeId={visible.length > 0 ? `object-row-${Math.min(selected, visible.length - 1)}` : undefined}
                     columns={[t("bucketDetail:table.name"), t("bucketDetail:table.size"), t("bucketDetail:table.modified"), ""]}
-                  >
-                    {visible.length === 0 ? (
-                      <SelectionOption id="object-row-empty" selected tabIndex={0} template={objectColumns} optionRef={emptyRef}>
-                        <div className="p-8 text-center text-muted-foreground" style={{ gridColumn: "1 / -1" }}>
-                          {folderOffline ? (
-                            <span role="status">{t("folderOffline")}</span>
-                          ) : listError ? (
-                            <span role="status">{listError}</span>
-                          ) : (
-                            t("bucketDetail:emptyFolder")
-                          )}
+                    empty={
+                      visible.length === 0 ? (
+                        <div id="object-row-empty" role="status" tabIndex={0} ref={emptyRef} className="p-8 text-center text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+                          {folderOffline ? t("folderOffline") : listError ? listError : t("bucketDetail:emptyFolder")}
                         </div>
-                      </SelectionOption>
-                    ) : null}
+                      ) : undefined
+                    }
+                  >
                     {visible.map((row, index) => {
                       const active = index === Math.min(selected, Math.max(visible.length - 1, 0));
+                      const nameId = `object-name-${index}`;
+                      const sizeId = `object-size-${index}`;
+                      const dateId = `object-date-${index}`;
+                      const sizeText = row.kind === "object" ? conciseSize(row.object?.size) : "";
+                      const dateText = row.kind === "object" ? conciseDate(row.object?.last_modified || "", i18n.language) : "";
+                      const labelledBy = [nameId, sizeText ? sizeId : "", dateText ? dateId : ""].filter(Boolean).join(" ");
                       return (
                         <SelectionOption
                           key={row.key}
                           id={`object-row-${index}`}
                           selected={active}
                           tabIndex={active ? 0 : -1}
-                          template={objectColumns}
+                          labelledBy={labelledBy}
+                          describedBy="objects-col-0 objects-col-1 objects-col-2"
+                          keyShortcuts={canWrite ? "Delete" : undefined}
                           optionRef={(node) => {
                             rowRefs.current[index] = node;
                           }}
@@ -457,24 +533,47 @@ export function ObjectBrowser(props: {
                           }}
                           onKeyDown={(event) => onRowKey(event, index)}
                         >
-                          <span className="inline-flex items-center gap-2 p-3 font-mono">
+                          {/* The trailing space is a word boundary. Adjacent cells have no text node between them, so without it the visible text is "readme.txt12 BOct" while the name is "readme.txt 12 B Oct". */}
+                          <span id={nameId} data-column="name" className="inline-flex items-center gap-2 p-3 font-mono">
                             {row.kind === "folder" ? <Folder className="h-4 w-4 text-amber-500" aria-hidden="true" /> : <File className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
-                            {row.name}
+                            {row.name}{" "}
                           </span>
-                          <span className="p-3">{row.object?.size ?? ""}</span>
-                          <span className="p-3">{row.object?.last_modified || ""}</span>
+                          <span id={sizeText ? sizeId : undefined} data-column="size" className="whitespace-nowrap p-3">{sizeText}{sizeText ? " " : ""}</span>
+                          <span id={dateText ? dateId : undefined} data-column="modified" className="whitespace-nowrap p-3">{dateText}{dateText ? " " : ""}</span>
                           <span className="p-3">
                             {canWrite ? (
-                              // A native button stays focusable with tabindex -1, and axe then
-                              // rejects that control inside an option. Delete is also on the key.
                               <span
                                 role="button"
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-destructive hover:bg-accent"
+                                tabIndex={actionKey === row.key ? 0 : undefined}
+                                ref={actionKey === row.key ? actionRef : undefined}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-destructive hover:bg-accent outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 aria-label={t("deleteObject", { name: row.name })}
+                                aria-keyshortcuts="Delete"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   setSelected(index);
+                                  setActionKey("");
                                   setConfirmKey(row.key);
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Tab" && event.shiftKey) {
+                                    event.preventDefault();
+                                    setActionKey("");
+                                    rowRefs.current[index]?.focus();
+                                  } else if (event.key === "Tab") {
+                                    setActionKey("");
+                                    const next = index + 1;
+                                    if (next < visible.length) {
+                                      event.preventDefault();
+                                      setSelected(next);
+                                      rowRefs.current[next]?.focus();
+                                    }
+                                  } else if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    setSelected(index);
+                                    setActionKey("");
+                                    setConfirmKey(row.key);
+                                  }
                                 }}
                               >
                                 <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -541,12 +640,24 @@ export function ObjectBrowser(props: {
             )}
           </div>
           {confirmKey && canWrite ? (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
+            <div role="group" aria-label={t("deleteObject", { name: displayName(confirmKey) })} className="flex flex-wrap items-center gap-2 text-sm">
               <span className="font-mono">{confirmKey}</span>
-              <Button type="button" variant="destructive" size="sm" onClick={() => void remove(confirmKey, confirmKey.endsWith("/"))}>
+              <Button ref={confirmDeleteRef} type="button" variant="destructive" size="sm" aria-label={t("deleteObject", { name: displayName(confirmKey) })} onClick={() => void remove(confirmKey, confirmKey.endsWith("/"))}>
                 {t("common:delete")}
               </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => setConfirmKey("")}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const key = confirmKey;
+                  setConfirmKey("");
+                  const index = visible.findIndex((row) => row.key === key);
+                  if (index >= 0) {
+                    rowRefs.current[index]?.focus();
+                  }
+                }}
+              >
                 {t("common:cancel")}
               </Button>
             </div>
