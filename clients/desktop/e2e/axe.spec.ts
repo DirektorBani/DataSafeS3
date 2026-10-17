@@ -147,38 +147,27 @@ test("a bucket row and an object row open from the keyboard", async ({ page }) =
     },
   );
   await page.getByRole("button", { name: "Buckets" }).click();
-  const buckets = page.getByRole("grid", { name: "Buckets" });
+  const buckets = page.getByRole("listbox", { name: "Buckets" });
   await expect(buckets).toHaveAttribute("aria-multiselectable", "false");
-  const bucket = page.getByRole("row", { name: /photos/ });
+  const bucket = page.getByRole("option", { name: /photos/ });
   await bucket.focus();
   await expect(bucket).toBeFocused();
   await expect(bucket).toHaveAttribute("aria-selected", "true");
-  const bucketCells = bucket.locator('[role="gridcell"]');
-  await expect(bucketCells).toHaveCount(2);
-  for (const cell of await bucketCells.all()) {
-    await expect(cell).toHaveAttribute("aria-selected", "true");
-  }
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "photos" })).toBeVisible();
-  const objects = page.getByRole("grid", { name: "Objects" });
+  const objects = page.getByRole("listbox", { name: "Objects" });
   await expect(objects).toHaveAttribute("aria-multiselectable", "false");
-  const folder = page.getByRole("row", { name: /docs/ });
+  const folder = page.getByRole("option", { name: /docs/ });
   await folder.focus();
   await expect(folder).toBeFocused();
   await expect(folder).toHaveAttribute("aria-selected", "true");
-  const folderCells = folder.locator('[role="gridcell"]');
-  await expect(folderCells).toHaveCount(4);
-  for (const cell of await folderCells.all()) {
-    await expect(cell).toHaveAttribute("aria-selected", "true");
-  }
-  const readme = page.getByRole("row", { name: /readme\.txt/ });
-  await expect(readme.locator('[role="gridcell"]').first()).not.toHaveAttribute("aria-selected", "true");
+  const readme = page.getByRole("option", { name: /readme\.txt/ });
+  await expect(readme).toHaveAttribute("aria-selected", "false");
   await page.keyboard.press("Enter");
-  const inside = page.getByRole("row", { name: /inside\.txt/ });
+  const inside = page.getByRole("option", { name: /inside\.txt/ });
   await expect(inside).toBeVisible();
   await expect(inside).toBeFocused();
   await expect(inside).toHaveAttribute("aria-selected", "true");
-  await expect(inside.locator('[role="gridcell"]').first()).toHaveAttribute("aria-selected", "true");
   await expect(objects).toHaveAttribute("aria-activedescendant", "object-row-0");
   expect(await serious(page)).toEqual([]);
 });
@@ -208,14 +197,14 @@ test("an uncached folder clears the parent rows", async ({ page }) => {
     },
   );
   await page.getByRole("button", { name: "Buckets" }).click();
-  await page.getByRole("row", { name: /photos/ }).click();
-  await expect(page.getByRole("row", { name: /readme\.txt/ })).toBeVisible();
-  await page.getByRole("row", { name: /docs/ }).click();
+  await page.getByRole("option", { name: /photos/ }).click();
+  await expect(page.getByRole("option", { name: /readme\.txt/ })).toBeVisible();
+  await page.getByRole("option", { name: /docs/ }).click();
   await expect(page.getByRole("status").filter({ hasText: "This folder is not available offline." })).toBeVisible();
   const empty = page.locator("#object-row-empty");
+  await expect(empty).toHaveAttribute("role", "option");
   await expect(empty).toHaveAttribute("aria-selected", "true");
-  await expect(empty.locator('[role="gridcell"]')).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("row", { name: /readme\.txt/ })).toHaveCount(0);
+  await expect(page.getByRole("option", { name: /readme\.txt/ })).toHaveCount(0);
   await expect(page.getByText("docs", { exact: true })).toBeVisible();
   expect(await serious(page)).toEqual([]);
 });
@@ -240,17 +229,17 @@ test("switching language keeps the open folder", async ({ page }) => {
     },
   );
   await page.getByRole("button", { name: "Buckets" }).click();
-  await page.getByRole("row", { name: /photos/ }).click();
-  await page.getByRole("row", { name: /docs/ }).click();
-  await expect(page.getByRole("row", { name: /inside\.txt/ })).toBeVisible();
+  await page.getByRole("option", { name: /photos/ }).click();
+  await page.getByRole("option", { name: /docs/ }).click();
+  await expect(page.getByRole("option", { name: /inside\.txt/ })).toBeVisible();
   await page.getByRole("button", { name: "RU", exact: true }).click();
   await expect(page.getByRole("button", { name: "Корень" })).toBeVisible();
   await expect(page.getByRole("button", { name: "docs" })).toBeVisible();
-  await expect(page.getByRole("row", { name: /inside\.txt/ })).toBeVisible();
-  await expect(page.getByRole("row", { name: /readme\.txt/ })).toHaveCount(0);
+  await expect(page.getByRole("option", { name: /inside\.txt/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: /readme\.txt/ })).toHaveCount(0);
   await page.getByRole("button", { name: "EN", exact: true }).click();
   await expect(page.getByRole("button", { name: "Root" })).toBeVisible();
-  await expect(page.getByRole("row", { name: /inside\.txt/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: /inside\.txt/ })).toBeVisible();
   expect(await serious(page)).toEqual([]);
 });
 

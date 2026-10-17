@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@datasafe/ui/ui/tabs";
 import { PageHeader } from "@datasafe/ui/page-header";
 import { cn } from "@datasafe/ui/cn";
 import { ObjectInfo, type ListedObject } from "../components/object-info";
+import { SelectionList, SelectionOption, objectColumns } from "../components/selection-list";
 import { TransferPanel } from "../components/transfers/panel";
 import { browse, type BrowseResult } from "../desktop";
 
@@ -92,8 +93,8 @@ export function ObjectBrowser(props: {
   const [folderOffline, setFolderOffline] = useState(false);
   const [listError, setListError] = useState("");
   const [focusNonce, setFocusNonce] = useState(0);
-  const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
-  const emptyRef = useRef<HTMLTableRowElement | null>(null);
+  const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const emptyRef = useRef<HTMLDivElement | null>(null);
   const listOfflineRef = useRef(false);
   const keyboardOpen = useRef(false);
   if (props.offline) {
@@ -293,7 +294,7 @@ export function ObjectBrowser(props: {
     await openTrash();
   }
 
-  function onRowKey(event: KeyboardEvent<HTMLTableRowElement>, index: number) {
+  function onRowKey(event: KeyboardEvent<HTMLDivElement>, index: number) {
     if (event.target !== event.currentTarget) {
       return;
     }
@@ -417,87 +418,73 @@ export function ObjectBrowser(props: {
             <Card>
               <CardContent className="p-0">
                 <div className="max-h-[28rem] overflow-auto">
-                  <table
-                    className="w-full text-sm"
-                    role="grid"
-                    aria-label={t("objects")}
-                    aria-multiselectable="false"
-                    aria-activedescendant={visible.length > 0 ? `object-row-${Math.min(selected, visible.length - 1)}` : "object-row-empty"}
+                  <SelectionList
+                    label={t("objects")}
+                    template={objectColumns}
+                    activeId={visible.length > 0 ? `object-row-${Math.min(selected, visible.length - 1)}` : "object-row-empty"}
+                    columns={[t("bucketDetail:table.name"), t("bucketDetail:table.size"), t("bucketDetail:table.modified"), ""]}
                   >
-                    <thead>
-                      <tr role="row" className="border-b text-left text-muted-foreground">
-                        <th role="columnheader" className="p-3">{t("bucketDetail:table.name")}</th>
-                        <th role="columnheader" className="p-3">{t("bucketDetail:table.size")}</th>
-                        <th role="columnheader" className="p-3">{t("bucketDetail:table.modified")}</th>
-                        <th role="columnheader" className="w-24 p-3" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visible.length === 0 ? (
-                        <tr id="object-row-empty" role="row" tabIndex={0} aria-selected ref={emptyRef}>
-                          <td role="gridcell" aria-selected="true" colSpan={4} className="p-8 text-center text-muted-foreground">
-                            {folderOffline ? (
-                              <span role="status">{t("folderOffline")}</span>
-                            ) : listError ? (
-                              <span role="status">{listError}</span>
-                            ) : (
-                              t("bucketDetail:emptyFolder")
-                            )}
-                          </td>
-                        </tr>
-                      ) : null}
-                      {visible.map((row, index) => {
-                        const active = index === Math.min(selected, Math.max(visible.length - 1, 0));
-                        return (
-                          <tr
-                            key={row.key}
-                            id={`object-row-${index}`}
-                            role="row"
-                            tabIndex={active ? 0 : -1}
-                            aria-selected={active}
-                            ref={(node) => {
-                              rowRefs.current[index] = node;
-                            }}
-                            className={cn("cursor-pointer border-b hover:bg-muted/50 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", active && "bg-muted/30")}
-                            onClick={() => {
-                              setSelected(index);
-                              if (row.kind === "folder") {
-                                openPrefix(row.key, false);
-                              }
-                            }}
-                            onKeyDown={(event) => onRowKey(event, index)}
-                          >
-                            <td role="gridcell" aria-selected={active} className="p-3 font-mono">
-                              <span className="inline-flex items-center gap-2">
-                                {row.kind === "folder" ? <Folder className="h-4 w-4 text-amber-500" aria-hidden="true" /> : <File className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
-                                {row.name}
+                    {visible.length === 0 ? (
+                      <SelectionOption id="object-row-empty" selected tabIndex={0} template={objectColumns} optionRef={emptyRef}>
+                        <div className="p-8 text-center text-muted-foreground" style={{ gridColumn: "1 / -1" }}>
+                          {folderOffline ? (
+                            <span role="status">{t("folderOffline")}</span>
+                          ) : listError ? (
+                            <span role="status">{listError}</span>
+                          ) : (
+                            t("bucketDetail:emptyFolder")
+                          )}
+                        </div>
+                      </SelectionOption>
+                    ) : null}
+                    {visible.map((row, index) => {
+                      const active = index === Math.min(selected, Math.max(visible.length - 1, 0));
+                      return (
+                        <SelectionOption
+                          key={row.key}
+                          id={`object-row-${index}`}
+                          selected={active}
+                          tabIndex={active ? 0 : -1}
+                          template={objectColumns}
+                          optionRef={(node) => {
+                            rowRefs.current[index] = node;
+                          }}
+                          onClick={() => {
+                            setSelected(index);
+                            if (row.kind === "folder") {
+                              openPrefix(row.key, false);
+                            }
+                          }}
+                          onKeyDown={(event) => onRowKey(event, index)}
+                        >
+                          <span className="inline-flex items-center gap-2 p-3 font-mono">
+                            {row.kind === "folder" ? <Folder className="h-4 w-4 text-amber-500" aria-hidden="true" /> : <File className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
+                            {row.name}
+                          </span>
+                          <span className="p-3">{row.object?.size ?? ""}</span>
+                          <span className="p-3">{row.object?.last_modified || ""}</span>
+                          <span className="p-3">
+                            {canWrite ? (
+                              // A native button stays focusable with tabindex -1, and axe then
+                              // rejects that control inside an option. Delete is also on the key.
+                              <span
+                                role="button"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-destructive hover:bg-accent"
+                                aria-label={t("deleteObject", { name: row.name })}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelected(index);
+                                  setConfirmKey(row.key);
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                               </span>
-                            </td>
-                            <td role="gridcell" aria-selected={active} className="p-3">{row.object?.size ?? ""}</td>
-                            <td role="gridcell" aria-selected={active} className="p-3">{row.object?.last_modified || ""}</td>
-                            <td role="gridcell" aria-selected={active} className="p-3">
-                              {canWrite ? (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-destructive"
-                                  aria-label={t("deleteObject", { name: row.name })}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setSelected(index);
-                                    setConfirmKey(row.key);
-                                  }}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                                </Button>
-                              ) : null}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                            ) : null}
+                          </span>
+                        </SelectionOption>
+                      );
+                    })}
+                  </SelectionList>
                 </div>
                 {markers.length > 1 || truncated ? (
                   <div className="flex justify-center gap-2 border-t p-3">

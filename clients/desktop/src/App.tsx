@@ -9,6 +9,7 @@ import { browse, diagExport, diagPreview, listProfiles, loadSettings, logout, sa
 import { setDesktopLocale, THEME_KEY } from "./i18n";
 import { ResumeProgress } from "./components/transfers/panel";
 import { DesktopShell, type DesktopTheme, type DesktopView } from "./components/shell";
+import { UiaFixture } from "./components/uia-fixture";
 import { BucketBrowser } from "./pages/buckets";
 import { LoginPanel } from "./pages/login";
 import { ProfileList } from "./pages/profiles";
@@ -35,6 +36,7 @@ function applyTheme(theme: DesktopTheme, persist = true) {
 export default function App() {
   const { t } = useTranslation();
   const [theme, setTheme] = useState<DesktopTheme>(storedTheme);
+  const [uiaFixture, setUiaFixture] = useState(false);
   const [view, setView] = useState<DesktopView>("profiles");
   const [bucketListToken, setBucketListToken] = useState(0);
   const [transferNote, setTransferNote] = useState("");
@@ -77,6 +79,9 @@ export default function App() {
         if (saved.theme === "light" || saved.theme === "dark" || saved.theme === "system") {
           applyTheme(saved.theme, false);
           setTheme(saved.theme);
+        }
+        if (saved.uia_fixture) {
+          setUiaFixture(true);
         }
       })
       .catch(() => undefined);
@@ -198,6 +203,10 @@ export default function App() {
       {error ? <p className="border-b px-6 py-2 text-sm text-destructive lg:px-8">{error}</p> : null}
     </>
   );
+
+  if (uiaFixture) {
+    return <UiaFixture />;
+  }
 
   return (
     <DesktopShell

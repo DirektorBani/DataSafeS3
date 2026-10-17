@@ -73,7 +73,7 @@ export function logout(id: string): Promise<LoginView> {
   return invoke("auth_logout", { id });
 }
 
-export type UiSettings = { locale?: string; theme?: string };
+export type UiSettings = { locale?: string; theme?: string; uia_fixture?: boolean };
 
 export function loadSettings(): Promise<UiSettings> {
   return invoke("settings_load");

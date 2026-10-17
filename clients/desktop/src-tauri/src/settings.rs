@@ -22,10 +22,24 @@ fn settings_path() -> PathBuf {
 
 pub fn load() -> Value {
     let prefs = read_file(&settings_path());
-    json!({
-        "locale": prefs.locale,
-        "theme": prefs.theme,
-    })
+    apply_uia_fixture(
+        json!({
+            "locale": prefs.locale,
+            "theme": prefs.theme,
+        }),
+        std::env::var("DATASAFE_UIA_FIXTURE").ok().as_deref() == Some("1"),
+    )
+}
+
+/// The Windows smoke starts the installed app with DATASAFE_UIA_FIXTURE=1.
+/// The flag is not written to settings.json.
+pub fn apply_uia_fixture(mut value: Value, enabled: bool) -> Value {
+    if enabled {
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert("uia_fixture".to_string(), Value::Bool(true));
+        }
+    }
+    value
 }
 
 pub fn save(locale: Option<&str>, theme: Option<&str>) -> Result<(), String> {
@@ -92,8 +106,10 @@ fn known_theme(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::write_file;
+    use super::apply_uia_fixture;
     use super::read_file;
+    use super::write_file;
+    use serde_json::json;
 
     #[test]
     fn settings_file_keeps_each_field() {
@@ -108,5 +124,15 @@ mod tests {
         assert_eq!(prefs.locale, "ru");
         assert_eq!(prefs.theme, "light");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn uia_fixture_is_only_added_when_asked() {
+        let plain = json!({"locale": "en", "theme": "dark"});
+        assert!(apply_uia_fixture(plain.clone(), false).get("uia_fixture").is_none());
+        assert_eq!(
+            apply_uia_fixture(plain, true).get("uia_fixture").and_then(|value| value.as_bool()),
+            Some(true)
+        );
     }
 }

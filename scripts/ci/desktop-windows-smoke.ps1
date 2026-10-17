@@ -10,9 +10,9 @@
 # unrelated generic credential. After install, the file list must be exactly
 # datasafe-desktop.exe, uninstall.exe, and binaries\datasafe-agent.exe.
 #
-# The object and bucket grids are not in this smoke. The window is not signed
-# in, so UI Automation cannot read Selection on those grids. The browser test
-# checks aria-selected on the active row's cells.
+# DATASAFE_UIA_FIXTURE=1 shows the Objects and Buckets listboxes without a
+# sign-in. UI Automation must return a selection from each list. Chromium
+# only puts item-like roles (listbox option, treeitem) into GetSelection.
 #
 # Windows PowerShell 5.1 runs this file. WaitForExit(int) and an unbounded
 # LOCALAPPDATA walk have hung this step past its own timeouts, so every
@@ -385,6 +385,65 @@ function Test-PurgeSecrets {
 
 Test-PurgeSecrets
 
+function Assert-UiaSelection {
+    Add-Type -AssemblyName UIAutomationClient
+    Add-Type -AssemblyName UIAutomationTypes
+    $root = [System.Windows.Automation.AutomationElement]::RootElement
+    $windowCond = New-Object System.Windows.Automation.AndCondition(
+        (New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+            [System.Windows.Automation.ControlType]::Window)),
+        (New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::NameProperty,
+            "DataSafeS3 Desktop"))
+    )
+    $deadline = [DateTime]::UtcNow.AddSeconds(25)
+    $last = "window not found"
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $window = $root.FindFirst([System.Windows.Automation.TreeScope]::Children, $windowCond)
+        if ($window) {
+            $ready = $true
+            foreach ($label in @("Objects", "Buckets")) {
+                $listCond = New-Object System.Windows.Automation.AndCondition(
+                    (New-Object System.Windows.Automation.PropertyCondition(
+                        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                        [System.Windows.Automation.ControlType]::List)),
+                    (New-Object System.Windows.Automation.PropertyCondition(
+                        [System.Windows.Automation.AutomationElement]::NameProperty,
+                        $label))
+                )
+                $list = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $listCond)
+                if (-not $list) {
+                    $ready = $false
+                    $last = "$label list not found"
+                    break
+                }
+                try {
+                    $raw = $list.GetCurrentPattern([System.Windows.Automation.SelectionPattern]::Pattern)
+                } catch {
+                    $ready = $false
+                    $last = "$label has no Selection pattern: $_"
+                    break
+                }
+                $pattern = [System.Windows.Automation.SelectionPattern]$raw
+                $selected = @($pattern.Current.GetSelection())
+                Write-Host "UIA $label GetSelection count $($selected.Count)"
+                if ($selected.Count -lt 1) {
+                    $ready = $false
+                    $last = "$label GetSelection is empty"
+                    break
+                }
+            }
+            if ($ready) {
+                Write-Host "UIA Selection returned the selected option on Objects and Buckets"
+                return
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "UIA Selection check failed: $last"
+}
+
 $installed = $false
 $installDir = $null
 $uninstallError = $null
@@ -408,6 +467,7 @@ try {
     $psi.WorkingDirectory = $installDir
     $psi.UseShellExecute = $false
     $psi.EnvironmentVariables["PATH"] = "$env:SystemRoot\System32;$env:SystemRoot"
+    $psi.EnvironmentVariables["DATASAFE_UIA_FIXTURE"] = "1"
     Write-Host "launch: $launched"
     $app = [Diagnostics.Process]::Start($psi)
     $alive = $true
@@ -426,6 +486,7 @@ try {
         throw "datasafe-desktop.exe exited $($app.ExitCode) within 10s"
     }
     Write-Host "still running after 10s pid $($app.Id)"
+    Assert-UiaSelection
     $agentDeadline = [DateTime]::UtcNow.AddSeconds(15)
     while ([DateTime]::UtcNow -lt $agentDeadline) {
         if (@(Get-Process -Name "datasafe-agent" -ErrorAction SilentlyContinue).Count -ge 1) {

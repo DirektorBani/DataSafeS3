@@ -7,10 +7,19 @@
 # is stored as body.raw. Temp files are removed on exit.
 set -eu
 # Git for Windows rewrites an argument that starts with /api or /healthz
-# into a Windows path before python and curl see it.
+# into a Windows path before python and curl see it. The exclusion is only
+# those prefixes. Excluding every argument also skips the temp-file paths,
+# and native curl then fails with exit 23.
 if [ -n "${MSYSTEM:-}" ]; then
-  export MSYS2_ARG_CONV_EXCL='*'
-  export MSYS_NO_PATHCONV=1
+  export MSYS2_ARG_CONV_EXCL='/api;/healthz'
+fi
+if command -v python3 >/dev/null 2>&1; then
+  py=python3
+elif command -v python >/dev/null 2>&1; then
+  py=python
+else
+  echo "python3 is required" >&2
+  exit 1
 fi
 version="${1:?version directory, for example 1.6.0}"
 base="${2:?server base url}"
@@ -34,7 +43,7 @@ keep() {
 
 mask_file() {
   src="$1"
-  python3 - "$src" << 'PY'
+  "$py" - "$src" << 'PY'
 import json, sys
 secret = {"token", "password", "secret", "authorization", "signature", "request_id", "etag", "commit"}
 def walk(node):
@@ -67,7 +76,7 @@ write_env() {
   status="$3"
   bodyfile="$4"
   out="$5"
-  python3 - "$method" "$path" "$status" "$bodyfile" "$out" << 'PY'
+  "$py" - "$method" "$path" "$status" "$bodyfile" "$out" << 'PY'
 import json, pathlib, sys
 method, path, status, bodyfile, out = sys.argv[1:6]
 raw = pathlib.Path(bodyfile).read_text(encoding="utf-8")

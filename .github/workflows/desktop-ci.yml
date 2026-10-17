@@ -141,6 +141,9 @@ jobs:
           go-version: "1.26.9"
       - name: Agent unit tests
         run: go test ./cmd/datasafe-agent -count=1
+      - name: Record contract fixtures with Git bash
+        shell: pwsh
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/ci/desktop-record-windows.ps1
       - name: Install workspaces
         run: npm ci
       - name: Build agent

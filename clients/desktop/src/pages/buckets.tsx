@@ -6,6 +6,7 @@ import { Input } from "@datasafe/ui/ui/input";
 import { Card, CardContent } from "@datasafe/ui/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@datasafe/ui/ui/tabs";
 import { PageHeader } from "@datasafe/ui/page-header";
+import { SelectionList, SelectionOption, bucketColumns } from "../components/selection-list";
 import { StepUpDialog, useStepUp } from "../components/step-up";
 import { browse, type BrowseResult } from "../desktop";
 import { ObjectBrowser } from "./objects";
@@ -38,7 +39,7 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
   const [offline, setOffline] = useState(false);
   const [savedAt, setSavedAt] = useState(0);
   const [cursor, setCursor] = useState(0);
-  const bucketRefs = useRef<Array<HTMLTableRowElement | null>>([]);
+  const bucketRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   const { profileId, onError } = props;
   const load = useCallback(async () => {
@@ -114,7 +115,7 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
     await load();
   }
 
-  function onBucketKey(event: KeyboardEvent<HTMLTableRowElement>, index: number) {
+  function onBucketKey(event: KeyboardEvent<HTMLDivElement>, index: number) {
     if (event.target !== event.currentTarget) {
       return;
     }
@@ -220,59 +221,47 @@ export function BucketBrowser(props: { profileId: string; features?: Record<stri
           </Tabs>
           <Card>
             <CardContent className="p-0">
-              <table
-                className="w-full text-sm"
-                role="grid"
-                aria-label={t("buckets:title")}
-                aria-multiselectable="false"
-                aria-activedescendant={buckets.length > 0 ? `bucket-row-${Math.min(cursor, buckets.length - 1)}` : undefined}
+              <SelectionList
+                label={t("buckets:title")}
+                template={bucketColumns}
+                activeId={buckets.length > 0 ? `bucket-row-${Math.min(cursor, buckets.length - 1)}` : undefined}
+                columns={[t("buckets:columns.name"), t("buckets:columns.access")]}
               >
-                <thead>
-                  <tr role="row" className="border-b text-left text-muted-foreground">
-                    <th role="columnheader" className="p-3">{t("buckets:columns.name")}</th>
-                    <th role="columnheader" className="p-3">{t("buckets:columns.access")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {buckets.length === 0 ? (
-                    <tr role="row">
-                      <td role="gridcell" colSpan={2} className="p-8 text-center text-muted-foreground">
-                        {t("buckets:empty.owned")}
-                      </td>
-                    </tr>
-                  ) : null}
-                  {buckets.map((bucket, index) => {
-                    const active = index === Math.min(cursor, buckets.length - 1);
-                    return (
-                      <tr
-                        key={bucket.name}
-                        id={`bucket-row-${index}`}
-                        role="row"
-                        tabIndex={active ? 0 : -1}
-                        aria-selected={active}
-                        ref={(node) => {
-                          bucketRefs.current[index] = node;
-                        }}
-                        className={`cursor-pointer border-b hover:bg-muted/50 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring${active ? " bg-muted/30" : ""}`}
-                        onClick={() => {
-                          setCursor(index);
-                          setSelected(bucket.name);
-                        }}
-                        onKeyDown={(event) => onBucketKey(event, index)}
-                      >
-                        <td role="gridcell" aria-selected={active} className="p-3">
-                          <span className="inline-flex items-center gap-2 font-medium text-primary">
-                            <FolderOpen className="h-4 w-4" aria-hidden="true" />
-                            {bucket.name}
-                            {bucket.object_lock_enabled ? " · lock" : ""}
-                          </span>
-                        </td>
-                        <td role="gridcell" aria-selected={active} className="p-3 capitalize text-muted-foreground">{bucket.access?.ownership || "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                {buckets.length === 0 ? (
+                  <SelectionOption id="bucket-row-empty" selected={false} tabIndex={-1} template={bucketColumns}>
+                    <div className="p-8 text-center text-muted-foreground" style={{ gridColumn: "1 / -1" }}>
+                      {t("buckets:empty.owned")}
+                    </div>
+                  </SelectionOption>
+                ) : null}
+                {buckets.map((bucket, index) => {
+                  const active = index === Math.min(cursor, buckets.length - 1);
+                  return (
+                    <SelectionOption
+                      key={bucket.name}
+                      id={`bucket-row-${index}`}
+                      selected={active}
+                      tabIndex={active ? 0 : -1}
+                      template={bucketColumns}
+                      optionRef={(node) => {
+                        bucketRefs.current[index] = node;
+                      }}
+                      onClick={() => {
+                        setCursor(index);
+                        setSelected(bucket.name);
+                      }}
+                      onKeyDown={(event) => onBucketKey(event, index)}
+                    >
+                      <span className="inline-flex items-center gap-2 p-3 font-medium text-primary">
+                        <FolderOpen className="h-4 w-4" aria-hidden="true" />
+                        {bucket.name}
+                        {bucket.object_lock_enabled ? " · lock" : ""}
+                      </span>
+                      <span className="p-3 capitalize text-muted-foreground">{bucket.access?.ownership || "—"}</span>
+                    </SelectionOption>
+                  );
+                })}
+              </SelectionList>
             </CardContent>
           </Card>
         </>
