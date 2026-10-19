@@ -1,0 +1,23 @@
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "datasafes3.fullname" . }}
+  labels:
+    {{- include "datasafes3.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "datasafes3.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: storage
+  endpoints:
+    - port: s3
+      path: /metrics
+      interval: {{ .Values.monitoring.serviceMonitor.interval }}
+      bearerTokenSecret:
+        name: {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "datasafes3.fullname" .)) }}
+        key: metricsToken
+{{- end }}

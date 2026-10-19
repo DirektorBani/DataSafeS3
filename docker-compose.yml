@@ -26,7 +26,7 @@ services:
 
   storage-server:
 
-    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.6.0}
+    image: ${DATASAFE_SERVER_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.7.0}
 
     restart: unless-stopped
 
@@ -134,7 +134,7 @@ services:
   # One-shot copy from the published console image. A fresh tree has no
   # web/console/dist; Docker must not create that path as an empty mount.
   console-assets:
-    image: ${DATASAFE_CONSOLE_IMAGE:-ghcr.io/direktorbani/datasafe-console:v1.6.0}
+    image: ${DATASAFE_CONSOLE_IMAGE:-ghcr.io/direktorbani/datasafe-console:v1.7.0}
     pull_policy: if_not_present
     restart: "no"
     build:

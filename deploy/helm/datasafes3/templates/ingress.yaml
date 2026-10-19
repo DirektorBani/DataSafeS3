@@ -1,0 +1,52 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "datasafes3.fullname" . }}
+  labels:
+    {{- include "datasafes3.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - secretName: {{ .Values.ingress.tls.secretName }}
+      hosts:
+        {{- if .Values.ingress.s3.host }}
+        - {{ .Values.ingress.s3.host | quote }}
+        {{- end }}
+        {{- if and .Values.console.enabled .Values.ingress.console.host }}
+        - {{ .Values.ingress.console.host | quote }}
+        {{- end }}
+  {{- end }}
+  rules:
+    {{- if .Values.ingress.s3.host }}
+    - host: {{ .Values.ingress.s3.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "datasafes3.fullname" . }}-s3
+                port:
+                  name: s3
+    {{- end }}
+    {{- if and .Values.console.enabled .Values.ingress.console.host }}
+    - host: {{ .Values.ingress.console.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "datasafes3.fullname" . }}-console
+                port:
+                  name: console
+    {{- end }}
+{{- end }}

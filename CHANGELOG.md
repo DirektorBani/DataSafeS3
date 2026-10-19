@@ -2,6 +2,27 @@
 
 All notable changes to DataSafeS3 are documented in this file.
 
+## [1.7.0] - 2026-10-19
+
+`VERSION` is **1.7.0**. This commit does not push the git tag. Images and the Helm chart are published when `release.yml` runs on `v1.7.0`.
+
+### Added
+
+- **S3 DeleteObjects.** `POST /{bucket}?delete` accepts the AWS XML body, Quiet mode, and up to 1000 keys. The body must carry `Content-MD5` or one of `x-amz-checksum-crc32`, `crc32c`, `sha1`, `sha256`, `crc64nvme`. A key can name `versionId`. Errors are per key and the response is HTTP 200 when the request itself is valid. A missing key with no version id is a success. A missing version id is `NoSuchVersion`. Object lock and legal hold are enforced; `x-amz-bypass-governance-retention: true` skips GOVERNANCE when the caller has `s3:BypassGovernanceRetention`. COMPLIANCE and legal hold are not skipped. A versioned delete without a version id writes a delete marker. Each deleted key emits the same outbox event as a single `DeleteObject`. Authorization is `s3:DeleteObject` or `s3:DeleteObjectVersion` per key. Presigned DeleteObjects is rejected.
+- **Client compatibility suite.** `go test ./internal/api/s3/ -run TestS3ClientCompatibility` runs aws-cli, mc, rclone, and restic when they are on `PATH`. CI job `s3-compat` requires all four. The matrix is [docs/compatibility.md](docs/compatibility.md). `TestAWSSDKDeleteObjects` calls DeleteObjects through aws-sdk-go-v2.
+- **Helm chart `deploy/helm/datasafes3`.** Default install is a StatefulSet, a PVC, and Bolt. `values-ha.yaml` turns on Postgres metadata and `STORAGE_HA_ENABLED`. Kafka and NATS stay optional event sinks. Secrets come from `auth.existingSecret` or from values; `production: true` will not render without an existing Secret. Services cover the S3 API (9000) and the console (8080). Ingress can terminate TLS. Probes call `/healthz`. The pod is non-root with a read-only root filesystem. PodDisruptionBudget is on. ServiceMonitor and NetworkPolicy are optional. The image tag defaults to `v` plus `appVersion`. Guide: [docs/kubernetes.md](docs/kubernetes.md). CI job `helm-smoke` lints, renders, and installs into kind, then puts and gets an object.
+- **Production Compose** at `deploy/compose/production`: persistent volume, healthcheck, restart policy, env file, `STORAGE_DEV` hardcoded false, S3 bound to `127.0.0.1`, Caddy in front, optional TLS profile. The Caddyfile does not proxy `/metrics`.
+- **Adoption docs.** [docs/migrate-from-minio.md](docs/migrate-from-minio.md) (`mc mirror`, `rclone sync`) and [docs/production-checklist.md](docs/production-checklist.md).
+
+### Changed
+
+- **Release images are multi-arch.** On a `v*` tag, `release.yml` builds `linux/amd64` and `linux/arm64` with BuildKit `--provenance=mode=max` and `--sbom=true`, signs with cosign, and pushes the Helm chart to `oci://ghcr.io/direktorbani/charts`. The workflow does not run on this branch.
+- **Installers, Compose, and the older Helm chart** default to `v1.7.0`. `scripts/check-release-pins.sh` fails CI when a pin still names another version. The new chart's `appVersion` and chart version must equal `VERSION`.
+
+### Unchanged
+
+- A single node with Bolt, no Postgres, and no broker still starts from the same binary and the same container. `STORAGE_DEV` stays off unless you ask for it. The single-node resource gate still compares this build with `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0`.
+
 ## [1.6.0] - 2026-10-15
 
 `VERSION` is **1.6.0**. This commit does not push the git tag. Images are published when `release.yml` runs on `v1.6.0`.

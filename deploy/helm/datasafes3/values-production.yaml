@@ -1,0 +1,33 @@
+# Production single node. Create the Secret before install.
+# kubectl create secret generic datasafes3-auth \
+#   --from-literal=accessKey=... --from-literal=secretKey=... \
+#   --from-literal=adminUser=admin --from-literal=adminPassword=... \
+#   --from-literal=jwtSecret=... --from-literal=metricsToken=...
+production: true
+auth:
+  existingSecret: datasafes3-auth
+storageServer:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+persistence:
+  size: 100Gi
+ingress:
+  enabled: true
+  className: nginx
+  tls:
+    enabled: true
+    secretName: datasafes3-tls
+  s3:
+    host: s3.example.com
+  console:
+    host: console.example.com
+monitoring:
+  serviceMonitor:
+    enabled: false
+networkPolicy:
+  enabled: true

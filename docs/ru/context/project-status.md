@@ -2,11 +2,11 @@
 
 # Статус проекта
 
-**Обновлено:** 2026-10-15 · **Текущий релиз:** [v1.6.0](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.6.0)
+**Обновлено:** 2026-10-19 · **Текущий релиз:** [v1.7.0](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.7.0)
 
 ## Кратко
 
-**Community Edition v1.6.0** — текущий релиз: SSE-S3 и необязательный SSE-KMS (Vault Transit), ротация ключа, rewrap и crypto-shred, и `storage-cli migrate from-minio` с мастером команды в консоли. Образы этого тега публикуются, когда запушен git-тег. Этот коммит тег не пушит. Ранее: **v1.5.0** (долговечный outbox событий, необязательная Kafka, скриптовый HA promote, расписание синхронизации gateway по правилу), **v1.4.1** (пины версии и production-safe установка по умолчанию) поверх **v1.4.0 Governance Evidence Pack**, cluster installer (v1.3.0), immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Платформа: S3 API, веб-консоль (EN/RU/DE/FR), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, Teams, защищённые `/metrics`, hash-only share tokens и HA v2 lab tooling.
+**Community Edition v1.7.0** — текущий релиз: S3 DeleteObjects, production Helm-чарт (`deploy/helm/datasafes3`), усиленный Compose и multi-arch образы. Образы этого тега публикуются, когда запушен git-тег. Этот коммит тег не пушит. Ранее: **v1.6.0** (SSE-S3 и необязательный SSE-KMS, ротация ключа, `storage-cli migrate from-minio`), **v1.5.0** (долговечный outbox событий, необязательная Kafka, скриптовый HA promote, расписание синхронизации gateway по правилу), **v1.4.1** (пины версии и production-safe установка по умолчанию) поверх **v1.4.0 Governance Evidence Pack**, cluster installer (v1.3.0), immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Платформа: S3 API, веб-консоль (EN/RU/DE/FR), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, Teams, защищённые `/metrics`, hash-only share tokens и HA v2 lab tooling.
 
 **v1.1.0** закрывает trust-debt C01-C21 и поставляет **HA v2 CE lab foundation**: erasure backend, leader lock в Postgres, site replication и локальные скрипты проверки. Это scope **lab / not production multi-AZ**: без автоматического failover orchestrator, без production Patroni-кластера и без обещания petabyte 4+2 multi-host.
 
@@ -16,7 +16,7 @@ Patch **v1.0.3**: opt-in field encryption, паттерн Vault Agent → env, �
 
 | Область | Статус | Примечание |
 |---------|--------|------------|
-| S3 API (SigV4, multipart, versioning, presign) | **Поставлено** | Порт 9000 |
+| S3 API (SigV4, multipart, versioning, presign, DeleteObjects) | **Поставлено** | Порт 9000. DeleteObjects с v1.7.0 |
 | Веб-консоль + Admin JSON API | **Поставлено** | Caddy :8080 |
 | PostgreSQL + read replica | **Поставлено** | Compose `--profile postgres` |
 | LDAP / OIDC SSO | **Поставлено** | OIDC exchange (v1.0.2+); предупреждение о недоступном issuer (AUD-09) |

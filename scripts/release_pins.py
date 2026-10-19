@@ -64,6 +64,10 @@ PINS: list[tuple[str, str, int]] = [
     ("scripts/cluster/lab/up-local.sh", "ghcr.io/direktorbani/datasafe-storage-server:{tag}", 1),
     ("deploy/cluster/lab/docker-compose.yml", "ghcr.io/direktorbani/datasafe-storage-server:{tag}", 1),
     ("deploy/cluster/lab/docker-compose.local.yml", "ghcr.io/direktorbani/datasafe-storage-server:{tag}", 1),
+    ("deploy/compose/production/docker-compose.yml", "ghcr.io/direktorbani/datasafe-storage-server:{tag}", 1),
+    ("deploy/compose/production/docker-compose.yml", "ghcr.io/direktorbani/datasafe-console:{tag}", 1),
+    ("deploy/compose/production/.env.example", "# DATASAFE_SERVER_IMAGE=ghcr.io/direktorbani/datasafe-storage-server:{tag}", 1),
+    ("deploy/compose/production/.env.example", "# DATASAFE_CONSOLE_IMAGE=ghcr.io/direktorbani/datasafe-console:{tag}", 1),
 ]
 
 # repository line (exact, not a comment) and the tag key that must follow within 3 lines
@@ -156,6 +160,17 @@ def check_helm(ver: str, text: str) -> list[str]:
     return errors
 
 
+def check_datasafes3_chart(ver: str) -> list[str]:
+    path = ROOT / "deploy/helm/datasafes3/Chart.yaml"
+    text = read_text(path)
+    errors: list[str] = []
+    if f'appVersion: "{ver}"' not in text:
+        errors.append(f"{path.relative_to(ROOT)}: appVersion must be {ver}")
+    if f"version: {ver}\n" not in text and f'version: "{ver}"' not in text:
+        errors.append(f"{path.relative_to(ROOT)}: chart version must be {ver}")
+    return errors
+
+
 def check_package_lock(ver: str) -> list[str]:
     path = ROOT / PACKAGE_LOCK
     try:
@@ -186,6 +201,7 @@ def check(tag_arg: str | None) -> None:
             errors.append(f"{path}: {want!r} found {count} time(s), want at least {minimum}")
     errors.extend(check_helm(ver, read_text(ROOT / HELM_VALUES)))
     errors.extend(check_package_lock(ver))
+    errors.extend(check_datasafes3_chart(ver))
     if errors:
         for err in errors:
             print(f"release pins: {err}", file=sys.stderr)

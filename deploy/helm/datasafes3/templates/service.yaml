@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "datasafes3.fullname" . }}-s3
+  labels:
+    {{- include "datasafes3.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "datasafes3.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+  ports:
+    - name: s3
+      port: {{ .Values.service.s3Port }}
+      targetPort: s3
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "datasafes3.fullname" . }}-headless
+  labels:
+    {{- include "datasafes3.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "datasafes3.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+    - name: peer
+      port: 9001
+      targetPort: peer

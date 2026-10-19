@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 YES=0
-TAG="v1.6.0"
+TAG="v1.7.0"
 DEV=0
 DATA_ROOT=""
 PROFILES=""
@@ -42,7 +42,7 @@ DataSafeS3 interactive installer
   ./install.sh --yes --profiles core
   ./install.sh --dry-run --yes --profiles core,postgres,data
   ./install.sh --cluster --dry-run --yes
-  ./install.sh --project datasafe --tag v1.6.0 --data-root "$HOME/.local/share/datasafe"
+  ./install.sh --project datasafe --tag v1.7.0 --data-root "$HOME/.local/share/datasafe"
   ./install.sh --dev --yes --profiles core,postgres,data
 
 Profiles: core, postgres, monitoring, data, binary, identity, dev, kafka
@@ -409,7 +409,7 @@ set_env_key() {
 
 find_local_server_image() {
   local img candidates="datasafe-storage-server:latest
-ghcr.io/direktorbani/datasafe-storage-server:v1.6.0
+ghcr.io/direktorbani/datasafe-storage-server:v1.7.0
 ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
 ghcr.io/direktorbani/datasafe-storage-server:v1.1.0
 ghcr.io/direktorbani/datasafe-storage-server:v1.0.3

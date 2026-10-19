@@ -1,0 +1,36 @@
+DataSafeS3 {{ .Chart.AppVersion }} is installed.
+
+S3 API:  {{ include "datasafes3.fullname" . }}-s3:{{ .Values.service.s3Port }}
+{{- if .Values.console.enabled }}
+Console: {{ include "datasafes3.fullname" . }}-console:{{ .Values.service.consolePort }}
+{{- else }}
+Console: disabled (console.enabled=false)
+{{- end }}
+Metadata: {{ include "datasafes3.metadataBackend" . }}
+{{- if .Values.cluster.enabled }}
+Cluster: {{ include "datasafes3.replicas" . }} storage pods, Postgres metadata, writer election.
+Kafka and NATS are not started by this chart. Set events.kafkaBrokers or events.natsURL only if you want an external event sink.
+{{- else }}
+Mode: single node, Bolt metadata, one PVC. No Postgres process.
+{{- end }}
+
+STORAGE_DEV is false. GET /metrics is not on the console listener.
+{{- if .Values.auth.metricsToken }}
+Scrape the S3 Service port /metrics with the metricsToken bearer.
+{{- else if .Values.auth.existingSecret }}
+If the auth Secret has metricsToken, Prometheus can scrape /metrics with that bearer. The S3 Service still answers /metrics; keep it off the public Ingress if you do not want it on the internet. The console Ingress does not forward /metrics.
+{{- else }}
+Set auth.metricsToken (or the metricsToken key on auth.existingSecret) before exposing the S3 Service.
+{{- end }}
+
+Image: {{ include "datasafes3.serverImage" . }}
+
+Put an object from inside the cluster:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "datasafes3.fullname" . }}-s3 9000:{{ .Values.service.s3Port }}
+  AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
+    aws --endpoint-url http://127.0.0.1:9000 s3 mb s3://demo
+  aws --endpoint-url http://127.0.0.1:9000 s3 cp ./file s3://demo/file
+
+First login on the console still asks you to change the admin password and finish setup.
+Back up the data PVC (Bolt file metadata.db plus objects/). See docs/production-checklist.md.

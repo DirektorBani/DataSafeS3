@@ -1,0 +1,29 @@
+# Optional TLS listener. Use with the compose profile "tls".
+# Put fullchain.pem and privkey.pem in ./certs (mode 0644 / 0600).
+{
+	auto_https off
+}
+
+:443 {
+	tls /certs/fullchain.pem /certs/privkey.pem
+	encode gzip
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000"
+	}
+
+	handle /api/* {
+		reverse_proxy storage-server:9000
+	}
+	handle /healthz {
+		reverse_proxy storage-server:9000
+	}
+	handle {
+		root * /srv/console
+		try_files {path} /index.html
+		file_server
+	}
+}

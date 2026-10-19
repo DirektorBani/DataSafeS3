@@ -1,0 +1,132 @@
+{{- if .Values.console.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "datasafes3.fullname" . }}-caddy
+  labels:
+    {{- include "datasafes3.labels" . | nindent 4 }}
+data:
+  Caddyfile: |
+    {
+      auto_https off
+    }
+    :8080 {
+      encode gzip
+      header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+      }
+      # /metrics stays on the storage Service. The console listener does not proxy it.
+      handle /api/* {
+        reverse_proxy {{ include "datasafes3.fullname" . }}-s3:{{ .Values.service.s3Port }}
+      }
+      handle /healthz {
+        reverse_proxy {{ include "datasafes3.fullname" . }}-s3:{{ .Values.service.s3Port }}
+      }
+      handle {
+        root * /srv/console
+        try_files {path} /index.html
+        file_server
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "datasafes3.fullname" . }}-console
+  labels:
+    {{- include "datasafes3.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "datasafes3.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: console
+  template:
+    metadata:
+      labels:
+        {{- include "datasafes3.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: console
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: console-assets
+          image: {{ .Values.console.image.repository }}:{{ include "datasafes3.consoleTag" . }}
+          imagePullPolicy: {{ .Values.console.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          command: ["sh", "-c", "cp -a /srv/console/. /console-assets/"]
+          volumeMounts:
+            - name: console
+              mountPath: /console-assets
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: caddy
+          image: caddy:2-alpine
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: console
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: console
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: console
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.console.resources | nindent 12 }}
+          volumeMounts:
+            - name: caddyfile
+              mountPath: /etc/caddy/Caddyfile
+              subPath: Caddyfile
+              readOnly: true
+            - name: console
+              mountPath: /srv/console
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            - name: caddy-data
+              mountPath: /data
+            - name: caddy-config
+              mountPath: /config
+      volumes:
+        - name: caddyfile
+          configMap:
+            name: {{ include "datasafes3.fullname" . }}-caddy
+        - name: console
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: caddy-data
+          emptyDir: {}
+        - name: caddy-config
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "datasafes3.fullname" . }}-console
+  labels:
+    {{- include "datasafes3.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "datasafes3.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: console
+  ports:
+    - name: console
+      port: {{ .Values.service.consolePort }}
+      targetPort: console
+{{- end }}
