@@ -38,6 +38,19 @@ cosign verify "ghcr.io/direktorbani/datasafe-console:${TAG}" \
 
 SBOM files (`sbom-storage-server.cdx.json`, `sbom-console.cdx.json`) are attached to each [GitHub Release](https://github.com/DirektorBani/DataSafeS3/releases).
 
+Linux `.deb` and `.rpm` packages on the same release are signed as blobs. `SHA256SUMS` covers the four packages and has its own bundle.
+
+```bash
+cosign verify-blob --bundle datasafes3_1.7.0_amd64.deb.bundle \
+  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
+  datasafes3_1.7.0_amd64.deb
+
+sha256sum -c SHA256SUMS
+```
+
+Install steps: [docs/linux-packages.md](docs/linux-packages.md).
+
 ## Secure development
 
 - Release images on GHCR are accompanied by **SBOM** artifacts and **Cosign** signatures (see `.github/workflows/release.yml`).

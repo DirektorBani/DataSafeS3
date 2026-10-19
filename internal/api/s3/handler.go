@@ -150,6 +150,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.listObjects(w, r, bucket, q)
 		case http.MethodHead:
 			h.headBucket(w, r, bucket)
+		case http.MethodPost:
+			if q.Has("delete") {
+				h.deleteObjects(w, r, bucket)
+				return
+			}
+			writeError(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed", "method not allowed")
 		default:
 			writeError(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed", "method not allowed")
 		}
@@ -995,12 +1001,20 @@ func (h *Handler) deleteObject(w http.ResponseWriter, r *http.Request, bucket, k
 	if !h.authorize(w, r, creds, bucket, key, "s3:DeleteObject") {
 		return
 	}
+	versionID := r.URL.Query().Get("versionId")
+	if versionID != "" && !h.authorize(w, r, creds, bucket, key, "s3:DeleteObjectVersion") {
+		return
+	}
+	bypass, ok := h.governanceBypass(w, r, creds, bucket, key)
+	if !ok {
+		return
+	}
 	sk, ok := h.storageBucket(w, r, creds, bucket)
 	if !ok {
 		return
 	}
 	ctx := WithUserMetadata(WithObjectEvents(r.Context()), userMetadata(r.Header))
-	if err := h.Svc.DeleteObject(ctx, sk, key, r.URL.Query().Get("versionId")); err != nil {
+	if _, err := h.Svc.DeleteObjectResult(ctx, sk, key, versionID, DeleteOptions{BypassGovernance: bypass}); err != nil {
 		if err == metadata.ErrRetentionLocked || err == metadata.ErrLegalHold {
 			h.emitActivity(r, creds.AccessKey, metadata.ActionObjectDeleteBlocked, "object", bucket+"/"+key)
 		}

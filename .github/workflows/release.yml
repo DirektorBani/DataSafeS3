@@ -31,29 +31,44 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Extract version tag
         id: meta
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push storage-server
         run: |
-          docker build -f deploy/docker/Dockerfile \
+          docker buildx build --push \
+            --platform linux/amd64,linux/arm64 \
+            --provenance=mode=max \
+            --sbom=true \
+            -f deploy/docker/Dockerfile \
             --build-arg VERSION="${{ steps.meta.outputs.version }}" \
             --build-arg GIT_COMMIT="${{ github.sha }}" \
             -t "${SERVER_IMAGE}:${GITHUB_REF_NAME}" \
             -t "${SERVER_IMAGE}:latest" \
             .
-          docker push "${SERVER_IMAGE}:${GITHUB_REF_NAME}"
-          docker push "${SERVER_IMAGE}:latest"
 
       - name: Build and push console
         run: |
-          docker build -f deploy/docker/Dockerfile.console \
+          docker buildx build --push \
+            --platform linux/amd64,linux/arm64 \
+            --provenance=mode=max \
+            --sbom=true \
+            -f deploy/docker/Dockerfile.console \
             -t "${CONSOLE_IMAGE}:${GITHUB_REF_NAME}" \
             -t "${CONSOLE_IMAGE}:latest" \
             .
-          docker push "${CONSOLE_IMAGE}:${GITHUB_REF_NAME}"
-          docker push "${CONSOLE_IMAGE}:latest"
+
+      - name: Pull amd64 images for local checks
+        run: |
+          docker pull "${SERVER_IMAGE}:${GITHUB_REF_NAME}"
+          docker pull "${CONSOLE_IMAGE}:${GITHUB_REF_NAME}"
 
       - name: Generate SBOM storage-server (Syft)
         uses: anchore/sbom-action@v0
@@ -87,6 +102,14 @@ jobs:
           cosign sign --yes "${SERVER_IMAGE}:${GITHUB_REF_NAME}"
           cosign sign --yes "${CONSOLE_IMAGE}:${GITHUB_REF_NAME}"
 
+      - name: Package and push Helm chart
+        run: |
+          curl -fsSL https://get.helm.sh/helm-v3.16.4-linux-amd64.tar.gz | tar -xz -C /tmp
+          install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          helm package deploy/helm/datasafes3
+          helm push datasafes3-*.tgz oci://ghcr.io/direktorbani/charts
+
       - name: List benchmark (artifact)
         continue-on-error: true
         run: |
@@ -101,7 +124,13 @@ jobs:
 
       - name: Smoke test server image (alpine)
         run: |
-          docker run --rm -d --name ds-smoke -e STORAGE_DEV=true "${SERVER_IMAGE}:${GITHUB_REF_NAME}"
+          docker run --rm -d --name ds-smoke \
+            -e STORAGE_DEV=false \
+            -e STORAGE_ACCESS_KEY=datasafe \
+            -e STORAGE_SECRET_KEY=release-smoke-secret \
+            -e STORAGE_ADMIN_PASSWORD=release-smoke-admin \
+            -e STORAGE_JWT_SECRET=release-smoke-jwt-secret \
+            "${SERVER_IMAGE}:${GITHUB_REF_NAME}"
           for i in $(seq 1 30); do
             if docker exec ds-smoke wget -q -O- http://127.0.0.1:9000/healthz 2>/dev/null; then
               docker rm -f ds-smoke
@@ -113,8 +142,45 @@ jobs:
           docker rm -f ds-smoke
           exit 1
 
+  linux-packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check release pins match tag
+        run: bash scripts/check-release-pins.sh "${GITHUB_REF_NAME}"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+
+      - name: Build deb and rpm packages
+        env:
+          GIT_COMMIT: ${{ github.sha }}
+        run: bash scripts/package-linux.sh
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign packages and checksums
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -euo pipefail
+          cd dist/packages
+          for f in datasafes3_*.deb datasafes3-*.rpm SHA256SUMS; do
+            test -f "$f"
+            cosign sign-blob --yes --bundle "${f}.bundle" "$f"
+          done
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages-${{ github.ref_name }}
+          path: dist/packages/
+
   github-release:
-    needs: publish-images
+    needs: [publish-images, linux-packages]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -126,6 +192,12 @@ jobs:
         with:
           name: sbom-${{ github.ref_name }}
           path: sbom
+
+      - name: Download Linux packages
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-packages-${{ github.ref_name }}
+          path: packages
 
       - name: Extract CHANGELOG section for release body
         run: |
@@ -141,12 +213,28 @@ jobs:
             echo "- \`${{ env.SERVER_IMAGE }}:${{ github.ref_name }}\`"
             echo "- \`${{ env.CONSOLE_IMAGE }}:${{ github.ref_name }}\`"
             echo ""
-            echo "CycloneDX SBOM files and cosign signatures are attached. See [SECURITY.md](https://github.com/${{ github.repository }}/blob/main/SECURITY.md) for \`cosign verify\` instructions."
+            echo "Multi-arch (\`linux/amd64\`, \`linux/arm64\`) images include BuildKit SBOM and provenance. CycloneDX SBOM files and cosign signatures are attached."
+            echo ""
+            echo "Helm chart: \`oci://ghcr.io/direktorbani/charts/datasafes3\` version \`${VERSION}\`."
+            echo ""
+            echo "## Linux packages"
+            echo ""
+            echo "- \`datasafes3_${VERSION}_amd64.deb\`"
+            echo "- \`datasafes3_${VERSION}_arm64.deb\`"
+            echo "- \`datasafes3-${VERSION}-1.x86_64.rpm\`"
+            echo "- \`datasafes3-${VERSION}-1.aarch64.rpm\`"
+            echo "- \`SHA256SUMS\`"
+            echo ""
+            echo "Each package and \`SHA256SUMS\` has a cosign bundle (\`*.bundle\`). The service is not started on install. See [docs/linux-packages.md](https://github.com/${{ github.repository }}/blob/main/docs/linux-packages.md)."
+            echo ""
+            echo "See [SECURITY.md](https://github.com/${{ github.repository }}/blob/main/SECURITY.md) for \`cosign verify\` instructions."
           } >> release-body.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: sbom/*
+          files: |
+            sbom/*
+            packages/*
           generate_release_notes: false
           body_path: release-body.md

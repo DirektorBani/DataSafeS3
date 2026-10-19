@@ -1,0 +1,30 @@
+# Several storage pods, one Postgres database for metadata.
+# Nodes elect a writer with STORAGE_HA_ENABLED. Kafka and NATS stay off
+# unless events.kafkaBrokers or events.natsURL is set; they are not the bus.
+production: false
+metadata:
+  backend: postgres
+cluster:
+  enabled: true
+  replicas: 3
+postgres:
+  enabled: true
+  auth:
+    existingSecret: datasafes3-postgres
+    username: datasafe
+    database: datasafe
+  persistence:
+    size: 20Gi
+auth:
+  existingSecret: datasafes3-auth
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+storageServer:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi

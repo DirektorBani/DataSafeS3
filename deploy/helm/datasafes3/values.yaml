@@ -1,0 +1,168 @@
+# Default install is one storage pod with Bolt metadata on a PVC.
+# No password is baked in. Set auth.* or auth.existingSecret before install.
+# Production: use values-production.yaml (existingSecret, TLS ingress).
+# Several nodes: use values-ha.yaml (Postgres metadata; Kafka and NATS are event sinks only).
+
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# production: true refuses to render unless auth.existingSecret is set.
+production: false
+
+auth:
+  existingSecret: ""
+  accessKey: ""
+  secretKey: ""
+  adminUser: admin
+  adminPassword: ""
+  jwtSecret: ""
+  # Bearer token for GET /metrics. Leave empty only on a private network.
+  metricsToken: ""
+
+storageServer:
+  image:
+    repository: ghcr.io/direktorbani/datasafe-storage-server
+    # Empty uses v + Chart.appVersion.
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  region: us-east-1
+  dataDir: /data
+  logLevel: info
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+service:
+  type: ClusterIP
+  s3Port: 9000
+  consolePort: 8080
+
+persistence:
+  enabled: true
+  size: 20Gi
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+
+# Metadata. bolt is the single-node default (no external database).
+# postgres is required when cluster.enabled is true.
+metadata:
+  backend: bolt
+
+# HA: storage pods share one Postgres database and elect a writer.
+# Object bytes stay on each pod's PVC; the process copies them to peers.
+# This is not a multi-AZ automatic failover product. Kafka and NATS are not
+# the cluster bus.
+cluster:
+  enabled: false
+  replicas: 3
+
+postgres:
+  # Bundled single Postgres for a lab or a small HA install.
+  enabled: false
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    existingSecret: ""
+    username: datasafe
+    password: ""
+    database: datasafe
+  persistence:
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  # External database. Used when enabled is false and host is set,
+  # or when cluster.enabled and you do not want the bundled Postgres.
+  external:
+    host: ""
+    port: "5432"
+    user: datasafe
+    password: ""
+    database: datasafe
+    existingSecret: ""
+    sslmode: disable
+
+# Optional event sinks. Empty values do not dial a broker.
+events:
+  natsURL: ""
+  kafkaBrokers: ""
+  kafkaTopic: datasafe.events
+
+console:
+  enabled: true
+  image:
+    repository: ghcr.io/direktorbani/datasafe-console
+    tag: ""
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: datasafes3-tls
+  s3:
+    host: ""
+  console:
+    host: ""
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+  minAvailable: ""
+
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
+
+networkPolicy:
+  enabled: false
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL

@@ -1,0 +1,27 @@
+# Values for helm lint, helm template, and the kind smoke test.
+# Not a production install. Passwords are CI fixtures, not product defaults.
+production: false
+console:
+  enabled: false
+auth:
+  accessKey: datasafe
+  secretKey: ci-secret-not-default
+  adminUser: admin
+  adminPassword: ci-admin-not-default
+  jwtSecret: ci-jwt-not-default
+  metricsToken: ci-metrics-token
+storageServer:
+  image:
+    pullPolicy: IfNotPresent
+persistence:
+  enabled: true
+  size: 1Gi
+podDisruptionBudget:
+  enabled: true
+ingress:
+  enabled: false
+networkPolicy:
+  enabled: false
+monitoring:
+  serviceMonitor:
+    enabled: false

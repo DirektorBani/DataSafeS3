@@ -1,0 +1,182 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "datasafes3.fullname" . }}
+  labels:
+    {{- include "datasafes3.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  serviceName: {{ include "datasafes3.fullname" . }}-headless
+  replicas: {{ include "datasafes3.replicas" . }}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      {{- include "datasafes3.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: storage
+  template:
+    metadata:
+      labels:
+        {{- include "datasafes3.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: storage
+      {{- with .Values.storageServer.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "datasafes3.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if eq (include "datasafes3.metadataBackend" .) "postgres" }}
+      initContainers:
+        - name: wait-postgres
+          image: {{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER"; do
+                echo "waiting for postgres"
+                sleep 2
+              done
+          env:
+            - name: PGHOST
+              value: {{ include "datasafes3.postgresHost" . | quote }}
+            - name: PGPORT
+              value: {{ .Values.postgres.external.port | default "5432" | quote }}
+            - name: PGUSER
+              value: {{ .Values.postgres.external.user | default .Values.postgres.auth.username | quote }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      {{- end }}
+      containers:
+        - name: storage-server
+          image: {{ include "datasafes3.serverImage" . }}
+          imagePullPolicy: {{ .Values.storageServer.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: s3
+              containerPort: 9000
+              protocol: TCP
+            - name: peer
+              containerPort: 9001
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "datasafes3.fullname" . }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: STORAGE_NODE_ID
+              value: "$(POD_NAME)"
+            {{- if .Values.cluster.enabled }}
+            - name: STORAGE_ADVERTISE_URL
+              value: "http://$(POD_NAME).{{ include "datasafes3.fullname" . }}-headless:9000"
+            - name: STORAGE_INTERNAL_ADDR
+              value: ":9001"
+            {{- end }}
+            - name: STORAGE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "datasafes3.fullname" .)) }}
+                  key: accessKey
+            - name: STORAGE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "datasafes3.fullname" .)) }}
+                  key: secretKey
+            - name: STORAGE_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "datasafes3.fullname" .)) }}
+                  key: adminUser
+            - name: STORAGE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "datasafes3.fullname" .)) }}
+                  key: adminPassword
+            - name: STORAGE_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "datasafes3.fullname" .)) }}
+                  key: jwtSecret
+            - name: STORAGE_METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret | default (printf "%s-auth" (include "datasafes3.fullname" .)) }}
+                  key: metricsToken
+                  optional: true
+            {{- if eq (include "datasafes3.metadataBackend" .) "postgres" }}
+            - name: STORAGE_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.auth.existingSecret | default .Values.postgres.external.existingSecret | default (printf "%s-postgres" (include "datasafes3.fullname" .)) }}
+                  key: password
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: s3
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: s3
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.storageServer.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.storageServer.dataDir }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if not .Values.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+      {{- with .Values.storageServer.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.storageServer.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.storageServer.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "datasafes3.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml .Values.persistence.accessModes | nindent 10 }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+  {{- end }}

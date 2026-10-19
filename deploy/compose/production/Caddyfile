@@ -1,0 +1,27 @@
+{
+	auto_https off
+}
+
+# Public edge. /metrics is not forwarded.
+# TLS: set SITE_ADDRESS and mount a certificate, or use the tls-internal snippet below.
+:80 {
+	encode gzip
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	handle /api/* {
+		reverse_proxy storage-server:9000
+	}
+	handle /healthz {
+		reverse_proxy storage-server:9000
+	}
+	handle {
+		root * /srv/console
+		try_files {path} /index.html
+		file_server
+	}
+}

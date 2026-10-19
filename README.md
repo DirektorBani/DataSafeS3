@@ -2,7 +2,62 @@
 
 **[English](docs/en/README.md)** · **[Русский](docs/ru/README.md)** · **[Documentation](docs/README.md)**
 
-**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.6.0](CHANGELOG.md#160---2026-10-15)
+**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.7.0](CHANGELOG.md#170---2026-10-19)
+
+Self-hosted S3-compatible object storage you can run today: one binary or container, Bolt metadata, no extra database. Apache-2.0. A MinIO alternative for Docker, Compose, and Kubernetes.
+
+## What you get
+
+- S3 API on port 9000: put, get, head, list v2, multipart, copy, presigned URLs, versioning, and DeleteObjects (`aws s3 rm --recursive`, `mc`, rclone, restic)
+- Web console, bucket policy, object lock, audit, optional SSE-S3 / SSE-KMS
+- One node with Bolt, or several nodes that share Postgres metadata and copy object bytes to peers
+- Prometheus `/metrics` with a bearer token. The public console proxy does not forward `/metrics`
+- Release images on GHCR for `linux/amd64` and `linux/arm64`, with SBOM, provenance, and cosign (published when the `v1.7.0` tag is pushed)
+
+## Start
+
+S3 API only:
+
+```bash
+docker run --rm -p 9000:9000 \
+  -e STORAGE_ACCESS_KEY=datasafe \
+  -e STORAGE_SECRET_KEY=change-me \
+  -e STORAGE_ADMIN_PASSWORD=change-me-admin \
+  -e STORAGE_JWT_SECRET=change-me-jwt \
+  ghcr.io/direktorbani/datasafe-storage-server:v1.7.0
+```
+
+Console and API, persistent volume, `STORAGE_DEV` off:
+
+```bash
+cp deploy/compose/production/.env.example deploy/compose/production/.env
+docker compose --env-file deploy/compose/production/.env \
+  -f deploy/compose/production/docker-compose.yml up -d
+```
+
+Kubernetes (set real secrets; the chart will not install with empty ones):
+
+```bash
+helm install ds deploy/helm/datasafes3 \
+  --set auth.accessKey=datasafe \
+  --set auth.secretKey=change-me \
+  --set auth.adminPassword=change-me-admin \
+  --set auth.jwtSecret=change-me-jwt \
+  --set auth.metricsToken=change-me-metrics
+```
+
+Linux packages (GitHub Release `v1.7.0`; the service is not started for you):
+
+```bash
+sudo apt install ./datasafes3_1.7.0_amd64.deb
+# or: sudo dnf install ./datasafes3-1.7.0-1.x86_64.rpm
+sudoedit /etc/datasafes3/datasafes3.env
+sudo systemctl enable --now datasafes3
+```
+
+Guides: [Kubernetes](docs/kubernetes.md) · [Linux packages](docs/linux-packages.md) · [Move from MinIO](docs/migrate-from-minio.md) · [Production checklist](docs/production-checklist.md) · [S3 compatibility](docs/compatibility.md)
+
+The image tag above is the release pin. This branch does not push the git tag, so `v1.7.0` is on GHCR only after that tag is published. Until then, build `deploy/docker/Dockerfile` yourself.
 
 ---
 
@@ -94,13 +149,20 @@ Kafka is an opt-in event sink. A default install does not set `STORAGE_KAFKA_BRO
 
 ---
 
+## v1.7.0
+
+- `POST /{bucket}?delete` (DeleteObjects): up to 1000 keys, Quiet, checksums, version ids, per-key errors, object lock, and the same outbox events as a single delete. `aws s3 rm --recursive`, `mc rm --recursive`, rclone, and restic can remove a prefix.
+- Helm chart `deploy/helm/datasafes3` (one pod and a PVC by default; Postgres when you turn the cluster on) and a hardened Compose file at `deploy/compose/production`.
+- Release images are multi-arch (`linux/amd64`, `linux/arm64`) with SBOM, provenance, cosign, and an OCI Helm chart. The same tag publishes `.deb` and `.rpm` packages. The workflow runs only on a `v*` tag.
+- Compatibility notes: [docs/compatibility.md](docs/compatibility.md).
+
 ## v1.6.0
 
 - SSE-S3 and optional SSE-KMS (Vault Transit). A single node with no Vault does not open a KMS connection.
 - Key rotation, rewrap, and crypto-shred. Finish the rolling upgrade of every node before enabling encryption.
 - `storage-cli migrate from-minio` copies objects and IAM. **Settings → Migrate** prints the commands and opens a local evidence file. It does not store source credentials.
 - An unversioned Postgres overwrite is one transaction. v1.5.0 could drop the metadata row if the process died between `DELETE` and `INSERT`.
-- The resource budget compares this build with the published v1.5.0 image. This commit does not push the git tag.
+- The resource budget compares this build with the published v1.5.0 image.
 
 Upgrade: [EN](docs/operations-guide/en/upgrade.md#upgrading-to-v160) · [RU](docs/operations-guide/ru/upgrade.md#обновление-до-v160)
 
@@ -140,9 +202,9 @@ copy .env.example .env
 docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml up -d
 ```
 
-The default Compose stack serves the console from `DATASAFE_CONSOLE_IMAGE` (`ghcr.io/direktorbani/datasafe-console:v1.6.0`); a host `web/console/dist` is not required. To serve a local production build, add `-f deploy/compose/docker-compose.local-console.yml`. For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
+The default Compose stack serves the console from `DATASAFE_CONSOLE_IMAGE` (`ghcr.io/direktorbani/datasafe-console:v1.7.0`); a host `web/console/dist` is not required. To serve a local production build, add `-f deploy/compose/docker-compose.local-console.yml`. For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
 
-Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.6.0` and `ghcr.io/direktorbani/datasafe-console:v1.6.0`.
+Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.7.0` and `ghcr.io/direktorbani/datasafe-console:v1.7.0`.
 
 Default Compose install is production-safe: `STORAGE_DEV` is off unless you pass installer `-Dev` / `--dev` (or profile `dev`). The installer generates `STORAGE_METRICS_TOKEN` and wires Prometheus. First login is still `admin` / `admin`, then the setup wizard.
 
@@ -161,7 +223,7 @@ Default Compose install is production-safe: `STORAGE_DEV` is off unless you pass
 
 Step-by-step onboarding: [EN](docs/getting-started/en/onboarding.md) · [RU](docs/getting-started/ru/onboarding.md)
 
-Production: [Deploy guide](docs/README.md#deploy) · [Helm chart](deploy/helm/datasafe/README.md)
+Production: [checklist](docs/production-checklist.md) · [Helm chart](deploy/helm/datasafes3/README.md) · [Compose](deploy/compose/production/README.md) · [Deploy guide](docs/README.md#deploy)
 
 ---
 
@@ -172,10 +234,10 @@ Documentation is organized by what you need to do:
 | Phase | Topics |
 |-------|--------|
 | **Learn** | [Overview](docs/getting-started/en/what-is-datasafe.md), [architecture](docs/learn/en/conceptual-architecture.md), [security model](docs/administrator-guide/en/mfa.md) |
-| **Deploy** | [Docker Compose](docs/getting-started/en/first-run.md), [Kubernetes / Helm](deploy/helm/datasafe/README.md) |
+| **Deploy** | [Docker Compose](docs/getting-started/en/first-run.md), [production Compose](deploy/compose/production/README.md), [Kubernetes / Helm](docs/kubernetes.md), [Linux packages](docs/linux-packages.md) |
 | **Configure** | [LDAP](docs/administrator-guide/en/ldap.md), [OIDC](docs/administrator-guide/en/oidc.md), [monitoring](docs/administrator-guide/en/monitoring.md) |
 | **Manage** | [Users](docs/administrator-guide/en/users.md), [tenants](docs/administrator-guide/en/tenants.md), [replication](docs/administrator-guide/en/replication.md) |
-| **Operate** | [Backup](docs/operations-guide/en/backup-restore.md), [Migrate from MinIO](docs/operations-guide/en/migrate-from-minio.md), [HA reference](docs/operations-guide/en/reference-deployment-2node.md), [scaling](docs/operations-guide/en/scaling.md), [troubleshooting](docs/operations-guide/en/troubleshooting.md) |
+| **Operate** | [Backup](docs/operations-guide/en/backup-restore.md), [Migrate from MinIO](docs/migrate-from-minio.md), [production checklist](docs/production-checklist.md), [HA reference](docs/operations-guide/en/reference-deployment-2node.md), [scaling](docs/operations-guide/en/scaling.md), [troubleshooting](docs/operations-guide/en/troubleshooting.md) |
 | **Integrate** | [Partner cookbook](docs/operations-guide/en/partner-cookbook.md), [extension hooks](examples/extension-hook/README.md) |
 | **Reference** | [Database schema](docs/en/database.md), [Gateway](docs/en/context/gateway.md) |
 | **API** | [API guide](docs/api-guide/en/README.md) · Swagger `/api/v1/docs` |
@@ -195,8 +257,9 @@ Full hub: **[docs/README.md](docs/README.md)**
 | `clients/mobile-web` | Mobile PWA preview |
 | `web/console` | React web console |
 | `internal/metadata` | BoltDB and PostgreSQL metadata |
-| `deploy/helm/datasafe` | Kubernetes Helm chart |
-| `deploy/compose/` | Optional Compose overlays (HA, Vault, OAuth2, audit, …) |
+| `deploy/helm/datasafes3` | Kubernetes chart: one node by default, optional Postgres HA |
+| `deploy/helm/datasafe` | Earlier chart (console, Prometheus, Grafana, Postgres) |
+| `deploy/compose/` | Compose overlays, including `production/` |
 | `docs/` | Product documentation |
 
 ---

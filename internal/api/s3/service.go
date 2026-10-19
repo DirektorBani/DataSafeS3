@@ -902,7 +902,28 @@ func (s *Service) SetObjectTags(ctx context.Context, bucket, key, versionID stri
 	return s.Meta.SetObjectTags(bucket, key, versionID, tags)
 }
 
-func (s *Service) checkDeleteAllowed(bucket, key, versionID string) error {
+// ObjectDeleteInfo is what one DeleteObject did, for the multi-object response.
+type ObjectDeleteInfo struct {
+	// Missing is set when the key or version was not stored.
+	Missing bool
+	// DeleteMarker is set when a delete marker was created or removed.
+	DeleteMarker bool
+	// VersionID is a removed object version. Empty on an unversioned delete.
+	VersionID string
+	// DeleteMarkerVersionID is the marker that was created or removed.
+	DeleteMarkerVersionID string
+}
+
+// DeleteOptions selects DeleteObject behavior that single-key DELETE and
+// DeleteObjects share.
+type DeleteOptions struct {
+	// BypassGovernance skips an unexpired GOVERNANCE retention. COMPLIANCE and
+	// legal hold are never skipped. The caller must already have authorized
+	// s3:BypassGovernanceRetention.
+	BypassGovernance bool
+}
+
+func (s *Service) checkDeleteAllowed(bucket, key, versionID string, bypassGovernance bool) error {
 	rec, err := s.Meta.GetObjectVersion(bucket, key, versionID)
 	if err != nil {
 		return err
@@ -910,43 +931,61 @@ func (s *Service) checkDeleteAllowed(bucket, key, versionID string) error {
 	if rec.LegalHold {
 		return metadata.ErrLegalHold
 	}
-	if rec.RetentionUntil != nil && time.Now().UTC().Before(*rec.RetentionUntil) {
-		return metadata.ErrRetentionLocked
-	}
-	bucketRec, err := s.Meta.GetBucketByKey(bucket)
-	if err == nil && bucketRec.ObjectLock && bucketRec.RetentionDays > 0 {
+	mode := strings.ToUpper(strings.TrimSpace(rec.RetentionMode))
+	locked := rec.RetentionUntil != nil && time.Now().UTC().Before(rec.RetentionUntil.UTC())
+	if bucketRec, berr := s.Meta.GetBucketByKey(bucket); berr == nil && bucketRec.ObjectLock && bucketRec.RetentionDays > 0 {
 		base := rec.CreatedAt
 		if base.IsZero() {
 			base = rec.LastModified
 		}
 		until := base.Add(time.Duration(bucketRec.RetentionDays) * 24 * time.Hour)
 		if time.Now().UTC().Before(until) {
-			return metadata.ErrRetentionLocked
+			locked = true
+			if mode == "" {
+				mode = strings.ToUpper(strings.TrimSpace(bucketRec.RetentionMode))
+			}
 		}
 	}
-	return nil
+	if !locked {
+		return nil
+	}
+	if mode == "" {
+		mode = metadata.RetentionGovernance
+	}
+	if bypassGovernance && mode != metadata.RetentionCompliance {
+		return nil
+	}
+	return metadata.ErrRetentionLocked
 }
 
 func (s *Service) DeleteObject(ctx context.Context, bucket, key, versionID string) error {
-	_, err := s.deleteObject(ctx, bucket, key, versionID, nil)
+	_, err := s.DeleteObjectResult(ctx, bucket, key, versionID, DeleteOptions{})
 	return err
+}
+
+// DeleteObjectResult deletes one key and reports marker or version ids.
+func (s *Service) DeleteObjectResult(ctx context.Context, bucket, key, versionID string, opt DeleteOptions) (ObjectDeleteInfo, error) {
+	_, info, err := s.deleteObject(ctx, bucket, key, versionID, nil, opt.BypassGovernance)
+	return info, err
 }
 
 // DeleteObjectNotifying deletes object metadata and writes evs in that same transaction.
 func (s *Service) DeleteObjectNotifying(ctx context.Context, bucket, key, versionID string, evs []events.OutboxRecord) (int, error) {
-	return s.deleteObject(ctx, bucket, key, versionID, evs)
+	n, _, err := s.deleteObject(ctx, bucket, key, versionID, evs, false)
+	return n, err
 }
 
-func (s *Service) deleteObject(ctx context.Context, bucket, key, versionID string, evs []events.OutboxRecord) (int, error) {
+func (s *Service) deleteObject(ctx context.Context, bucket, key, versionID string, evs []events.OutboxRecord, bypassGovernance bool) (int, ObjectDeleteInfo, error) {
 	bucket = s.normalizeBucketKey(bucket)
-	if err := s.checkDeleteAllowed(bucket, key, versionID); err != nil {
-		return 0, err
+	versioning := s.versioningActive(bucket)
+	allowedErr := s.checkDeleteAllowed(bucket, key, versionID, bypassGovernance)
+	if allowedErr != nil && !(errors.Is(allowedErr, metadata.ErrNotFound) && versioning && versionID == "") {
+		return 0, ObjectDeleteInfo{Missing: errors.Is(allowedErr, metadata.ErrNotFound)}, allowedErr
 	}
 	var bucketRec metadata.BucketRecord
 	if rec, err := s.Meta.GetBucketByKey(bucket); err == nil {
 		bucketRec = rec
 	}
-	versioning := s.versioningActive(bucket)
 	if versioning && versionID == "" {
 		markerID := newVersionID()
 		rec := metadata.ObjectRecord{
@@ -961,38 +1000,49 @@ func (s *Service) deleteObject(ctx context.Context, bucket, key, versionID strin
 		evs = s.appendObjectOutbox(ctx, bucketRec, rec, "delete", evs)
 		dropped, err := s.commitObjectRecord(rec, true, evs)
 		if err != nil {
-			return 0, err
+			return 0, ObjectDeleteInfo{}, err
 		}
 		s.noteDropped(dropped)
 		if s.OnObjectEvent != nil {
 			s.OnObjectEvent(metadata.ReplEventDelete, bucket, key)
 		}
-		return dropped, nil
+		return dropped, ObjectDeleteInfo{
+			DeleteMarker:          true,
+			VersionID:             markerID,
+			DeleteMarkerVersionID: markerID,
+		}, nil
 	}
 	rec, err := s.Meta.GetObjectVersion(bucket, key, versionID)
 	if err != nil {
-		return 0, err
-	}
-	if rec.IsDeleteMarker {
-		return 0, metadata.ErrNotFound
+		return 0, ObjectDeleteInfo{Missing: errors.Is(err, metadata.ErrNotFound)}, err
 	}
 	vid := rec.VersionID
 	evs = s.appendObjectOutbox(ctx, bucketRec, rec, "delete", evs)
 	dropped, err := s.commitDeleteVersion(bucket, key, versionID, versioning, evs)
 	if err != nil {
-		return 0, err
+		return 0, ObjectDeleteInfo{}, err
 	}
 	s.noteDropped(dropped)
-	if err := s.Backend.DeleteObjectVersion(ctx, bucket, key, vid); err != nil && err != storage.ErrNotFound {
-		return dropped, err
-	}
-	if !versioning {
-		_ = s.Backend.DeleteAllObjectVersions(ctx, bucket, key)
+	if !rec.IsDeleteMarker {
+		if err := s.Backend.DeleteObjectVersion(ctx, bucket, key, vid); err != nil && err != storage.ErrNotFound {
+			return dropped, ObjectDeleteInfo{}, err
+		}
+		if !versioning {
+			_ = s.Backend.DeleteAllObjectVersions(ctx, bucket, key)
+		}
 	}
 	if s.OnObjectEvent != nil {
 		s.OnObjectEvent(metadata.ReplEventDelete, bucket, key)
 	}
-	return dropped, nil
+	info := ObjectDeleteInfo{}
+	if versionID != "" {
+		info.VersionID = vid
+	}
+	if rec.IsDeleteMarker {
+		info.DeleteMarker = true
+		info.DeleteMarkerVersionID = vid
+	}
+	return dropped, info, nil
 }
 
 func (s *Service) ListObjectVersions(ctx context.Context, bucket, prefix string, maxKeys int) ([]metadata.ObjectRecord, error) {
@@ -1516,7 +1566,7 @@ func (s *Service) moveToTrash(ctx context.Context, bucket, key, versionID, delet
 	if build != nil {
 		evs = build(tr)
 	}
-	dropped, err := s.deleteObject(ctx, bucket, key, versionID, evs)
+	dropped, _, err := s.deleteObject(ctx, bucket, key, versionID, evs, false)
 	if err != nil {
 		return metadata.TrashRecord{}, 0, err
 	}

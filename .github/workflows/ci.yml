@@ -144,10 +144,13 @@ jobs:
       - name: v1.5.0 chunked SSE object is readable
         run: bash scripts/single-node-gate.sh legacy-sse
       - name: Build console image for the installer pin
-        run: docker build -t ghcr.io/direktorbani/datasafe-console:v1.6.0 -f deploy/docker/Dockerfile.console .
+        run: |
+          tag="v$(tr -d '[:space:]' < VERSION)"
+          docker build -t "ghcr.io/direktorbani/datasafe-console:${tag}" -f deploy/docker/Dockerfile.console .
       - name: Install core profile (non-interactive)
         run: |
-          docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.6.0
+          tag="v$(tr -d '[:space:]' < VERSION)"
+          docker tag datasafe-storage-server:gate "ghcr.io/direktorbani/datasafe-storage-server:${tag}"
           bash install.sh --yes --profiles core --project datasafe-gate --data-root "${{ runner.temp }}/datasafe-gate"
       - name: Smoke the core install
         run: bash scripts/single-node-gate.sh smoke-installed
@@ -561,3 +564,99 @@ jobs:
             /tmp/datasafe-kms-cluster/migrate-first.log
             /tmp/datasafe-kms-cluster/migrate-second.log
             /tmp/datasafe-kms-cluster/vite.log
+
+  # aws-cli, mc, rclone, and restic against the in-process server.
+  s3-compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+      - name: Install clients
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bin
+          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+          unzip -q /tmp/awscliv2.zip -d /tmp
+          /tmp/aws/install -i /tmp/aws-cli -b /tmp/bin
+          curl -fsSL -o /tmp/bin/mc https://github.com/minio/mc/releases/download/RELEASE.2025-08-13T08-35-41Z/mc.linux-amd64.RELEASE.2025-08-13T08-35-41Z
+          chmod +x /tmp/bin/mc
+          curl -fsSL -o /tmp/rclone.zip https://downloads.rclone.org/rclone-current-linux-amd64.zip
+          unzip -q /tmp/rclone.zip -d /tmp
+          install -m 0755 /tmp/rclone-*-linux-amd64/rclone /tmp/bin/rclone
+          curl -fsSL -o /tmp/restic.bz2 https://github.com/restic/restic/releases/download/v0.17.3/restic_0.17.3_linux_amd64.bz2
+          bunzip2 -c /tmp/restic.bz2 > /tmp/bin/restic
+          chmod +x /tmp/bin/restic
+          echo "/tmp/bin" >> "$GITHUB_PATH"
+          export PATH="/tmp/bin:$PATH"
+          aws --version
+          mc --version
+          rclone version
+          restic version
+      - name: Compatibility suite
+        env:
+          S3_COMPAT_REQUIRE: aws,mc,rclone,restic
+        run: go test -count=1 -timeout 20m ./internal/api/s3/ -run 'TestS3ClientCompatibility|TestAWSSDKDeleteObjects|TestDeleteObjects'
+
+  # Chart lint, render, and a kind install that puts and gets an object.
+  helm-smoke:
+    needs: [docker-build]
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: storage-server-image
+      - name: Load storage image
+        run: gzip -dc datasafe-storage-server-ci.tar.gz | docker load
+      - name: Install helm, kind, kubectl, aws
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bin
+          curl -fsSL https://get.helm.sh/helm-v3.16.4-linux-amd64.tar.gz | tar -xz -C /tmp
+          install -m 0755 /tmp/linux-amd64/helm /tmp/bin/helm
+          curl -fsSL -o /tmp/bin/kind https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64
+          chmod +x /tmp/bin/kind
+          curl -fsSL -o /tmp/bin/kubectl "https://dl.k8s.io/release/v1.32.2/bin/linux/amd64/kubectl"
+          chmod +x /tmp/bin/kubectl
+          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+          unzip -q /tmp/awscliv2.zip -d /tmp
+          /tmp/aws/install -i /tmp/aws-cli -b /tmp/bin
+          echo "/tmp/bin" >> "$GITHUB_PATH"
+      - name: Tag the chart image
+        run: |
+          tag="v$(tr -d '[:space:]' < VERSION)"
+          docker tag datasafe-storage-server:ci "ghcr.io/direktorbani/datasafe-storage-server:${tag}"
+      - name: Lint, template, install, put/get
+        env:
+          KIND_SMOKE: "1"
+        run: bash scripts/helm-kind-smoke.sh
+
+  # .deb and .rpm for amd64 and arm64. Install in clean distro containers,
+  # run the binary, verify the unit, uninstall, and keep the data directory.
+  linux-packages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Build packages
+        env:
+          GIT_COMMIT: ${{ github.sha }}
+        run: bash scripts/package-linux.sh
+      - name: Install packages in clean containers
+        run: bash scripts/test-linux-packages.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-packages
+          if-no-files-found: ignore
+          retention-days: 5
+          path: dist/packages/
