@@ -4,7 +4,7 @@ All notable changes to DataSafeS3 are documented in this file.
 
 ## [1.7.0] - 2026-10-19
 
-`VERSION` is **1.7.0**. This commit does not push the git tag. Images and the Helm chart are published when `release.yml` runs on `v1.7.0`.
+`VERSION` is **1.7.0**. This commit does not push the git tag. Images, the Helm chart, and the Linux packages are published when `release.yml` runs on `v1.7.0`.
 
 ### Added
 
@@ -13,6 +13,7 @@ All notable changes to DataSafeS3 are documented in this file.
 - **Helm chart `deploy/helm/datasafes3`.** Default install is a StatefulSet, a PVC, and Bolt. `values-ha.yaml` turns on Postgres metadata and `STORAGE_HA_ENABLED`. Kafka and NATS stay optional event sinks. Secrets come from `auth.existingSecret` or from values; `production: true` will not render without an existing Secret. Services cover the S3 API (9000) and the console (8080). Ingress can terminate TLS. Probes call `/healthz`. The pod is non-root with a read-only root filesystem. PodDisruptionBudget is on. ServiceMonitor and NetworkPolicy are optional. The image tag defaults to `v` plus `appVersion`. Guide: [docs/kubernetes.md](docs/kubernetes.md). CI job `helm-smoke` lints, renders, and installs into kind, then puts and gets an object.
 - **Production Compose** at `deploy/compose/production`: persistent volume, healthcheck, restart policy, env file, `STORAGE_DEV` hardcoded false, S3 bound to `127.0.0.1`, Caddy in front, optional TLS profile. The Caddyfile does not proxy `/metrics`.
 - **Adoption docs.** [docs/migrate-from-minio.md](docs/migrate-from-minio.md) (`mc mirror`, `rclone sync`) and [docs/production-checklist.md](docs/production-checklist.md).
+- **Linux packages.** `datasafes3` `.deb` and `.rpm` for `linux/amd64` and `linux/arm64`, built by `release.yml` on a `v*` tag. The package installs `datasafe-storage-server`, `storage-cli`, the Kafka bridge, a `datasafes3` system user, `/etc/datasafes3/datasafes3.env` (kept on upgrade), `/var/lib/datasafes3` (kept on uninstall), and `datasafes3.service`. The unit is not enabled and not started. Guide: [docs/linux-packages.md](docs/linux-packages.md). CI job `linux-packages` installs the packages in Debian and Rocky containers.
 
 ### Changed
 

@@ -28,7 +28,7 @@
 
 Полные таблицы EN/RU — в [центральном хабе](../README.md):
 
-- **Deploy** — Docker Compose, Helm, первый запуск
+- **Deploy** — Docker Compose, Helm, [пакеты Linux](../linux-packages.md#по-русски), первый запуск
 - **Configure** — LDAP, OIDC, MFA, мониторинг
 - **Manage** — [Руководство администратора](../administrator-guide/ru/README.md), [User guide](user-guide/README.md)
 - **Operate** — [Эксплуатация](../operations-guide/ru/README.md), [Миграция с MinIO](../operations-guide/ru/migrate-from-minio.md)

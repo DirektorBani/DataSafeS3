@@ -35,6 +35,7 @@ What DataSafeS3 is, how it works, and how data and access are modeled.
 | **Setup wizard** | [getting-started/en/setup-wizard.md](getting-started/en/setup-wizard.md) | [getting-started/ru/setup-wizard.md](getting-started/ru/setup-wizard.md) |
 | **External S3 (optional)** | [getting-started/en/s3-configuration.md](getting-started/en/s3-configuration.md) | [getting-started/ru/s3-configuration.md](getting-started/ru/s3-configuration.md) |
 | **Kubernetes / Helm** | [../deploy/helm/datasafe/README.md](../deploy/helm/datasafe/README.md) | same |
+| **Linux packages (.deb / .rpm)** | [linux-packages.md](linux-packages.md) | [linux-packages.md#по-русски](linux-packages.md#по-русски) |
 | **Production deployment** | [operations-guide/en/README.md](operations-guide/en/README.md) | [operations-guide/ru/README.md](operations-guide/ru/README.md) |
 | **Local development** | [en/context/local-dev.md](en/context/local-dev.md) | [ru/context/local-dev.md](ru/context/local-dev.md) |
 

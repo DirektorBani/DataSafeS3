@@ -142,8 +142,45 @@ jobs:
           docker rm -f ds-smoke
           exit 1
 
+  linux-packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check release pins match tag
+        run: bash scripts/check-release-pins.sh "${GITHUB_REF_NAME}"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+
+      - name: Build deb and rpm packages
+        env:
+          GIT_COMMIT: ${{ github.sha }}
+        run: bash scripts/package-linux.sh
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign packages and checksums
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -euo pipefail
+          cd dist/packages
+          for f in datasafes3_*.deb datasafes3-*.rpm SHA256SUMS; do
+            test -f "$f"
+            cosign sign-blob --yes --bundle "${f}.bundle" "$f"
+          done
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages-${{ github.ref_name }}
+          path: dist/packages/
+
   github-release:
-    needs: publish-images
+    needs: [publish-images, linux-packages]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -155,6 +192,12 @@ jobs:
         with:
           name: sbom-${{ github.ref_name }}
           path: sbom
+
+      - name: Download Linux packages
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-packages-${{ github.ref_name }}
+          path: packages
 
       - name: Extract CHANGELOG section for release body
         run: |
@@ -174,12 +217,24 @@ jobs:
             echo ""
             echo "Helm chart: \`oci://ghcr.io/direktorbani/charts/datasafes3\` version \`${VERSION}\`."
             echo ""
+            echo "## Linux packages"
+            echo ""
+            echo "- \`datasafes3_${VERSION}_amd64.deb\`"
+            echo "- \`datasafes3_${VERSION}_arm64.deb\`"
+            echo "- \`datasafes3-${VERSION}-1.x86_64.rpm\`"
+            echo "- \`datasafes3-${VERSION}-1.aarch64.rpm\`"
+            echo "- \`SHA256SUMS\`"
+            echo ""
+            echo "Each package and \`SHA256SUMS\` has a cosign bundle (\`*.bundle\`). The service is not started on install. See [docs/linux-packages.md](https://github.com/${{ github.repository }}/blob/main/docs/linux-packages.md)."
+            echo ""
             echo "See [SECURITY.md](https://github.com/${{ github.repository }}/blob/main/SECURITY.md) for \`cosign verify\` instructions."
           } >> release-body.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: sbom/*
+          files: |
+            sbom/*
+            packages/*
           generate_release_notes: false
           body_path: release-body.md

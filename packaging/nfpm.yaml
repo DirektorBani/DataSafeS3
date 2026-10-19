@@ -1,0 +1,64 @@
+name: datasafes3
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+release: "1"
+section: net
+priority: optional
+maintainer: "Ilya Trachuk <trachyk.i@gmail.com>"
+description: |
+  DataSafeS3 storage server and storage-cli.
+  Installs a system user, a systemd unit, and Bolt data under /var/lib/datasafes3.
+  The service is not started. Uninstall keeps the data directory.
+vendor: DataSafeS3
+homepage: https://github.com/DirektorBani/DataSafeS3
+license: Apache-2.0
+contents:
+  - src: ${BINDIR}/datasafe-storage-server
+    dst: /usr/bin/datasafe-storage-server
+    expand: true
+    file_info:
+      mode: 0755
+  - src: ${BINDIR}/storage-cli
+    dst: /usr/bin/storage-cli
+    expand: true
+    file_info:
+      mode: 0755
+  - src: ${BINDIR}/datasafe-kafka-bridge
+    dst: /usr/lib/datasafe/datasafe-kafka-bridge
+    expand: true
+    file_info:
+      mode: 0755
+  - src: packaging/datasafes3.service
+    dst: /usr/lib/systemd/system/datasafes3.service
+    file_info:
+      mode: 0644
+  - src: packaging/datasafes3.env
+    dst: /etc/datasafes3/datasafes3.env
+    type: config|noreplace
+    file_info:
+      mode: 0640
+      owner: root
+      group: datasafes3
+  - dst: /var/lib/datasafes3
+    type: dir
+    file_info:
+      mode: 0750
+      owner: datasafes3
+      group: datasafes3
+scripts:
+  preinstall: packaging/scripts/preinstall.sh
+  postinstall: packaging/scripts/postinstall.sh
+  preremove: packaging/scripts/preremove.sh
+  postremove: packaging/scripts/postremove.sh
+rpm:
+  group: System Environment/Daemons
+  compression: gzip
+overrides:
+  deb:
+    depends:
+      - systemd
+  rpm:
+    depends:
+      - systemd
+      - shadow-utils

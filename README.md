@@ -46,7 +46,16 @@ helm install ds deploy/helm/datasafes3 \
   --set auth.metricsToken=change-me-metrics
 ```
 
-Guides: [Kubernetes](docs/kubernetes.md) · [Move from MinIO](docs/migrate-from-minio.md) · [Production checklist](docs/production-checklist.md) · [S3 compatibility](docs/compatibility.md)
+Linux packages (GitHub Release `v1.7.0`; the service is not started for you):
+
+```bash
+sudo apt install ./datasafes3_1.7.0_amd64.deb
+# or: sudo dnf install ./datasafes3-1.7.0-1.x86_64.rpm
+sudoedit /etc/datasafes3/datasafes3.env
+sudo systemctl enable --now datasafes3
+```
+
+Guides: [Kubernetes](docs/kubernetes.md) · [Linux packages](docs/linux-packages.md) · [Move from MinIO](docs/migrate-from-minio.md) · [Production checklist](docs/production-checklist.md) · [S3 compatibility](docs/compatibility.md)
 
 The image tag above is the release pin. This branch does not push the git tag, so `v1.7.0` is on GHCR only after that tag is published. Until then, build `deploy/docker/Dockerfile` yourself.
 
@@ -144,7 +153,7 @@ Kafka is an opt-in event sink. A default install does not set `STORAGE_KAFKA_BRO
 
 - `POST /{bucket}?delete` (DeleteObjects): up to 1000 keys, Quiet, checksums, version ids, per-key errors, object lock, and the same outbox events as a single delete. `aws s3 rm --recursive`, `mc rm --recursive`, rclone, and restic can remove a prefix.
 - Helm chart `deploy/helm/datasafes3` (one pod and a PVC by default; Postgres when you turn the cluster on) and a hardened Compose file at `deploy/compose/production`.
-- Release images are multi-arch (`linux/amd64`, `linux/arm64`) with SBOM, provenance, cosign, and an OCI Helm chart. The workflow runs only on a `v*` tag.
+- Release images are multi-arch (`linux/amd64`, `linux/arm64`) with SBOM, provenance, cosign, and an OCI Helm chart. The same tag publishes `.deb` and `.rpm` packages. The workflow runs only on a `v*` tag.
 - Compatibility notes: [docs/compatibility.md](docs/compatibility.md).
 
 ## v1.6.0
@@ -225,7 +234,7 @@ Documentation is organized by what you need to do:
 | Phase | Topics |
 |-------|--------|
 | **Learn** | [Overview](docs/getting-started/en/what-is-datasafe.md), [architecture](docs/learn/en/conceptual-architecture.md), [security model](docs/administrator-guide/en/mfa.md) |
-| **Deploy** | [Docker Compose](docs/getting-started/en/first-run.md), [production Compose](deploy/compose/production/README.md), [Kubernetes / Helm](docs/kubernetes.md) |
+| **Deploy** | [Docker Compose](docs/getting-started/en/first-run.md), [production Compose](deploy/compose/production/README.md), [Kubernetes / Helm](docs/kubernetes.md), [Linux packages](docs/linux-packages.md) |
 | **Configure** | [LDAP](docs/administrator-guide/en/ldap.md), [OIDC](docs/administrator-guide/en/oidc.md), [monitoring](docs/administrator-guide/en/monitoring.md) |
 | **Manage** | [Users](docs/administrator-guide/en/users.md), [tenants](docs/administrator-guide/en/tenants.md), [replication](docs/administrator-guide/en/replication.md) |
 | **Operate** | [Backup](docs/operations-guide/en/backup-restore.md), [Migrate from MinIO](docs/migrate-from-minio.md), [production checklist](docs/production-checklist.md), [HA reference](docs/operations-guide/en/reference-deployment-2node.md), [scaling](docs/operations-guide/en/scaling.md), [troubleshooting](docs/operations-guide/en/troubleshooting.md) |

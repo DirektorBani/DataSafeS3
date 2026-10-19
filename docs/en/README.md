@@ -28,7 +28,7 @@ Documentation hub aligned with the product lifecycle: **Learn → Deploy → Con
 
 See the [central documentation hub](../README.md) for complete EN/RU tables:
 
-- **Deploy** — Docker Compose, Helm, first run
+- **Deploy** — Docker Compose, Helm, [Linux packages](../linux-packages.md), first run
 - **Configure** — LDAP, OIDC, MFA, monitoring
 - **Manage** — [Administrator guide](../administrator-guide/en/README.md), [User guide](user-guide/README.md)
 - **Operate** — [Operations guide](../operations-guide/en/README.md), [Migrate from MinIO](../operations-guide/en/migrate-from-minio.md)

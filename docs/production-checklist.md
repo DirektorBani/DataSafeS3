@@ -1,6 +1,6 @@
 # Production checklist
 
-Use this before a single-node install is the copy of record. The one-node shape is one container, Bolt, and a volume. `STORAGE_DEV` stays false.
+Use this before a single-node install is the copy of record. The one-node shape is one container, Bolt, and a volume. `STORAGE_DEV` stays false. A `.deb` or `.rpm` install is the same Bolt node: edit `/etc/datasafes3/datasafes3.env`, then `systemctl enable --now datasafes3`. Uninstall does not delete `/var/lib/datasafes3`. See [linux-packages.md](linux-packages.md).
 
 ## TLS
 
