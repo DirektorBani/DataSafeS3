@@ -8,8 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/DirektorBani/datasafe/internal/api"
 	"github.com/DirektorBani/datasafe/internal/auth"
+	"github.com/DirektorBani/datasafe/internal/metadata"
 )
 
 // TestS3ClientCompatibility drives the real server with the clients operators
@@ -24,7 +27,7 @@ func TestS3ClientCompatibility(t *testing.T) {
 	ran := 0
 	if tool(t, "aws") != "" {
 		ran++
-		runAWSCompat(t, ts.URL, creds)
+		runAWSCompat(t, srv, ts.URL, creds)
 	}
 	if tool(t, "mc") != "" {
 		ran++
@@ -62,7 +65,7 @@ func tool(t *testing.T, name string) string {
 	return path
 }
 
-func runAWSCompat(t *testing.T, endpoint string, creds auth.Credentials) {
+func runAWSCompat(t *testing.T, srv *api.Server, endpoint string, creds auth.Credentials) {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := filepath.Join(dir, "aws.config")
@@ -95,7 +98,8 @@ func runAWSCompat(t *testing.T, endpoint string, creds auth.Credentials) {
 		t.Fatalf("list v2: %s", listed)
 	}
 	aws("s3", "cp", "s3://compat/hello.txt", "s3://compat/copied.txt")
-	url := strings.TrimSpace(aws("s3", "presign", "s3://compat/hello.txt", "--expires-in", "300"))
+	// The bootstrap root key cannot presign. A user access key can.
+	url := strings.TrimSpace(runTool(t, endpoint, compatPresignUser(t, srv), cfg, "aws", "s3", "presign", "s3://compat/hello.txt", "--expires-in", "300"))
 	if !strings.Contains(url, "X-Amz-Signature") {
 		t.Fatalf("presign %q", url)
 	}
@@ -154,6 +158,24 @@ func runAWSCompat(t *testing.T, endpoint string, creds auth.Credentials) {
 	if strings.Contains(left, "a.txt") || strings.Contains(left, "b.txt") {
 		t.Fatalf("recursive delete left objects: %s", left)
 	}
+}
+
+func compatPresignUser(t *testing.T, srv *api.Server) auth.Credentials {
+	t.Helper()
+	userCreds := auth.Credentials{AccessKey: "AKIAcompatpresign01", SecretKey: "usersecretusersecretuser"}
+	if err := srv.Meta().PutUser(metadata.UserRecord{
+		ID: "compat-presign", Username: "compatpresign", Role: metadata.RoleAdministrator,
+		Status: metadata.StatusActive, CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Meta().PutAccessKey(metadata.AccessKeyRecord{
+		AccessKey: userCreds.AccessKey, SecretKey: userCreds.SecretKey,
+		OwnerID: "compat-presign", Owner: "compatpresign", CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return userCreds
 }
 
 func runMCCompat(t *testing.T, endpoint string, creds auth.Credentials) {

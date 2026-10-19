@@ -29,7 +29,7 @@ The automated check is `go test ./internal/api/s3/ -run TestS3ClientCompatibilit
 | List object versions | Yes |
 | Object tagging | Yes |
 | Bucket policy (a subset of IAM statements, including Deny and `aws:SourceIp`) | Yes |
-| Presigned GET | Yes |
+| Presigned GET | Yes, signed with a user access key. The bootstrap root key cannot presign |
 | Presigned PUT | Partial. `Content-Type` may be unsigned. Presigned DELETE is rejected |
 | Bucket and object encryption headers (`AES256`, `aws:kms`) | Yes. `aws:kms` uses Vault Transit only when that provider is configured; otherwise the local server key |
 | Object Lock, retention, legal hold | Yes. `x-amz-bypass-governance-retention: true` plus `s3:BypassGovernanceRetention` skips GOVERNANCE. COMPLIANCE and legal hold are not skipped |

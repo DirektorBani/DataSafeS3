@@ -589,6 +589,7 @@ jobs:
           bunzip2 -c /tmp/restic.bz2 > /tmp/bin/restic
           chmod +x /tmp/bin/restic
           echo "/tmp/bin" >> "$GITHUB_PATH"
+          export PATH="/tmp/bin:$PATH"
           aws --version
           mc --version
           rclone version
