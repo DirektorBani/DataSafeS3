@@ -10,9 +10,9 @@ keywords:
   - object-storage
   - datasafe
   - minio
-home: https://github.com/DirektorBani/DataSafeS3
+home: https://gitverse.ru/DirektorBani/DataSafeS3
 sources:
-  - https://github.com/DirektorBani/DataSafeS3
+  - https://gitverse.ru/DirektorBani/DataSafeS3
 maintainers:
   - name: DataSafeS3
 annotations:

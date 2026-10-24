@@ -13,9 +13,9 @@
 
 ## Reporting a vulnerability
 
-Please **do not** open public GitHub issues for security vulnerabilities.
+Please **do not** open public issues (on GitVerse or on the GitHub mirror) for security vulnerabilities.
 
-1. Email **[trachyk.i@gmail.com](mailto:trachyk.i@gmail.com)** or use [GitHub Security Advisories](https://github.com/DirektorBani/DataSafeS3/security/advisories/new) with:
+1. Email **[trachyk.i@gmail.com](mailto:trachyk.i@gmail.com)** (or, on the GitHub mirror, use [GitHub Security Advisories](https://github.com/DirektorBani/DataSafeS3/security/advisories/new)) with:
    - Affected component and version
    - Steps to reproduce
    - Impact assessment (if known)
@@ -24,7 +24,7 @@ Please **do not** open public GitHub issues for security vulnerabilities.
 
 ## Verifying release images (cosign)
 
-Release tags on GHCR are signed with [Cosign](https://docs.sigstore.dev/) (keyless, OIDC). Verify before deploy:
+Release images are published on GitVerse (`gitverse.ru/direktorbani/datasafe-storage-server` and `gitverse.ru/direktorbani/datasafe-console`, public registry). They are built and signed by GitHub Actions. The [Cosign](https://docs.sigstore.dev/) signatures (keyless, OIDC) and SBOM are attached to the copy on GHCR, and the per-platform manifests (`linux/amd64`, `linux/arm64`) on GitVerse have the same digests as on GHCR. Verify the GHCR copy before deploy:
 
 ```bash
 # Install cosign: https://docs.sigstore.dev/cosign/system_install/
@@ -40,9 +40,11 @@ cosign verify "ghcr.io/direktorbani/datasafe-console:${TAG}" \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com
 ```
 
-SBOM files (`sbom-storage-server.cdx.json`, `sbom-console.cdx.json`) are attached to each [GitHub Release](https://github.com/DirektorBani/DataSafeS3/releases).
+To compare the digests, run `crane manifest <image>:${TAG}` for the GitVerse and GHCR names and check that the `linux/amd64` and `linux/arm64` entries match.
 
-Linux `.deb` and `.rpm` packages on the same release are signed as blobs. `SHA256SUMS` covers the four packages and has its own bundle.
+SBOM files (`sbom-storage-server.cdx.json`, `sbom-console.cdx.json`) are attached to each release on the GitHub mirror ([GitHub Release](https://github.com/DirektorBani/DataSafeS3/releases)).
+
+Linux `.deb` and `.rpm` packages on the same GitHub Release are signed as blobs (the same packages are installed from the GitVerse apt and dnf repositories, see below). `SHA256SUMS` covers the four packages and has its own bundle.
 
 ```bash
 cosign verify-blob --bundle datasafes3_1.7.0_amd64.deb.bundle \
@@ -53,11 +55,11 @@ cosign verify-blob --bundle datasafes3_1.7.0_amd64.deb.bundle \
 sha256sum -c SHA256SUMS
 ```
 
-Install steps: [docs/linux-packages.md](docs/linux-packages.md).
+Install steps (GitVerse apt and dnf repositories): [docs/linux-packages.md](docs/linux-packages.md). The apt repository is signed with a GPG key, `https://gitverse.ru/api/packages/DirektorBani/debian/repository.key`.
 
 ## Secure development
 
-- Release images on GHCR are accompanied by **SBOM** artifacts and **Cosign** signatures (see `.github/workflows/release.yml`).
+- Release images (GitVerse, with the build and signatures on GHCR) are accompanied by **SBOM** artifacts and **Cosign** signatures (see `.github/workflows/release.yml`).
 - CI runs `go test ./...`, `govulncheck`, and feature-audit regression gates.
 - Dependencies are pinned in `go.mod` / `package-lock.json`.
 - External assessment checklist: [pen-test preparation](docs/operations-guide/en/pen-test-preparation.md).

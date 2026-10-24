@@ -4,6 +4,8 @@
 
 **Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.7.0](CHANGELOG.md#170---2026-10-19)
 
+The primary repository and the artifact registries (images, packages, Helm) are on [GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3). GitHub is a [mirror](https://github.com/DirektorBani/DataSafeS3).
+
 Локальное S3-совместимое объектное хранилище: один процесс или контейнер, метаданные Bolt, отдельная СУБД не нужна. Лицензия Apache-2.0. Интерфейс консоли доступен на русском и английском.
 
 Установка, пакеты, Helm и комплект документов для реестра российского ПО — в [README.ru.md](README.ru.md). Ниже та же справка на английском.
@@ -18,7 +20,7 @@ Self-hosted S3-compatible object storage you can run today: one binary or contai
 - Web console, bucket policy, object lock, audit, optional SSE-S3 / SSE-KMS
 - One node with Bolt, or several nodes that share Postgres metadata and copy object bytes to peers
 - Prometheus `/metrics` with a bearer token. The public console proxy does not forward `/metrics`
-- Release images on GHCR for `linux/amd64` and `linux/arm64`, with SBOM, provenance, and cosign (published when the `v1.7.0` tag is pushed)
+- Release images on GitVerse (`gitverse.ru/direktorbani/...`) for `linux/amd64` and `linux/arm64`; SBOM, provenance, and cosign signatures are attached to the copy on the GitHub mirror (GHCR)
 
 ## Start
 
@@ -30,7 +32,7 @@ docker run --rm -p 9000:9000 \
   -e STORAGE_SECRET_KEY=change-me \
   -e STORAGE_ADMIN_PASSWORD=change-me-admin \
   -e STORAGE_JWT_SECRET=change-me-jwt \
-  ghcr.io/direktorbani/datasafe-storage-server:v1.7.0
+  gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0
 ```
 
 Console and API, persistent volume, `STORAGE_DEV` off:
@@ -44,7 +46,11 @@ docker compose --env-file deploy/compose/production/.env \
 Kubernetes (set real secrets; the chart will not install with empty ones):
 
 ```bash
-helm install ds deploy/helm/datasafes3 \
+helm repo add datasafes3 https://gitverse.ru/api/packages/DirektorBani/helm
+helm repo update
+helm install ds datasafes3/datasafes3 --version 1.7.0 \
+  --set storageServer.image.repository=gitverse.ru/direktorbani/datasafe-storage-server \
+  --set console.image.repository=gitverse.ru/direktorbani/datasafe-console \
   --set auth.accessKey=datasafe \
   --set auth.secretKey=change-me \
   --set auth.adminPassword=change-me-admin \
@@ -52,18 +58,29 @@ helm install ds deploy/helm/datasafes3 \
   --set auth.metricsToken=change-me-metrics
 ```
 
-Linux packages (GitHub Release `v1.7.0`; the service is not started for you):
+Linux packages from the GitVerse apt and dnf repositories (the service is not started for you):
 
 ```bash
-sudo apt install ./datasafes3_1.7.0_amd64.deb
-# or: sudo dnf install ./datasafes3-1.7.0-1.x86_64.rpm
+# Debian, Ubuntu
+sudo mkdir -p /etc/apt/keyrings
+sudo curl -fsSL https://gitverse.ru/api/packages/DirektorBani/debian/repository.key \
+  -o /etc/apt/keyrings/gitverse-DirektorBani.asc
+echo "deb [signed-by=/etc/apt/keyrings/gitverse-DirektorBani.asc] https://gitverse.ru/api/packages/DirektorBani/debian stable main" \
+  | sudo tee /etc/apt/sources.list.d/gitverse-DirektorBani.list
+sudo apt update && sudo apt install datasafes3
+
+# Fedora, RHEL, Rocky, Alma (the RPM is not GPG-signed, hence --nogpgcheck)
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://gitverse.ru/api/packages/DirektorBani/rpm/stable.repo
+sudo dnf install datasafes3 --nogpgcheck
+
 sudoedit /etc/datasafes3/datasafes3.env
 sudo systemctl enable --now datasafes3
 ```
 
-Guides: [Kubernetes](docs/kubernetes.md) · [Linux packages](docs/linux-packages.md) · [GitVerse mirror (RU)](docs/ru/gitverse-mirror.md) · [Move from MinIO](docs/migrate-from-minio.md) · [Production checklist](docs/production-checklist.md) · [S3 compatibility](docs/compatibility.md)
+Guides: [Kubernetes](docs/kubernetes.md) · [Linux packages](docs/linux-packages.md) · [GitVerse registries (RU)](docs/ru/gitverse-mirror.md) · [Move from MinIO](docs/migrate-from-minio.md) · [Production checklist](docs/production-checklist.md) · [S3 compatibility](docs/compatibility.md)
 
-The image tag above is the release pin. This branch does not push the git tag, so `v1.7.0` is on GHCR only after that tag is published. Until then, build `deploy/docker/Dockerfile` yourself.
+The image tag above is the release pin. The registry is public; `latest` points to the same release. Images, packages, and the Helm chart are listed on the [GitVerse packages page](https://gitverse.ru/DirektorBani/DataSafeS3/packages). The same release is mirrored to GHCR (`ghcr.io/direktorbani/...`) on GitHub.
 
 ---
 
@@ -87,7 +104,7 @@ The product combines **S3-compatible storage**, a **web console**, **enterprise 
 | **Auditability** | Activity log and external log sinks |
 | **Collaboration** | Personal web workspace, bucket/folder sharing, presigned links; desktop sync (`datasafe-sync` CLI + optional Tauri UI) |
 | **Observability** | Prometheus metrics and Grafana dashboards |
-| **Production trust** | GHCR release images, SBOM, cosign signing, nightly regression CI |
+| **Production trust** | Release images on GitVerse (GHCR mirror with SBOM and cosign signing), nightly regression CI |
 | **High availability lab** | Erasure object backend, Postgres metadata HA + leader lock, site replication, **trusted cluster pairing**, failover scripts. CE lab foundation, not production multi-AZ — [HA reference](docs/operations-guide/en/reference-deployment-2node.md) |
 
 Подробнее о ценности продукта: [Why DataSafeS3](docs/why-datasafe.md) · [RU](docs/ru/why-datasafe.md)
@@ -159,7 +176,7 @@ Kafka is an opt-in event sink. A default install does not set `STORAGE_KAFKA_BRO
 
 - `POST /{bucket}?delete` (DeleteObjects): up to 1000 keys, Quiet, checksums, version ids, per-key errors, object lock, and the same outbox events as a single delete. `aws s3 rm --recursive`, `mc rm --recursive`, rclone, and restic can remove a prefix.
 - Helm chart `deploy/helm/datasafes3` (one pod and a PVC by default; Postgres when you turn the cluster on) and a hardened Compose file at `deploy/compose/production`.
-- Release images are multi-arch (`linux/amd64`, `linux/arm64`) with SBOM, provenance, cosign, and an OCI Helm chart. The same tag publishes `.deb` and `.rpm` packages. The workflow runs only on a `v*` tag.
+- Release images are multi-arch (`linux/amd64`, `linux/arm64`) and are published to GitVerse, with SBOM, provenance, and cosign on the GHCR mirror. The same tag publishes `.deb` and `.rpm` packages and the Helm chart to the GitVerse registries. The workflows run only on a `v*` tag.
 - Compatibility notes: [docs/compatibility.md](docs/compatibility.md).
 
 ## v1.6.0
@@ -208,9 +225,9 @@ copy .env.example .env
 docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml up -d
 ```
 
-The default Compose stack serves the console from `DATASAFE_CONSOLE_IMAGE` (`ghcr.io/direktorbani/datasafe-console:v1.7.0`); a host `web/console/dist` is not required. To serve a local production build, add `-f deploy/compose/docker-compose.local-console.yml`. For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
+The default Compose stack serves the console from `DATASAFE_CONSOLE_IMAGE` (`gitverse.ru/direktorbani/datasafe-console:v1.7.0`); a host `web/console/dist` is not required. To serve a local production build, add `-f deploy/compose/docker-compose.local-console.yml`. For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
 
-Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.7.0` and `ghcr.io/direktorbani/datasafe-console:v1.7.0`. The same release is mirrored to GitVerse: [установка из зеркала](docs/ru/gitverse-mirror.md).
+Published images: `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0` and `gitverse.ru/direktorbani/datasafe-console:v1.7.0`. Registry details: [GitVerse registries (RU)](docs/ru/gitverse-mirror.md). GHCR on the GitHub mirror holds the same images.
 
 Default Compose install is production-safe: `STORAGE_DEV` is off unless you pass installer `-Dev` / `--dev` (or profile `dev`). The installer generates `STORAGE_METRICS_TOKEN` and wires Prometheus. First login is still `admin` / `admin`, then the setup wizard.
 

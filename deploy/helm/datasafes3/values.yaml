@@ -28,7 +28,7 @@ auth:
 
 storageServer:
   image:
-    repository: ghcr.io/direktorbani/datasafe-storage-server
+    repository: gitverse.ru/direktorbani/datasafe-storage-server
     # Empty uses v + Chart.appVersion.
     tag: ""
     pullPolicy: IfNotPresent
@@ -115,7 +115,7 @@ events:
 console:
   enabled: true
   image:
-    repository: ghcr.io/direktorbani/datasafe-console
+    repository: gitverse.ru/direktorbani/datasafe-console
     tag: ""
     pullPolicy: IfNotPresent
   resources:

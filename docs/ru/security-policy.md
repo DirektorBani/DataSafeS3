@@ -20,9 +20,9 @@
 
 ## 2. Как сообщить об уязвимости
 
-Публичный issue для уязвимости не открывайте.
+Публичный issue для уязвимости не открывайте (ни на GitVerse, ни на зеркале GitHub).
 
-1. Напишите на **trachyk.i@gmail.com** или создайте отчёт в [GitHub Security Advisories](https://github.com/DirektorBani/DataSafeS3/security/advisories/new). В письме:
+1. Напишите на **trachyk.i@gmail.com** (или, на зеркале GitHub, создайте отчёт в [GitHub Security Advisories](https://github.com/DirektorBani/DataSafeS3/security/advisories/new)). В письме:
    - компонент и версия;
    - шаги, как повторить;
    - последствия, если они уже ясны.
@@ -35,7 +35,7 @@
 
 ## 3. Как проверить, что вы ставите выпущенный образ
 
-Теги на GHCR подписаны cosign (keyless, OIDC). Перед выкладкой:
+Образы релиза опубликованы на GitVerse (`gitverse.ru/direktorbani/datasafe-storage-server` и `gitverse.ru/direktorbani/datasafe-console`, реестр публичный). Их собирает и подписывает GitHub Actions. Подписи [cosign](https://docs.sigstore.dev/) (keyless, OIDC) и SBOM привязаны к копии в GHCR, а манифесты платформ (`linux/amd64`, `linux/arm64`) на GitVerse имеют те же дайджесты, что в GHCR. Перед выкладкой проверьте копию в GHCR:
 
 ```bash
 export COSIGN_EXPERIMENTAL=1
@@ -50,9 +50,11 @@ cosign verify "ghcr.io/direktorbani/datasafe-console:${TAG}" \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com
 ```
 
-SBOM (`sbom-storage-server.cdx.json`, `sbom-console.cdx.json`) лежит на странице релиза.
+Чтобы сравнить дайджесты, выполните `crane manifest <образ>:${TAG}` для имён GitVerse и GHCR и убедитесь, что записи `linux/amd64` и `linux/arm64` совпадают.
 
-Пакеты `.deb` и `.rpm` подписаны как blob. `SHA256SUMS` покрывает четыре пакета и имеет свой bundle.
+SBOM (`sbom-storage-server.cdx.json`, `sbom-console.cdx.json`) лежит на странице релиза на зеркале GitHub.
+
+Пакеты `.deb` и `.rpm` в релизе на зеркале GitHub подписаны как blob (те же пакеты ставятся из репозиториев apt и dnf на GitVerse, см. [пакеты Linux](linux-packages.md)). `SHA256SUMS` покрывает четыре пакета и имеет свой bundle.
 
 ```bash
 cosign verify-blob --bundle datasafes3_1.7.0_amd64.deb.bundle \
@@ -65,7 +67,7 @@ sha256sum -c SHA256SUMS
 
 Для файла, который ставите, берите bundle с тем же именем. Шаги установки: [linux-packages.md](linux-packages.md).
 
-Зеркало GitVerse получает те же файлы. Проверка cosign относится к артефакту, а не к имени реестра: сверяйте подпись до установки. У пакета RPM в реестре GitVerse отдельной GPG-подписи репозитория нет, поэтому документация зеркала указывает `--nogpgcheck` для dnf; контрольную сумму и bundle всё равно проверяют.
+Репозитории GitVerse отдают те же пакеты. Проверка cosign относится к артефакту, а не к имени реестра: сверяйте подпись до установки. Репозиторий apt подписан GPG-ключом (`https://gitverse.ru/api/packages/DirektorBani/debian/repository.key`), `apt` проверяет подпись сам. RPM-пакеты GPG не подписаны, поэтому для `dnf` указывают `--nogpgcheck` (метаданные репозитория подписаны); контрольную сумму и bundle из релиза на зеркале GitHub при необходимости проверяют отдельно.
 
 ---
 

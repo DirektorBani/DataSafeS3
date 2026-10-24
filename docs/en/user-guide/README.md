@@ -82,7 +82,7 @@ This section describes how DataSafeS3 components relate, how user requests flow,
 |-----------|---------|
 | **Caddy** | Reverse proxy on port **8080**: static web console, proxies `/api/*`, `/healthz`, `/metrics` to `storage-server` |
 | **storage-server** | Single Go process: S3 API (SigV4), Admin REST API (`/api/v1/*`), Gateway worker, Prometheus metrics |
-| **web/console** | React SPA (published image `ghcr.io/direktorbani/datasafe-console`, served by Caddy) |
+| **web/console** | React SPA (published image `gitverse.ru/direktorbani/datasafe-console`, served by Caddy) |
 | **MetadataStore** | Metadata: users, buckets, tenants, grants, policies, shares, Gateway queue — **BoltDB** (`metadata.db`) or **PostgreSQL** (`postgres` profile) |
 | **FSBackend** | Object bytes on disk in `STORAGE_DATA_DIR/objects/` (in Docker — volume `/data`) |
 | **Prometheus** | Scrapes `storage-server:9000/metrics` every 15 s |
@@ -441,6 +441,8 @@ helm install ds deploy/helm/datasafes3 \
   --set auth.jwtSecret=change-me-jwt \
   --set auth.metricsToken=change-me-metrics
 ```
+
+The same chart is in the GitVerse Helm repository: `helm repo add datasafes3 https://gitverse.ru/api/packages/DirektorBani/helm`, then `helm install ds datasafes3/datasafes3 --version 1.7.0` with the same `--set` flags (full command in [kubernetes.md](../../../docs/kubernetes.md)).
 
 **Earlier chart,** [`deploy/helm/datasafe`](../../../deploy/helm/datasafe/): the Compose-like stack with Caddy, optional Prometheus, Grafana, and Postgres. It is not the chart described in the v1.7.0 release notes.
 

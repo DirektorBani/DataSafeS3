@@ -230,6 +230,7 @@ function Normalize-MenuKey([string]$ans) {
 function Find-LocalServerImage {
   $candidates = @(
     "datasafe-storage-server:latest",
+    "gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0",
     "ghcr.io/direktorbani/datasafe-storage-server:v1.7.0",
     "ghcr.io/direktorbani/datasafe-storage-server:v1.5.0",
     "ghcr.io/direktorbani/datasafe-storage-server:v1.1.0",
@@ -360,7 +361,7 @@ function Show-Plan([string]$dataRootPath) {
   if ($script:Opts["binary"].On) {
     Write-Info "Images:   local build (storage-server-linux + web/console/dist)"
   } else {
-    Write-Info "Images:   ghcr.io/direktorbani/datasafe-storage-server:$Tag + ghcr.io/direktorbani/datasafe-console:$Tag"
+    Write-Info "Images:   gitverse.ru/direktorbani/datasafe-storage-server:$Tag + gitverse.ru/direktorbani/datasafe-console:$Tag"
   }
   $files = @("docker-compose.yml")
   if ($script:Opts["data"].On) { $files += "docker-compose.local-data.yml" }
@@ -435,15 +436,15 @@ function Ensure-EnvFile([string]$dataRootPath) {
       throw @"
 No local storage-server image found, and binary mode must not rebuild (Docker Hub/GHCR pull is broken via proxy 127.0.0.1:10801).
 Fix: run scripts\ensure-docker-pull-proxy.cmd, or pull once:
-  docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.7.0
+  docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0
 Then re-run installer with binary selected.
 "@
     }
     Set-EnvKey $envPath "DATASAFE_SERVER_IMAGE" $localImg
     Write-Ok "Binary mode base image: $localImg (no docker build)"
   } else {
-    Set-EnvKey $envPath "DATASAFE_SERVER_IMAGE" "ghcr.io/direktorbani/datasafe-storage-server:$Tag"
-    Set-EnvKey $envPath "DATASAFE_CONSOLE_IMAGE" "ghcr.io/direktorbani/datasafe-console:$Tag"
+    Set-EnvKey $envPath "DATASAFE_SERVER_IMAGE" "gitverse.ru/direktorbani/datasafe-storage-server:$Tag"
+    Set-EnvKey $envPath "DATASAFE_CONSOLE_IMAGE" "gitverse.ru/direktorbani/datasafe-console:$Tag"
   }
   Ensure-GeneratedSecret $envPath "STORAGE_JWT_SECRET" @("datasafe-jwt-secret")
   Ensure-GeneratedSecret $envPath "STORAGE_SECRET_KEY" @("datasafesecret")

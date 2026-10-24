@@ -82,7 +82,7 @@
 |-----------|------------|
 | **Caddy** | Reverse proxy на порту **8080**: статическая веб-консоль, проксирование `/api/*`, `/healthz`, `/metrics` на `storage-server` |
 | **storage-server** | Единый Go-процесс: S3 API (SigV4), Admin REST API (`/api/v1/*`), Gateway worker, метрики Prometheus |
-| **web/console** | React SPA (образ `ghcr.io/direktorbani/datasafe-console`, отдаётся Caddy) |
+| **web/console** | React SPA (образ `gitverse.ru/direktorbani/datasafe-console`, отдаётся Caddy) |
 | **MetadataStore** | Метаданные: пользователи, бакеты, tenants, grants, политики, shares, очередь Gateway — **BoltDB** (`metadata.db`) или **PostgreSQL** (профиль `postgres`) |
 | **FSBackend** | Байты объектов на диске в `STORAGE_DATA_DIR/objects/` (в Docker — volume `/data`) |
 | **Prometheus** | Scrape `storage-server:9000/metrics` каждые 15 с |
@@ -441,6 +441,8 @@ helm install ds deploy/helm/datasafes3 \
   --set auth.jwtSecret=change-me-jwt \
   --set auth.metricsToken=change-me-metrics
 ```
+
+Тот же чарт есть в репозитории Helm на GitVerse: `helm repo add datasafes3 https://gitverse.ru/api/packages/DirektorBani/helm`, затем `helm install ds datasafes3/datasafes3 --version 1.7.0` с теми же `--set` (команда целиком — в [kubernetes.md](../kubernetes.md)).
 
 **Прежний чарт,** [`deploy/helm/datasafe`](../../../deploy/helm/datasafe/): стек, близкий к Compose, с Caddy, необязательными Prometheus, Grafana и Postgres. Это не чарт из заметок к релизу v1.7.0.
 

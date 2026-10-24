@@ -16,6 +16,21 @@ With local binary overlay (Windows dev):
 scripts\dev-docker-local-binary.cmd
 ```
 
+### Released images, packages, and Helm (GitVerse)
+
+Release artifacts are published on GitVerse. Pull the new tag and recreate the stack:
+
+```bash
+export TAG=v1.7.0
+DATASAFE_SERVER_IMAGE=gitverse.ru/direktorbani/datasafe-storage-server:${TAG} \
+DATASAFE_CONSOLE_IMAGE=gitverse.ru/direktorbani/datasafe-console:${TAG} \
+  docker compose --profile postgres pull
+# put the same two lines into .env, then:
+docker compose --profile postgres up -d
+```
+
+Linux packages: `sudo apt update && sudo apt install --only-upgrade datasafes3`, or `sudo dnf upgrade datasafes3 --nogpgcheck` (repository setup: [linux-packages](../../linux-packages.md)). Helm: `helm repo update && helm upgrade ds datasafes3/datasafes3 --version <new>` (repository: `https://gitverse.ru/api/packages/DirektorBani/helm`, see [Kubernetes](../../kubernetes.md)).
+
 ## Migrations
 
 PostgreSQL schema migrations run automatically on `storage-server` start (`internal/metadata/postgres/migrations/`).
@@ -28,7 +43,7 @@ PostgreSQL schema migrations run automatically on `storage-server` start (`inter
 
 ## Verify release images (cosign)
 
-Before upgrading to a tagged release, verify GHCR signatures (see [SECURITY.md](../../../SECURITY.md)):
+Release images are pulled from GitVerse (`gitverse.ru/direktorbani/...`). Cosign signatures are attached to the GHCR copy built by GitHub Actions; the per-platform manifests (`linux/amd64`, `linux/arm64`) on GitVerse have the same digests as on GHCR. Before upgrading to a tagged release, verify the signatures on the GHCR copy (see [SECURITY.md](../../../SECURITY.md)):
 
 ```bash
 export COSIGN_EXPERIMENTAL=1
@@ -41,7 +56,7 @@ cosign verify "ghcr.io/direktorbani/datasafe-console:${TAG}" \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com
 ```
 
-SBOM files are attached to each [GitHub Release](https://github.com/DirektorBani/DataSafeS3/releases).
+SBOM files are attached to each release on the GitHub mirror ([GitHub Release](https://github.com/DirektorBani/DataSafeS3/releases)).
 
 ## Upgrading to v1.0.2
 

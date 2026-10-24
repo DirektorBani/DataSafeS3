@@ -112,6 +112,9 @@ jobs:
 
       - name: List benchmark (artifact)
         continue-on-error: true
+        env:
+          # The compose default points at GitVerse; this tag exists on GHCR right now.
+          DATASAFE_SERVER_IMAGE: ${{ env.SERVER_IMAGE }}:${{ github.ref_name }}
         run: |
           docker compose up -d storage-server
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:9000/healthz && break; sleep 2; done

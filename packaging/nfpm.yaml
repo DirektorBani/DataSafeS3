@@ -11,7 +11,7 @@ description: |
   Installs a system user, a systemd unit, and Bolt data under /var/lib/datasafes3.
   The service is not started. Uninstall keeps the data directory.
 vendor: DataSafeS3
-homepage: https://github.com/DirektorBani/DataSafeS3
+homepage: https://gitverse.ru/DirektorBani/DataSafeS3
 license: Apache-2.0
 contents:
   - src: ${BINDIR}/datasafe-storage-server

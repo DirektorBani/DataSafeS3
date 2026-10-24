@@ -54,30 +54,29 @@ PostgreSQL **16** нужен только если метаданные выне
 
 ## 3. Образы и пакеты
 
-Образы релиза:
+Все артефакты релиза лежат на GitVerse: [репозиторий](https://gitverse.ru/DirektorBani/DataSafeS3), [пакеты](https://gitverse.ru/DirektorBani/DataSafeS3/packages). Реестр публичный, для скачивания вход не нужен.
 
-- `ghcr.io/direktorbani/datasafe-storage-server:v1.7.0`
-- `ghcr.io/direktorbani/datasafe-console:v1.7.0`
+Образы релиза (реестр `gitverse.ru`, владелец `direktorbani` строчными буквами, `linux/amd64` и `linux/arm64`):
 
-Тег появляется в реестре, когда опубликован git-тег `v1.7.0`. До этого образ собирают из `deploy/docker/Dockerfile`.
+- `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0`
+- `gitverse.ru/direktorbani/datasafe-console:v1.7.0`
 
-Те же образы и пакеты публикуются на GitVerse: [gitverse-mirror.md](gitverse-mirror.md).
+Тег `latest` указывает на тот же релиз.
 
 ```bash
 docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0
 docker pull gitverse.ru/direktorbani/datasafe-console:v1.7.0
 ```
 
-Пакеты GitHub Release `v1.7.0`:
+Пакеты Linux (`datasafes3`, `amd64` и `arm64`) ставятся из репозиториев GitVerse:
 
-| Файл | Система |
-|------|---------|
-| `datasafes3_1.7.0_amd64.deb` | Debian, Ubuntu (amd64) |
-| `datasafes3_1.7.0_arm64.deb` | Debian, Ubuntu (arm64) |
-| `datasafes3-1.7.0-1.x86_64.rpm` | Fedora, RHEL, Rocky, Alma (x86_64) |
-| `datasafes3-1.7.0-1.aarch64.rpm` | Fedora, RHEL, Rocky, Alma (aarch64) |
+| Что | Адрес репозитория | Система |
+|-----|-------------------|---------|
+| DEB | `https://gitverse.ru/api/packages/DirektorBani/debian` (дистрибутив `stable`, компонент `main`) | Debian, Ubuntu |
+| RPM | `https://gitverse.ru/api/packages/DirektorBani/rpm/stable.repo` | Fedora, RHEL, Rocky, Alma |
+| Helm | `https://gitverse.ru/api/packages/DirektorBani/helm` | Kubernetes |
 
-Рядом лежат `SHA256SUMS` и cosign-bundle на каждый файл. Проверка подписи описана в [политике безопасности](security-policy.md).
+Команды подключения — в разделах 5 и 6. Зеркало на GitHub (`ghcr.io`, GitHub Release с `SHA256SUMS` и cosign-bundle) остаётся запасным вариантом: проверка подписи описана в [политике безопасности](security-policy.md).
 
 ---
 
@@ -134,7 +133,7 @@ cp .env.example .env
 docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml up -d
 ```
 
-`STORAGE_DEV` в этом стеке по умолчанию выключен. Образ консоли — `ghcr.io/direktorbani/datasafe-console:v1.7.0`. Для Vite при правке интерфейса добавьте `-f deploy/compose/docker-compose.dev.yml --profile dev`.
+`STORAGE_DEV` в этом стеке по умолчанию выключен. Образ консоли — `gitverse.ru/direktorbani/datasafe-console:v1.7.0`. Для Vite при правке интерфейса добавьте `-f deploy/compose/docker-compose.dev.yml --profile dev`.
 
 Оверлеи лабораторий (HA, erasure, Vault, Kafka) перечислены в [deploy-compose.md](deploy-compose.md). Порты лабораторий не занимают `:9000` и `:9001` одновременно с основным стендом: erasure — консоль **8084**, S3 **9004**, Postgres **5444**; площадка A — **8086** / **9006** / **5446**; HA — **8082** / **9002** / **5442**. Старый скопированный `.env.erasure` или `.env.site-a` хранит прежние порты, пока его не пересоздадут из примера.
 
@@ -142,7 +141,24 @@ docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-co
 
 ## 5. Helm
 
-Текущий чарт релиза — `deploy/helm/datasafes3`. По умолчанию StatefulSet, PVC и Bolt. Секреты задаются явно: с пустыми чарт ставить нельзя.
+Текущий чарт релиза — `datasafes3`. По умолчанию StatefulSet, PVC и Bolt. Секреты задаются явно: с пустыми чарт ставить нельзя.
+
+Из репозитория чартов GitVerse:
+
+```bash
+helm repo add datasafes3 https://gitverse.ru/api/packages/DirektorBani/helm
+helm repo update
+helm install ds datasafes3/datasafes3 --version 1.7.0 \
+  --set storageServer.image.repository=gitverse.ru/direktorbani/datasafe-storage-server \
+  --set console.image.repository=gitverse.ru/direktorbani/datasafe-console \
+  --set auth.accessKey=datasafe \
+  --set auth.secretKey="$(openssl rand -hex 24)" \
+  --set auth.adminPassword="$(openssl rand -hex 18)" \
+  --set auth.jwtSecret="$(openssl rand -hex 24)" \
+  --set auth.metricsToken="$(openssl rand -hex 16)"
+```
+
+Из клона репозитория (в нём образы по умолчанию уже указывают на GitVerse):
 
 ```bash
 helm install ds deploy/helm/datasafes3 \
@@ -172,11 +188,31 @@ kubectl -n default port-forward svc/ds-datasafes3-console 8080:8080
 
 Пакет ставит бинарники, unit и каталоги и **не запускает** службу: в файле окружения исторические секреты, а `STORAGE_STRICT_SECRETS=true` не даст процессу стартовать, пока их не заменят.
 
-```bash
-sudo apt install ./datasafes3_1.7.0_amd64.deb
-# или
-sudo dnf install ./datasafes3-1.7.0-1.x86_64.rpm
+Debian и Ubuntu:
 
+```bash
+sudo mkdir -p /etc/apt/keyrings
+sudo curl -fsSL https://gitverse.ru/api/packages/DirektorBani/debian/repository.key \
+  -o /etc/apt/keyrings/gitverse-DirektorBani.asc
+echo "deb [signed-by=/etc/apt/keyrings/gitverse-DirektorBani.asc] https://gitverse.ru/api/packages/DirektorBani/debian stable main" \
+  | sudo tee /etc/apt/sources.list.d/gitverse-DirektorBani.list
+sudo apt update
+sudo apt install datasafes3
+```
+
+Fedora, RHEL, Rocky и Alma:
+
+```bash
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://gitverse.ru/api/packages/DirektorBani/rpm/stable.repo
+sudo dnf install datasafes3 --nogpgcheck
+```
+
+RPM-пакеты не подписаны GPG, поэтому `dnf` просит `--nogpgcheck`. Метаданные репозитория подписаны (`repomd.xml.asc`), загрузка идёт по HTTPS.
+
+Дальше, для обоих семейств:
+
+```bash
 sudoedit /etc/datasafes3/datasafes3.env
 sudo systemctl enable --now datasafes3
 curl -sS http://127.0.0.1:9000/healthz
@@ -188,7 +224,7 @@ curl -sS http://127.0.0.1:9000/healthz
 
 Консоль в пакет не вшита как отдельный сайт. JSON API и S3 слушает `datasafe-storage-server` на порту 9000. Чтобы получить ту же веб-консоль, что в Compose, поставьте образ `datasafe-console` за обратным прокси или используйте Compose / Helm. Swagger процесса: `http://127.0.0.1:9000/api/v1/docs`.
 
-Реестр GitVerse для apt и dnf: [gitverse-mirror.md](gitverse-mirror.md).
+Подробности про реестры GitVerse: [gitverse-mirror.md](gitverse-mirror.md).
 
 ---
 

@@ -16,6 +16,21 @@ docker compose --profile postgres up -d
 scripts\dev-docker-local-binary.cmd
 ```
 
+### Образы релиза, пакеты и Helm (GitVerse)
+
+Артефакты релиза опубликованы на GitVerse. Скачайте новый тег и пересоздайте стек:
+
+```bash
+export TAG=v1.7.0
+DATASAFE_SERVER_IMAGE=gitverse.ru/direktorbani/datasafe-storage-server:${TAG} \
+DATASAFE_CONSOLE_IMAGE=gitverse.ru/direktorbani/datasafe-console:${TAG} \
+  docker compose --profile postgres pull
+# те же две строки пропишите в .env, затем:
+docker compose --profile postgres up -d
+```
+
+Пакеты Linux: `sudo apt update && sudo apt install --only-upgrade datasafes3` или `sudo dnf upgrade datasafes3 --nogpgcheck` (подключение репозитория: [пакеты Linux](../../ru/linux-packages.md)). Helm: `helm repo update && helm upgrade ds datasafes3/datasafes3 --version <новая>` (репозиторий `https://gitverse.ru/api/packages/DirektorBani/helm`, см. [Kubernetes](../../ru/kubernetes.md)).
+
 ## Миграции
 
 Миграции PostgreSQL выполняются автоматически при старте `storage-server` (`internal/metadata/postgres/migrations/`).
@@ -28,7 +43,7 @@ scripts\dev-docker-local-binary.cmd
 
 ## Проверка образов релиза (cosign)
 
-Перед обновлением на тег проверьте подписи GHCR (см. [SECURITY.md](../../../SECURITY.md)):
+Образы релиза скачиваются с GitVerse (`gitverse.ru/direktorbani/...`). Подписи cosign привязаны к копии в GHCR, которую собирает GitHub Actions; манифесты платформ (`linux/amd64`, `linux/arm64`) на GitVerse имеют те же дайджесты, что и в GHCR. Перед обновлением на тег проверьте подписи копии в GHCR (см. [SECURITY.md](../../../SECURITY.md)):
 
 ```bash
 export COSIGN_EXPERIMENTAL=1
@@ -41,7 +56,7 @@ cosign verify "ghcr.io/direktorbani/datasafe-console:${TAG}" \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com
 ```
 
-SBOM прикреплены к каждому [GitHub Release](https://github.com/DirektorBani/DataSafeS3/releases).
+SBOM прикреплены к каждому релизу на зеркале GitHub ([GitHub Release](https://github.com/DirektorBani/DataSafeS3/releases)).
 
 ## Обновление до v1.0.2
 
