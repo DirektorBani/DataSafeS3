@@ -7,6 +7,7 @@ All notable changes to DataSafeS3 are documented in this file.
 ### Changed
 
 - **Go 1.26.10.** `govulncheck` reports GO-2026-6809 in `crypto/x509` of Go 1.26.9 (fixed in 1.26.10). `webauthn.FinishLogin` reaches `x509.Certificate.Verify`. Pins: `go.mod`, `deploy/docker/Dockerfile` (`golang:1.26.10-alpine`), and `setup-go` in CI, release, and audit.
+- **Console languages.** The web console is Russian and English. A Russian browser opens Russian. Any other browser language opens English. Russian is the default when the browser does not report a language. A saved code the console no longer supports (`de`, `fr`, and any other value) is dropped, and the same rule chooses Russian or English. `PATCH /api/v1/me/locale` accepts `ru` and `en`. `go test ./internal/consolei18n` and `npm run check:locales` fail when the `ru` and `en` key sets diverge or another locale directory appears.
 
 ## [1.7.0] - 2026-10-19
 

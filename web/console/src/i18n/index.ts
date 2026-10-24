@@ -31,10 +31,6 @@ import enNotifications from "@/locales/en/notifications.json";
 import enEncryption from "@/locales/en/encryption.json";
 import enKms from "@/locales/en/kms.json";
 import enMigrate from "@/locales/en/migrate.json";
-import deSettings from "@/locales/de/settings.json";
-import deActivity from "@/locales/de/activity.json";
-import frSettings from "@/locales/fr/settings.json";
-import frActivity from "@/locales/fr/activity.json";
 import ruCommon from "@/locales/ru/common.json";
 import ruNav from "@/locales/ru/nav.json";
 import ruLogin from "@/locales/ru/login.json";
@@ -66,10 +62,18 @@ import ruNotifications from "@/locales/ru/notifications.json";
 import ruEncryption from "@/locales/ru/encryption.json";
 import ruKms from "@/locales/ru/kms.json";
 import ruMigrate from "@/locales/ru/migrate.json";
+import { detectInitialLocale, SUPPORTED_LOCALES } from "./locale";
 
-export const LOCALE_KEY = "datasafe.locale";
-export const SUPPORTED_LOCALES = ["en", "ru", "de", "fr"] as const;
-export type AppLocale = (typeof SUPPORTED_LOCALES)[number];
+export {
+  LOCALE_KEY,
+  SUPPORTED_LOCALES,
+  detectInitialLocale,
+  getStoredLocale,
+  normalizeLocale,
+  setStoredLocale,
+  supportedLocale,
+  type AppLocale,
+} from "./locale";
 
 const namespaces = [
   "common",
@@ -105,25 +109,9 @@ const namespaces = [
   "migrate",
 ] as const;
 
-export function normalizeLocale(lang: string | undefined | null): AppLocale {
-  if (!lang) return "en";
-  const base = lang.toLowerCase().split("-")[0];
-  if (base === "ru" || base === "de" || base === "fr") return base as AppLocale;
-  return "en";
-}
-
-export function getStoredLocale(): AppLocale | null {
-  const stored = localStorage.getItem(LOCALE_KEY);
-  if (!stored) return null;
-  return normalizeLocale(stored);
-}
-
-export function setStoredLocale(locale: AppLocale) {
-  localStorage.setItem(LOCALE_KEY, locale);
-}
-
-export function detectInitialLocale(profileLocale?: string | null): AppLocale {
-  return normalizeLocale(getStoredLocale() ?? profileLocale ?? navigator.language);
+const initialLocale = detectInitialLocale();
+if (typeof document !== "undefined") {
+  document.documentElement.lang = initialLocale;
 }
 
 const enResources = {
@@ -163,8 +151,6 @@ const enResources = {
 void i18n.use(initReactI18next).init({
   resources: {
     en: enResources,
-    de: { ...enResources, settings: deSettings, activity: deActivity },
-    fr: { ...enResources, settings: frSettings, activity: frActivity },
     ru: {
       common: ruCommon,
       nav: ruNav,
@@ -199,8 +185,12 @@ void i18n.use(initReactI18next).init({
       migrate: ruMigrate,
     },
   },
-  lng: detectInitialLocale(),
-  fallbackLng: { de: ["en"], fr: ["en"], default: ["en"] },
+  lng: initialLocale,
+  fallbackLng: "en",
+  supportedLngs: [...SUPPORTED_LOCALES],
+  nonExplicitSupportedLngs: true,
+  load: "languageOnly",
+  returnEmptyString: false,
   defaultNS: "common",
   ns: [...namespaces],
   interpolation: { escapeValue: false },

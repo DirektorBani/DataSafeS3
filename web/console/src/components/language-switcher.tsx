@@ -4,10 +4,8 @@ import { cn } from "@/lib/utils";
 import type { AppLocale } from "@/i18n";
 
 const LOCALES: { code: AppLocale; label: string }[] = [
-  { code: "en", label: "EN" },
   { code: "ru", label: "RU" },
-  { code: "de", label: "DE" },
-  { code: "fr", label: "FR" },
+  { code: "en", label: "EN" },
 ];
 
 export function LanguageSwitcher({ className }: { className?: string }) {

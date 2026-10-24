@@ -1,6 +1,0 @@
-{
-  "securityBanner": {
-    "message": "Default secrets detected ({{vars}}). Rotate before production use.",
-    "learnMore": "Security hardening guide"
-  }
-}

@@ -1,5 +1,10 @@
 # Integration API changelog (semver in openapi.yaml info.version)
 
+## Unreleased
+
+### Removed
+- Console locale codes other than `ru` and `en`. `PATCH /me/locale` accepts `ru` and `en`.
+
 ## 1.1.0 — 2026-06-22
 
 ### Added

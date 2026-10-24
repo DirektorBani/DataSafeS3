@@ -7,7 +7,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "check:locales": "node scripts/check-locales.mjs && node --test scripts/locale-resolution.test.mjs",
+    "build": "npm run check:locales && tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
