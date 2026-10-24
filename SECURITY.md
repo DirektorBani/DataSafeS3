@@ -9,57 +9,34 @@
 | Version | Supported |
 |---------|-----------|
 | latest release tag | yes |
+| previous minor line (e.g. 1.6.x while 1.7.x is current) | security fixes only, for 12 months after the newer minor line is released |
 | main branch (dev) | best-effort |
 
 ## Reporting a vulnerability
 
-Please **do not** open public issues (on GitVerse or on the GitHub mirror) for security vulnerabilities.
+Please **do not** open public issues for security vulnerabilities.
 
-1. Email **[trachyk.i@gmail.com](mailto:trachyk.i@gmail.com)** (or, on the GitHub mirror, use [GitHub Security Advisories](https://github.com/DirektorBani/DataSafeS3/security/advisories/new)) with:
+1. Email **[trachyk.i@gmail.com](mailto:trachyk.i@gmail.com)** with:
    - Affected component and version
    - Steps to reproduce
    - Impact assessment (if known)
-2. We aim to acknowledge within **3 business days** and provide a remediation timeline within **14 days** for confirmed issues.
+2. We acknowledge your report (first response) within **1 business day** (Moscow time) and provide a remediation timeline within **14 days** for confirmed issues.
 3. Coordinated disclosure: we prefer a 90-day window before public details unless a fix is available sooner.
 
-## Verifying release images (cosign)
+## Verifying release artifacts
 
-Release images are published on GitVerse (`gitverse.ru/direktorbani/datasafe-storage-server` and `gitverse.ru/direktorbani/datasafe-console`, public registry). They are built and signed by GitHub Actions. The [Cosign](https://docs.sigstore.dev/) signatures (keyless, OIDC) and SBOM are attached to the copy on GHCR, and the per-platform manifests (`linux/amd64`, `linux/arm64`) on GitVerse have the same digests as on GHCR. Verify the GHCR copy before deploy:
+Release images, packages and the Helm chart are built by the GitVerse workflow `.gitverse/workflows/release.yaml` and published only to the GitVerse registries (`gitverse.ru/direktorbani/datasafe-storage-server`, `gitverse.ru/direktorbani/datasafe-console`, apt/dnf/helm under `https://gitverse.ru/api/packages/DirektorBani/`). Images are **not** cryptographically signed (no cosign or other signature is published). What you can check:
 
-```bash
-# Install cosign: https://docs.sigstore.dev/cosign/system_install/
-export COSIGN_EXPERIMENTAL=1
-TAG=v1.7.0
+- **Digest.** Each release page lists the image digests and `SHA256SUMS.txt` for the `.deb`/`.rpm` files. Compare them with the registry: `crane manifest gitverse.ru/direktorbani/datasafe-storage-server:vX.Y.Z` (the index has `linux/amd64` and `linux/arm64`). Pin deployments by digest (`image@sha256:...`) to be independent of tag changes.
+- **SBOM.** `sbom-vX.Y.Z.tgz` on the GitVerse release contains CycloneDX files for the Go modules, the console npm packages and both images, with a `SHA256SUMS.txt` for the archive contents. Licence notices: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+- **Packages.** The apt repository is signed with a GPG key (`https://gitverse.ru/api/packages/DirektorBani/debian/repository.key`); `apt` verifies it. RPM packages are not GPG-signed; repository metadata is signed and `SHA256SUMS.txt` on the release page covers the files.
+- **Transport.** All downloads use TLS to `gitverse.ru`.
 
-cosign verify "ghcr.io/direktorbani/datasafe-storage-server:${TAG}" \
-  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
-
-cosign verify "ghcr.io/direktorbani/datasafe-console:${TAG}" \
-  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
-```
-
-To compare the digests, run `crane manifest <image>:${TAG}` for the GitVerse and GHCR names and check that the `linux/amd64` and `linux/arm64` entries match.
-
-SBOM files (`sbom-storage-server.cdx.json`, `sbom-console.cdx.json`) are attached to each release on the GitHub mirror ([GitHub Release](https://github.com/DirektorBani/DataSafeS3/releases)).
-
-Linux `.deb` and `.rpm` packages on the same GitHub Release are signed as blobs (the same packages are installed from the GitVerse apt and dnf repositories, see below). `SHA256SUMS` covers the four packages and has its own bundle.
-
-```bash
-cosign verify-blob --bundle datasafes3_1.7.0_amd64.deb.bundle \
-  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-  datasafes3_1.7.0_amd64.deb
-
-sha256sum -c SHA256SUMS
-```
-
-Install steps (GitVerse apt and dnf repositories): [docs/linux-packages.md](docs/linux-packages.md). The apt repository is signed with a GPG key, `https://gitverse.ru/api/packages/DirektorBani/debian/repository.key`.
+Install steps: [docs/linux-packages.md](docs/linux-packages.md). How a release is built: [docs/ru/build.md](docs/ru/build.md).
 
 ## Secure development
 
-- Release images (GitVerse, with the build and signatures on GHCR) are accompanied by **SBOM** artifacts and **Cosign** signatures (see `.github/workflows/release.yml`).
+- Every release carries **SBOM** files (CycloneDX) for the Go modules, the console and both images, built by `.gitverse/workflows/release.yaml` (see [docs/ru/build.md](docs/ru/build.md)).
 - CI runs `go test ./...`, `govulncheck`, and feature-audit regression gates.
 - Dependencies are pinned in `go.mod` / `package-lock.json`.
 - External assessment checklist: [pen-test preparation](docs/operations-guide/en/pen-test-preparation.md).
@@ -68,9 +45,9 @@ Install steps (GitVerse apt and dnf repositories): [docs/linux-packages.md](docs
 
 Release **v1.4.1** bumps the Go toolchain to **1.26.9** and `golang.org/x/text` to **v0.41.0**. `govulncheck` on Go 1.26.8 reported GO-2026-6629 (`golang.org/x/text@v0.38.0`) and net/http standard-library issues GO-2026-6617, GO-2026-6613, GO-2026-6612, GO-2026-6611, GO-2026-6610, GO-2026-6608 (and the rest of that Go 1.26.8 set). Those are closed by the versions above. Pins at that release: `go.mod` `go 1.26.9`, `deploy/docker/Dockerfile` (`golang:1.26.9-alpine`), and `setup-go` in CI. Details: [CHANGELOG](CHANGELOG.md#141---2026-10-11).
 
-### Go 1.26.10 (2026-10-24)
+### v1.7.1 (2026-10-24)
 
-`govulncheck` on Go 1.26.9 reports [GO-2026-6809](https://pkg.go.dev/vuln/GO-2026-6809): distrust compromised intermediate certificates in `crypto/x509`, fixed in Go 1.26.10. The traced call is `webauthn.FinishLogin` → `x509.Certificate.Verify`. Current pins: `go.mod` `go 1.26.10`, `deploy/docker/Dockerfile` (`golang:1.26.10-alpine`), and `setup-go` in CI, release, and audit.
+Go toolchain **1.26.10** closes [GO-2026-6809](https://pkg.go.dev/vuln/GO-2026-6809) (`crypto/x509`, traced via `webauthn.FinishLogin`). `golang.org/x/crypto` v0.58.0 and `go-ntlmssp` v0.1.1 close the findings reported against 1.7.0; the web console moves to `zod` 4.x and `react-router-dom` 7.18.x (`npm audit --omit=dev`: 0 findings). Images use Alpine 3.24 and no longer ship the `wget` package. Remaining `npm audit` findings are in development-only tooling (vite/esbuild dev server, Tailwind 3 build chain) and are not part of the shipped bundle. Details: [CHANGELOG](CHANGELOG.md).
 
 ## Community Edition scope
 

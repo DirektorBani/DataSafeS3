@@ -10,11 +10,11 @@ mkdir -p "$STATE"
 ok() { echo "  [OK] $*"; }
 info() { echo "  $*"; }
 
-IMAGE="ghcr.io/direktorbani/datasafe-storage-server:v1.7.0"
+IMAGE="gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1"
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
   for c in \
-    ghcr.io/direktorbani/datasafe-storage-server:v1.0.3 \
-    ghcr.io/direktorbani/datasafe-storage-server:v1.0.2 \
+    gitverse.ru/direktorbani/datasafe-storage-server:v1.0.3 \
+    gitverse.ru/direktorbani/datasafe-storage-server:v1.0.2 \
     datasafe-storage-server:latest \
     cursor_p-storage-server:latest
   do

@@ -4,7 +4,7 @@
 #
 #   python3 scripts/single-node-gate.py self-test
 #   docker build -t datasafe-storage-server:gate -f deploy/docker/Dockerfile .
-#   docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+#   docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0
 #   bash scripts/single-node-gate.sh all
 #
 # Core installer (after the PR image is tagged as the pin the installer writes).
@@ -21,7 +21,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 PY="$ROOT/scripts/single-node-gate.py"
 
-BASE_IMAGE="${BASE_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.5.0}"
+BASE_IMAGE="${BASE_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0}"
 PR_IMAGE="${PR_IMAGE:-datasafe-storage-server:gate}"
 RUNS="${GATE_RUNS:-5}"
 WARMUP="${GATE_WARMUP_SEC:-5}"

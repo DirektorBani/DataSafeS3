@@ -2,14 +2,14 @@
 
 English: [deploy/helm/datasafe/README.md](../../deploy/helm/datasafe/README.md).
 
-Это более ранний чарт. Он повторяет стек Compose: `storage-server`, Caddy, необязательные PostgreSQL, Prometheus и Grafana. Чарт, который описывает релиз v1.7.0, — [datasafes3](helm-datasafes3.md). Новый бой ставьте им. Этот чарт остаётся для уже развёрнутых кластеров, которым нужны Prometheus и Grafana внутри того же релиза Helm.
+Это более ранний чарт. Он повторяет стек Compose: `storage-server`, Caddy, необязательные PostgreSQL, Prometheus и Grafana. Чарт, который описывает релиз v1.7.1, — [datasafes3](helm-datasafes3.md). Новый бой ставьте им. Этот чарт остаётся для уже развёрнутых кластеров, которым нужны Prometheus и Grafana внутри того же релиза Helm.
 
 ## Что нужно
 
 - Kubernetes 1.24 и новее (у этого чарта своя планка; у `datasafes3` — 1.25)
 - Helm 3.10 и новее
 - StorageClass для данных и, если включён, для PostgreSQL
-- Образы `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0` и `gitverse.ru/direktorbani/datasafe-console:v1.7.0` (реестр GitVerse публичный)
+- Образы `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1` и `gitverse.ru/direktorbani/datasafe-console:v1.7.1` (реестр GitVerse публичный)
 
 ## Установка опубликованных тегов
 
@@ -17,8 +17,8 @@ English: [deploy/helm/datasafe/README.md](../../deploy/helm/datasafe/README.md).
 
 ```bash
 helm install datasafe deploy/helm/datasafe \
-  --set storageServer.image.tag=v1.7.0 \
-  --set console.image.tag=v1.7.0 \
+  --set storageServer.image.tag=v1.7.1 \
+  --set console.image.tag=v1.7.1 \
   --namespace datasafe --create-namespace
 ```
 

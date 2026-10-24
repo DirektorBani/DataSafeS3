@@ -2,7 +2,7 @@
 #   powershell -File scripts/cluster/lab/fetch-offline-bundle.ps1
 #   (plus etcd binary / pip wheels as documented in README)
 #   docker build -f Dockerfile.offline -t datasafe-cluster-node:lab .
-FROM alpine:3.20
+FROM alpine:3.24
 
 COPY offline-apk /tmp/offline-apk/
 COPY offline-pip /tmp/offline-pip/

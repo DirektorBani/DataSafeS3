@@ -2,7 +2,7 @@
 
 English: [deploy/helm/datasafes3/README.md](../../deploy/helm/datasafes3/README.md).
 
-Чарт одного узла DataSafeS3 (Bolt, один PVC) или нескольких узлов с общими метаданными PostgreSQL. Тег образа по умолчанию — `v` плюс `appVersion` (`v1.7.0` у этого чарта).
+Чарт одного узла DataSafeS3 (Bolt, один PVC) или нескольких узлов с общими метаданными PostgreSQL. Тег образа по умолчанию — `v` плюс `appVersion` (`v1.7.1` у этого чарта).
 
 ```bash
 helm install ds deploy/helm/datasafes3 \

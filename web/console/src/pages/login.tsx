@@ -100,7 +100,7 @@ export function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { username: "admin", password: "admin" },
+    defaultValues: { username: "", password: "" },
   });
 
   async function onSubmit(data: LoginForm) {

@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DirektorBani/datasafe/internal/ha"
 	"github.com/DirektorBani/datasafe/internal/metadata"
 	"github.com/DirektorBani/datasafe/internal/storage"
 )
@@ -397,11 +398,30 @@ func replicaPeerAddr(public string) string {
 	return u.String()
 }
 
+// DefaultInternalAddr is the peer listener address used when HA is on and
+// STORAGE_INTERNAL_ADDR is not set. Without a derived default a replica
+// answered 404 on /api/v1/ha/object-replica, because the public port does not
+// serve that API.
+const DefaultInternalAddr = ":9002"
+
+// InternalAddr returns the address of the peer listener. STORAGE_INTERNAL_ADDR
+// wins. When it is empty and STORAGE_HA_ENABLED is on, the listener is
+// DefaultInternalAddr. With HA off and no value there is no peer listener.
+func InternalAddr() string {
+	if addr := strings.TrimSpace(os.Getenv("STORAGE_INTERNAL_ADDR")); addr != "" {
+		return addr
+	}
+	if ha.ConfigFromEnv().Enabled {
+		return DefaultInternalAddr
+	}
+	return ""
+}
+
 func internalReplicaPort() string {
 	if p := strings.TrimSpace(os.Getenv("STORAGE_INTERNAL_PORT")); p != "" {
 		return strings.TrimPrefix(p, ":")
 	}
-	addr := strings.TrimSpace(os.Getenv("STORAGE_INTERNAL_ADDR"))
+	addr := InternalAddr()
 	if addr == "" {
 		return ""
 	}

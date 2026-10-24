@@ -431,7 +431,7 @@ docker run --rm -e PGPASSWORD=datasafe postgres:16-alpine psql -h host.docker.in
 
 В репозитории два чарта.
 
-**Текущий чарт (v1.7.0),** [`deploy/helm/datasafes3`](../../../deploy/helm/datasafes3/): по умолчанию один pod, PVC и Bolt. `values-ha.yaml` включает метаданные Postgres и `STORAGE_HA_ENABLED`. Kafka и NATS не ставятся. Сервис консоли — порт 8080, сервис S3 — порт 9000. Руководство: [docs/ru/kubernetes.md](../kubernetes.md).
+**Текущий чарт (v1.7.1),** [`deploy/helm/datasafes3`](../../../deploy/helm/datasafes3/): по умолчанию один pod, PVC и Bolt. `values-ha.yaml` включает метаданные Postgres и `STORAGE_HA_ENABLED`. Kafka и NATS не ставятся. Сервис консоли — порт 8080, сервис S3 — порт 9000. Руководство: [docs/ru/kubernetes.md](../kubernetes.md).
 
 ```bash
 helm install ds deploy/helm/datasafes3 \
@@ -442,7 +442,7 @@ helm install ds deploy/helm/datasafes3 \
   --set auth.metricsToken=change-me-metrics
 ```
 
-Тот же чарт есть в репозитории Helm на GitVerse: `helm repo add datasafes3 https://gitverse.ru/api/packages/DirektorBani/helm`, затем `helm install ds datasafes3/datasafes3 --version 1.7.0` с теми же `--set` (команда целиком — в [kubernetes.md](../kubernetes.md)).
+Тот же чарт есть в репозитории Helm на GitVerse: `helm repo add datasafes3 https://gitverse.ru/api/packages/DirektorBani/helm`, затем `helm install ds datasafes3/datasafes3 --version 1.7.1` с теми же `--set` (команда целиком — в [kubernetes.md](../kubernetes.md)).
 
 **Прежний чарт,** [`deploy/helm/datasafe`](../../../deploy/helm/datasafe/): стек, близкий к Compose, с Caddy, необязательными Prometheus, Grafana и Postgres. Это не чарт из заметок к релизу v1.7.0.
 

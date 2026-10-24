@@ -1,6 +1,6 @@
 # GitVerse — основной репозиторий
 
-С 24.10.2026 основной репозиторий DataSafeS3 — [DirektorBani/DataSafeS3 на GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3). Коммиты, запросы на слияние и CI живут там. [GitHub](https://github.com/DirektorBani/DataSafeS3) — зеркало: туда копируются `main`, ветки `release/**` и теги `v*`.
+С 24.10.2026 основной репозиторий DataSafeS3 — [DirektorBani/DataSafeS3 на GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3). Коммиты, запросы на слияние и CI живут там. GitHub — только зеркало для чтения: туда копируются `main`, ветки `release/**` и теги `v*`.
 
 ## Зеркало GitVerse → GitHub
 
@@ -10,7 +10,7 @@ Workflow [`.gitverse/workflows/mirror_to_gh.yaml`](../../.gitverse/workflows/mir
 
 Секреты репозитория GitVerse: `GH_MIRROR_ACTOR` (владелец на GitHub), `GH_MIRROR_REPO` (имя репозитория), `GH_MIRROR_TOKEN` (токен GitHub с правами Contents и Workflows на запись, либо classic со scopes `repo` и `workflow`). Токен в URL не попадает: на запрос пароля отвечает `GIT_ASKPASS`, вывод `git push` проходит через маскирование.
 
-Push токеном (а не `GITHUB_TOKEN`) запускает workflow на GitHub, поэтому релиз по тегу `v*` и публикация образов продолжают работать там. Лимит облачных раннеров GitVerse — 1000 минут в месяц на публичный репозиторий, поэтому зеркалируются только основные ветки и теги.
+Релиз собирается и публикуется на GitVerse ([build.md](build.md)), от зеркала на GitHub он не зависит. Лимит облачных раннеров GitVerse — 1000 минут в месяц на публичный репозиторий, поэтому зеркалируются только основные ветки и теги.
 
 Прежнее направление GitHub → GitVerse (`.github/workflows/mirror-gitverse.yml`) отключено. Описание ниже относится к нему и сохранено для истории и для публикации пакетов.
 
@@ -55,8 +55,9 @@ Workflow срабатывает только в `DirektorBani/DataSafeS3` на `
 
 | Job | Что делает |
 | --- | --- |
-| `go` | `gofmt -l`, `go vet ./...`, `go build ./...`, `go test ./...`, `govulncheck ./...`. Go `1.26.10`, как в GitHub CI. |
-| `web` | `npm ci` и `npm run build` в `web/console`, Node 20. |
+| `go` | `gofmt -l`, `go vet ./...`, `go build ./...`, `go test ./...`, `govulncheck ./...`. Go `1.26.10`. |
+| `web` | `npm ci` и `npm run build` в `web/console`, Node 24. |
+| `repo-checks` | версии релиза (`check-release-pins.sh`), пути compose-оверлеев, ссылки на образы, проверка release workflow. |
 | `single-node` | `python3 scripts/single-node-gate.py self-test`. Это проверки порогов и разбора вывода, без Docker. |
 
 `go test ./...` не получает `TEST_POSTGRES_DSN`, `KAFKA_INTEGRATION`, `VAULT_ADDR`, `MINIO_ENDPOINT`. Тесты, которым нужна Postgres, пропускаются сами. Сервисных контейнеров в справочнике синтаксиса нет, а у облачного раннера нет `docker.sock` ([облачные раннеры](https://gitverse.ru/docs/cicd/docs/runners/cloud-hosted)), поэтому Postgres в этом workflow не поднимается.
@@ -65,11 +66,11 @@ Workflow срабатывает только в `DirektorBani/DataSafeS3` на `
 
 Секреты и переменные на стороне GitVerse этому CI не нужны. Имена секретов GitVerse не могут начинаться с `GITVERSE_` ([секреты](https://gitverse.ru/docs/cicd/docs/secrets-and-variables)).
 
-### Что остаётся только на GitHub
+### Что не выполняется в облачном CI GitVerse
 
-Тяжёлые job из [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) на облачный раннер не переносятся: нет демона Docker, а `docker build` туда не входит (для образов документация предлагает kaniko, это не проверка продукта). `install-ps1-syntax` требует `windows-latest`, такого раннера в документации облака нет.
+Тяжёлые job из `.github/workflows/ci.yml` (необязательный набор на стороне зеркала) на облачный раннер не переносятся: нет демона Docker. Образы релиза при этом собираются без Docker ([build.md](build.md)). `install-ps1-syntax` требует `windows-latest`, такого раннера в документации облака нет.
 
-| Job на GitHub | Почему не на GitVerse |
+| Job в `ci.yml` | Почему не в облачном CI GitVerse |
 | --- | --- |
 | `docker-build` | нет `docker.sock` |
 | `single-node-gate` | Docker, образы, compose; на GitVerse остаётся только `self-test` |
@@ -80,21 +81,22 @@ Workflow срабатывает только в `DirektorBani/DataSafeS3` на `
 | `helm-smoke` | kind и кластер |
 | `linux-packages` | QEMU и контейнеры дистрибутивов |
 | `install-ps1-syntax` | раннер Windows |
-| `event-observability` | остаётся рядом с остальным GitHub CI; Docker ей не нужен, в обязательный набор облака она не входит |
+| `event-observability` | в обязательный набор облака не входит |
 
 ## Секреты и переменные
 
-Значения сюда не записываются. На GitHub: Settings → Secrets and variables → Actions.
+Значения сюда не записываются. Секрет релиза создаётся на GitVerse: Настройки репозитория → CI/CD → Секреты. Остальные строки таблицы относятся к прежнему пути через GitHub (запасной).
 
 | Имя | Где | Назначение |
 | --- | --- | --- |
-| `GITVERSE_TOKEN` | секрет GitHub | Токен пользователя `DirektorBani`. Для зеркала нужен чекбокс «Репозитории». Для пакетов — запись (и удаление, если включена очистка). |
+| `REGISTRY_TOKEN` | секрет GitVerse | Токен пользователя `DirektorBani` с записью в пакеты и в репозиторий (релизы). Нужен `.gitverse/workflows/release.yaml`. Имя не может начинаться с `GITVERSE_`. |
+| `GITVERSE_TOKEN` | секрет GitHub (запасной путь) | Токен пользователя `DirektorBani`. Для зеркала нужен чекбокс «Репозитории». Для пакетов — запись (и удаление, если включена очистка). |
 | `GITVERSE_SSH_KEY` | секрет GitHub | Приватный ключ без пароля. Нужен только при `GITVERSE_MIRROR_AUTH=ssh` или если токена нет. |
 | `GITVERSE_MIRROR_AUTH` | переменная GitHub | `https` (по умолчанию) или `ssh`. |
 | `GITVERSE_MIRROR_FORCE` | переменная GitHub | `true` включает форс-пуш на обычном push. Пусто или `false` — только fast-forward. |
 | `GITVERSE_ARCHITECTURES`, `GITVERSE_DELETE_OLD`, `GITVERSE_KEEP_VERSIONS`, `GITVERSE_SIZE_LIMIT_MB`, `GITVERSE_DEB_DISTRIBUTION`, `GITVERSE_DEB_COMPONENT`, `GITVERSE_RPM_GROUP` | переменные GitHub | Только публикация пакетов, см. ниже. |
 
-На GitVerse для CI из этого репозитория секреты создавать не нужно. CI/CD должен быть включён, приоритет пути — `.gitverse/workflows/`.
+Для `ci.yaml` секреты не нужны. Для `release.yaml` нужен секрет `REGISTRY_TOKEN`. CI/CD должен быть включён, приоритет пути — `.gitverse/workflows/`.
 
 ### Что сделать владельцу
 
@@ -102,19 +104,20 @@ Workflow срабатывает только в `DirektorBani/DataSafeS3` на `
 2. Настройки → Репозиторий: включить CI/CD, выбрать приоритет `.gitverse/workflows/` (чтобы раннер не выполнял `.github/workflows/` с Docker), нажать Обновить.
 3. Для git push выпустить токен с чекбоксом «Репозитории». Если текущий `GITVERSE_TOKEN` уже пишет пакеты и UI не даёт добавить этот чекбокс в тот же токен, оставить его для пакетов и настроить SSH: публичный ключ в GitVerse, приватный в секрет `GITVERSE_SSH_KEY`, переменная `GITVERSE_MIRROR_AUTH=ssh`.
 4. Форс-пуш не включать, пока push не остановится на non-fast-forward. Тогда либо Actions → Mirror GitVerse → Run workflow → `force`, либо переменная `GITVERSE_MIRROR_FORCE=true`.
-5. После первого успешного прогона открыть вкладку CI/CD на GitVerse и проверить job `go`, `web`, `single-node`.
+5. Создать секрет `REGISTRY_TOKEN` (см. выше). Без него `release.yaml` остановится на входе в реестр.
+6. После первого успешного прогона открыть вкладку CI/CD на GitVerse и проверить job `go`, `web`, `repo-checks`, `single-node`, а для тега — `checks`, `images`, `packages`, `sbom`.
 
 ## Установка из реестров
 
-Артефакты релиза DataSafeS3 публикуются в реестры пакетов [GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3) (владелец `DirektorBani`). Так дистрибутив доступен с ресурса на территории РФ. Тот же релиз по-прежнему лежит на GitHub и в `ghcr.io`.
+Артефакты релиза DataSafeS3 публикуются в реестры пакетов [GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3) (владелец `DirektorBani`). Так дистрибутив доступен с ресурса на территории РФ. Сборка и публикация идут на GitVerse: [build.md](build.md).
 
-Тег образа совпадает с git-тегом (`v1.7.0`) и дополнительно ставится `latest`. Имена тегов в реестре GitVerse регистронезависимые; ниже они записаны строчными буквами.
+Тег образа совпадает с git-тегом (`v1.7.1`) и дополнительно ставится `latest`. Имена тегов в реестре GitVerse регистронезависимые; ниже они записаны строчными буквами.
 
 ## Docker
 
 ```bash
-docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0
-docker pull gitverse.ru/direktorbani/datasafe-console:v1.7.0
+docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1
+docker pull gitverse.ru/direktorbani/datasafe-console:v1.7.1
 ```
 
 Тег `latest` указывает на тот же релиз:
@@ -129,8 +132,8 @@ docker pull gitverse.ru/direktorbani/datasafe-console:latest
 Compose из этого репозитория:
 
 ```bash
-DATASAFE_SERVER_IMAGE=gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0 \
-DATASAFE_CONSOLE_IMAGE=gitverse.ru/direktorbani/datasafe-console:v1.7.0 \
+DATASAFE_SERVER_IMAGE=gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1 \
+DATASAFE_CONSOLE_IMAGE=gitverse.ru/direktorbani/datasafe-console:v1.7.1 \
 docker compose up -d
 ```
 
@@ -155,7 +158,7 @@ sudo apt install datasafes3
 Конкретная версия:
 
 ```bash
-sudo apt install datasafes3=1.7.0-1
+sudo apt install datasafes3=1.7.1-1
 ```
 
 Документация: <https://gitverse.ru/docs/artifactory/packages-uc/deb-packages-uc>.
@@ -173,7 +176,7 @@ sudo dnf install datasafes3 --nogpgcheck
 Конкретная версия:
 
 ```bash
-sudo dnf install datasafes3-1.7.0-1.x86_64 --nogpgcheck
+sudo dnf install datasafes3-1.7.1-1.x86_64 --nogpgcheck
 ```
 
 Пакет не подписан GPG. Документация GitVerse для этого случая указывает `--nogpgcheck`. Если реестр закрыт, в URL подставляют логин и токен:
@@ -190,7 +193,7 @@ sudo dnf config-manager --add-repo \
 ```bash
 helm repo add datasafes3 https://gitverse.ru/api/packages/DirektorBani/helm
 helm repo update
-helm install ds datasafes3/datasafes3 --version 1.7.0 \
+helm install ds datasafes3/datasafes3 --version 1.7.1 \
   --set storageServer.image.repository=gitverse.ru/direktorbani/datasafe-storage-server \
   --set console.image.repository=gitverse.ru/direktorbani/datasafe-console \
   --set auth.accessKey=datasafe \
@@ -200,7 +203,7 @@ helm install ds datasafes3/datasafes3 --version 1.7.0 \
   --set auth.metricsToken="$(openssl rand -hex 16)"
 ```
 
-Пустой `storageServer.image.tag` в чарте означает `v` плюс `appVersion`, для этого релиза — `v1.7.0`. В чарте `1.7.0`, опубликованном в репозитории Helm, образы по умолчанию указывают на `ghcr.io`; параметры `--set` выше берут их из GitVerse. В чарте из дерева репозитория после этого изменения по умолчанию уже GitVerse.
+Пустой `storageServer.image.tag` в чарте означает `v` плюс `appVersion`, для этого релиза — `v1.7.1`. В чарте из дерева репозитория по умолчанию образы GitVerse.
 
 Если реестр запрашивает авторизацию:
 
@@ -223,6 +226,8 @@ curl -sS http://127.0.0.1:9000/healthz
 ```
 
 ## Что публикует workflow
+
+Основной путь — [`.gitverse/workflows/release.yaml`](../../.gitverse/workflows/release.yaml): образы (`linux/amd64`, `linux/arm64`), `.deb`, `.rpm`, чарт, страница релиза с `SHA256SUMS.txt`, дайджестами образов и SBOM. Подробности — [build.md](build.md). Ниже описан запасной путь через GitHub.
 
 [`.github/workflows/publish-gitverse.yml`](../../.github/workflows/publish-gitverse.yml) копирует мультиархитектурный манифест (`linux/amd64` и `linux/arm64`) и загружает `.deb`, `.rpm` и чарт `datasafes3`. Суммарный лимит всех пакетов пользователя на GitVerse — 500 Мбайт. Перед загрузкой workflow считает размер. Если полный набор не помещается, ручной запуск с `architectures=amd64` (или переменная репозитория `GITVERSE_ARCHITECTURES=amd64`) публикует только amd64.
 

@@ -14,7 +14,7 @@ Job CI `single-node-gate` проверяет, что pull request по-преж�
 2. Smoke через AWS CLI (path-style): `/healthz`, вход admin, смена пароля первого запуска и `POST /api/v1/setup/complete`, S3 create-bucket / put / get / list, в Activity есть хотя бы одна запись, создание и список inventory, скачивание CSV inventory, экспорт Activity в CSV и JSON. Эти файлы пакуются в zip так же, как `scripts/collect-evidence-pack.ps1`.
 3. Без sink'ов `datasafe_events_outbox_pending` равен 0, а счётчики delivered, dropped и dead отсутствуют или равны нулю. В логах сервера не должно быть дозвона к брокеру (`nats://`, `kafka`, `amqp://`, `dial tcp`, `lookup postgres`, `no such host`, `connection refused`). `/proc/net/tcp` и `tcp6` внутри контейнера не должны показывать исходящий сокет, кроме loopback (healthcheck образа) и соединений, у которых локальный порт 9000 (входящий smoke).
 4. Тот же smoke повторяется после `./install.sh --yes --profiles core`. Этот путь поднимает только `storage-server` и Caddy. Вызовы Admin идут через Caddy на порту 8080. S3 остаётся на порту 9000.
-5. Idle RSS и время от старта до healthy для Bolt сравниваются с `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0` на том же runner, оба на Bolt. Job падает, если медиана старта PR больше медианы baseline больше чем на 1 секунду, или медиана idle RSS PR больше медианы baseline больше чем на 10%. Таблица попадает в summary шага GitHub. Лимит +10% не повышается.
+5. Idle RSS и время от старта до healthy для Bolt сравниваются с `gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0` на том же runner, оба на Bolt. Job падает, если медиана старта PR больше медианы baseline больше чем на 1 секунду, или медиана idle RSS PR больше медианы baseline больше чем на 10%. Таблица попадает в summary шага GitHub. Лимит +10% не повышается.
 6. Postgres — отдельное измерение тех же двух образов, оба с `STORAGE_METADATA_BACKEND=postgres`, рядом с одним контейнером Postgres 16. Прогоны чередуются. Каждый прогон начинает с новой базы `datasafe`, чтобы образ v1.5.0 не открывал базу, которую эта сборка уже мигрировала. Те же лимиты +10% RSS и +1 с на старт. Числа Bolt не являются baseline для Postgres.
 
 `install.ps1 -Yes -Profiles core` — то же на Windows. CI на `windows-latest` только разбирает скрипт. Docker там не запускается.
@@ -33,9 +33,9 @@ Runner, который медленный на большей части про�
 python3 scripts/single-node-gate.py self-test
 
 docker build -t datasafe-storage-server:gate -f deploy/docker/Dockerfile .
-docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0
 
-BASE_IMAGE=ghcr.io/direktorbani/datasafe-storage-server:v1.5.0 \
+BASE_IMAGE=gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0 \
 PR_IMAGE=datasafe-storage-server:gate \
 bash scripts/single-node-gate.sh all
 ```
@@ -75,6 +75,5 @@ Windows, из корня репозитория (Docker Desktop запущен):
 - Входящие клиенты (smoke, Caddy, healthcheck) разрешены. Любой другой сокет не на loopback валит job, включая порт брокера.
 - Zip evidence собирает `scripts/single-node-gate.sh` из Admin API. Linux CI не запускает `collect-evidence-pack.ps1`.
 - Шаг установщика локально перетегирует образ PR в `gitverse.ru/direktorbani/datasafe-storage-server:v1.6.0`, чтобы `./install.sh` (тег по умолчанию `v1.6.0`) поднял биты PR. Job этот тег не пушит. Перетегирование идёт после измерения бюджета. Обычная установка без него тянет опубликованный образ v1.6.0, когда тег уже есть. Baseline бюджета остаётся опубликованный образ v1.5.0, отдельно для Bolt и для Postgres.
-- Вход в `ghcr.io` перед pull baseline необязателен. Fork pull request его пропускает, а неудачный login не валит job. Образ `v1.5.0` публичный.
 - Windows job в CI только проверяет, что `install.ps1` разбирается и документирует `-Yes -Profiles core`.
 - В старт входит время создания контейнера Docker. Процедура одна и та же для обоих образов; лимит применяется к разнице медиан.

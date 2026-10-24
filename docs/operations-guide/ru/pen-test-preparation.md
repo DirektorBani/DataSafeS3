@@ -23,7 +23,7 @@
 
 ## Приоритетные сценарии
 
-Auth, SSRF, IDOR/tenant RBAC, S3 key traversal, metrics disclosure, cosign/SBOM.
+Auth, SSRF, IDOR/tenant RBAC, S3 key traversal, metrics disclosure, дайджесты образов/SBOM.
 
 ## После оценки
 

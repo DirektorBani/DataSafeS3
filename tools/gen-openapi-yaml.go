@@ -167,7 +167,7 @@ info:
     Docs: [Swagger UI guide](../../docs/en/api/swagger.md) · [Full API spec](../../api/openapi-full.yaml)
   contact:
     name: DataSafeS3 / Ilya Trachuk
-    url: https://github.com/DirektorBani/DataSafeS3
+    url: https://gitverse.ru/DirektorBani/DataSafeS3
   license:
     name: Apache 2.0
     identifier: Apache-2.0
@@ -212,7 +212,7 @@ info:
     Canonical file: [openapi-full.yaml](../../api/openapi-full.yaml)
   contact:
     name: DataSafeS3 / Ilya Trachuk
-    url: https://github.com/DirektorBani/DataSafeS3
+    url: https://gitverse.ru/DirektorBani/DataSafeS3
   license:
     name: Apache 2.0
     identifier: Apache-2.0

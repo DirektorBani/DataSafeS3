@@ -8,7 +8,7 @@
 # is denied, including when a GetObject policy names it.
 set -euo pipefail
 
-BASELINE_IMAGE="${BASELINE_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.5.0}"
+BASELINE_IMAGE="${BASELINE_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0}"
 HEAD_IMAGE="${HEAD_IMAGE:-datasafe-storage-server:ci}"
 BASE_PORT="${BASE_PORT:-19150}"
 HEAD_PORT="${HEAD_PORT:-19151}"

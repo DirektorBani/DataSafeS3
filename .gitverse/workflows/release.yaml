@@ -1,0 +1,171 @@
+# Release build and publish, entirely on GitVerse (no GitHub, GHCR or Docker Hub).
+#
+# Trigger: push of a tag v* (or manual run with a tag name).
+# Output (all on gitverse.ru):
+#   images    gitverse.ru/direktorbani/datasafe-storage-server:<tag>|latest  (linux/amd64 + linux/arm64)
+#             gitverse.ru/direktorbani/datasafe-console:<tag>|latest
+#   packages  apt (.deb) + dnf (.rpm) + Helm chart datasafes3 in the package registries
+#   release   GitVerse release page with SHA256SUMS.txt, image digests, SBOM archive, licence notices
+#
+# No Docker daemon is needed: scripts/build-images.sh cross-compiles with Go and
+# assembles the images with tools/imgbuild (go-containerregistry). Sources of
+# build inputs are the GitVerse mirrors go-mirror / npm-mirror / dh-mirror.
+#
+# Required repository secret (Settings -> CI/CD -> Secrets): REGISTRY_TOKEN
+#   a GitVerse personal access token of user DirektorBani with write access to
+#   packages and to the repository (releases). Secret names cannot start with GITVERSE_.
+#
+# Runner limits: a cloud job is capped (15 or 30 min depending on the docs page),
+# so work is split into jobs. Jobs do not share artifacts; each one rebuilds what
+# it needs, and only `packages` produces the files that are checksummed.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, for example v1.7.1"
+        required: true
+
+env:
+  GOPROXY: "https://go-mirror.gitverse.ru,direct"
+  GOTOOLCHAIN: local
+  NPM_REGISTRY: "https://npm-mirror.gitverse.ru/"
+  GV_USER: DirektorBani
+  REGISTRY: gitverse.ru/direktorbani
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.10"
+      - name: tag matches VERSION
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          test "v$(tr -d '[:space:]' < VERSION)" = "$TAG" || { echo "VERSION does not match tag $TAG"; exit 1; }
+      - name: release pins, compose paths, workflow
+        run: |
+          bash scripts/check-release-pins.sh
+          python3 scripts/check-compose-paths.py
+          python3 scripts/check_release_workflow.py
+      - name: go vet and build
+        run: |
+          go vet ./...
+          go build ./...
+
+  images:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.10"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: registry login (docker config, token never printed)
+        env:
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          test -n "$REGISTRY_TOKEN" || { echo "secret REGISTRY_TOKEN is not set"; exit 1; }
+          umask 077
+          mkdir -p "$HOME/.docker"
+          auth=$(printf '%s:%s' "$GV_USER" "$REGISTRY_TOKEN" | base64 -w0)
+          printf '{"auths":{"gitverse.ru":{"auth":"%s"}}}' "$auth" > "$HOME/.docker/config.json"
+      - name: build and push both images (amd64 + arm64)
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          bash scripts/build-images.sh --registry "$REGISTRY" --tags "${TAG},latest"
+
+  packages:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.10"
+      - name: install helm (from the Go mirror)
+        run: |
+          GOBIN="$PWD/dist/tools" go install helm.sh/helm/v3/cmd/helm@v3.16.4
+      - name: build .deb and .rpm (nfpm via Go mirror)
+        run: bash scripts/package-linux.sh
+      - name: lint chart
+        run: |
+          export PATH="$PWD/dist/tools:$PATH"
+          helm lint deploy/helm/datasafes3
+      - name: publish packages to GitVerse registries
+        env:
+          GV_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          export PATH="$PWD/dist/tools:$PATH"
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          TAG="$TAG" PKG_DIR=dist/packages CHART_SRC=deploy/helm/datasafes3 bash scripts/gitverse-publish-packages.sh
+      - name: attach checksums to the release
+        continue-on-error: true
+        env:
+          GV_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          sh scripts/extract-changelog-section.sh "${TAG#v}" CHANGELOG.md dist/release-body.md
+          TAG="$TAG" RELEASE_NOTES_FILE=dist/release-body.md bash scripts/gitverse-release-assets.sh dist/packages/SHA256SUMS.txt
+
+  sbom:
+    needs: [images, packages]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.10"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: install SBOM tools and crane (Go and npm mirrors)
+        run: |
+          export GOBIN="$PWD/dist/tools"
+          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.12.0
+          go install github.com/anchore/syft/cmd/syft@v1.55.0
+          go install github.com/google/go-containerregistry/cmd/crane@v0.22.1
+          npm install --prefix dist/npm-tools --registry "$NPM_REGISTRY" @cyclonedx/cyclonedx-npm
+      - name: console dependencies for the npm SBOM
+        run: cd web/console && npm ci
+      - name: SBOM, digests, licence notices
+        run: |
+          export PATH="$PWD/dist/tools:$PWD/dist/npm-tools/node_modules/.bin:$PATH"
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          export SBOM_SERVER_IMAGE="$REGISTRY/datasafe-storage-server:$TAG"
+          export SBOM_CONSOLE_IMAGE="$REGISTRY/datasafe-console:$TAG"
+          bash scripts/sbom.sh "${TAG#v}"
+          echo "== every image tag referenced by Compose/Helm exists (own images are pushed by now)"
+          python3 scripts/check-image-refs.py
+          {
+            echo "datasafe-storage-server:$TAG $(crane digest "$SBOM_SERVER_IMAGE")"
+            echo "datasafe-console:$TAG $(crane digest "$SBOM_CONSOLE_IMAGE")"
+          } | tee dist/sbom/image-digests.txt
+      - name: attach SBOM and digests to the release
+        env:
+          GV_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          TAG="$TAG" bash scripts/gitverse-release-assets.sh \
+            "dist/sbom/sbom-${TAG#v}.tgz" dist/sbom/image-digests.txt THIRD_PARTY_LICENSES.md

@@ -3,13 +3,13 @@
 # stored an SSE-KMS object. The forward volume enables SSE-S3 and is not rolled
 # back: 1.5.0 cannot read a format-1 envelope.
 #
-#   docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+#   docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0
 #   docker load < datasafe-storage-server-ci.tar.gz
 #   bash scripts/ci/upgrade-15-to-16.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-BASE_IMAGE="${BASE_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.5.0}"
+BASE_IMAGE="${BASE_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0}"
 PR_IMAGE="${PR_IMAGE:-datasafe-storage-server:ci}"
 NET="e06-upgrade"
 PG="e06-upgrade-pg"

@@ -1,0 +1,32 @@
+# Vault for the HA standby nodes. docker-compose.vault.yml configures only
+# `storage-server`; without this file the standby nodes (node2, node3) start
+# with no Vault-rendered environment and no Vault token.
+#
+#   docker compose -p datasafe \
+#     -f docker-compose.yml -f docker-compose.local-data.yml \
+#     -f deploy/compose/docker-compose.ha.yml -f deploy/compose/docker-compose.ha-local.yml \
+#     -f deploy/compose/docker-compose.vault.yml -f deploy/compose/docker-compose.vault-ha.yml \
+#     --profile vault --profile postgres --profile ha-standby up -d
+#
+# Paths are relative to the repository root (the project directory), like the
+# other overlays.
+
+x-vault-standby: &vault-standby
+  depends_on:
+    vault-agent:
+      condition: service_healthy
+      required: false
+  entrypoint: ["/bin/sh", "-c", "tr -d '\\015' < /vault/entrypoint-with-vault-env.sh > /tmp/vault-entry.sh && chmod +x /tmp/vault-entry.sh && exec /tmp/vault-entry.sh"]
+  volumes:
+    - vault-rendered:/rendered:ro
+    - ./deploy/vault/entrypoint-with-vault-env.sh:/vault/entrypoint-with-vault-env.sh:ro
+  environment:
+    - DATASAFE_VAULT_REQUIRED=true
+    - VAULT_RENDERED_ENV=/rendered/datasafe.env
+
+services:
+  storage-server-standby: *vault-standby
+  storage-server-standby-2: *vault-standby
+
+volumes:
+  vault-rendered:

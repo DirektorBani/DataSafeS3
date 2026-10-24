@@ -98,3 +98,17 @@ Hardened Vault, Kubernetes auth or AppRole, and [Helm Agent Injector example](..
 ## Troubleshooting: Docker proxy
 
 On Windows, if `docker pull` or Compose fails with `connecting to 127.0.0.1:10801: connectex: ... actively refused`, WinHTTP is still pointing at a local proxy that is not running (check with `netsh winhttp show proxy`). Either start the repo workaround before pulls—`node scripts/local-direct-proxy.js` in the background, or run `scripts\ensure-docker-pull-proxy.cmd` (same idea)—or reset WinHTTP as an administrator with `netsh winhttp reset proxy` and restart Docker Desktop. Client `%USERPROFILE%\.docker\config.json` may look clean while the daemon still uses WinHTTP; fixing the dead `127.0.0.1:10801` listener is required before `hashicorp/vault:1.17` can be pulled. Prefer local images for storage-server: set `DATASAFE_SERVER_IMAGE` to a built tag and add `-f deploy/compose/docker-compose.local-binary.yml` after `go build` into `deploy/docker/storage-server-linux`.
+
+## HA standby nodes (node2, node3)
+
+`docker-compose.vault.yml` configures only `storage-server`. With the HA overlay add `deploy/compose/docker-compose.vault-ha.yml` so the standby nodes also get the Vault-rendered environment and token:
+
+```bash
+docker compose -p datasafe \
+  -f docker-compose.yml -f docker-compose.local-data.yml \
+  -f deploy/compose/docker-compose.ha.yml -f deploy/compose/docker-compose.ha-local.yml \
+  -f deploy/compose/docker-compose.vault.yml -f deploy/compose/docker-compose.vault-ha.yml \
+  --profile vault --profile postgres --profile ha-standby up -d
+```
+
+Paths in overlays are relative to the first `-f` file's directory (the repository root here). `scripts/check-compose-paths.py` checks this in CI. Verified statically with `docker compose config`; a live HA start with Vault was not run in this release.

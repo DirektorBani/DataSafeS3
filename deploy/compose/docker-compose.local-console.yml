@@ -4,7 +4,7 @@
 #   docker compose -f docker-compose.yml -f deploy/compose/docker-compose.local-console.yml up -d
 services:
   console-assets:
-    image: alpine:3.20
+    image: alpine:3.24
     pull_policy: if_not_present
     build: !reset null
     environment:

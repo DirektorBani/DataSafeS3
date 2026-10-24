@@ -39,7 +39,7 @@ Provide credentials in a sealed channel; rotate after assessment.
 3. **IDOR** — cross-tenant bucket/object access, share tokens
 4. **S3** — path traversal in object keys, policy bypass, presigned URL tampering
 5. **Info disclosure** — unauthenticated `/metrics`, security-status leakage
-6. **Supply chain** — cosign verify release images, SBOM review
+6. **Supply chain** — verify release image digests, SBOM review
 
 ## Evidence to collect
 

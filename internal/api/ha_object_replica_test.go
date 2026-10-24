@@ -205,6 +205,26 @@ func TestReplicaPeerPortRewrites(t *testing.T) {
 	}
 }
 
+func TestInternalAddrDefaultsWhenHAEnabled(t *testing.T) {
+	t.Setenv("STORAGE_INTERNAL_PORT", "")
+	t.Setenv("STORAGE_INTERNAL_ADDR", "")
+	t.Setenv("STORAGE_HA_ENABLED", "")
+	if got := InternalAddr(); got != "" {
+		t.Fatalf("HA off and no value: want no peer listener, got %q", got)
+	}
+	t.Setenv("STORAGE_HA_ENABLED", "true")
+	if got := InternalAddr(); got != DefaultInternalAddr {
+		t.Fatalf("HA on: want %q, got %q", DefaultInternalAddr, got)
+	}
+	if got := replicaPeerAddr("http://storage-2:9000"); got != "http://storage-2:9002" {
+		t.Fatalf("peer address must use the derived port, got %s", got)
+	}
+	t.Setenv("STORAGE_INTERNAL_ADDR", ":9101")
+	if got := InternalAddr(); got != ":9101" {
+		t.Fatalf("explicit value wins, got %q", got)
+	}
+}
+
 func TestIsHAObjectRead(t *testing.T) {
 	if isHAObjectRead(httptest.NewRequest(http.MethodGet, "/box", nil)) {
 		t.Fatal("bucket list is not an object read")

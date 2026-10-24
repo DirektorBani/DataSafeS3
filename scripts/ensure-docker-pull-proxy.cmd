@@ -5,8 +5,10 @@ cd /d "%~dp0.."
 REM When WinHTTP still points at a dead local proxy (127.0.0.1:10801), Docker pulls fail.
 REM Start a tiny direct forward proxy on that port so Desktop can reach registries.
 
-for /f "tokens=2,*" %%A in ('netsh winhttp show proxy ^| findstr /i "??????-?????? Proxy"') do set WINHTTP_PROXY=%%B
-if /i not "%WINHTTP_PROXY%"=="127.0.0.1:10801" exit /b 0
+REM The text of "netsh winhttp show proxy" is localised (OEM code page on Russian Windows),
+REM so no localised label is matched. Only the proxy address itself is searched for.
+netsh winhttp show proxy 2>nul | findstr /c:"127.0.0.1:10801" >nul 2>&1
+if errorlevel 1 exit /b 0
 
 powershell -NoProfile -Command "if (Get-NetTCPConnection -LocalPort 10801 -State Listen -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"
 if not errorlevel 1 exit /b 0

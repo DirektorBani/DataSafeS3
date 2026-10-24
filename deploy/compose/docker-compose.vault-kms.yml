@@ -26,8 +26,8 @@ services:
       VAULT_TOKEN: root
       TOKEN_OUT: /token/token
     volumes:
-      - ../vault/policies:/policies:ro
-      - ../vault/init-dev.sh:/init-dev.sh:ro
+      - ./deploy/vault/policies:/policies:ro
+      - ./deploy/vault/init-dev.sh:/init-dev.sh:ro
       - vault-kms-token:/token
     entrypoint: ["/bin/sh", "/init-dev.sh"]
 

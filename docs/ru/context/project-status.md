@@ -2,11 +2,11 @@
 
 # Статус проекта
 
-**Обновлено:** 2026-10-19 · **Текущий релиз:** [v1.7.0](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.7.0)
+**Обновлено:** 2026-10-19 · **Текущий релиз:** [v1.7.1](https://gitverse.ru/DirektorBani/DataSafeS3/releases/tag/v1.7.1)
 
 ## Кратко
 
-**Community Edition v1.7.0** — текущий релиз: S3 DeleteObjects, production Helm-чарт (`deploy/helm/datasafes3`), усиленный Compose, multi-arch образы и пакеты Linux `.deb` / `.rpm`. Образы и пакеты этого тега публикуются, когда запушен git-тег. Этот коммит тег не пушит. Ранее: **v1.6.0** (SSE-S3 и необязательный SSE-KMS, ротация ключа, `storage-cli migrate from-minio`), **v1.5.0** (долговечный outbox событий, необязательная Kafka, скриптовый HA promote, расписание синхронизации gateway по правилу), **v1.4.1** (пины версии и production-safe установка по умолчанию) поверх **v1.4.0 Governance Evidence Pack**, cluster installer (v1.3.0), immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Платформа: S3 API, веб-консоль (русский и английский), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, Teams, защищённые `/metrics`, hash-only share tokens и HA v2 lab tooling.
+**Community Edition v1.7.1** — текущий релиз: S3 DeleteObjects, production Helm-чарт (`deploy/helm/datasafes3`), усиленный Compose, multi-arch образы и пакеты Linux `.deb` / `.rpm`. Образы и пакеты этого тега публикуются, когда запушен git-тег. Этот коммит тег не пушит. Ранее: **v1.6.0** (SSE-S3 и необязательный SSE-KMS, ротация ключа, `storage-cli migrate from-minio`), **v1.5.0** (долговечный outbox событий, необязательная Kafka, скриптовый HA promote, расписание синхронизации gateway по правилу), **v1.4.1** (пины версии и production-safe установка по умолчанию) поверх **v1.4.0 Governance Evidence Pack**, cluster installer (v1.3.0), immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Платформа: S3 API, веб-консоль (русский и английский), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, Teams, защищённые `/metrics`, hash-only share tokens и HA v2 lab tooling.
 
 **v1.1.0** закрывает trust-debt C01-C21 и поставляет **HA v2 CE lab foundation**: erasure backend, leader lock в Postgres, site replication и локальные скрипты проверки. Это scope **lab / not production multi-AZ**: без автоматического failover orchestrator, без production Patroni-кластера и без обещания petabyte 4+2 multi-host.
 
@@ -16,7 +16,7 @@ Patch **v1.0.3**: opt-in field encryption, паттерн Vault Agent → env, �
 
 | Область | Статус | Примечание |
 |---------|--------|------------|
-| S3 API (SigV4, multipart, versioning, presign, DeleteObjects) | **Поставлено** | Порт 9000. DeleteObjects с v1.7.0 |
+| S3 API (SigV4, multipart, versioning, presign, DeleteObjects) | **Поставлено** | Порт 9000. DeleteObjects с v1.7.1 |
 | Веб-консоль + Admin JSON API | **Поставлено** | Caddy :8080 |
 | PostgreSQL + read replica | **Поставлено** | Compose `--profile postgres` |
 | LDAP / OIDC SSO | **Поставлено** | OIDC exchange (v1.0.2+); предупреждение о недоступном issuer (AUD-09) |
@@ -29,7 +29,7 @@ Patch **v1.0.3**: opt-in field encryption, паттерн Vault Agent → env, �
 | HA v2 lab foundation | **Поставлено (lab)** | Erasure, leader lock, site replication; не production multi-AZ |
 | HA (failover Postgres, read-only standby) | **Частично** | Ручной promote; Helm `values-ha.yaml` |
 | Erasure coding | **Lab foundation** | `STORAGE_OBJECT_BACKEND=erasure`; production multi-AZ — future hardening |
-| Supply chain (SBOM + cosign) | **Поставлено** | Оба образа на тегах релиза (v1.0.1+) |
+| Supply chain (SBOM) | **Поставлено** | Оба образа на тегах релиза (v1.0.1+) |
 | OpenAPI 3.1 + Swagger UI | **Поставлено** | Community Integration API |
 | File collaboration (фазы 1–3) | **Поставлено** | Home bucket, grants, share links, desktop sync |
 | Security hardening (v1.0.2+) | **Поставлено** | SSRF policy, rate limits, security-status API |
@@ -72,7 +72,7 @@ Charter: trust-debt + OSS growth — внутреннее ТЗ в `D:\datasafe_t
 | CONTRIBUTING + ref-arch (P1) | **Готово** |
 | Pen-test prep doc (P1) | **Готово** |
 | Grafana panel smoke AUD-10 (P2) | **Готово** |
-| SDK examples + GHCR main publish (P2) | **Готово** |
+| SDK examples + main publish (retired in 1.7.1) (P2) | **Готово** |
 | de/fr getting-started stubs (P2) | **Готово** |
 | Share link hash-only C21 (P2) | **Готово** |
 | OpenAPI teams routes (C06-7) | **Готово** |

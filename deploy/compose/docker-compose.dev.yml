@@ -10,7 +10,7 @@ services:
   console-dev:
     profiles:
       - dev
-    image: node:20-alpine
+    image: node:24-alpine
     working_dir: /app
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
     volumes:
@@ -20,7 +20,7 @@ services:
 
   # Vite serves the UI. Do not pull the published console image for this profile.
   console-assets:
-    image: alpine:3.20
+    image: alpine:3.24
     pull_policy: if_not_present
     build: !reset null
     volumes: !override []

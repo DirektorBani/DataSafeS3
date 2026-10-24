@@ -11,17 +11,13 @@ English: [linux-packages.md](../linux-packages.md).
 
 Репозиторий apt подписан GPG-ключом (`https://gitverse.ru/api/packages/DirektorBani/debian/repository.key`), `apt` проверяет подпись. Сами RPM-пакеты GPG не подписаны, поэтому `dnf` нужен `--nogpgcheck` (так документация GitVerse советует поступать с неподписанными пакетами); метаданные репозитория подписаны.
 
-Зеркало на GitHub хранит релиз `v1.7.0` с теми же пакетами, файлом `SHA256SUMS` и cosign-bundle (`.bundle`) на каждый файл. Это запасной источник: берите файлы оттуда, если хотите проверить подпись cosign.
+На странице релиза GitVerse для каждого тега лежит `SHA256SUMS.txt` для четырёх пакетов. Скачайте файлы пакетов и сверьте суммы:
 
 ```bash
-sha256sum -c SHA256SUMS
-cosign verify-blob --bundle datasafes3_1.7.0_amd64.deb.bundle \
-  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-  datasafes3_1.7.0_amd64.deb
+sha256sum -c SHA256SUMS.txt
 ```
 
-Bundle должен соответствовать тому файлу, который ставите. Та же проверка личности сертификата описана в [политике безопасности](security-policy.md).
+Подпись cosign для пакетов не публикуется; проверка — это GPG-подпись apt, контрольные суммы выше и TLS до `gitverse.ru`. См. [политику безопасности](security-policy.md).
 
 ## Что ставит пакет
 
@@ -56,7 +52,7 @@ sudo dnf config-manager --add-repo https://gitverse.ru/api/packages/DirektorBani
 sudo dnf install datasafes3 --nogpgcheck
 ```
 
-Конкретная версия: `sudo apt install datasafes3=1.7.0-1` или `sudo dnf install datasafes3-1.7.0-1`. Архитектура подбирается сама.
+Конкретная версия: `sudo apt install datasafes3=1.7.1-1` или `sudo dnf install datasafes3-1.7.1-1`. Архитектура подбирается сама.
 
 Подробности про реестры GitVerse: [gitverse-mirror.md](gitverse-mirror.md).
 

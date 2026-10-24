@@ -13,17 +13,13 @@ The `datasafes3` packages for `linux/amd64` and `linux/arm64` are published to t
 
 The apt repository is signed with a GPG key (`https://gitverse.ru/api/packages/DirektorBani/debian/repository.key`) and `apt` verifies it. The RPM packages themselves are not GPG-signed, so `dnf` needs `--nogpgcheck` (as the GitVerse docs describe for unsigned packages); the repository metadata is signed.
 
-The GitHub mirror keeps the `v1.7.0` Release with the same packages, `SHA256SUMS`, and a cosign bundle (`.bundle`) per file. It is an alternative source: download the files there when you want to check the cosign signature.
+The GitVerse release page for each tag carries `SHA256SUMS.txt` for the four packages. Download the package files (or read their checksums from the registry page) and compare:
 
 ```bash
-sha256sum -c SHA256SUMS
-cosign verify-blob --bundle datasafes3_1.7.0_amd64.deb.bundle \
-  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-  datasafes3_1.7.0_amd64.deb
+sha256sum -c SHA256SUMS.txt
 ```
 
-Use the bundle that matches the file you install. The same identity check is in [SECURITY.md](../SECURITY.md).
+Packages are not signed with cosign; verification is the apt GPG signature, the checksums above and TLS to `gitverse.ru`. See [SECURITY.md](../SECURITY.md).
 
 ## What the package installs
 
@@ -58,7 +54,7 @@ sudo dnf config-manager --add-repo https://gitverse.ru/api/packages/DirektorBani
 sudo dnf install datasafes3 --nogpgcheck
 ```
 
-A specific version: `sudo apt install datasafes3=1.7.0-1` or `sudo dnf install datasafes3-1.7.0-1`. The architecture is picked automatically.
+A specific version: `sudo apt install datasafes3=1.7.1-1` or `sudo dnf install datasafes3-1.7.1-1`. The architecture is picked automatically.
 
 ## Enable
 
@@ -95,7 +91,7 @@ Run `sudo apt update && sudo apt install --only-upgrade datasafes3` (or `sudo dn
 
 ## По-русски
 
-Пакеты `datasafes3` лежат в реестрах пакетов [GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3/packages): `.deb` для Debian/Ubuntu и `.rpm` для Fedora, RHEL, Rocky и Alma, архитектуры amd64 и arm64. Зеркало на GitHub хранит тот же релиз с `SHA256SUMS` и cosign-bundle на каждый файл.
+Пакеты `datasafes3` лежат в реестрах пакетов [GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3/packages): `.deb` для Debian/Ubuntu и `.rpm` для Fedora, RHEL, Rocky и Alma, архитектуры amd64 и arm64. Контрольные суммы пакетов лежат в `SHA256SUMS.txt` на странице релиза GitVerse.
 
 Пакет ставит бинарники `datasafe-storage-server` и `storage-cli`, мост Kafka, системного пользователя `datasafes3` без входа в систему, unit `datasafes3.service`, конфиг `/etc/datasafes3/datasafes3.env` и каталог данных `/var/lib/datasafes3`.
 

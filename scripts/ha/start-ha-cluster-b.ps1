@@ -45,7 +45,7 @@ if (-not $SkipBuild) {
     Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED -ErrorAction SilentlyContinue
 }
 
-$env:DATASAFE_SERVER_IMAGE = "ghcr.io/direktorbani/datasafe-storage-server:v1.0.3"
+$env:DATASAFE_SERVER_IMAGE = "gitverse.ru/direktorbani/datasafe-storage-server:v1.0.3"
 $env:STORAGE_RATE_LIMIT_LOGIN = "500"
 $env:HTTP_PROXY = ""; $env:HTTPS_PROXY = ""
 

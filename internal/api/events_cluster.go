@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -266,6 +269,8 @@ type clusterMonitor struct {
 	dbMu   *sync.Mutex
 	nodes  []metadata.ClusterNode
 	status string
+	// selfID names this process in the member list. Empty means "local".
+	selfID func() string
 }
 
 func newClusterMonitor(meta metadata.MetadataStore) *clusterMonitor {
@@ -293,9 +298,7 @@ func (c *clusterMonitor) probe() {
 	}
 	nodes := cfg.Cluster.Nodes
 	if len(nodes) == 0 {
-		nodes = []metadata.ClusterNode{{
-			ID: "local", Address: "localhost:9000", Role: "primary", Status: "healthy",
-		}}
+		nodes = c.derivedNodes()
 	}
 	healthy, offline := 0, 0
 	samples := make([]observability.ClusterNodeSample, 0, len(nodes))
@@ -328,6 +331,63 @@ func (c *clusterMonitor) probe() {
 	c.status = overall
 	c.mu.Unlock()
 	observability.SetClusterNodeStatuses(overall, samples)
+}
+
+// derivedNodes lists the members when no cluster.nodes are configured. It no
+// longer assumes a node "localhost:9000": that address is not this process when
+// STORAGE_ADDR is another port, and a peer's /healthz is never on it, so the
+// dashboard showed a permanently red row and "Nodes configured 1" in HA.
+// This process is probed on its own listen port. Other nodes come from the
+// addresses they register with the shared metadata store (HA).
+func (c *clusterMonitor) derivedNodes() []metadata.ClusterNode {
+	selfID := "local"
+	if c.selfID != nil {
+		if id := strings.TrimSpace(c.selfID()); id != "" {
+			selfID = id
+		}
+	}
+	var beats []metadata.NodeHeartbeat
+	if c.meta != nil {
+		if c.dbMu != nil {
+			c.dbMu.Lock()
+			defer c.dbMu.Unlock()
+		}
+		beats, _ = c.meta.ListNodeHeartbeats(time.Now().Add(-2 * time.Minute))
+	}
+	return deriveClusterNodes(selfID, localProbeAddr(), beats)
+}
+
+// deriveClusterNodes is the pure part of derivedNodes: this process first, then
+// every other node that registered an address, ordered by id.
+func deriveClusterNodes(selfID, selfAddr string, beats []metadata.NodeHeartbeat) []metadata.ClusterNode {
+	peers := make([]metadata.ClusterNode, 0, len(beats))
+	for _, b := range beats {
+		addr := strings.TrimSpace(b.Address)
+		if b.NodeID == "" || b.NodeID == selfID || addr == "" {
+			continue
+		}
+		peers = append(peers, metadata.ClusterNode{ID: b.NodeID, Address: addr, Role: "node"})
+	}
+	sort.Slice(peers, func(i, j int) bool { return peers[i].ID < peers[j].ID })
+	role := "primary"
+	if len(peers) > 0 {
+		role = "node"
+	}
+	return append([]metadata.ClusterNode{{ID: selfID, Address: selfAddr, Role: role}}, peers...)
+}
+
+// localProbeAddr is how this process reaches its own /healthz: the loopback
+// address and the port from STORAGE_ADDR (default 9000).
+func localProbeAddr() string {
+	port := "9000"
+	if addr := strings.TrimSpace(os.Getenv("STORAGE_ADDR")); addr != "" {
+		if _, p, err := net.SplitHostPort(addr); err == nil && p != "" {
+			port = p
+		} else if strings.HasPrefix(addr, ":") && len(addr) > 1 {
+			port = addr[1:]
+		}
+	}
+	return "127.0.0.1:" + port
 }
 
 func (c *clusterMonitor) systemConfig() (metadata.SystemConfig, error) {

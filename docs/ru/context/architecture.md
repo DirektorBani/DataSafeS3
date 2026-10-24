@@ -93,7 +93,7 @@ File: `deploy/docker/Caddyfile`
 
 ## web-console
 
-React + TypeScript SPA. **По умолчанию** Compose копирует production-сборку из `ghcr.io/direktorbani/datasafe-console` в том (`deploy/compose/docker-compose.local-console.yml` вместо этого берёт `web/console/dist` с хоста). **Helm** копирует тот же образ init-контейнером. Профиль **`dev`** — Vite с hot reload (`deploy/compose/docker-compose.dev.yml`).
+React + TypeScript SPA. **По умолчанию** Compose копирует production-сборку из `gitverse.ru/direktorbani/datasafe-console` в том (`deploy/compose/docker-compose.local-console.yml` вместо этого берёт `web/console/dist` с хоста). **Helm** копирует тот же образ init-контейнером. Профиль **`dev`** — Vite с hot reload (`deploy/compose/docker-compose.dev.yml`).
 
 ## Observability stack
 

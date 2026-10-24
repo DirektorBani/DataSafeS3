@@ -6,7 +6,7 @@ Author: **Трачук Илья** | Last updated: 2026-06-22
 
 Status legend: **done** | **partial** | **in-progress** | **planned**
 
-> **Поставка 2026-06:** фазы 1–4 в основном реализованы (`20b8518` → `6299610`). GHCR+SBOM+cosign, WebAuthn, Object Lock XML, LDAP sync worker, federation ListObjectsV2 proxy, Postgres HA tooling, STS (привязка к пользователю), NATS, nightly feature-audit CI, встроенный Swagger UI. Отдельного файла дорожной карты конкурентоспособности в репозитории нет.
+> **Поставка 2026-06:** фазы 1–4 в основном реализованы (`20b8518` → `6299610`). images+SBOM, WebAuthn, Object Lock XML, LDAP sync worker, federation ListObjectsV2 proxy, Postgres HA tooling, STS (привязка к пользователю), NATS, nightly feature-audit CI, встроенный Swagger UI. Отдельного файла дорожной карты конкурентоспособности в репозитории нет.
 
 > Blocks 16–25 are available to **all licensed self-hosted deployments** (not admin-only or enterprise-gated). Navigation exposes features by role; administrators have full access.
 
@@ -57,7 +57,7 @@ Status legend: **done** | **partial** | **in-progress** | **planned**
 | AUD-18 | Testing | Trash restore E2E — upload→delete→restore cycle in audit script | S | **done** | `Trash restore cycle` row in `feature-audit-test.ps1` |
 | AUD-19 | Testing | Cycle versioning / object versions в audit script | S | **done** | Enable → put×2 → list `/versions` → GET `?versionId=` в `feature-audit-test.ps1` |
 | AUD-20 | Testing | Webhook delivery retry — verify delivery log + retry under load | M | planned | Audit only created config |
-| AUD-21 | Ops | Cross-platform binary smoke test — Linux binary in `alpine:3.20` before publish | M | planned | Catch mount/startup issues |
+| AUD-21 | Ops | Cross-platform binary smoke test — Linux binary in `alpine:3.24` before publish | M | planned | Catch mount/startup issues |
 | AUD-22 | Ops | Log sink delivery errors — surface failed HTTP responses; optional admin diagnostics via `EmitTestRecord` | M | **done** | Activity `events_sink_degraded` / `events_sink_recovered` при первой настоящей ошибке и при восстановлении. `POST /api/v1/events/test` ставит проверочное событие в очередь |
 
 ### Audit fixes already merged

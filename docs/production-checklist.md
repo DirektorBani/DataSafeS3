@@ -38,9 +38,9 @@ Use this before a single-node install is the copy of record. The one-node shape 
 
 ## Upgrades
 
-- Read the [1.7.0](../CHANGELOG.md) notes and the upgrade guide.
+- Read the [1.7.1](../CHANGELOG.md) notes and the upgrade guide.
 - Take the backup above before replacing the image.
-- Pull the versioned tag (`v1.7.0`), not `latest`, for anything you need to reproduce.
+- Pull the versioned tag (`v1.7.1`), not `latest`, for anything you need to reproduce.
 - On more than one node, finish the rolling upgrade before enabling features the older binary does not understand. The 1.6.0 encryption gate is the pattern: a mixed cluster refuses the new feature until every node is current.
 
 ## Single-node still means single-node

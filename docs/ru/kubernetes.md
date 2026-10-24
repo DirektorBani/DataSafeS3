@@ -9,7 +9,7 @@ English: [kubernetes.md](../kubernetes.md).
 ```bash
 helm repo add datasafes3 https://gitverse.ru/api/packages/DirektorBani/helm
 helm repo update
-helm install ds datasafes3/datasafes3 --version 1.7.0 \
+helm install ds datasafes3/datasafes3 --version 1.7.1 \
   --set storageServer.image.repository=gitverse.ru/direktorbani/datasafe-storage-server \
   --set console.image.repository=gitverse.ru/direktorbani/datasafe-console \
   --set auth.accessKey=datasafe \
@@ -30,7 +30,7 @@ helm install ds deploy/helm/datasafes3 \
   --set auth.metricsToken="$(openssl rand -hex 16)"
 ```
 
-Если `storageServer.image.tag` пуст, тег образа — `v` плюс `appVersion` чарта. Этот релиз: `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0`. Реестр публичный. Те же образы есть в GHCR (`ghcr.io/direktorbani/...`) на зеркале GitHub.
+Если `storageServer.image.tag` пуст, тег образа — `v` плюс `appVersion` чарта. Этот релиз: `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1`. Реестр публичный.
 
 `kubectl -n default port-forward svc/ds-datasafes3-s3 9000:9000` открывает S3 API. Сервис консоли — `ds-datasafes3-console`, порт 8080, когда `console.enabled` истинно. Пробы живости и готовности вызывают `GET /healthz`.
 
@@ -70,6 +70,6 @@ bash scripts/helm-kind-smoke.sh
 KIND_SMOKE=1 bash scripts/helm-kind-smoke.sh
 ```
 
-Первая команда — `helm lint` и `helm template`. Вторая сама образ не собирает: загрузите `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0` в локальный Docker и перетегируйте в `ghcr.io/direktorbani/datasafe-storage-server:v1.7.0` (под этим именем скрипт передаёт образ в kind), затем скрипт поднимает kind, ставит чарт и кладёт и читает объект через AWS CLI. В CI это делает образ из задания `docker-build`.
+Первая команда — `helm lint` и `helm template`. Вторая сама образ не собирает: загрузите `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1` в локальный Docker и перетегируйте в `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1` (под этим именем скрипт передаёт образ в kind), затем скрипт поднимает kind, ставит чарт и кладёт и читает объект через AWS CLI. В CI это делает образ из задания `docker-build`.
 
 Прежний чарт с Caddy, Prometheus и Grafana: [helm-datasafe.md](helm-datasafe.md).

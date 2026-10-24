@@ -2,11 +2,11 @@ English | **[Русский](../../ru/context/project-status.md)**
 
 # Project Status
 
-**Last updated:** 2026-10-19 · **Current release:** [v1.7.0](https://github.com/DirektorBani/DataSafeS3/releases/tag/v1.7.0)
+**Last updated:** 2026-10-19 · **Current release:** [v1.7.1](https://gitverse.ru/DirektorBani/DataSafeS3/releases/tag/v1.7.1)
 
 ## Summary
 
-DataSafeS3 **Community Edition v1.7.0** is the current release: S3 DeleteObjects, a production Helm chart (`deploy/helm/datasafes3`), a hardened Compose file, multi-arch release images, and Linux `.deb` / `.rpm` packages. Images and packages for this tag are published when the git tag is pushed. This repository commit does not push that tag. Prior: **v1.6.0** (SSE-S3 and optional SSE-KMS, key rotation, `storage-cli migrate from-minio`), **v1.5.0** (durable event outbox, optional Kafka, scripted HA promote, per-rule gateway sync), **v1.4.1** (release pins and a production-safe default install) on **v1.4.0 Governance Evidence Pack**, cluster installer (v1.3.0), immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Core platform: S3-compatible API, web console (Russian and English), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, Teams, metrics-token protection, share-token hashing, and HA v2 lab tooling.
+DataSafeS3 **Community Edition v1.7.1** is the current release: S3 DeleteObjects, a production Helm chart (`deploy/helm/datasafes3`), a hardened Compose file, multi-arch release images, and Linux `.deb` / `.rpm` packages. Images and packages for this tag are published when the git tag is pushed. This repository commit does not push that tag. Prior: **v1.6.0** (SSE-S3 and optional SSE-KMS, key rotation, `storage-cli migrate from-minio`), **v1.5.0** (durable event outbox, optional Kafka, scripted HA promote, per-rule gateway sync), **v1.4.1** (release pins and a production-safe default install) on **v1.4.0 Governance Evidence Pack**, cluster installer (v1.3.0), immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Core platform: S3-compatible API, web console (Russian and English), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, Teams, metrics-token protection, share-token hashing, and HA v2 lab tooling.
 
 **v1.1.0** burns down trust-debt C01-C21 and ships **HA v2 CE lab foundation**: erasure backend, Postgres leader lock, site replication, and local validation scripts. This HA scope is explicitly **lab / not production multi-AZ**: no automatic failover orchestrator, no Patroni-certified production cluster, and no petabyte 4+2 multi-host promise.
 
@@ -16,7 +16,7 @@ Prior patch **v1.0.3**: opt-in metadata field encryption, Vault Agent env inject
 
 | Area | Status | Notes |
 |------|--------|-------|
-| S3 API (SigV4, multipart, versioning, presign, DeleteObjects) | **Shipped** | Port 9000. DeleteObjects since v1.7.0 |
+| S3 API (SigV4, multipart, versioning, presign, DeleteObjects) | **Shipped** | Port 9000. DeleteObjects since v1.7.1 |
 | Web console + Admin JSON API | **Shipped** | Caddy :8080 |
 | PostgreSQL metadata + read replica routing | **Shipped** | Compose `--profile postgres` |
 | LDAP / OIDC SSO | **Shipped** | OIDC exchange flow (v1.0.2+); issuer unreachable warning (AUD-09) |
@@ -29,7 +29,7 @@ Prior patch **v1.0.3**: opt-in metadata field encryption, Vault Agent env inject
 | HA v2 lab foundation | **Shipped (lab)** | Erasure, leader lock, site replication; not production multi-AZ |
 | HA (Postgres failover scripts, read-only standby) | **Partial** | Manual promote; Helm `values-ha.yaml` |
 | Erasure coding | **Lab foundation** | `STORAGE_OBJECT_BACKEND=erasure`; production multi-AZ remains future hardening |
-| Supply chain (SBOM + cosign) | **Shipped** | Both images on release tags (v1.0.1+) |
+| Supply chain (SBOM) | **Shipped** | Both images on release tags (v1.0.1+) |
 | OpenAPI 3.1 + Swagger UI | **Shipped** | Community Integration API scope |
 | File collaboration (phases 1–3) | **Shipped** | Home bucket, grants, share links, desktop sync |
 | Security hardening (v1.0.2+) | **Shipped** | SSRF policy, rate limits, security-status API |
@@ -72,7 +72,7 @@ Charter: trust-debt burn-down + OSS growth — internal TZ under `D:\datasafe_tz
 | CONTRIBUTING + ref-arch script (P1) | **Done** |
 | Pen-test prep doc (P1) | **Done** |
 | Grafana panel smoke AUD-10 (P2) | **Done** |
-| SDK examples + GHCR main publish (P2) | **Done** |
+| SDK examples + main publish (retired in 1.7.1) (P2) | **Done** |
 | de/fr getting-started stubs (P2) | **Done** |
 | Share link hash-only C21 (P2) | **Done** |
 | OpenAPI teams routes (C06-7) | **Done** |

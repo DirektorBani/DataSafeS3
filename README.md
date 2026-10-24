@@ -2,13 +2,13 @@
 
 **По-русски:** [README.ru.md](README.ru.md) · [документация](docs/README.md) · [руководство пользователя](docs/ru/user-guide.md)
 
-**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.7.0](CHANGELOG.md#170---2026-10-19)
+**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.7.1](CHANGELOG.md#171---2026-10-24)
 
-The primary repository and the artifact registries (images, packages, Helm) are on [GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3). GitHub is a [mirror](https://github.com/DirektorBani/DataSafeS3).
+The primary repository and the artifact registries (images, packages, Helm) are on [GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3). GitHub is a [mirror](https://gitverse.ru/DirektorBani/DataSafeS3).
 
 Локальное S3-совместимое объектное хранилище: один процесс или контейнер, метаданные Bolt, отдельная СУБД не нужна. Лицензия Apache-2.0. Интерфейс консоли доступен на русском и английском.
 
-Установка, пакеты, Helm и комплект документов для реестра российского ПО — в [README.ru.md](README.ru.md). Ниже та же справка на английском.
+Установка, пакеты, Helm и основные документы продукта — в [README.ru.md](README.ru.md). Ниже та же справка на английском.
 
 ---
 
@@ -20,7 +20,7 @@ Self-hosted S3-compatible object storage you can run today: one binary or contai
 - Web console, bucket policy, object lock, audit, optional SSE-S3 / SSE-KMS
 - One node with Bolt, or several nodes that share Postgres metadata and copy object bytes to peers
 - Prometheus `/metrics` with a bearer token. The public console proxy does not forward `/metrics`
-- Release images on GitVerse (`gitverse.ru/direktorbani/...`) for `linux/amd64` and `linux/arm64`; SBOM, provenance, and cosign signatures are attached to the copy on the GitHub mirror (GHCR)
+- Release images on GitVerse (`gitverse.ru/direktorbani/...`) for `linux/amd64` and `linux/arm64`; SBOM (CycloneDX) files are attached to each GitVerse release. Images are not cosign-signed: verify by digest (see [SECURITY.md](SECURITY.md))
 
 ## Start
 
@@ -32,7 +32,7 @@ docker run --rm -p 9000:9000 \
   -e STORAGE_SECRET_KEY=change-me \
   -e STORAGE_ADMIN_PASSWORD=change-me-admin \
   -e STORAGE_JWT_SECRET=change-me-jwt \
-  gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0
+  gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1
 ```
 
 Console and API, persistent volume, `STORAGE_DEV` off:
@@ -48,7 +48,7 @@ Kubernetes (set real secrets; the chart will not install with empty ones):
 ```bash
 helm repo add datasafes3 https://gitverse.ru/api/packages/DirektorBani/helm
 helm repo update
-helm install ds datasafes3/datasafes3 --version 1.7.0 \
+helm install ds datasafes3/datasafes3 --version 1.7.1 \
   --set storageServer.image.repository=gitverse.ru/direktorbani/datasafe-storage-server \
   --set console.image.repository=gitverse.ru/direktorbani/datasafe-console \
   --set auth.accessKey=datasafe \
@@ -80,7 +80,7 @@ sudo systemctl enable --now datasafes3
 
 Guides: [Kubernetes](docs/kubernetes.md) · [Linux packages](docs/linux-packages.md) · [GitVerse registries (RU)](docs/ru/gitverse-mirror.md) · [Move from MinIO](docs/migrate-from-minio.md) · [Production checklist](docs/production-checklist.md) · [S3 compatibility](docs/compatibility.md)
 
-The image tag above is the release pin. The registry is public; `latest` points to the same release. Images, packages, and the Helm chart are listed on the [GitVerse packages page](https://gitverse.ru/DirektorBani/DataSafeS3/packages). The same release is mirrored to GHCR (`ghcr.io/direktorbani/...`) on GitHub.
+The image tag above is the release pin. The registry is public; `latest` points to the same release. Images, packages, and the Helm chart are listed on the [GitVerse packages page](https://gitverse.ru/DirektorBani/DataSafeS3/packages).
 
 ---
 
@@ -104,7 +104,7 @@ The product combines **S3-compatible storage**, a **web console**, **enterprise 
 | **Auditability** | Activity log and external log sinks |
 | **Collaboration** | Personal web workspace, bucket/folder sharing, presigned links; desktop sync (`datasafe-sync` CLI + optional Tauri UI) |
 | **Observability** | Prometheus metrics and Grafana dashboards |
-| **Production trust** | Release images on GitVerse (GHCR mirror with SBOM and cosign signing), nightly regression CI |
+| **Production trust** | Release images on GitVerse with CycloneDX SBOM per release, nightly regression CI |
 | **High availability lab** | Erasure object backend, Postgres metadata HA + leader lock, site replication, **trusted cluster pairing**, failover scripts. CE lab foundation, not production multi-AZ — [HA reference](docs/operations-guide/en/reference-deployment-2node.md) |
 
 Подробнее о ценности продукта: [Why DataSafeS3](docs/why-datasafe.md) · [RU](docs/ru/why-datasafe.md)
@@ -174,11 +174,20 @@ Kafka is an opt-in event sink. A default install does not set `STORAGE_KAFKA_BRO
 
 ---
 
+## v1.7.1
+
+- Security: Go 1.26.10, `golang.org/x/crypto` 0.58.0, `go-ntlmssp` 0.1.1, current `zod` and `react-router-dom` in the console. Base images are Alpine 3.24 and Node 24. The storage-server image installs no extra packages.
+- The arm64 image of v1.7.0 contained an amd64 binary. This release builds each architecture with its own Go target.
+- Console: the language switch offers Russian and English only; the login form is no longer prefilled; the theme button and the profile page are translated.
+- Installers and Compose: `install.ps1` no longer fails on a missing `ldap` property, the Windows pull-proxy helper works on Russian Windows, Vault overlays resolve their paths from the repository root, and HA standby nodes get Vault and answer replica requests.
+- The setup wizard no longer fails the S3 check when the bucket does not exist yet. The Grafana cluster dashboard shows the real node count.
+- Release build and publish run on GitVerse (`.gitverse/workflows/release.yaml`, [docs/ru/build.md](docs/ru/build.md)): images for `linux/amd64` and `linux/arm64`, `.deb`, `.rpm`, the Helm chart, CycloneDX SBOM files and `THIRD_PARTY_LICENSES.md`. Images are not signed; verify them by digest.
+
 ## v1.7.0
 
 - `POST /{bucket}?delete` (DeleteObjects): up to 1000 keys, Quiet, checksums, version ids, per-key errors, object lock, and the same outbox events as a single delete. `aws s3 rm --recursive`, `mc rm --recursive`, rclone, and restic can remove a prefix.
 - Helm chart `deploy/helm/datasafes3` (one pod and a PVC by default; Postgres when you turn the cluster on) and a hardened Compose file at `deploy/compose/production`.
-- Release images are multi-arch (`linux/amd64`, `linux/arm64`) and are published to GitVerse, with SBOM, provenance, and cosign on the GHCR mirror. The same tag publishes `.deb` and `.rpm` packages and the Helm chart to the GitVerse registries. The workflows run only on a `v*` tag.
+- Release images are multi-arch (`linux/amd64`, `linux/arm64`). The same tag publishes `.deb` and `.rpm` packages and the Helm chart.
 - Compatibility notes: [docs/compatibility.md](docs/compatibility.md).
 
 ## v1.6.0
@@ -227,13 +236,13 @@ copy .env.example .env
 docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml up -d
 ```
 
-The default Compose stack serves the console from `DATASAFE_CONSOLE_IMAGE` (`gitverse.ru/direktorbani/datasafe-console:v1.7.0`); a host `web/console/dist` is not required. To serve a local production build, add `-f deploy/compose/docker-compose.local-console.yml`. For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
+The default Compose stack serves the console from `DATASAFE_CONSOLE_IMAGE` (`gitverse.ru/direktorbani/datasafe-console:v1.7.1`); a host `web/console/dist` is not required. To serve a local production build, add `-f deploy/compose/docker-compose.local-console.yml`. For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
 
-Published images: `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0` and `gitverse.ru/direktorbani/datasafe-console:v1.7.0`. Registry details: [GitVerse registries (RU)](docs/ru/gitverse-mirror.md). GHCR on the GitHub mirror holds the same images.
+Published images: `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1` and `gitverse.ru/direktorbani/datasafe-console:v1.7.1`. Registry details: [GitVerse registries (RU)](docs/ru/gitverse-mirror.md).
 
 Default Compose install is production-safe: `STORAGE_DEV` is off unless you pass installer `-Dev` / `--dev` (or profile `dev`). The installer generates `STORAGE_METRICS_TOKEN` and wires Prometheus. First login is still `admin` / `admin`, then the setup wizard.
 
-**Rolling `main` builds** (for testers, not cosign/SBOM): on each push to `main`, [`.github/workflows/publish-main.yml`](.github/workflows/publish-main.yml) publishes `:main` and `:sha-<commit>` tags for both images, e.g. `ghcr.io/direktorbani/datasafe-storage-server:main`. Versioned releases (`v*`) remain the supported production path with SBOM and cosign signatures.
+**Versioned releases only.** Production images are published from `v*` tags by the GitVerse release workflow. There are no rolling `main` images; build from source (`scripts/build-images.sh`, see [docs/ru/build.md](docs/ru/build.md)) if you need an unreleased state.
 
 1. Open **http://localhost:8080** → sign in `admin` / `admin`
 2. Change the administrator password

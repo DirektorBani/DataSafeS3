@@ -46,15 +46,19 @@ services:
 
   storage-server:
     environment:
+      # Peer replica API (PUT/GET /api/v1/ha/object-replica) is served only here.
+      # 1.7.1 defaults to :9002 when STORAGE_HA_ENABLED=true; set it explicitly anyway.
+      STORAGE_INTERNAL_ADDR: ${STORAGE_INTERNAL_ADDR:-:9002}
       STORAGE_POSTGRES_READ_REPLICA_DSN: ${STORAGE_POSTGRES_READ_REPLICA_DSN:-postgres://datasafe:datasafe@postgres-standby:5432/datasafe?sslmode=disable}
 
   storage-server-standby:
     profiles: ["ha-standby"]
-    image: ${DATASAFE_SERVER_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0}
+    image: ${DATASAFE_SERVER_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1}
     pull_policy: if_not_present
     environment:
       STORAGE_READ_ONLY: "true"
       STORAGE_ADDR: ":9001"
+      STORAGE_INTERNAL_ADDR: ${STORAGE_INTERNAL_ADDR:-:9002}
       STORAGE_DATA_DIR: /data
       STORAGE_METADATA_BACKEND: postgres
       STORAGE_POSTGRES_DSN: ${STORAGE_POSTGRES_DSN:-postgres://datasafe:datasafe@postgres:5432/datasafe?sslmode=disable}
@@ -83,11 +87,12 @@ services:
 
   storage-server-standby-2:
     profiles: ["ha-standby"]
-    image: ${DATASAFE_SERVER_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0}
+    image: ${DATASAFE_SERVER_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1}
     pull_policy: if_not_present
     environment:
       STORAGE_READ_ONLY: "true"
       STORAGE_ADDR: ":9003"
+      STORAGE_INTERNAL_ADDR: ${STORAGE_INTERNAL_ADDR:-:9002}
       STORAGE_DATA_DIR: /data
       STORAGE_METADATA_BACKEND: postgres
       STORAGE_POSTGRES_DSN: ${STORAGE_POSTGRES_DSN:-postgres://datasafe:datasafe@postgres:5432/datasafe?sslmode=disable}

@@ -27,7 +27,7 @@ docker compose %COMPOSE_ARGS% build storage-server
 if errorlevel 1 exit /b 1
 
 echo Ensuring storage data dir is owned by UID 65532 (matches runtime user; was mismatched with USER nobody / 65534)...
-docker run --rm -v "%DATASAFE_DATA_ROOT%/storage:/data" --user root alpine:3.20 chown -R 65532:65532 /data
+docker run --rm -v "%DATASAFE_DATA_ROOT%/storage:/data" --user root alpine:3.24 chown -R 65532:65532 /data
 
 echo Starting stack with postgres profile and locally built binary...
 docker compose %COMPOSE_ARGS% up -d postgres storage-server --no-deps

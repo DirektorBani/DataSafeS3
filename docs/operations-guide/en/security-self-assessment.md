@@ -22,7 +22,7 @@ DataSafeS3 Community Edition `storage-server` + console, Apache-2.0, single-tena
 | Metrics endpoint | Optional bearer when `STORAGE_METRICS_TOKEN` set (v1.1.0+) | `GET /metrics`, [monitoring.md](monitoring.md) |
 | OIDC session | Exchange code (no JWT in browser URL) | `POST /auth/oidc/exchange` |
 | Rate limiting | Login endpoints per IP | `STORAGE_RATE_LIMIT_LOGIN` |
-| Supply chain | SBOM + Cosign on release tags (both images) | `.github/workflows/release.yml`, [SECURITY.md](../../../SECURITY.md) |
+| Supply chain | CycloneDX SBOM per release (Go, console, both images); images verified by digest | `.gitverse/workflows/release.yaml`, [SECURITY.md](../../../SECURITY.md) |
 | Vulnerability scanning | `govulncheck` in CI | `.github/workflows/ci.yml` |
 | Disclosure process | SECURITY.md | repository root |
 

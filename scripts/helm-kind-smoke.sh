@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CHART="$ROOT/deploy/helm/datasafes3"
 VER="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 TAG="v${VER}"
-IMAGE="ghcr.io/direktorbani/datasafe-storage-server:${TAG}"
+IMAGE="gitverse.ru/direktorbani/datasafe-storage-server:${TAG}"
 
 helm lint "$CHART" -f "$CHART/values-ci.yaml"
 helm template ds "$CHART" -f "$CHART/values-ci.yaml" >/dev/null
@@ -45,7 +45,7 @@ kind load docker-image "$IMAGE" --name datasafes3
 helm upgrade --install ds "$CHART" \
   --namespace datasafes3 --create-namespace \
   -f "$CHART/values-ci.yaml" \
-  --set storageServer.image.repository=ghcr.io/direktorbani/datasafe-storage-server \
+  --set storageServer.image.repository=gitverse.ru/direktorbani/datasafe-storage-server \
   --set storageServer.image.tag="$TAG" \
   --set storageServer.image.pullPolicy=Never \
   --wait --timeout 180s

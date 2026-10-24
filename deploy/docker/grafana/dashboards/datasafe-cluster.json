@@ -90,7 +90,7 @@
       "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
       "id": 3,
       "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "expr": "datasafe_cluster_nodes_total", "legendFormat": "total", "refId": "A" }],
+      "targets": [{ "expr": "max(datasafe_cluster_nodes_total)", "legendFormat": "total", "refId": "A" }],
       "title": "Nodes configured",
       "type": "stat"
     },
@@ -105,7 +105,7 @@
       "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
       "id": 4,
       "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "expr": "datasafe_cluster_nodes_healthy", "legendFormat": "healthy", "refId": "A" }],
+      "targets": [{ "expr": "max(datasafe_cluster_nodes_healthy)", "legendFormat": "healthy", "refId": "A" }],
       "title": "Nodes healthy",
       "type": "stat"
     },
@@ -120,7 +120,7 @@
       "gridPos": { "h": 5, "w": 4, "x": 16, "y": 1 },
       "id": 5,
       "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [{ "expr": "datasafe_cluster_nodes_offline", "legendFormat": "offline", "refId": "A" }],
+      "targets": [{ "expr": "max(datasafe_cluster_nodes_offline)", "legendFormat": "offline", "refId": "A" }],
       "title": "Nodes offline",
       "type": "stat"
     },
@@ -171,7 +171,7 @@
       },
       "targets": [
         {
-          "expr": "datasafe_cluster_node_up",
+          "expr": "max by (node_id, role) (datasafe_cluster_node_up)",
           "format": "table",
           "instant": true,
           "legendFormat": "",
@@ -212,7 +212,7 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "datasafe_cluster_node_up",
+          "expr": "max by (node_id, role) (datasafe_cluster_node_up)",
           "legendFormat": "{{node_id}} ({{role}})",
           "refId": "A"
         }
@@ -236,7 +236,7 @@
       "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull"] } },
       "targets": [
         {
-          "expr": "datasafe_cluster_node_status",
+          "expr": "max by (node_id, role, status) (datasafe_cluster_node_status)",
           "legendFormat": "{{node_id}} {{status}}",
           "refId": "A"
         }
@@ -310,9 +310,9 @@
       "id": 14,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
-        { "expr": "datasafe_cluster_nodes_total", "legendFormat": "total", "refId": "A" },
-        { "expr": "datasafe_cluster_nodes_healthy", "legendFormat": "healthy", "refId": "B" },
-        { "expr": "datasafe_cluster_nodes_offline", "legendFormat": "offline", "refId": "C" }
+        { "expr": "max(datasafe_cluster_nodes_total)", "legendFormat": "total", "refId": "A" },
+        { "expr": "max(datasafe_cluster_nodes_healthy)", "legendFormat": "healthy", "refId": "B" },
+        { "expr": "max(datasafe_cluster_nodes_offline)", "legendFormat": "offline", "refId": "C" }
       ],
       "title": "Cluster node counts",
       "type": "timeseries"

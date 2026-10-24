@@ -11,7 +11,7 @@
 #>
 param(
   [switch]$Yes,
-  [string]$Tag = "v1.7.0",
+  [string]$Tag = "v1.7.1",
   [string]$DataRoot = "",
   [string]$Profiles = "",
   [string]$ProjectName = "datasafe",
@@ -45,7 +45,7 @@ DataSafeS3 interactive installer
   .\install.ps1 -Yes -Profiles core,postgres,monitoring,data
   .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
   .\install.ps1 -DryRun -Yes -Profiles core,postgres,data
-  .\install.ps1 -Tag v1.7.0 -DataRoot D:/datasafe-data
+  .\install.ps1 -Tag v1.7.1 -DataRoot D:/datasafe-data
   .\install.ps1 -Dev -Yes -Profiles core,postgres,data
   .\install.ps1 -Cluster -DryRun
 
@@ -230,13 +230,13 @@ function Normalize-MenuKey([string]$ans) {
 function Find-LocalServerImage {
   $candidates = @(
     "datasafe-storage-server:latest",
-    "gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0",
-    "ghcr.io/direktorbani/datasafe-storage-server:v1.7.0",
-    "ghcr.io/direktorbani/datasafe-storage-server:v1.5.0",
-    "ghcr.io/direktorbani/datasafe-storage-server:v1.1.0",
-    "ghcr.io/direktorbani/datasafe-storage-server:v1.0.3",
-    "ghcr.io/direktorbani/datasafe-storage-server:v1.0.2",
-    "ghcr.io/direktorbani/datasafe-storage-server:v1.0.0",
+    "gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1",
+    "gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1",
+    "gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0",
+    "gitverse.ru/direktorbani/datasafe-storage-server:v1.1.0",
+    "gitverse.ru/direktorbani/datasafe-storage-server:v1.0.3",
+    "gitverse.ru/direktorbani/datasafe-storage-server:v1.0.2",
+    "gitverse.ru/direktorbani/datasafe-storage-server:v1.0.0",
     "datasafe-storage-server:v1.0.0"
   )
   foreach ($img in $candidates) {
@@ -434,9 +434,9 @@ function Ensure-EnvFile([string]$dataRootPath) {
     $localImg = Find-LocalServerImage
     if (-not $localImg) {
       throw @"
-No local storage-server image found, and binary mode must not rebuild (Docker Hub/GHCR pull is broken via proxy 127.0.0.1:10801).
+No local storage-server image found, and binary mode must not rebuild (Docker Hub/registry pull is broken via proxy 127.0.0.1:10801).
 Fix: run scripts\ensure-docker-pull-proxy.cmd, or pull once:
-  docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0
+  docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1
 Then re-run installer with binary selected.
 "@
     }
@@ -500,6 +500,13 @@ function Connect-IdentitySidecars {
   }
 }
 
+# ConvertFrom-Json returns an object without the properties the server omitted
+# (an empty ldap or oidc section is not sent). "$cfg.ldap = ..." then throws
+# "property 'ldap' cannot be found on this object". Add-Member -Force sets or creates it.
+function Set-JsonProperty($Object, [string]$Name, $Value) {
+  $Object | Add-Member -NotePropertyName $Name -NotePropertyValue $Value -Force
+}
+
 function Enable-IdentitySettingsViaApi {
   Write-Title "Identity settings"
   $api = "http://127.0.0.1:9000"
@@ -524,7 +531,7 @@ function Enable-IdentitySettingsViaApi {
       return
     }
     $cfg = Get-Content $sysPath -Raw -Encoding utf8 | ConvertFrom-Json
-    $cfg.ldap = [pscustomobject]@{
+    Set-JsonProperty $cfg "ldap" ([pscustomobject]@{
       enabled               = $true
       url                   = "ldap://datasafe-ldap-test:389"
       bind_dn               = "cn=admin,dc=datasafe,dc=local"
@@ -534,8 +541,8 @@ function Enable-IdentitySettingsViaApi {
       user_attr             = "cn"
       sync_on_login         = $true
       sync_interval_minutes = 60
-    }
-    $cfg.oidc = [pscustomobject]@{
+    })
+    Set-JsonProperty $cfg "oidc" ([pscustomobject]@{
       enabled         = $true
       issuer          = "http://localhost:8180/realms/datasafe"
       internal_issuer = "http://datasafe-keycloak-test:8080/realms/datasafe"
@@ -543,7 +550,7 @@ function Enable-IdentitySettingsViaApi {
       client_secret   = "datasafe-console-secret"
       redirect_url    = "http://localhost:8080/api/v1/auth/oidc/callback"
       groups_claim    = "groups"
-    }
+    })
     $putPath = Join-Path $tmp "put.json"
     [System.IO.File]::WriteAllText($putPath, ($cfg | ConvertTo-Json -Depth 30 -Compress))
     $putOut = Join-Path $tmp "put-out.json"

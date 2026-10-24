@@ -167,7 +167,7 @@ export function Sidebar() {
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="w-full justify-start gap-2">
               {theme === "dark" ? <Moon className="h-4 w-4" /> : theme === "light" ? <Sun className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
-              {t("common:theme.label", { theme })}
+              {t("common:theme.label", { theme: t(`common:theme.${theme}`) })}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-48">

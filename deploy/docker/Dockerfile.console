@@ -1,13 +1,22 @@
-# Multi-stage build for DataSafeS3 web console static assets.
+# DataSafeS3 web console static assets.
 # Published as gitverse.ru/direktorbani/datasafe-console:<tag>
+#
+# The build stage runs on the build host's architecture and the output is plain
+# static files, so one build serves every platform. The final stage has no RUN.
+# BASE_REGISTRY and NPM_REGISTRY point a build at mirrors, for example
+#   --build-arg BASE_REGISTRY=dh-mirror.gitverse.ru/library/
+#   --build-arg NPM_REGISTRY=https://npm-mirror.gitverse.ru/
+ARG BASE_REGISTRY=
+ARG ALPINE_VERSION=3.24
+ARG NODE_VERSION=24
 
-FROM node:20-alpine AS build
+FROM --platform=$BUILDPLATFORM ${BASE_REGISTRY}node:${NODE_VERSION}-alpine AS build
+ARG NPM_REGISTRY=
 WORKDIR /app
 COPY web/console/package.json web/console/package-lock.json ./
-RUN npm ci
+RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi && npm ci
 COPY web/console/ ./
 RUN npm run build
 
-FROM alpine:3.20
-RUN apk add --no-cache ca-certificates
+FROM ${BASE_REGISTRY}alpine:${ALPINE_VERSION}
 COPY --from=build /app/dist /srv/console

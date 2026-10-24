@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/DirektorBani/datasafe/internal/metadata"
@@ -195,5 +197,60 @@ func TestSetupS3SaveRequiresValidConnection(t *testing.T) {
 	cfg, _ := s.Meta().GetSystemConfig()
 	if cfg.InitialSetupCompleted {
 		t.Fatal("initial_setup_completed must stay false when save fails")
+	}
+}
+
+// fakeS3 is a path-style S3 target that has no buckets until CreateBucket.
+type fakeS3 struct {
+	mu      sync.Mutex
+	buckets map[string]bool
+	creates int
+}
+
+func (f *fakeS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/"), "/", 2)
+	bucket := parts[0]
+	isObject := len(parts) == 2 && parts[1] != ""
+	switch {
+	case !isObject && r.Method == http.MethodHead:
+		if !f.buckets[bucket] {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+	case !isObject && r.Method == http.MethodPut:
+		f.buckets[bucket] = true
+		f.creates++
+	case isObject && !f.buckets[bucket]:
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func TestSetupS3TestCreatesMissingBucket(t *testing.T) {
+	s := freshTestServer(t)
+	tok := loginToken(t, s, "admin", "admin")
+	fake := &fakeS3{buckets: map[string]bool{}}
+	ts := httptest.NewServer(fake)
+	defer ts.Close()
+
+	body, _ := json.Marshal(map[string]any{
+		"endpoint": ts.URL, "access_key_id": "k", "secret_access_key": "s",
+		"bucket": "dr-archive", "region": "us-east-1", "use_ssl": false,
+	})
+	for i := 0; i < 2; i++ {
+		req := authReq(http.MethodPost, "/api/v1/setup/s3/test", tok, body)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		var resp map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+		if resp["ok"] != true {
+			t.Fatalf("run %d: a missing bucket must not fail the wizard: %s", i, rec.Body.String())
+		}
+	}
+	if fake.creates != 1 || !fake.buckets["dr-archive"] {
+		t.Fatalf("bucket must be created exactly once, creates=%d", fake.creates)
 	}
 }

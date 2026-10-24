@@ -64,8 +64,7 @@ Scoped application credentials: **STS AssumeRole** returns short-lived session t
 
 | Signal | What it means |
 |--------|----------------|
-| **GHCR images + SBOM** | Reproducible releases with supply-chain metadata |
-| **cosign signatures** | Verify container images on deploy |
+| **Images on GitVerse + SBOM** | Releases built on GitVerse with CycloneDX SBOM; verify images by digest |
 | **Nightly feature-audit CI** | 93+ automated regression checks on `main` |
 | **Resource gate** | Single-node RSS and startup are compared with the published v1.5.0 image. A separate benchmark report is not in this repository. |
 | **SECURITY.md** | Coordinated disclosure process |

@@ -21,7 +21,7 @@ scripts\dev-docker-local-binary.cmd
 Release artifacts are published on GitVerse. Pull the new tag and recreate the stack:
 
 ```bash
-export TAG=v1.7.0
+export TAG=v1.7.1
 DATASAFE_SERVER_IMAGE=gitverse.ru/direktorbani/datasafe-storage-server:${TAG} \
 DATASAFE_CONSOLE_IMAGE=gitverse.ru/direktorbani/datasafe-console:${TAG} \
   docker compose --profile postgres pull
@@ -41,22 +41,17 @@ PostgreSQL schema migrations run automatically on `storage-server` start (`inter
 2. Restore previous binary/image and data backup
 3. Start stack
 
-## Verify release images (cosign)
+## Verify release images
 
-Release images are pulled from GitVerse (`gitverse.ru/direktorbani/...`). Cosign signatures are attached to the GHCR copy built by GitHub Actions; the per-platform manifests (`linux/amd64`, `linux/arm64`) on GitVerse have the same digests as on GHCR. Before upgrading to a tagged release, verify the signatures on the GHCR copy (see [SECURITY.md](../../../SECURITY.md)):
+Release images are pulled from GitVerse (`gitverse.ru/direktorbani/...`). They are not cosign-signed. Before upgrading to a tagged release, compare the digest on the release page with the registry and, if you wish, pin the image by digest (see [SECURITY.md](../../../SECURITY.md)):
 
 ```bash
-export COSIGN_EXPERIMENTAL=1
-TAG=v1.0.3
-cosign verify "ghcr.io/direktorbani/datasafe-storage-server:${TAG}" \
-  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
-cosign verify "ghcr.io/direktorbani/datasafe-console:${TAG}" \
-  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+TAG=v1.7.1
+crane manifest "gitverse.ru/direktorbani/datasafe-storage-server:${TAG}" | sha256sum
+crane digest   "gitverse.ru/direktorbani/datasafe-console:${TAG}"
 ```
 
-SBOM files are attached to each release on the GitHub mirror ([GitHub Release](https://github.com/DirektorBani/DataSafeS3/releases)).
+SBOM files (`sbom-<tag>.tgz`) are attached to each GitVerse release.
 
 ## Upgrading to v1.0.2
 
@@ -114,13 +109,13 @@ Pre-flight check after upgrade: `GET /api/v1/settings/security-status` (admin JW
 ```bash
 git pull
 export TAG=v1.0.3   # or build from source
-docker compose --profile postgres pull   # if using GHCR images
+docker compose --profile postgres pull   # if using registry images
 docker compose --profile postgres build storage-server
 scripts/build-console.cmd                # or pull datasafe-console:v1.0.3
 docker compose --profile postgres up -d
 ```
 
-Verify cosign signatures with `TAG=v1.0.3` (see below), then smoke-test local login, OIDC (if used), and one outbound integration (webhook or log sink).
+Verify the image digest (see above), then smoke-test local login, OIDC (if used), and one outbound integration (webhook or log sink).
 
 ## Upgrading to v1.0.3
 
@@ -154,13 +149,13 @@ Local key tooling: [scripts/crypto/README.md](../../../scripts/crypto/README.md)
 ```bash
 git pull
 export TAG=v1.0.3
-docker compose --profile postgres pull   # if using GHCR images
+docker compose --profile postgres pull   # if using registry images
 docker compose --profile postgres build storage-server
 scripts/build-console.cmd                # or pull datasafe-console:v1.0.3
 docker compose --profile postgres up -d
 ```
 
-Verify cosign with `TAG=v1.0.3` (see [Verify release images](#verify-release-images-cosign)), then `GET /api/v1/settings/security-status` and Admin → Settings → Security. Enable field encryption only after [field-encryption.md](field-encryption.md) checklist.
+Verify the image digest (see [Verify release images](#verify-release-images)), then `GET /api/v1/settings/security-status` and Admin → Settings → Security. Enable field encryption only after [field-encryption.md](field-encryption.md) checklist.
 
 ## Upgrading to v1.1.0
 
@@ -319,7 +314,7 @@ Re-run `install.ps1` / `install.sh` if you want generated secrets and the metric
 
 Minor release on **v1.4.1**. Take storage-server and console from the same tag. `GET /healthz` and `GET /api/v1/health` report `version` and `commit`.
 
-Images `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0` and `datasafe-console:v1.5.0` appear when `release.yml` runs on the git tag. This repository commit does not push that tag.
+Images `gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0` and `datasafe-console:v1.5.0` appear when `release.yml` runs on the git tag. This repository commit does not push that tag.
 
 ### Breaking and operator notes
 
@@ -369,8 +364,8 @@ After the git tag `v1.5.0` is published:
 git pull
 export TAG=v1.5.0
 # .env (or the shell) should name the published tag images:
-# DATASAFE_SERVER_IMAGE=ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
-# DATASAFE_CONSOLE_IMAGE=ghcr.io/direktorbani/datasafe-console:v1.5.0
+# DATASAFE_SERVER_IMAGE=gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0
+# DATASAFE_CONSOLE_IMAGE=gitverse.ru/direktorbani/datasafe-console:v1.5.0
 docker compose --profile postgres pull
 docker compose --profile postgres up -d
 ```
@@ -381,7 +376,7 @@ Pull the `v1.5.0` server and console images. Do not `docker compose build` for t
 
 ## Upgrading to v1.6.0
 
-`VERSION`, the installers, Compose, and Helm are **1.6.0**. Images `ghcr.io/direktorbani/datasafe-storage-server:v1.6.0` and `datasafe-console:v1.6.0` appear when `release.yml` runs on the git tag. This commit does not push that tag. A Docker build with no `VERSION` argument reads the `VERSION` file.
+`VERSION`, the installers, Compose, and Helm are **1.6.0**. Images `gitverse.ru/direktorbani/datasafe-storage-server:v1.6.0` and `datasafe-console:v1.6.0` appear when `release.yml` runs on the git tag. This commit does not push that tag. A Docker build with no `VERSION` argument reads the `VERSION` file.
 
 **Fixed, and it was in v1.5.0.** An unversioned object overwrite on Postgres ran `DELETE FROM objects` and `INSERT` as two autocommit statements. A crash between them deleted the metadata row and left the file on disk. 1.6.0 runs both statements in one transaction. The previous row remains. A rewrap job whose present count is short of the count taken at the start finishes `completed_with_errors`, not `completed`.
 

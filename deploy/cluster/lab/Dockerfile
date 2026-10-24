@@ -1,4 +1,4 @@
-FROM alpine:3.20
+FROM alpine:3.24
 
 RUN apk add --no-cache \
       openssh sudo curl ca-certificates python3 py3-pip \

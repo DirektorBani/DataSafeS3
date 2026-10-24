@@ -10,7 +10,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-BASE_IMAGE="${BASE_IMAGE:-ghcr.io/direktorbani/datasafe-storage-server:v1.5.0}"
+BASE_IMAGE="${BASE_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0}"
 PR_IMAGE="${PR_IMAGE:-datasafe-storage-server:ci}"
 NET="e06-roll"
 PG="e06-roll-pg"

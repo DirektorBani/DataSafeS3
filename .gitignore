@@ -94,3 +94,4 @@ web/console/coverage/
 
 # --- Machine-local tooling tree (not shipped) ---
 tools/dep/
+__pycache__/

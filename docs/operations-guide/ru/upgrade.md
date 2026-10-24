@@ -21,7 +21,7 @@ scripts\dev-docker-local-binary.cmd
 Артефакты релиза опубликованы на GitVerse. Скачайте новый тег и пересоздайте стек:
 
 ```bash
-export TAG=v1.7.0
+export TAG=v1.7.1
 DATASAFE_SERVER_IMAGE=gitverse.ru/direktorbani/datasafe-storage-server:${TAG} \
 DATASAFE_CONSOLE_IMAGE=gitverse.ru/direktorbani/datasafe-console:${TAG} \
   docker compose --profile postgres pull
@@ -41,22 +41,17 @@ docker compose --profile postgres up -d
 2. Восстановить предыдущий binary/image и backup данных
 3. Запустить стек
 
-## Проверка образов релиза (cosign)
+## Проверка образов релиза
 
-Образы релиза скачиваются с GitVerse (`gitverse.ru/direktorbani/...`). Подписи cosign привязаны к копии в GHCR, которую собирает GitHub Actions; манифесты платформ (`linux/amd64`, `linux/arm64`) на GitVerse имеют те же дайджесты, что и в GHCR. Перед обновлением на тег проверьте подписи копии в GHCR (см. [SECURITY.md](../../../SECURITY.md)):
+Образы релиза скачиваются с GitVerse (`gitverse.ru/direktorbani/...`). Подписи cosign не публикуются. Перед обновлением на тег сверьте дайджест со страницей релиза и при желании закрепите образ по дайджесту (см. [SECURITY.md](../../../SECURITY.md)):
 
 ```bash
-export COSIGN_EXPERIMENTAL=1
-TAG=v1.0.3
-cosign verify "ghcr.io/direktorbani/datasafe-storage-server:${TAG}" \
-  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
-cosign verify "ghcr.io/direktorbani/datasafe-console:${TAG}" \
-  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+TAG=v1.7.1
+crane digest "gitverse.ru/direktorbani/datasafe-storage-server:${TAG}"
+crane digest "gitverse.ru/direktorbani/datasafe-console:${TAG}"
 ```
 
-SBOM прикреплены к каждому релизу на зеркале GitHub ([GitHub Release](https://github.com/DirektorBani/DataSafeS3/releases)).
+SBOM (`sbom-<тег>.tgz`) прикреплены к каждому релизу на GitVerse.
 
 ## Обновление до v1.0.2
 
@@ -114,13 +109,13 @@ Redirect URI у IdP не меняется (`/api/v1/auth/oidc/callback`). Пос
 ```bash
 git pull
 export TAG=v1.0.3   # или сборка из исходников
-docker compose --profile postgres pull   # при образах GHCR
+docker compose --profile postgres pull   # при образах из реестра
 docker compose --profile postgres build storage-server
 scripts/build-console.cmd                # или pull datasafe-console:v1.0.3
 docker compose --profile postgres up -d
 ```
 
-Проверьте cosign с `TAG=v1.0.3` (ниже), затем smoke-test: локальный login, OIDC (если есть), один outbound (webhook или log sink).
+Сверьте дайджест образа (выше), затем smoke-test: локальный login, OIDC (если есть), один outbound (webhook или log sink).
 
 ## Обновление до v1.0.3
 
@@ -154,13 +149,13 @@ docker compose --profile postgres up -d
 ```bash
 git pull
 export TAG=v1.0.3
-docker compose --profile postgres pull   # при образах GHCR
+docker compose --profile postgres pull   # при образах из реестра
 docker compose --profile postgres build storage-server
 scripts/build-console.cmd                # или pull datasafe-console:v1.0.3
 docker compose --profile postgres up -d
 ```
 
-Проверьте cosign с `TAG=v1.0.3`, затем `GET /api/v1/settings/security-status` и Admin → Settings → Security. Field encryption — только по чеклисту [field-encryption.md](field-encryption.md).
+Сверьте дайджест образа, затем `GET /api/v1/settings/security-status` и Admin → Settings → Security. Field encryption — только по чеклисту [field-encryption.md](field-encryption.md).
 
 ## Обновление до v1.1.0
 
@@ -267,7 +262,7 @@ docker compose --profile postgres up -d
 
 Минорный релиз поверх **v1.4.1**. Берите storage-server и console одного тега. `GET /healthz` и `GET /api/v1/health` отдают `version` и `commit`.
 
-Образы `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0` и `datasafe-console:v1.5.0` появляются, когда `release.yml` выполняется на git-теге. Этот коммит тег не пушит.
+Образы `gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0` и `datasafe-console:v1.5.0` появляются, когда `release.yml` выполняется на git-теге. Этот коммит тег не пушит.
 
 ### Что ломается и что сделать оператору
 
@@ -317,8 +312,8 @@ Webhook, NATS и Kafka — внешняя лента событий, а не с�
 git pull
 export TAG=v1.5.0
 # .env (или оболочка) должны указывать опубликованные образы тега:
-# DATASAFE_SERVER_IMAGE=ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
-# DATASAFE_CONSOLE_IMAGE=ghcr.io/direktorbani/datasafe-console:v1.5.0
+# DATASAFE_SERVER_IMAGE=gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0
+# DATASAFE_CONSOLE_IMAGE=gitverse.ru/direktorbani/datasafe-console:v1.5.0
 docker compose --profile postgres pull
 docker compose --profile postgres up -d
 ```
@@ -329,7 +324,7 @@ docker compose --profile postgres up -d
 
 ## Обновление до v1.6.0
 
-`VERSION`, установщики, Compose и Helm — **1.6.0**. Образы `ghcr.io/direktorbani/datasafe-storage-server:v1.6.0` и `datasafe-console:v1.6.0` появляются, когда `release.yml` выполняется на git-теге. Этот коммит тег не пушит. Сборка Docker без аргумента `VERSION` читает файл `VERSION`.
+`VERSION`, установщики, Compose и Helm — **1.6.0**. Образы `gitverse.ru/direktorbani/datasafe-storage-server:v1.6.0` и `datasafe-console:v1.6.0` появляются, когда `release.yml` выполняется на git-теге. Этот коммит тег не пушит. Сборка Docker без аргумента `VERSION` читает файл `VERSION`.
 
 **Исправлено, и это было в v1.5.0.** Перезапись объекта без версий в Postgres выполняла `DELETE FROM objects` и `INSERT` двумя autocommit-операторами. Авария между ними удаляла строку метаданных и оставляла файл на диске. 1.6.0 выполняет оба оператора в одной транзакции. Прежняя строка остаётся. Задача rewrap, у которой число найденных объектов меньше числа, снятого в начале, завершается `completed_with_errors`, а не `completed`.
 

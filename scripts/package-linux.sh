@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
 # Build datasafes3 .deb and .rpm packages for linux/amd64 and linux/arm64.
-# Version comes from VERSION. Output is dist/packages/ plus SHA256SUMS.
+# Version comes from VERSION. Output is dist/packages/ plus SHA256SUMS.txt.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 NFPM_VERSION=2.48.0
-# Published checksums for the nfpm release tarballs.
-NFPM_SHA_X86_64=6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750
-NFPM_SHA_ARM64=a9a75213763783b7669719e505474c748c5ad7dc66591a195619deb50f85c2f4
 
 VERSION="$(tr -d '[:space:]' < VERSION)"
 if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
@@ -26,39 +23,14 @@ OUT="${OUT:-$ROOT/dist/packages}"
 TOOLS="$ROOT/dist/tools"
 mkdir -p "$OUT" "$TOOLS"
 
+# nfpm is built from source through the GitVerse Go mirror (no download from
+# a foreign host). GOPROXY can be overridden, e.g. for an offline mirror.
 install_nfpm() {
-  local os arch asset expect tarball
-  os="$(uname -s)"
-  arch="$(uname -m)"
-  case "$os" in
-    Linux) ;;
-    *)
-      echo "package-linux: nfpm install supports Linux (got $os)" >&2
-      exit 1
-      ;;
-  esac
-  case "$arch" in
-    x86_64)
-      asset="nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
-      expect="$NFPM_SHA_X86_64"
-      ;;
-    aarch64|arm64)
-      asset="nfpm_${NFPM_VERSION}_Linux_arm64.tar.gz"
-      expect="$NFPM_SHA_ARM64"
-      ;;
-    *)
-      echo "package-linux: unsupported arch $arch" >&2
-      exit 1
-      ;;
-  esac
   if [ -x "$TOOLS/nfpm" ] && "$TOOLS/nfpm" --version 2>/dev/null | grep -q "$NFPM_VERSION"; then
     return
   fi
-  tarball="$TOOLS/$asset"
-  curl -fsSL -o "$tarball" "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/${asset}"
-  echo "${expect}  ${tarball}" | sha256sum -c -
-  tar -xzf "$tarball" -C "$TOOLS" nfpm
-  chmod 0755 "$TOOLS/nfpm"
+  GOBIN="$TOOLS" GOPROXY="${GOPROXY:-https://go-mirror.gitverse.ru,direct}" \
+    go install "github.com/goreleaser/nfpm/v2/cmd/nfpm@v${NFPM_VERSION}"
 }
 
 install_nfpm
@@ -92,7 +64,7 @@ build_arch arm64 arm64 aarch64
 
 (
   cd "$OUT"
-  sha256sum datasafes3_"${VERSION}"_*.deb datasafes3-"${VERSION}"-1.*.rpm | sort -k2 > SHA256SUMS
+  sha256sum datasafes3_"${VERSION}"_*.deb datasafes3-"${VERSION}"-1.*.rpm | sort -k2 > SHA256SUMS.txt
 )
 
 echo "packages in $OUT"

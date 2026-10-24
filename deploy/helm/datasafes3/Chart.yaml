@@ -2,8 +2,8 @@ apiVersion: v2
 name: datasafes3
 description: DataSafeS3 — self-hosted S3-compatible object storage (single node or Postgres HA)
 type: application
-version: 1.7.0
-appVersion: "1.7.0"
+version: 1.7.1
+appVersion: "1.7.1"
 kubeVersion: ">=1.25.0-0"
 keywords:
   - s3

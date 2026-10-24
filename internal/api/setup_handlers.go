@@ -162,9 +162,19 @@ func (s *Server) testExternalS3(cfg metadata.ExternalS3Config) (bool, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
+	created := false
 	_, err = client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(cfg.Bucket)})
 	if err != nil {
-		return false, err.Error()
+		// A fresh target has no bucket yet: HeadBucket answers 404 and the
+		// wizard used to stop there. The wizard exists to write to this bucket,
+		// so create it. Any other failure (credentials, network) is reported as is.
+		if !isS3NotFound(err) {
+			return false, err.Error()
+		}
+		if _, cerr := client.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: aws.String(cfg.Bucket)}); cerr != nil && !isBucketAlreadyExists(cerr) {
+			return false, "bucket " + cfg.Bucket + " does not exist and could not be created: " + cerr.Error()
+		}
+		created = true
 	}
 
 	body := []byte("ok")
@@ -182,6 +192,9 @@ func (s *Server) testExternalS3(cfg metadata.ExternalS3Config) (bool, string) {
 		Bucket: aws.String(cfg.Bucket),
 		Key:    aws.String(setupTestObjectKey),
 	})
+	if created {
+		return true, "connected, bucket " + cfg.Bucket + " created"
+	}
 	return true, "connected"
 }
 

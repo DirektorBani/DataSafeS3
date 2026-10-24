@@ -6,7 +6,7 @@ Author: **Ilya Trachuk** | Last updated: 2026-06-22
 
 Status legend: **done** | **partial** | **in-progress** | **planned**
 
-> **2026-06 delivery:** Phases 1–4 largely implemented (`20b8518` → `6299610`). Highlights: GHCR+SBOM+cosign, WebAuthn, Object Lock XML, LDAP sync worker, federation ListObjectsV2 proxy, Postgres HA tooling, STS session tokens (user-bound), NATS event sink, storage-class transition, nightly feature-audit CI, bundled Swagger UI. A separate competitiveness roadmap file is not in this repository.
+> **2026-06 delivery:** Phases 1–4 largely implemented (`20b8518` → `6299610`). Highlights: images+SBOM, WebAuthn, Object Lock XML, LDAP sync worker, federation ListObjectsV2 proxy, Postgres HA tooling, STS session tokens (user-bound), NATS event sink, storage-class transition, nightly feature-audit CI, bundled Swagger UI. A separate competitiveness roadmap file is not in this repository.
 
 > Blocks 16–25 are available to **all licensed self-hosted deployments** (not admin-only or enterprise-gated). Navigation exposes features by role; administrators have full access.
 
@@ -57,7 +57,7 @@ Prioritized backlog from an internal feature audit on 2026-06-17. That report fi
 | AUD-18 | Testing | Trash restore E2E — upload→delete→restore cycle in audit script | S | **done** | `Trash restore cycle` row in `feature-audit-test.ps1` |
 | AUD-19 | Testing | Versioning / object versions cycle in audit script | S | **done** | Enable → put×2 → list `/versions` → GET `?versionId=` in `feature-audit-test.ps1` |
 | AUD-20 | Testing | Webhook delivery retry — verify delivery log + retry under load | M | planned | Audit only created config |
-| AUD-21 | Ops | Cross-platform binary smoke test — Linux binary in `alpine:3.20` before publish | M | planned | Catch mount/startup issues |
+| AUD-21 | Ops | Cross-platform binary smoke test — Linux binary in `alpine:3.24` before publish | M | planned | Catch mount/startup issues |
 | AUD-22 | Ops | Log sink delivery errors — surface failed HTTP responses; optional admin diagnostics via `EmitTestRecord` | M | **done** | Activity `events_sink_degraded` / `events_sink_recovered` on the first real failure and on recovery. `POST /api/v1/events/test` queues a diagnostic event |
 
 ### Audit fixes already merged

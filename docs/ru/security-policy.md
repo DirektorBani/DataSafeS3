@@ -12,78 +12,55 @@
 | Версия | Сопровождение |
 |--------|----------------|
 | Последний тег релиза | да |
+| Предыдущая минорная линия (например, 1.6.x, пока актуальна 1.7.x) | только исправления безопасности, 12 месяцев после выхода следующей минорной линии |
 | Ветка `main` | по возможности |
 
-Номер в дереве на момент документа: **1.7.0**. Следующие исправления цепочки сборки до выхода тега записаны в разделе `Unreleased` журнала изменений.
+Номер в дереве на момент документа: **1.7.1**.
 
 ---
 
 ## 2. Как сообщить об уязвимости
 
-Публичный issue для уязвимости не открывайте (ни на GitVerse, ни на зеркале GitHub).
+Публичный issue для уязвимости не открывайте.
 
-1. Напишите на **trachyk.i@gmail.com** (или, на зеркале GitHub, создайте отчёт в [GitHub Security Advisories](https://github.com/DirektorBani/DataSafeS3/security/advisories/new)). В письме:
+1. Напишите на **trachyk.i@gmail.com**. В письме:
    - компонент и версия;
    - шаги, как повторить;
    - последствия, если они уже ясны.
-2. Подтверждение, что сообщение получено, — в течение **3 рабочих дней**. Срок исправления по подтверждённой проблеме называют в течение **14 дней**.
+2. Первый ответ, что сообщение получено, — в течение **1 рабочего дня** (по московскому времени). Срок исправления по подтверждённой проблеме называют в течение **14 дней**.
 3. Публичные детали предпочтительно не выходят **90 дней**, если исправление не готово раньше.
 
 Адрес общих вопросов сопровождения в эту политику намеренно не включён, чтобы отчёт об уязвимости не смешивался с обычной перепиской. Он указан в [support.md](support.md).
 
 ---
 
-## 3. Как проверить, что вы ставите выпущенный образ
+## 3. Как проверить, что вы ставите выпущенный артефакт
 
-Образы релиза опубликованы на GitVerse (`gitverse.ru/direktorbani/datasafe-storage-server` и `gitverse.ru/direktorbani/datasafe-console`, реестр публичный). Их собирает и подписывает GitHub Actions. Подписи [cosign](https://docs.sigstore.dev/) (keyless, OIDC) и SBOM привязаны к копии в GHCR, а манифесты платформ (`linux/amd64`, `linux/arm64`) на GitVerse имеют те же дайджесты, что в GHCR. Перед выкладкой проверьте копию в GHCR:
+Образы, пакеты и чарт Helm собирает workflow GitVerse `.gitverse/workflows/release.yaml` и публикует только в реестры GitVerse (`gitverse.ru/direktorbani/datasafe-storage-server`, `gitverse.ru/direktorbani/datasafe-console`, apt/dnf/helm по адресу `https://gitverse.ru/api/packages/DirektorBani/`). Образы **не подписываются** криптографически: подпись cosign и аналоги не публикуются. Что можно проверить:
 
-```bash
-export COSIGN_EXPERIMENTAL=1
-TAG=v1.7.0
+- **Дайджест.** На странице релиза перечислены дайджесты образов и `SHA256SUMS.txt` для файлов `.deb` и `.rpm`. Сверьте с реестром: `crane manifest gitverse.ru/direktorbani/datasafe-storage-server:vX.Y.Z` (индекс содержит `linux/amd64` и `linux/arm64`). Чтобы не зависеть от смены тега, закрепляйте образ по дайджесту (`образ@sha256:...`).
+- **SBOM.** Архив `sbom-vX.Y.Z.tgz` на странице релиза содержит файлы CycloneDX для модулей Go, пакетов консоли и обоих образов и `SHA256SUMS.txt`. Уведомления о лицензиях: [third-party-licenses.md](third-party-licenses.md).
+- **Пакеты.** Репозиторий apt подписан GPG-ключом (`https://gitverse.ru/api/packages/DirektorBani/debian/repository.key`), `apt` проверяет подпись сам. RPM-пакеты GPG не подписаны, поэтому для `dnf` указывают `--nogpgcheck` (метаданные репозитория подписаны); контрольные суммы файлов лежат в `SHA256SUMS.txt` на странице релиза.
+- **Канал.** Все загрузки идут по TLS с `gitverse.ru`.
 
-cosign verify "ghcr.io/direktorbani/datasafe-storage-server:${TAG}" \
-  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
-
-cosign verify "ghcr.io/direktorbani/datasafe-console:${TAG}" \
-  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
-```
-
-Чтобы сравнить дайджесты, выполните `crane manifest <образ>:${TAG}` для имён GitVerse и GHCR и убедитесь, что записи `linux/amd64` и `linux/arm64` совпадают.
-
-SBOM (`sbom-storage-server.cdx.json`, `sbom-console.cdx.json`) лежит на странице релиза на зеркале GitHub.
-
-Пакеты `.deb` и `.rpm` в релизе на зеркале GitHub подписаны как blob (те же пакеты ставятся из репозиториев apt и dnf на GitVerse, см. [пакеты Linux](linux-packages.md)). `SHA256SUMS` покрывает четыре пакета и имеет свой bundle.
-
-```bash
-cosign verify-blob --bundle datasafes3_1.7.0_amd64.deb.bundle \
-  --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-  datasafes3_1.7.0_amd64.deb
-
-sha256sum -c SHA256SUMS
-```
-
-Для файла, который ставите, берите bundle с тем же именем. Шаги установки: [linux-packages.md](linux-packages.md).
-
-Репозитории GitVerse отдают те же пакеты. Проверка cosign относится к артефакту, а не к имени реестра: сверяйте подпись до установки. Репозиторий apt подписан GPG-ключом (`https://gitverse.ru/api/packages/DirektorBani/debian/repository.key`), `apt` проверяет подпись сам. RPM-пакеты GPG не подписаны, поэтому для `dnf` указывают `--nogpgcheck` (метаданные репозитория подписаны); контрольную сумму и bundle из релиза на зеркале GitHub при необходимости проверяют отдельно.
+Шаги установки: [linux-packages.md](linux-packages.md). Как собирается релиз: [build.md](build.md).
 
 ---
 
 ## 4. Как устроена разработка
 
-- К образцам релиза прилагаются SBOM и подпись cosign.
+- К каждому релизу прилагаются SBOM (CycloneDX) для модулей Go, консоли и образов; сборка — `.gitverse/workflows/release.yaml` ([build.md](build.md)).
 - CI гоняет тесты, `govulncheck` и регрессионные гейты.
 - Зависимости зафиксированы в `go.mod` и `package-lock.json`.
 - Чеклист внешней оценки: [подготовка к испытаниям](../operations-guide/ru/pen-test-preparation.md).
 
-### Go 1.26.10
+### 1.7.1
 
-`govulncheck` на Go 1.26.9 сообщает [GO-2026-6809](https://pkg.go.dev/vuln/GO-2026-6809): недоверие скомпрометированным промежуточным сертификатам в `crypto/x509`, исправлено в Go 1.26.10. Вызов прослеживается как `webauthn.FinishLogin` → `x509.Certificate.Verify`. Пины текущей сборки: `go.mod` `go 1.26.10`, образ `golang:1.26.10-alpine`, `setup-go` в CI, релизе и аудите. Запись лежит в `Unreleased`, пока не вышел следующий тег.
+Go 1.26.10 закрывает [GO-2026-6809](https://pkg.go.dev/vuln/GO-2026-6809) (`crypto/x509`, вызов `webauthn.FinishLogin`). `golang.org/x/crypto` v0.58.0 и `go-ntlmssp` v0.1.1 закрывают замечания по 1.7.0; консоль переведена на `zod` 4.x и `react-router-dom` 7.18.x (`npm audit --omit=dev`: 0). Образы — на Alpine 3.24 без пакета `wget`. Оставшиеся замечания `npm audit` относятся к инструментам разработки (dev-сервер vite/esbuild, цепочка Tailwind 3) и в поставляемую сборку не входят.
 
 ### Что уже закрывали предыдущие теги
 
+- **1.7.1** (2026-10-24) — см. выше.
 - **1.4.1** (2026-10-11) перевёл цепочку на Go 1.26.9 и `golang.org/x/text` v0.41.0 и закрыл набор GO-2026-66xx, который `govulncheck` показывал на Go 1.26.8.
 - **1.1.0** убрал `STORAGE_OUTBOUND_HTTP_ALLOW`, закрыл `/metrics` токеном `STORAGE_METRICS_TOKEN`, хранит токены ссылок только в виде хэша.
 - **1.0.2** закрыл замечания по SSRF, токену OIDC в URL и секретам по умолчанию.

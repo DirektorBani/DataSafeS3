@@ -93,7 +93,7 @@ Console and API share origin on `:8080` so the UI uses relative `/api/v1` paths 
 
 ## web-console
 
-React + TypeScript SPA. **Default Compose** copies a production build from `ghcr.io/direktorbani/datasafe-console` into a volume (`deploy/compose/docker-compose.local-console.yml` uses host `web/console/dist` instead). **Helm** copies the same image in an init container. The optional **`dev` Compose profile** runs Vite with hot reload via `deploy/compose/docker-compose.dev.yml`.
+React + TypeScript SPA. **Default Compose** copies a production build from `gitverse.ru/direktorbani/datasafe-console` into a volume (`deploy/compose/docker-compose.local-console.yml` uses host `web/console/dist` instead). **Helm** copies the same image in an init container. The optional **`dev` Compose profile** runs Vite with hot reload via `deploy/compose/docker-compose.dev.yml`.
 
 ## Observability stack
 

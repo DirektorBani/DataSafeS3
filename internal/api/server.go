@@ -258,6 +258,7 @@ func NewServer(cfg Config) (*Server, error) {
 	}
 	s.cluster = newClusterMonitor(s.meta)
 	s.cluster.dbMu = &s.bgMu
+	s.cluster.selfID = s.clusterNodeID
 	haCfg := ha.ConfigFromEnv()
 	if haCfg.Enabled {
 		if pg, ok := meta.(*pgmeta.Store); ok {

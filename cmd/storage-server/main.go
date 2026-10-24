@@ -99,7 +99,7 @@ func main() {
 	}()
 
 	var internalSrv *http.Server
-	if internalAddr := strings.TrimSpace(os.Getenv("STORAGE_INTERNAL_ADDR")); internalAddr != "" {
+	if internalAddr := api.InternalAddr(); internalAddr != "" {
 		internalSrv = &http.Server{
 			Addr:              internalAddr,
 			Handler:           srv.InternalHandler(),

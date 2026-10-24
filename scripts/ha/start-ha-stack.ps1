@@ -98,7 +98,7 @@ if (-not $SkipBuild) {
     }
     Write-Host "[ha] Fixing storage dir ownership for UID 65532..."
     foreach ($d in $StorageDirs) {
-        docker run --rm -v "${DataRoot}/${d}:/data" --user root alpine:3.20 chown -R 65532:65532 /data 2>$null | Out-Null
+        docker run --rm -v "${DataRoot}/${d}:/data" --user root alpine:3.24 chown -R 65532:65532 /data 2>$null | Out-Null
     }
 }
 

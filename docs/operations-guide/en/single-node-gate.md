@@ -14,7 +14,7 @@ On every pull request into `main`, and on a push to `main`:
 2. Smoke, with the AWS CLI (path-style): `/healthz`, admin login, the first-run password change and `POST /api/v1/setup/complete`, S3 create-bucket / put / get / list, Activity has at least one entry, inventory job create and list, inventory CSV download, activity CSV and JSON export. Those files are zipped the same way as `scripts/collect-evidence-pack.ps1`.
 3. With no sinks, `datasafe_events_outbox_pending` is 0 and the delivered, dropped, and dead counters are absent or zero. Server logs must not show a broker dial (`nats://`, `kafka`, `amqp://`, `dial tcp`, `lookup postgres`, `no such host`, `connection refused`). `/proc/net/tcp` and `tcp6` inside the container must not show an outbound socket except loopback (the image healthcheck) and connections whose local port is 9000 (inbound smoke).
 4. The same smoke runs again after `./install.sh --yes --profiles core`. That path starts `storage-server` and Caddy only. Admin calls go through Caddy on port 8080. S3 stays on port 9000.
-5. Bolt idle RSS and startup-to-healthy are compared with `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0` on the same runner, both on Bolt. The job fails when the PR startup median is more than 1 second above the baseline median, or the PR idle RSS median is more than 10% above the baseline median. The table is in the GitHub step summary. That +10% limit is not raised.
+5. Bolt idle RSS and startup-to-healthy are compared with `gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0` on the same runner, both on Bolt. The job fails when the PR startup median is more than 1 second above the baseline median, or the PR idle RSS median is more than 10% above the baseline median. The table is in the GitHub step summary. That +10% limit is not raised.
 6. Postgres is a separate measurement of the same two images, both with `STORAGE_METADATA_BACKEND=postgres`, against one Postgres 16 container. Runs are interleaved. Each run starts from a new `datasafe` database, so the v1.5.0 image does not open a database this build has already migrated. The same +10% RSS and +1s startup limits apply. The Bolt numbers are not the Postgres baseline.
 
 `install.ps1 -Yes -Profiles core` is the Windows equivalent. CI parses that script on `windows-latest`. It does not boot Docker there.
@@ -33,9 +33,9 @@ Docker, curl, and python3. The AWS CLI is used for S3; the script installs it wi
 python3 scripts/single-node-gate.py self-test
 
 docker build -t datasafe-storage-server:gate -f deploy/docker/Dockerfile .
-docker pull ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
+docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0
 
-BASE_IMAGE=ghcr.io/direktorbani/datasafe-storage-server:v1.5.0 \
+BASE_IMAGE=gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0 \
 PR_IMAGE=datasafe-storage-server:gate \
 bash scripts/single-node-gate.sh all
 ```
@@ -75,6 +75,5 @@ Windows, from the repo root (Docker Desktop running):
 - Inbound clients (the smoke, Caddy, the healthcheck) are allowed. Any other non-loopback socket fails the job, including a broker port.
 - The evidence zip is built by `scripts/single-node-gate.sh` from the Admin API. Linux CI does not run `collect-evidence-pack.ps1`.
 - The installer step retags the PR image as `gitverse.ru/direktorbani/datasafe-storage-server:v1.6.0` **locally** so `./install.sh` (default tag `v1.6.0`) runs the PR bits. The job does not push that tag. That retag is after the budget measurement. A normal install without that retag pulls the published v1.6.0 image once the tag exists. The budget baseline stays the published v1.5.0 image, for Bolt and for Postgres separately.
-- Login to `ghcr.io` before the baseline pull is optional. Fork pull requests skip it, and a failed login does not fail the job. The `v1.5.0` image is public.
 - The Windows CI job only checks that `install.ps1` parses and documents `-Yes -Profiles core`.
 - Startup includes Docker create time. It is the same procedure for both images; the limit applies to the difference of medians.

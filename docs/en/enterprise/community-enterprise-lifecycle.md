@@ -25,7 +25,7 @@ This document describes how features move between Enterprise and Community over 
 | **Source** | This repository (main branch) | Same codebase today; may use a separate distribution channel when Enterprise launches |
 | **Features** | Full product surface in main repo | Value-add services and packaging, not arbitrary feature withholding from CE users |
 | **Support** | Community channels (issues, discussions) | Paid support with SLA |
-| **Builds** | Published release images (GHCR, SBOM, Cosign) | Certified builds, attestation packages for procurement |
+| **Builds** | Published release images (GitVerse registry, CycloneDX SBOM) | Certified builds, attestation packages for procurement |
 
 Enterprise does **not** mean “a fork that hides core storage or governance from the community.” It means **commercial packaging** around the same platform when customers pay for accountability, not for basic product capability.
 

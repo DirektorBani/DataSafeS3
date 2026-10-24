@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Fail when release.yml would not publish the tagged storage-server image.
+"""Fail when the GitVerse release workflow would not publish the tagged images and packages.
 
-The image must include the Kafka bridge binary and link version/commit from
-VERSION and git. This script does not build or push.
+Checks .gitverse/workflows/release.yaml, scripts/build-images.sh, the Dockerfile, link-version.sh,
+the package script and nfpm config. The image must include the Kafka bridge binary and link
+version/commit from VERSION and git. This script does not build or push.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-RELEASE = ROOT / ".github/workflows/release.yml"
+RELEASE = ROOT / ".gitverse/workflows/release.yaml"
 DOCKERFILE = ROOT / "deploy/docker/Dockerfile"
 
 
@@ -29,23 +30,26 @@ def main() -> None:
         if needle not in text:
             errors.append(f"{where}: missing {needle!r}")
 
-    need(workflow, 'tags:\n      - "v*"', "release.yml")
-    need(workflow, "bash scripts/check-release-pins.sh", "release.yml")
-    need(workflow, "deploy/docker/Dockerfile", "release.yml")
-    need(workflow, '--build-arg VERSION="${{ steps.meta.outputs.version }}"', "release.yml")
-    need(workflow, '--build-arg GIT_COMMIT="${{ github.sha }}"', "release.yml")
-    need(workflow, "linux/amd64,linux/arm64", "release.yml")
-    need(workflow, "docker buildx build --push", "release.yml")
-    need(workflow, '"${SERVER_IMAGE}:${GITHUB_REF_NAME}"', "release.yml")
-    need(workflow, '"${SERVER_IMAGE}:latest"', "release.yml")
-    need(workflow, '"${CONSOLE_IMAGE}:${GITHUB_REF_NAME}"', "release.yml")
-    need(workflow, '"${CONSOLE_IMAGE}:latest"', "release.yml")
-    need(workflow, "ghcr.io/direktorbani/datasafe-storage-server", "release.yml")
-    need(workflow, "cosign sign --yes", "release.yml")
-    need(workflow, "oci://ghcr.io/direktorbani/charts", "release.yml")
-    need(workflow, "helm push", "release.yml")
-    need(workflow, "--provenance=mode=max", "release.yml")
-    need(workflow, "--sbom=true", "release.yml")
+    w = "release.yaml"
+    need(workflow, 'tags:\n      - "v*"', w)
+    need(workflow, "bash scripts/check-release-pins.sh", w)
+    need(workflow, "bash scripts/build-images.sh", w)
+    need(workflow, "REGISTRY_TOKEN", w)
+    need(workflow, "gitverse.ru/direktorbani", w)
+    need(workflow, "scripts/gitverse-publish-packages.sh", w)
+    need(workflow, "scripts/gitverse-release-assets.sh", w)
+    need(workflow, "bash scripts/package-linux.sh", w)
+    need(workflow, "bash scripts/sbom.sh", w)
+    need(workflow, "https://go-mirror.gitverse.ru", w)
+    need(workflow, "https://npm-mirror.gitverse.ru/", w)
+    for foreign in ("ghcr.io", "github.com/", "docker.io", "registry-1.docker.io"):
+        if foreign in workflow.replace("github.com/CycloneDX", "").replace("github.com/anchore", "").replace("github.com/google/go-containerregistry", ""):
+            errors.append(f"{w}: depends on foreign host {foreign!r}")
+    build = (ROOT / "scripts/build-images.sh").read_text(encoding="utf-8")
+    need(build, 'PLATFORMS="linux/amd64,linux/arm64"', "build-images.sh")
+    need(build, "tools/imgbuild", "build-images.sh")
+    need(build, "datasafe-storage-server", "build-images.sh")
+    need(build, "datasafe-console", "build-images.sh")
     script = (ROOT / "deploy/docker/link-version.sh").read_text(encoding="utf-8")
     need(dockerfile, "ARG VERSION=dev", "Dockerfile")
     need(dockerfile, "ARG GIT_COMMIT=unknown", "Dockerfile")
@@ -54,18 +58,10 @@ def main() -> None:
     need(script, "-tags datasafe_sinkexec", "link-version.sh")
     need(script, "internal/buildinfo.Version=${ver}", "link-version.sh")
     need(script, "internal/buildinfo.Commit=${commit}", "link-version.sh")
-    need(script, "/out/datasafe-kafka-bridge", "link-version.sh")
-
-    need(workflow, "linux-packages:", "release.yml")
-    need(workflow, "bash scripts/package-linux.sh", "release.yml")
-    need(workflow, "cosign sign-blob --yes", "release.yml")
-    need(workflow, "SHA256SUMS", "release.yml")
-    need(workflow, "packages/*", "release.yml")
-    need(workflow, "datasafes3_${VERSION}_amd64.deb", "release.yml")
-    need(workflow, "datasafes3-${VERSION}-1.aarch64.rpm", "release.yml")
+    need(script, "$out/datasafe-kafka-bridge", "link-version.sh")
 
     pkg = (ROOT / "scripts/package-linux.sh").read_text(encoding="utf-8")
-    need(pkg, 'NFPM_VERSION=2.48.0', "package-linux.sh")
+    need(pkg, "NFPM_VERSION=", "package-linux.sh")
     need(pkg, "packaging/nfpm.yaml", "package-linux.sh")
     need(pkg, "-tags datasafe_sinkexec", "package-linux.sh")
     need(pkg, "internal/buildinfo.Version=${VERSION}", "package-linux.sh")
@@ -73,7 +69,7 @@ def main() -> None:
     need(pkg, "./cmd/datasafe-kafka-bridge", "package-linux.sh")
     need(pkg, "build_arch amd64 amd64 x86_64", "package-linux.sh")
     need(pkg, "build_arch arm64 arm64 aarch64", "package-linux.sh")
-    need(pkg, "SHA256SUMS", "package-linux.sh")
+    need(pkg, "SHA256SUMS.txt", "package-linux.sh")
     need(pkg, 'tr -d \'[:space:]\' < VERSION', "package-linux.sh")
 
     nfpm = (ROOT / "packaging/nfpm.yaml").read_text(encoding="utf-8")

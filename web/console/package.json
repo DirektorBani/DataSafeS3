@@ -1,18 +1,18 @@
 {
   "name": "datasafe-console",
   "private": true,
-  "version": "1.7.0",
+  "version": "1.7.1",
   "author": "Трачук Илья",
   "description": "Web console for Датасейф S3 object storage",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "check:locales": "node scripts/check-locales.mjs && node --test scripts/locale-resolution.test.mjs",
+    "check:locales": "node scripts/check-locales.mjs && node --test scripts/locale-resolution.test.mjs scripts/ui-regressions.test.mjs",
     "build": "npm run check:locales && tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@hookform/resolvers": "^3.9.1",
+    "@hookform/resolvers": "^5.9.2",
     "@radix-ui/react-alert-dialog": "^1.1.2",
     "@radix-ui/react-dialog": "^1.1.2",
     "@radix-ui/react-dropdown-menu": "^2.1.2",
@@ -33,11 +33,11 @@
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.53.1",
     "react-i18next": "^17.0.8",
-    "react-router-dom": "^6.28.0",
+    "react-router-dom": "^7.18.4",
     "recharts": "^2.13.0",
     "sonner": "^1.7.0",
     "tailwind-merge": "^2.5.4",
-    "zod": "^3.23.8"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",

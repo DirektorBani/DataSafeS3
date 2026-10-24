@@ -73,7 +73,7 @@ if (-not $SkipBuild) {
     $env:CGO_ENABLED = "0"
     go build -trimpath -ldflags="-s -w" -o deploy/docker/storage-server-linux ./cmd/storage-server
     Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED -ErrorAction SilentlyContinue
-    docker run --rm -v "${DataRoot}/storage:/data" --user root alpine:3.20 chown -R 65532:65532 /data 2>$null | Out-Null
+    docker run --rm -v "${DataRoot}/storage:/data" --user root alpine:3.24 chown -R 65532:65532 /data 2>$null | Out-Null
 }
 
 $env:STORAGE_RATE_LIMIT_LOGIN = "500"

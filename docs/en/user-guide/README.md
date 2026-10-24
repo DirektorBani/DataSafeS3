@@ -431,7 +431,7 @@ docker run --rm -e PGPASSWORD=datasafe postgres:16-alpine psql -h host.docker.in
 
 Two charts are in the repository.
 
-**Current chart (v1.7.0),** [`deploy/helm/datasafes3`](../../../deploy/helm/datasafes3/): one pod, a PVC, and Bolt by default. `values-ha.yaml` turns on Postgres metadata and `STORAGE_HA_ENABLED`. Kafka and NATS are not installed. The console Service is port 8080 and the S3 Service is port 9000. Guide: [docs/kubernetes.md](../../../docs/kubernetes.md).
+**Current chart (v1.7.1),** [`deploy/helm/datasafes3`](../../../deploy/helm/datasafes3/): one pod, a PVC, and Bolt by default. `values-ha.yaml` turns on Postgres metadata and `STORAGE_HA_ENABLED`. Kafka and NATS are not installed. The console Service is port 8080 and the S3 Service is port 9000. Guide: [docs/kubernetes.md](../../../docs/kubernetes.md).
 
 ```bash
 helm install ds deploy/helm/datasafes3 \
@@ -442,9 +442,9 @@ helm install ds deploy/helm/datasafes3 \
   --set auth.metricsToken=change-me-metrics
 ```
 
-The same chart is in the GitVerse Helm repository: `helm repo add datasafes3 https://gitverse.ru/api/packages/DirektorBani/helm`, then `helm install ds datasafes3/datasafes3 --version 1.7.0` with the same `--set` flags (full command in [kubernetes.md](../../../docs/kubernetes.md)).
+The same chart is in the GitVerse Helm repository: `helm repo add datasafes3 https://gitverse.ru/api/packages/DirektorBani/helm`, then `helm install ds datasafes3/datasafes3 --version 1.7.1` with the same `--set` flags (full command in [kubernetes.md](../../../docs/kubernetes.md)).
 
-**Earlier chart,** [`deploy/helm/datasafe`](../../../deploy/helm/datasafe/): the Compose-like stack with Caddy, optional Prometheus, Grafana, and Postgres. It is not the chart described in the v1.7.0 release notes.
+**Earlier chart,** [`deploy/helm/datasafe`](../../../deploy/helm/datasafe/): the Compose-like stack with Caddy, optional Prometheus, Grafana, and Postgres. It is not the chart described in the v1.7.1 release notes.
 
 Русская версия: [Kubernetes / Helm](../../ru/user-guide/README.md#kubernetes--helm).
 

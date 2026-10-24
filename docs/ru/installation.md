@@ -1,6 +1,6 @@
 # Инструкция по установке DataSafeS3
 
-**Релиз:** v1.7.0  
+**Релиз:** v1.7.1  
 **Лицензия:** Apache-2.0  
 Интерфейс консоли доступен на русском и английском.
 
@@ -58,14 +58,14 @@ PostgreSQL **16** нужен только если метаданные выне
 
 Образы релиза (реестр `gitverse.ru`, владелец `direktorbani` строчными буквами, `linux/amd64` и `linux/arm64`):
 
-- `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0`
-- `gitverse.ru/direktorbani/datasafe-console:v1.7.0`
+- `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1`
+- `gitverse.ru/direktorbani/datasafe-console:v1.7.1`
 
 Тег `latest` указывает на тот же релиз.
 
 ```bash
-docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0
-docker pull gitverse.ru/direktorbani/datasafe-console:v1.7.0
+docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1
+docker pull gitverse.ru/direktorbani/datasafe-console:v1.7.1
 ```
 
 Пакеты Linux (`datasafes3`, `amd64` и `arm64`) ставятся из репозиториев GitVerse:
@@ -76,7 +76,7 @@ docker pull gitverse.ru/direktorbani/datasafe-console:v1.7.0
 | RPM | `https://gitverse.ru/api/packages/DirektorBani/rpm/stable.repo` | Fedora, RHEL, Rocky, Alma |
 | Helm | `https://gitverse.ru/api/packages/DirektorBani/helm` | Kubernetes |
 
-Команды подключения — в разделах 5 и 6. Зеркало на GitHub (`ghcr.io`, GitHub Release с `SHA256SUMS` и cosign-bundle) остаётся запасным вариантом: проверка подписи описана в [политике безопасности](security-policy.md).
+Команды подключения — в разделах 5 и 6. Проверка артефактов (дайджесты, SBOM, контрольные суммы) описана в [политике безопасности](security-policy.md).
 
 ---
 
@@ -133,7 +133,7 @@ cp .env.example .env
 docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml up -d
 ```
 
-`STORAGE_DEV` в этом стеке по умолчанию выключен. Образ консоли — `gitverse.ru/direktorbani/datasafe-console:v1.7.0`. Для Vite при правке интерфейса добавьте `-f deploy/compose/docker-compose.dev.yml --profile dev`.
+`STORAGE_DEV` в этом стеке по умолчанию выключен. Образ консоли — `gitverse.ru/direktorbani/datasafe-console:v1.7.1`. Для Vite при правке интерфейса добавьте `-f deploy/compose/docker-compose.dev.yml --profile dev`.
 
 Оверлеи лабораторий (HA, erasure, Vault, Kafka) перечислены в [deploy-compose.md](deploy-compose.md). Порты лабораторий не занимают `:9000` и `:9001` одновременно с основным стендом: erasure — консоль **8084**, S3 **9004**, Postgres **5444**; площадка A — **8086** / **9006** / **5446**; HA — **8082** / **9002** / **5442**. Старый скопированный `.env.erasure` или `.env.site-a` хранит прежние порты, пока его не пересоздадут из примера.
 
@@ -148,7 +148,7 @@ docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-co
 ```bash
 helm repo add datasafes3 https://gitverse.ru/api/packages/DirektorBani/helm
 helm repo update
-helm install ds datasafes3/datasafes3 --version 1.7.0 \
+helm install ds datasafes3/datasafes3 --version 1.7.1 \
   --set storageServer.image.repository=gitverse.ru/direktorbani/datasafe-storage-server \
   --set console.image.repository=gitverse.ru/direktorbani/datasafe-console \
   --set auth.accessKey=datasafe \

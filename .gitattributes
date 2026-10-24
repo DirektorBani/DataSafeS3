@@ -19,3 +19,6 @@ deploy/vault/dev-token text eol=lf
 deploy/cluster/lab/Dockerfile text eol=lf
 deploy/cluster/lab/Dockerfile.* text eol=lf
 deploy/cluster/lab/Caddyfile.lab text eol=lf
+
+# Windows batch files must keep CRLF and must not contain localised text matches.
+*.cmd text eol=crlf

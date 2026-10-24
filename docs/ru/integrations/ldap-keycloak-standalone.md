@@ -303,6 +303,8 @@ Realm import (`--import-realm`) выполняется **только при п�
 3. Либо оставьте internal issuer пустым — при issuer с `localhost` DataSafeS3 в Docker подставит `host.docker.internal` автоматически.
 4. Keycloak well-known может рекламировать `localhost` в `token_endpoint` — DataSafeS3 переписывает host на internal issuer при обмене token.
 
+> **Issuer в discovery (`http://localhost:8080/...`).** Если Keycloak запущен за другим адресом, в `/.well-known/openid-configuration` может быть `issuer` вида `http://localhost:8080/realms/...`. DataSafeS3 не сверяет `issuer` из discovery с введённым адресом, а подменяет только хост в адресах `token_endpoint`, `userinfo_endpoint` и `jwks_uri` на хост внутреннего issuer. Чтобы Keycloak сам отдавал правильные адреса, задайте ему `KC_HOSTNAME` (или `KC_HOSTNAME_URL`) с тем адресом, по которому к нему ходит браузер, и `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`, если серверные вызовы идут по другому имени. Эта подмена проверена только по коду и тестам, не на живом Keycloak.
+
 Проверка из контейнера:
 
 ```cmd

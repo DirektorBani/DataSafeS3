@@ -94,7 +94,7 @@ storage-server ставится на leader Apply-скриптом или offlin
 
 SSO в консоли — через **OIDC** (Keycloak / другой IdP в Settings), без edge oauth2-proxy.
 
-Тег образа (по умолчанию `v1.7.0`) задаёт `DATASAFE_*_IMAGE`, если не выбран пункт **5**.
+Тег образа (по умолчанию `v1.7.1`) задаёт `DATASAFE_*_IMAGE`, если не выбран пункт **5**.
 
 ## Dev mode и metrics (v1.4.1)
 
