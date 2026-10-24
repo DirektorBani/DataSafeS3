@@ -22,7 +22,7 @@ Push токеном (а не `GITHUB_TOKEN`) запускает workflow на Gi
 
 ## Зеркало исходного кода
 
-[`.github/workflows/mirror-gitverse.yml`](../../.github/workflows/mirror-gitverse.yml) запускается на каждый push любой ветки и любого тега, а также вручную (`workflow_dispatch`). Скрипт [`scripts/gitverse-mirror.sh`](../../scripts/gitverse-mirror.sh) забирает с GitHub все `refs/heads/*` и `refs/tags/*` и отправляет их на `https://gitverse.ru/DirektorBani/DataSafeS3.git`.
+`.github/workflows/mirror-gitverse.yml` запускается на каждый push любой ветки и любого тега, а также вручную (`workflow_dispatch`). Скрипт [`scripts/gitverse-mirror.sh`](../../scripts/gitverse-mirror.sh) забирает с GitHub все `refs/heads/*` и `refs/tags/*` и отправляет их на `https://gitverse.ru/DirektorBani/DataSafeS3.git`.
 
 Это не `git push --mirror`. Ссылки, которых нет на GitHub, на GitVerse не удаляются: своя ветка, свой тег и ветка, уже удалённая на GitHub, остаются. Обновление только fast-forward. Если история разошлась, эта ссылка не перезаписывается, остальные всё равно уходят, и job завершается с ошибкой.
 
