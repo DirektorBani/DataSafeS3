@@ -34,12 +34,12 @@ Git-тег имеет вид `vX.Y.Z` и совпадает с `VERSION`. Ком
 
 | Артефакт | Где |
 |----------|-----|
-| Образ сервера `linux/amd64` и `linux/arm64` | `ghcr.io/direktorbani/datasafe-storage-server:<тег>` и зеркало GitVerse |
-| Образ консоли | `ghcr.io/direktorbani/datasafe-console:<тег>` и зеркало GitVerse |
-| SBOM и provenance, подпись cosign | прикладываются к образам релиза |
-| Чарт OCI | `oci://ghcr.io/direktorbani/charts` |
+| Образ сервера `linux/amd64` и `linux/arm64` | `gitverse.ru/direktorbani/datasafe-storage-server:<тег>` (зеркало на GitHub: `ghcr.io/direktorbani/datasafe-storage-server:<тег>`) |
+| Образ консоли | `gitverse.ru/direktorbani/datasafe-console:<тег>` (зеркало на GitHub: `ghcr.io/direktorbani/datasafe-console:<тег>`) |
+| SBOM и provenance, подпись cosign | прикладываются к образам релиза в GHCR и к релизу на зеркале GitHub |
+| Чарт Helm | репозиторий `https://gitverse.ru/api/packages/DirektorBani/helm` (зеркало на GitHub: `oci://ghcr.io/direktorbani/charts`) |
 | Чарт в дереве | `deploy/helm/datasafes3`, `version` и `appVersion` равны `VERSION` |
-| Пакеты | `datasafes3_<версия>_amd64.deb`, `arm64.deb`, `datasafes3-<версия>-1.x86_64.rpm`, `aarch64.rpm`, `SHA256SUMS`, bundle подписи |
+| Пакеты | репозитории apt и dnf на GitVerse (пакет `datasafes3`); на зеркале GitHub — файлы `.deb` и `.rpm`, `SHA256SUMS`, bundle подписи |
 | Исходный код | этот репозиторий, лицензия Apache-2.0 |
 
 Прежний чарт `deploy/helm/datasafe` остаётся в дереве для уже развёрнутых стеков с Caddy, Prometheus и Grafana. Новая установка описана чартом `datasafes3`.

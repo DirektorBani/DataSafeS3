@@ -52,7 +52,7 @@ DataSafeS3 закрывает эту потребность **единым пр�
 - **Docker Compose** — быстрый старт; опциональный [HA overlay](../../operations-guide/ru/reference-deployment-2node.md)
 - **Helm chart** — production в Kubernetes (`values-production.yaml`, `values-ha.yaml`)
 - **Метаданные** — BoltDB (по умолчанию) или PostgreSQL с маршрутизацией list на read replica
-- **Артефакты релиза** — образы `ghcr.io/direktorbani/datasafe-*` (тег, напр. `v1.0.3`), SBOM, подписи cosign на тегах — проверка через `cosign verify` (см. [SECURITY.md](../../../SECURITY.md))
+- **Артефакты релиза** — образы `gitverse.ru/direktorbani/datasafe-*` на GitVerse (зеркало на GitHub: `ghcr.io`) (тег, напр. `v1.0.3`), SBOM, подписи cosign на тегах — проверка через `cosign verify` (см. [SECURITY.md](../../../SECURITY.md))
 - **Интеграции** — STS, NATS, [extension hooks](../../../examples/extension-hook/README.md)
 - **Файловое пространство** — home bucket, шаринг, опционально [sync CLI](../../../clients/README.md) — [статус](../../ru/specs/file-collaboration-status.md)
 

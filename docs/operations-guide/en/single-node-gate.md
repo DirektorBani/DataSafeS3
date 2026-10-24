@@ -45,8 +45,8 @@ bash scripts/single-node-gate.sh all
 Core profile through the installer, using the image you just built (Compose `pull_policy` is `if_not_present`, so the local tag wins and nothing is pushed):
 
 ```bash
-docker build -t ghcr.io/direktorbani/datasafe-console:v1.6.0 -f deploy/docker/Dockerfile.console .
-docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.6.0
+docker build -t gitverse.ru/direktorbani/datasafe-console:v1.6.0 -f deploy/docker/Dockerfile.console .
+docker tag datasafe-storage-server:gate gitverse.ru/direktorbani/datasafe-storage-server:v1.6.0
 ./install.sh --yes --profiles core --project datasafe-gate --data-root "${TMPDIR:-/tmp}/datasafe-gate"
 bash scripts/single-node-gate.sh smoke-installed
 docker compose -p datasafe-gate -f docker-compose.yml down -v
@@ -74,7 +74,7 @@ Windows, from the repo root (Docker Desktop running):
 - The TCP check does not see UDP, including DNS. A name lookup that fails before a TCP connect has to show up in the log patterns above.
 - Inbound clients (the smoke, Caddy, the healthcheck) are allowed. Any other non-loopback socket fails the job, including a broker port.
 - The evidence zip is built by `scripts/single-node-gate.sh` from the Admin API. Linux CI does not run `collect-evidence-pack.ps1`.
-- The installer step retags the PR image as `ghcr.io/direktorbani/datasafe-storage-server:v1.6.0` **locally** so `./install.sh` (default tag `v1.6.0`) runs the PR bits. The job does not push that tag. That retag is after the budget measurement. A normal install without that retag pulls the published v1.6.0 image once the tag exists. The budget baseline stays the published v1.5.0 image, for Bolt and for Postgres separately.
+- The installer step retags the PR image as `gitverse.ru/direktorbani/datasafe-storage-server:v1.6.0` **locally** so `./install.sh` (default tag `v1.6.0`) runs the PR bits. The job does not push that tag. That retag is after the budget measurement. A normal install without that retag pulls the published v1.6.0 image once the tag exists. The budget baseline stays the published v1.5.0 image, for Bolt and for Postgres separately.
 - Login to `ghcr.io` before the baseline pull is optional. Fork pull requests skip it, and a failed login does not fail the job. The `v1.5.0` image is public.
 - The Windows CI job only checks that `install.ps1` parses and documents `-Yes -Profiles core`.
 - Startup includes Docker create time. It is the same procedure for both images; the limit applies to the difference of medians.

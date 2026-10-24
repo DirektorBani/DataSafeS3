@@ -155,7 +155,7 @@ sudo apt install datasafes3
 Конкретная версия:
 
 ```bash
-sudo apt install datasafes3=1.7.0
+sudo apt install datasafes3=1.7.0-1
 ```
 
 Документация: <https://gitverse.ru/docs/artifactory/packages-uc/deb-packages-uc>.
@@ -200,7 +200,7 @@ helm install ds datasafes3/datasafes3 --version 1.7.0 \
   --set auth.metricsToken="$(openssl rand -hex 16)"
 ```
 
-Пустой `storageServer.image.tag` в чарте означает `v` плюс `appVersion`, для этого релиза — `v1.7.0`. В чарте по умолчанию образы указывают на `ghcr.io`; параметры `--set` выше берут их из GitVerse.
+Пустой `storageServer.image.tag` в чарте означает `v` плюс `appVersion`, для этого релиза — `v1.7.0`. В чарте `1.7.0`, опубликованном в репозитории Helm, образы по умолчанию указывают на `ghcr.io`; параметры `--set` выше берут их из GitVerse. В чарте из дерева репозитория после этого изменения по умолчанию уже GitVerse.
 
 Если реестр запрашивает авторизацию:
 

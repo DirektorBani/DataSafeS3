@@ -45,8 +45,8 @@ bash scripts/single-node-gate.sh all
 Профиль core через установщик, на только что собранном образе (у Compose `pull_policy: if_not_present`, поэтому побеждает локальный тег; в реестр ничего не пушится):
 
 ```bash
-docker build -t ghcr.io/direktorbani/datasafe-console:v1.6.0 -f deploy/docker/Dockerfile.console .
-docker tag datasafe-storage-server:gate ghcr.io/direktorbani/datasafe-storage-server:v1.6.0
+docker build -t gitverse.ru/direktorbani/datasafe-console:v1.6.0 -f deploy/docker/Dockerfile.console .
+docker tag datasafe-storage-server:gate gitverse.ru/direktorbani/datasafe-storage-server:v1.6.0
 ./install.sh --yes --profiles core --project datasafe-gate --data-root "${TMPDIR:-/tmp}/datasafe-gate"
 bash scripts/single-node-gate.sh smoke-installed
 docker compose -p datasafe-gate -f docker-compose.yml down -v
@@ -74,7 +74,7 @@ Windows, из корня репозитория (Docker Desktop запущен):
 - Проверка TCP не видит UDP, включая DNS. Ошибка резолва до TCP-соединения должна попасть в шаблоны логов выше.
 - Входящие клиенты (smoke, Caddy, healthcheck) разрешены. Любой другой сокет не на loopback валит job, включая порт брокера.
 - Zip evidence собирает `scripts/single-node-gate.sh` из Admin API. Linux CI не запускает `collect-evidence-pack.ps1`.
-- Шаг установщика локально перетегирует образ PR в `ghcr.io/direktorbani/datasafe-storage-server:v1.6.0`, чтобы `./install.sh` (тег по умолчанию `v1.6.0`) поднял биты PR. Job этот тег не пушит. Перетегирование идёт после измерения бюджета. Обычная установка без него тянет опубликованный образ v1.6.0, когда тег уже есть. Baseline бюджета остаётся опубликованный образ v1.5.0, отдельно для Bolt и для Postgres.
+- Шаг установщика локально перетегирует образ PR в `gitverse.ru/direktorbani/datasafe-storage-server:v1.6.0`, чтобы `./install.sh` (тег по умолчанию `v1.6.0`) поднял биты PR. Job этот тег не пушит. Перетегирование идёт после измерения бюджета. Обычная установка без него тянет опубликованный образ v1.6.0, когда тег уже есть. Baseline бюджета остаётся опубликованный образ v1.5.0, отдельно для Bolt и для Postgres.
 - Вход в `ghcr.io` перед pull baseline необязателен. Fork pull request его пропускает, а неудачный login не валит job. Образ `v1.5.0` публичный.
 - Windows job в CI только проверяет, что `install.ps1` разбирается и документирует `-Yes -Profiles core`.
 - В старт входит время создания контейнера Docker. Процедура одна и та же для обоих образов; лимит применяется к разнице медиан.
