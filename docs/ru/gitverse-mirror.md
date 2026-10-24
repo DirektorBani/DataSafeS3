@@ -1,4 +1,22 @@
-# Зеркало GitVerse
+# GitVerse — основной репозиторий
+
+С 24.10.2026 основной репозиторий DataSafeS3 — [DirektorBani/DataSafeS3 на GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3). Коммиты, запросы на слияние и CI живут там. [GitHub](https://github.com/DirektorBani/DataSafeS3) — зеркало: туда копируются `main`, ветки `release/**` и теги `v*`.
+
+## Зеркало GitVerse → GitHub
+
+Workflow [`.gitverse/workflows/mirror_to_gh.yaml`](../../.gitverse/workflows/mirror_to_gh.yaml) срабатывает на push в `main`, `release/**` и теги `v*`, а также вручную. Скрипт [`scripts/github-mirror.sh`](../../scripts/github-mirror.sh) отправляет на GitHub только эту ссылку.
+
+Это не `git push --mirror` и не форс-пуш. Ветки, которых нет на GitVerse (ветки агентов Cursor, `refs/pull/*`), на GitHub остаются. Если история разошлась, push отклоняется и job завершается с ошибкой.
+
+Секреты репозитория GitVerse: `GH_MIRROR_ACTOR` (владелец на GitHub), `GH_MIRROR_REPO` (имя репозитория), `GH_MIRROR_TOKEN` (токен GitHub с правами Contents и Workflows на запись, либо classic со scopes `repo` и `workflow`). Токен в URL не попадает: на запрос пароля отвечает `GIT_ASKPASS`, вывод `git push` проходит через маскирование.
+
+Push токеном (а не `GITHUB_TOKEN`) запускает workflow на GitHub, поэтому релиз по тегу `v*` и публикация образов продолжают работать там. Лимит облачных раннеров GitVerse — 1000 минут в месяц на публичный репозиторий, поэтому зеркалируются только основные ветки и теги.
+
+Прежнее направление GitHub → GitVerse (`.github/workflows/mirror-gitverse.yml`) отключено. Описание ниже относится к нему и сохранено для истории и для публикации пакетов.
+
+---
+
+## Прежняя схема: GitHub → GitVerse (отключена)
 
 Репозиторий [DirektorBani/DataSafeS3](https://gitverse.ru/DirektorBani/DataSafeS3) получает ветки и теги с GitHub и хранит пакеты релиза. Это обычный репозиторий GitVerse, а не импорт в режиме зеркала: у импортированного зеркала CI/CD выключен ([FAQ](https://gitverse.ru/docs/cicd/faq/)).
 
