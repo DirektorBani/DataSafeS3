@@ -6,7 +6,7 @@ English | **[Русский](../ru/README.md)**
 
 Documentation hub aligned with the product lifecycle: **Learn → Deploy → Configure → Manage → Operate → Reference → API**.
 
-**Full bilingual hub:** [../README.md](../README.md)
+**Full index (Russian):** [../README.md](../README.md). Registry pack: [../ru/user-guide.md](../ru/user-guide.md), [installation](../ru/installation.md), [lifecycle](../ru/lifecycle.md). The product interface is Russian and English.
 
 ---
 

@@ -31,7 +31,7 @@ When enabled, new and updated values for these paths are stored with wire prefix
 
 **Not encrypted in v1.0.3:** `password_hash`, API token hashes, TOTP secrets (`aes:` scheme), `shared_links.token`, non-secret config (URLs, booleans, usernames).
 
-Design reference: [field-encryption-1.0.3-tz.md](../../specs/field-encryption-1.0.3-tz.md).
+The original TZ file is not in this repository. This page is the public description.
 
 ## Threat model (summary)
 
@@ -202,4 +202,4 @@ See [upgrade.md § Upgrading to v1.0.3](upgrade.md#upgrading-to-v103).
 - [scripts/crypto/README.md](../../../scripts/crypto/README.md) — key generation examples
 - [secrets-vault.md](secrets-vault.md) — Vault Agent env injection
 - [security-self-assessment.md](security-self-assessment.md) — control matrix
-- [Spec](../../specs/field-encryption-1.0.3-tz.md) — wire format, crypto design, acceptance criteria
+- Wire format, crypto design, and acceptance criteria are described on this page. The original TZ file is not in this repository.

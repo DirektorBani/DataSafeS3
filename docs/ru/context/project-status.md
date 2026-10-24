@@ -6,7 +6,7 @@
 
 ## Кратко
 
-**Community Edition v1.7.0** — текущий релиз: S3 DeleteObjects, production Helm-чарт (`deploy/helm/datasafes3`), усиленный Compose, multi-arch образы и пакеты Linux `.deb` / `.rpm`. Образы и пакеты этого тега публикуются, когда запушен git-тег. Этот коммит тег не пушит. Ранее: **v1.6.0** (SSE-S3 и необязательный SSE-KMS, ротация ключа, `storage-cli migrate from-minio`), **v1.5.0** (долговечный outbox событий, необязательная Kafka, скриптовый HA promote, расписание синхронизации gateway по правилу), **v1.4.1** (пины версии и production-safe установка по умолчанию) поверх **v1.4.0 Governance Evidence Pack**, cluster installer (v1.3.0), immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Платформа: S3 API, веб-консоль (EN/RU/DE/FR), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, Teams, защищённые `/metrics`, hash-only share tokens и HA v2 lab tooling.
+**Community Edition v1.7.0** — текущий релиз: S3 DeleteObjects, production Helm-чарт (`deploy/helm/datasafes3`), усиленный Compose, multi-arch образы и пакеты Linux `.deb` / `.rpm`. Образы и пакеты этого тега публикуются, когда запушен git-тег. Этот коммит тег не пушит. Ранее: **v1.6.0** (SSE-S3 и необязательный SSE-KMS, ротация ключа, `storage-cli migrate from-minio`), **v1.5.0** (долговечный outbox событий, необязательная Kafka, скриптовый HA promote, расписание синхронизации gateway по правилу), **v1.4.1** (пины версии и production-safe установка по умолчанию) поверх **v1.4.0 Governance Evidence Pack**, cluster installer (v1.3.0), immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Платформа: S3 API, веб-консоль (русский и английский), метаданные PostgreSQL/Bolt, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway, federation MVP, Teams, защищённые `/metrics`, hash-only share tokens и HA v2 lab tooling.
 
 **v1.1.0** закрывает trust-debt C01-C21 и поставляет **HA v2 CE lab foundation**: erasure backend, leader lock в Postgres, site replication и локальные скрипты проверки. Это scope **lab / not production multi-AZ**: без автоматического failover orchestrator, без production Patroni-кластера и без обещания petabyte 4+2 multi-host.
 
@@ -33,8 +33,8 @@ Patch **v1.0.3**: opt-in field encryption, паттерн Vault Agent → env, �
 | OpenAPI 3.1 + Swagger UI | **Поставлено** | Community Integration API |
 | File collaboration (фазы 1–3) | **Поставлено** | Home bucket, grants, share links, desktop sync |
 | Security hardening (v1.0.2+) | **Поставлено** | SSRF policy, rate limits, security-status API |
-| Шифрование полей метаданных (v1.0.3) | **Поставлено (opt-in)** | `STORAGE_FIELD_ENCRYPTION_*`, миграция `012` — [field-encryption.md](../operations-guide/ru/field-encryption.md) |
-| Vault injection (v1.0.3) | **Поставлено (ops)** | Agent sidecar → `STORAGE_*` env — [secrets-vault.md](../operations-guide/ru/secrets-vault.md) |
+| Шифрование полей метаданных (v1.0.3) | **Поставлено (opt-in)** | `STORAGE_FIELD_ENCRYPTION_*`, миграция `012` — [field-encryption.md](../../operations-guide/ru/field-encryption.md) |
+| Vault injection (v1.0.3) | **Поставлено (ops)** | Agent sidecar → `STORAGE_*` env — [secrets-vault.md](../../operations-guide/ru/secrets-vault.md) |
 
 ## Тестовые гейты
 
@@ -51,13 +51,13 @@ Patch **v1.0.3**: opt-in field encryption, паттерн Vault Agent → env, �
 - Roadmap: [roadmap.md](./roadmap.md).
 - Архитектура: [architecture.md](./architecture.md).
 
-## Вне scope CE (future)
+## Что по-прежнему не входит в заявление о production
 
-Mobile (Flutter/PWA), Kafka sink, авто-failover orchestrator, production multi-AZ erasure, Vault Transit in-process (Enterprise phase 2).
+Нет автоматического оркестратора failover и нет production-уровня erasure между зонами доступности. Kafka (v1.5.0) и Vault Transit (v1.6.0) необязательны и не запускаются, пока их не настроили. Интерфейс консоли — русский и английский. Клиенты в `clients/` необязательны и не заменяют установку сервера.
 
 ## v1.1.0 shipped scope
 
-Charter: trust-debt + OSS growth — внутреннее ТЗ в `D:\datasafe_tz\specs\v1.1.0\` (см. [docs/specs/README.md](../specs/README.md)).
+Charter: trust-debt + OSS growth — внутреннее ТЗ в `D:\datasafe_tz\specs\v1.1.0\` (см. [docs/specs/README.md](../../specs/README.md)). Публичное изложение: [v1.1.0-trust-debt-oss-growth-tz.md](../specs/v1.1.0-trust-debt-oss-growth-tz.md).
 
 | Пункт | Статус |
 |-------|--------|

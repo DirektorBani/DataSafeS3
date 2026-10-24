@@ -118,4 +118,4 @@ SSO в консоли — через **OIDC** (Keycloak / другой IdP в Se
 
 Дальше: сменить пароль admin → setup wizard → [onboarding](onboarding.md).
 
-Overlays: [`deploy/compose/README.md`](../../deploy/compose/README.md).
+Overlays: [`deploy/compose/README.md`](../../../deploy/compose/README.md).

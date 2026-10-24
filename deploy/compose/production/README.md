@@ -1,5 +1,9 @@
 # Production Compose
 
+По-русски: [docs/ru/deploy-production.md](../../../docs/ru/deploy-production.md).
+
+
+
 One storage container, Bolt metadata, a Caddy edge, and a named volume. `STORAGE_DEV` is `false` in the compose file. Caddy does not forward `/metrics`. The S3 port is bound to `127.0.0.1` only.
 
 ```bash

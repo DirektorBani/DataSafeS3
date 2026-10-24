@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: docs russian counterparts and links
+        run: python3 scripts/check-docs.py
       - name: release pins
         run: bash scripts/check-release-pins.sh
       - name: release workflow

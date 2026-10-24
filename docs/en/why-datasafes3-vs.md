@@ -4,7 +4,7 @@ Community Edition comparison for typical **governed self-hosted S3** deployments
 
 | Capability | DataSafeS3 CE | MinIO CE | Nextcloud | SeaweedFS |
 |------------|-------------|----------|-----------|-----------|
-| S3 API | Yes ([feature-audit S3](../testing/regression-roadmap-i18n.md)) | Yes | Partial | Yes |
+| S3 API | Yes ([compatibility](../compatibility.md)) | Yes | Partial | Yes |
 | Object Lock XML | Yes (Phase 2) | Yes | No | Limited |
 | LDAP + OIDC | Yes | LDAP/OIDC | Strong | No |
 | WebAuthn MFA | Yes | Limited | Apps | No |
@@ -28,9 +28,9 @@ Community Edition comparison for typical **governed self-hosted S3** deployments
 
 ## Performance
 
-See published benchmarks: [performance-benchmarks.md](../testing/performance-benchmarks.md)
+A separate benchmark report is not in this repository. The single-node gate is described in the changelog and [single-node gate](../operations-guide/en/single-node-gate.md).
 
 ## Evidence
 
 - Regression gate: `scripts/feature-audit-test.ps1` (target 93/93+)
-- Internal assessment: [competitive-assessment-2026.md](../analysis/competitive-assessment-2026.md)
+- An internal competitive write-up is not part of this repository.

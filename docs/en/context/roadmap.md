@@ -6,7 +6,7 @@ Author: **Ilya Trachuk** | Last updated: 2026-06-22
 
 Status legend: **done** | **partial** | **in-progress** | **planned**
 
-> **2026-06 delivery:** Phases 1–4 largely implemented (`20b8518` → `6299610`). Highlights: GHCR+SBOM+cosign, WebAuthn, Object Lock XML, LDAP sync worker, federation ListObjectsV2 proxy, Postgres HA tooling, STS session tokens (user-bound), NATS event sink, storage-class transition, nightly feature-audit CI, bundled Swagger UI. See [competitiveness roadmap](../../specs/roadmap/README.md).
+> **2026-06 delivery:** Phases 1–4 largely implemented (`20b8518` → `6299610`). Highlights: GHCR+SBOM+cosign, WebAuthn, Object Lock XML, LDAP sync worker, federation ListObjectsV2 proxy, Postgres HA tooling, STS session tokens (user-bound), NATS event sink, storage-class transition, nightly feature-audit CI, bundled Swagger UI. A separate competitiveness roadmap file is not in this repository.
 
 > Blocks 16–25 are available to **all licensed self-hosted deployments** (not admin-only or enterprise-gated). Navigation exposes features by role; administrators have full access.
 
@@ -14,7 +14,7 @@ Status legend: **done** | **partial** | **in-progress** | **planned**
 
 ## Feature Audit Improvements (2026-06-17)
 
-Prioritized backlog from [feature audit 2026-06-17](../../testing/feature-audit-report.md). Source: internal improvement suggestions derived from audit.
+Prioritized backlog from an internal feature audit on 2026-06-17. That report file is not in this repository.
 
 ### P0 — Critical / Reliability
 

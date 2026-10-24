@@ -1,5 +1,9 @@
 # S3 compatibility
 
+По-русски: [ru/compatibility.md](ru/compatibility.md).
+
+
+
 DataSafeS3 speaks the S3 HTTP API that backup tools and artifact stores use on a single node: path-style URLs, SigV4, and Bolt metadata with no extra database. It is not a complete implementation of every Amazon S3 API.
 
 The automated check is `go test ./internal/api/s3/ -run TestS3ClientCompatibility`. It runs whichever of `aws`, `mc`, `rclone`, and `restic` are on `PATH`. CI sets `S3_COMPAT_REQUIRE=aws,mc,rclone,restic` so a missing client fails the job. `TestAWSSDKDeleteObjects` calls `DeleteObjects` through aws-sdk-go-v2.

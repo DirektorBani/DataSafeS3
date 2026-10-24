@@ -5,7 +5,7 @@
 **Версия:** 1.1  
 **Дата:** 2026-06-23  
 **Статус:** **Фазы 1–3 реализованы** · Фаза 4 mobile — [беклог](./file-collaboration-phase4-backlog.md) · см. [file-collaboration-status.md](./file-collaboration-status.md)  
-**Родитель:** [roadmap-to-9.md](../../analysis/roadmap-to-9.md) (сегмент: рабочее место end-user)  
+**Родитель:** внутренняя заметка по дорожной карте, в репозиторий не входит (сегмент: рабочее место пользователя)  
 **Предусловие:** [tenant-bucket-isolation-tz.md](./tenant-bucket-isolation-tz.md) — **Реализовано**  
 **Лицензия:** Apache-2.0 Community Edition — без платных gate  
 **Аудитория:** Агент-разработчик / разработчик
@@ -250,7 +250,7 @@
 
 ## Приложение — skill агента
 
-[.cursor/skills/datasafe-file-collaboration/SKILL.md](../../../.cursor/skills/datasafe-file-collaboration/SKILL.md)
+Файл навыка агента из ранних черновиков в репозиторий не входит.
 
 ---
 

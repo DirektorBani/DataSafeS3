@@ -1,8 +1,10 @@
 # DataSafeS3 Helm Chart
 
-Helm chart for deploying **DataSafeS3** � self-hosted S3-compatible object storage with web console, Admin API, optional PostgreSQL metadata, LDAP/OIDC, Gateway replication, and Prometheus/Grafana monitoring.
+По-русски: [docs/ru/helm-datasafe.md](../../../docs/ru/helm-datasafe.md). Чарт релиза v1.7.0 — [datasafes3](../datasafes3/README.md). Этот файл описывает прежний стек.
 
-**User guide:** [EN quick start](../../docs/en/user-guide/README.md#kubernetes--helm) � [RU](../../docs/ru/user-guide/README.md#kubernetes--helm)
+Helm chart for deploying **DataSafeS3** - self-hosted S3-compatible object storage with web console, Admin API, optional PostgreSQL metadata, LDAP/OIDC, Gateway replication, and Prometheus/Grafana monitoring.
+
+**User guide:** [EN quick start](../../docs/en/user-guide/README.md#kubernetes--helm)  ·  [RU](../../docs/ru/user-guide/README.md#kubernetes--helm)
 
 ## Prerequisites
 
@@ -10,8 +12,8 @@ Helm chart for deploying **DataSafeS3** � self-hosted S3-compatible object stora
 - Helm 3.10+
 - PersistentVolume provisioner (for object data and optional PostgreSQL)
 - Built images (or pull from GHCR):
-  - `ghcr.io/direktorbani/datasafe-storage-server:v1.7.0` � release tag (or build locally: `docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .`)
-  - `ghcr.io/direktorbani/datasafe-console:v1.7.0` � release tag (or build via `deploy/docker/Dockerfile.console`)
+  - `ghcr.io/direktorbani/datasafe-storage-server:v1.7.0` - release tag (or build locally: `docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .`)
+  - `ghcr.io/direktorbani/datasafe-console:v1.7.0` - release tag (or build via `deploy/docker/Dockerfile.console`)
 
 ## Quick install (GHCR release tags)
 
@@ -95,7 +97,7 @@ Default Compose copies `/srv/console` from `DATASAFE_CONSOLE_IMAGE` into the `co
 | Prometheus | Deployment (optional) | 9090 | Scrapes storage-server |
 | Grafana | Deployment (optional) | 3000 | `datasafe-overview` dashboard |
 | S3 test | Deployment (optional) | 9000/9001 | Dev-only Gateway test target |
-| Ingress | 2? Ingress | � | Console host + S3 host |
+| Ingress | 2? Ingress | - | Console host + S3 host |
 
 ## Key values
 
@@ -194,7 +196,7 @@ monitoring:
 
 **HashiCorp Vault (env injection, optional):**
 
-See [operations guide � Vault](../../../docs/operations-guide/en/secrets-vault.md). Example overlay:
+See [operations guide - Vault](../../../docs/operations-guide/en/secrets-vault.md). Example overlay:
 
 ```bash
 helm upgrade datasafe deploy/helm/datasafe \

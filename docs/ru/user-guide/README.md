@@ -429,28 +429,24 @@ docker run --rm -e PGPASSWORD=datasafe postgres:16-alpine psql -h host.docker.in
 
 ### Kubernetes / Helm
 
-Для кластеров Kubernetes используйте официальный Helm chart в [`deploy/helm/datasafe/`](../../../deploy/helm/datasafe/). Он повторяет стек Docker Compose: `storage-server`, Caddy (консоль на порту 80 → аналог Ingress **8080**), опциональный PostgreSQL StatefulSet, Prometheus/Grafana и отдельные Ingress-хосты для консоли и S3 API.
+В репозитории два чарта.
 
-**Установка (BoltDB, по умолчанию):**
-
-```bash
-helm install datasafe deploy/helm/datasafe --namespace datasafe --create-namespace
-```
-
-**Метаданные PostgreSQL:**
+**Текущий чарт (v1.7.0),** [`deploy/helm/datasafes3`](../../../deploy/helm/datasafes3/): по умолчанию один pod, PVC и Bolt. `values-ha.yaml` включает метаданные Postgres и `STORAGE_HA_ENABLED`. Kafka и NATS не ставятся. Сервис консоли — порт 8080, сервис S3 — порт 9000. Руководство: [docs/ru/kubernetes.md](../kubernetes.md).
 
 ```bash
-helm install datasafe deploy/helm/datasafe \
-  --set postgres.enabled=true \
-  --set storageServer.metadataBackend=postgres \
-  --namespace datasafe --create-namespace
+helm install ds deploy/helm/datasafes3 \
+  --set auth.accessKey=datasafe \
+  --set auth.secretKey=change-me \
+  --set auth.adminPassword=change-me-admin \
+  --set auth.jwtSecret=change-me-jwt \
+  --set auth.metricsToken=change-me-metrics
 ```
 
-Добавьте `datasafe.local` и `s3.datasafe.local` в DNS или `/etc/hosts`, либо используйте `kubectl port-forward` (см. `NOTES.txt` chart'а).
+**Прежний чарт,** [`deploy/helm/datasafe`](../../../deploy/helm/datasafe/): стек, близкий к Compose, с Caddy, необязательными Prometheus, Grafana и Postgres. Это не чарт из заметок к релизу v1.7.0.
 
-Полный справочник values, сборка образов, LDAP/OIDC/logging: **[README Helm chart](../../../deploy/helm/datasafe/README.md)**.
+Справочник values: [текущий чарт](../../../deploy/helm/datasafes3/README.md) · [прежний чарт](../../../deploy/helm/datasafe/README.md).
 
-English version: [Kubernetes / Helm](../../en/user-guide/README.md#kubernetes--helm).
+English: [Kubernetes / Helm](../../en/user-guide/README.md#kubernetes--helm).
 
 ---
 
@@ -591,7 +587,7 @@ Elasticsearch подключается к сети **`datasafe_default`** (та 
 
 #### Loki
 
-Отдельного `start-loki-test.cmd` в репозитории **нет**. При наличии своего Loki в Docker-сети `datasafe_default` включите sink в Settings: address `http://<container>:3100`. Для ручного теста см. [feature-audit-report.md](../../testing/feature-audit-report.md) (контейнер `datasafe-log-loki`, образ `grafana/loki:2.9.4`).
+`scripts\start-loki-test.cmd` поднимает контейнер `datasafe-log-loki` из образа `grafana/loki:2.9.4` на порту 3100 и подключает его к сети Docker `datasafe_default`. В **Настройках администратора → Внешнее логирование** укажите адрес `http://host.docker.internal:3100` (или адрес контейнера в этой сети).
 
 ---
 
@@ -714,7 +710,7 @@ powershell -File scripts\feature-audit-preflight.ps1
 powershell -File scripts\feature-audit-test.ps1
 ```
 
-Требует запущенный core-стек; для блоков LDAP/OIDC/Gateway/ES — соответствующие тестовые контейнеры. Отчёт: [feature-audit-report.md](../../testing/feature-audit-report.md).
+Требует запущенный core-стек; для блоков LDAP/OIDC/Gateway/ES — соответствующие тестовые контейнеры. Файл отчёта в этот репозиторий не входит.
 
 ---
 

@@ -5,7 +5,7 @@ English | **[Русский](../../ru/specs/file-collaboration-tz.md)**
 **Version:** 1.1  
 **Date:** 2026-06-23  
 **Status:** **Phase 1–3 implemented** · Phase 4 mobile [backlog](./file-collaboration-phase4-backlog.md) — see [file-collaboration-status.md](./file-collaboration-status.md)  
-**Parent:** [roadmap-to-9.md](../../analysis/roadmap-to-9.md) (segment: end-user file workspace)  
+**Parent:** internal roadmap note, not included in this repository (segment: end-user file workspace)  
 **Prerequisite:** [tenant-bucket-isolation-tz.md](./tenant-bucket-isolation-tz.md) — **Implemented**  
 **License:** Apache-2.0 Community Edition — no paid gates  
 **Audience:** Implementing agent / developer
@@ -447,7 +447,7 @@ Not part of Phase 1 agent work unless explicitly requested.
 
 ## Appendix C — Agent skill
 
-Cursor agents: [.cursor/skills/datasafe-file-collaboration/SKILL.md](../../../.cursor/skills/datasafe-file-collaboration/SKILL.md)
+The agent skill file named in earlier drafts is not in this repository.
 
 ---
 

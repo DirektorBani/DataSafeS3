@@ -26,4 +26,4 @@ Run DataSafeS3 in production: backup, upgrades, scaling, and incident response.
 | Vault Transit (object keys) | [kms-vault.md](kms-vault.md) |
 | Troubleshooting | [troubleshooting.md](troubleshooting.md) |
 
-Helm: [../../../deploy/helm/datasafe/README.md](../../../deploy/helm/datasafe/README.md)
+Helm: [current chart](../../../deploy/helm/datasafes3/README.md) · [earlier chart](../../../deploy/helm/datasafe/README.md) · [Kubernetes](../../kubernetes.md)

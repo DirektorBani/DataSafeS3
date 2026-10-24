@@ -93,7 +93,7 @@ flowchart TB
 
 Production: TLS, PostgreSQL, резервное копирование, алерты, смена bootstrap-учётных данных. Опционально HA: [эталон 2-node](../../operations-guide/ru/reference-deployment-2node.md), Helm `values-ha.yaml`.
 
-Руководство: [Helm chart](../../../deploy/helm/datasafe/README.md) · [Эксплуатация](../../operations-guide/ru/README.md)
+Руководство: [текущий Helm-чарт](../../../deploy/helm/datasafes3/README.md) · [прежний чарт](../../../deploy/helm/datasafe/README.md) · [Эксплуатация](../../operations-guide/ru/README.md)
 
 ---
 

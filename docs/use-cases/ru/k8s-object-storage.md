@@ -20,12 +20,12 @@ flowchart TB
   ds --> pvc
 ```
 
-1. `helm install datasafe deploy/helm/datasafe`
-2. Ingress для S3 и консоли
-3. Бакеты и credentials по tenant/workload
-4. ServiceMonitor Prometheus для алертов
+1. `helm install ds deploy/helm/datasafes3` с настоящими значениями `auth.*`. Прежний чарт `deploy/helm/datasafe` в дереве остаётся.
+2. Ingress для S3 и консоли или `kubectl port-forward`
+3. Бакеты и учётные данные по арендатору и workload
+4. Необязательный ServiceMonitor Prometheus (`monitoring.serviceMonitor.enabled` у текущего чарта)
 
-См. [Helm README](../../../deploy/helm/datasafe/README.md).
+См. [Kubernetes](../../ru/kubernetes.md) и [текущий чарт](../../../deploy/helm/datasafes3/README.md).
 
 ## Результат
 

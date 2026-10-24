@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: dev down logs test lint dev-local dev-docker-nobuild
+.PHONY: dev down logs test lint docs-check dev-local dev-docker-nobuild
 
 dev:
 	docker compose up --build
@@ -25,3 +25,6 @@ lint:
 	@test -z "$$(gofmt -l .)" || (echo "gofmt found issues:" && gofmt -l . && exit 1)
 	@echo "==> govet"
 	go vet ./...
+
+docs-check:
+	python3 scripts/check-docs.py

@@ -120,4 +120,4 @@ Rebuild `storage-server` after spec changes so the embedded copy updates.
 
 - [User guide — REST API & OpenAPI](../user-guide/README.md#rest-api--openapi)
 - [OpenAPI roadmap](../context/openapi-roadmap.md)
-- [Scope proposal](../../testing/openapi-scope-proposal.md)
+- The scope proposal file is not in this repository.

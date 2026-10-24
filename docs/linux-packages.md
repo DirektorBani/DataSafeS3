@@ -1,5 +1,9 @@
 # Linux packages
 
+По-русски: [ru/linux-packages.md](ru/linux-packages.md).
+
+
+
 The GitHub Release for `v1.7.0` includes `datasafes3` packages for `linux/amd64` and `linux/arm64`:
 
 | File | Where |

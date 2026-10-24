@@ -1,144 +1,129 @@
-# DataSafeS3 Documentation / Документация DataSafeS3
+# Документация DataSafeS3
 
-**[English](en/README.md)** · **[Русский](ru/README.md)** · **[Repository README](../README.md)**
-
-Product documentation for DataSafeS3 — a self-hosted storage platform for secure and governed data management. Documentation focuses on **product value**, not comparisons with other products.
+**[Русский](ru/README.md)** · **[English](en/README.md)** · **[README репозитория](../README.md)**
 
 **Current Community release:** [v1.7.0](../CHANGELOG.md#170---2026-10-19) (2026-10-19)
 
----
-
-## Learn — понять продукт
-
-What DataSafeS3 is, how it works, and how data and access are modeled.
-
-| Topic | English | Русский |
-|-------|---------|---------|
-| **Overview** | [getting-started/en/what-is-datasafe.md](getting-started/en/what-is-datasafe.md) | [getting-started/ru/what-is-datasafe.md](getting-started/ru/what-is-datasafe.md) |
-| **Why DataSafeS3** | [en/why-datasafe.md](en/why-datasafe.md) | [ru/why-datasafe.md](ru/why-datasafe.md) |
-| **Conceptual architecture** | [learn/en/conceptual-architecture.md](learn/en/conceptual-architecture.md) | [learn/ru/conceptual-architecture.md](learn/ru/conceptual-architecture.md) |
-| **Logical architecture (technical)** | [en/context/architecture.md](en/context/architecture.md) | [ru/context/architecture.md](ru/context/architecture.md) |
-| **Security model** | [administrator-guide/en/mfa.md](administrator-guide/en/mfa.md) · [ldap](administrator-guide/en/ldap.md) · [oidc](administrator-guide/en/oidc.md) | [ru/mfa](administrator-guide/ru/mfa.md) · [ldap](administrator-guide/ru/ldap.md) · [oidc](administrator-guide/ru/oidc.md) |
-| **Data model** | [en/database.md](en/database.md) | [ru/database.md](ru/database.md) |
-| **Onboarding checklist** | [getting-started/en/onboarding.md](getting-started/en/onboarding.md) | [getting-started/ru/onboarding.md](getting-started/ru/onboarding.md) |
-| **Use cases** | [use-cases/README.md](use-cases/README.md) | same hub (EN/RU per scenario) |
+Это указатель продукта. Интерфейс консоли доступен на русском и английском. Термины: [глоссарий](ru/glossary.md).
 
 ---
 
-## Deploy — развернуть {#deploy}
+## Документы для реестра российского ПО
 
-| Topic | English | Русский |
-|-------|---------|---------|
-| **First run (Docker Compose)** | [getting-started/en/first-run.md](getting-started/en/first-run.md) | [getting-started/ru/first-run.md](getting-started/ru/first-run.md) |
-| **Interactive installer** | [getting-started/en/installer.md](getting-started/en/installer.md) | [getting-started/ru/installer.md](getting-started/ru/installer.md) |
-| **Compose overlays (labs / HA / Vault / OAuth2)** | [../deploy/compose/README.md](../deploy/compose/README.md) | same |
-| **Setup wizard** | [getting-started/en/setup-wizard.md](getting-started/en/setup-wizard.md) | [getting-started/ru/setup-wizard.md](getting-started/ru/setup-wizard.md) |
-| **External S3 (optional)** | [getting-started/en/s3-configuration.md](getting-started/en/s3-configuration.md) | [getting-started/ru/s3-configuration.md](getting-started/ru/s3-configuration.md) |
-| **Kubernetes / Helm** | [../deploy/helm/datasafe/README.md](../deploy/helm/datasafe/README.md) | same |
-| **Linux packages (.deb / .rpm)** | [linux-packages.md](linux-packages.md) | [linux-packages.md#по-русски](linux-packages.md#по-русски) |
-| **GitVerse mirror** | [ru/gitverse-mirror.md](ru/gitverse-mirror.md) | [установка из зеркала GitVerse](ru/gitverse-mirror.md) |
-| **Production deployment** | [operations-guide/en/README.md](operations-guide/en/README.md) | [operations-guide/ru/README.md](operations-guide/ru/README.md) |
-| **Local development** | [en/context/local-dev.md](en/context/local-dev.md) | [ru/context/local-dev.md](ru/context/local-dev.md) |
+| Документ | Файл |
+|----------|------|
+| Руководство пользователя | [ru/user-guide.md](ru/user-guide.md) |
+| Инструкция по установке | [ru/installation.md](ru/installation.md) |
+| Жизненный цикл ПО | [ru/lifecycle.md](ru/lifecycle.md) |
+| Функциональные характеристики | [ru/functional-description.md](ru/functional-description.md) |
+| Лицензионное соглашение | [ru/license.md](ru/license.md) |
+| Политика конфиденциальности | [ru/privacy-policy.md](ru/privacy-policy.md) |
+| Политика безопасности | [ru/security-policy.md](ru/security-policy.md) |
+| Порядок поддержки | [ru/support.md](ru/support.md) |
 
 ---
 
-## Configure — настроить
+## Понять продукт
 
-| Topic | English | Русский |
-|-------|---------|---------|
-| **Storage & buckets** | [getting-started/en/first-bucket.md](getting-started/en/first-bucket.md) | [getting-started/ru/first-bucket.md](getting-started/ru/first-bucket.md) |
-| **LDAP** | [administrator-guide/en/ldap.md](administrator-guide/en/ldap.md) | [administrator-guide/ru/ldap.md](administrator-guide/ru/ldap.md) |
-| **OIDC / SSO** | [administrator-guide/en/oidc.md](administrator-guide/en/oidc.md) | [administrator-guide/ru/oidc.md](administrator-guide/ru/oidc.md) |
-| **MFA** | [administrator-guide/en/mfa.md](administrator-guide/en/mfa.md) | [administrator-guide/ru/mfa.md](administrator-guide/ru/mfa.md) |
-| **Monitoring & logging** | [administrator-guide/en/monitoring.md](administrator-guide/en/monitoring.md) | [administrator-guide/ru/monitoring.md](administrator-guide/ru/monitoring.md) |
-| **LDAP/SSO test stack** | [en/integrations/ldap-keycloak-standalone.md](en/integrations/ldap-keycloak-standalone.md) | [ru/integrations/ldap-keycloak-standalone.md](ru/integrations/ldap-keycloak-standalone.md) |
-
-Environment variables and system settings: [User guide — Administrator settings](en/user-guide/README.md) · [RU](ru/user-guide/README.md)
-
----
-
-## Manage — управлять
-
-| Topic | English | Русский |
-|-------|---------|---------|
-| **Administrator guide hub** | [administrator-guide/en/README.md](administrator-guide/en/README.md) | [administrator-guide/ru/README.md](administrator-guide/ru/README.md) |
-| **Users & RBAC** | [administrator-guide/en/users.md](administrator-guide/en/users.md) | [administrator-guide/ru/users.md](administrator-guide/ru/users.md) |
-| **Groups & roles** | [administrator-guide/en/groups-roles.md](administrator-guide/en/groups-roles.md) | [administrator-guide/ru/groups-roles.md](administrator-guide/ru/groups-roles.md) |
-| **Tenants** | [administrator-guide/en/tenants.md](administrator-guide/en/tenants.md) | [administrator-guide/ru/tenants.md](administrator-guide/ru/tenants.md) |
-| **Quotas** | [administrator-guide/en/quotas.md](administrator-guide/en/quotas.md) | [administrator-guide/ru/quotas.md](administrator-guide/ru/quotas.md) |
-| **Lifecycle** | [administrator-guide/en/lifecycle.md](administrator-guide/en/lifecycle.md) | [administrator-guide/ru/lifecycle.md](administrator-guide/ru/lifecycle.md) |
-| **Replication (Gateway)** | [administrator-guide/en/replication.md](administrator-guide/en/replication.md) | [administrator-guide/ru/replication.md](administrator-guide/ru/replication.md) |
-| **Audit** | [administrator-guide/en/audit.md](administrator-guide/en/audit.md) | [administrator-guide/ru/audit.md](administrator-guide/ru/audit.md) |
-| **User guide (console)** | [en/user-guide/README.md](en/user-guide/README.md) | [ru/user-guide/README.md](ru/user-guide/README.md) |
+| Тема | Русский | English |
+|------|---------|---------|
+| Что это | [getting-started/ru/what-is-datasafe.md](getting-started/ru/what-is-datasafe.md) | [getting-started/en/what-is-datasafe.md](getting-started/en/what-is-datasafe.md) |
+| Зачем | [ru/why-datasafe.md](ru/why-datasafe.md) | [en/why-datasafe.md](en/why-datasafe.md) |
+| Концептуальная архитектура | [learn/ru/conceptual-architecture.md](learn/ru/conceptual-architecture.md) | [learn/en/conceptual-architecture.md](learn/en/conceptual-architecture.md) |
+| Логическая архитектура | [ru/context/architecture.md](ru/context/architecture.md) | [en/context/architecture.md](en/context/architecture.md) |
+| Модель данных | [ru/database.md](ru/database.md) | [en/database.md](en/database.md) |
+| Онбординг | [getting-started/ru/onboarding.md](getting-started/ru/onboarding.md) | [getting-started/en/onboarding.md](getting-started/en/onboarding.md) |
+| Сценарии | [use-cases/README.md](use-cases/README.md) | тот же хаб, страница сценария на EN и RU |
+| Совместимость S3 | [ru/compatibility.md](ru/compatibility.md) | [compatibility.md](compatibility.md) |
 
 ---
 
-## Operate — эксплуатировать
+## Развернуть
 
-| Topic | English | Русский |
-|-------|---------|---------|
-| **Operations hub** | [operations-guide/en/README.md](operations-guide/en/README.md) | [operations-guide/ru/README.md](operations-guide/ru/README.md) |
-| **Backup & restore** | [operations-guide/en/backup-restore.md](operations-guide/en/backup-restore.md) | [operations-guide/ru/backup-restore.md](operations-guide/ru/backup-restore.md) |
-| **Migrate from MinIO** | [operations-guide/en/migrate-from-minio.md](operations-guide/en/migrate-from-minio.md) | [operations-guide/ru/migrate-from-minio.md](operations-guide/ru/migrate-from-minio.md) |
-| **Upgrade** | [operations-guide/en/upgrade.md](operations-guide/en/upgrade.md) | [operations-guide/ru/upgrade.md](operations-guide/ru/upgrade.md) |
-| **Scaling** | [operations-guide/en/scaling.md](operations-guide/en/scaling.md) | [operations-guide/ru/scaling.md](operations-guide/ru/scaling.md) |
-| **2-node HA reference** | [operations-guide/en/reference-deployment-2node.md](operations-guide/en/reference-deployment-2node.md) | [operations-guide/ru/reference-deployment-2node.md](operations-guide/ru/reference-deployment-2node.md) |
-| **High availability** | [operations-guide/en/high-availability.md](operations-guide/en/high-availability.md) | [operations-guide/ru/high-availability.md](operations-guide/ru/high-availability.md) |
-| **Event integrations** | [en/integrations/events.md](en/integrations/events.md) | [ru/integrations/events.md](ru/integrations/events.md) |
-| **Partner integrations** | [operations-guide/en/partner-cookbook.md](operations-guide/en/partner-cookbook.md) | [operations-guide/ru/partner-cookbook.md](operations-guide/ru/partner-cookbook.md) |
-| **Disaster recovery** | [operations-guide/en/disaster-recovery.md](operations-guide/en/disaster-recovery.md) | [operations-guide/ru/disaster-recovery.md](operations-guide/ru/disaster-recovery.md) |
-| **Monitoring** | [operations-guide/en/monitoring.md](operations-guide/en/monitoring.md) | [operations-guide/ru/monitoring.md](operations-guide/ru/monitoring.md) |
-| **Troubleshooting** | [operations-guide/en/troubleshooting.md](operations-guide/en/troubleshooting.md) | [operations-guide/ru/troubleshooting.md](operations-guide/ru/troubleshooting.md) |
-| **Security self-assessment** | [operations-guide/en/security-self-assessment.md](operations-guide/en/security-self-assessment.md) | [operations-guide/ru/security-self-assessment.md](operations-guide/ru/security-self-assessment.md) |
-| **Field encryption (metadata)** | [operations-guide/en/field-encryption.md](operations-guide/en/field-encryption.md) | [operations-guide/ru/field-encryption.md](operations-guide/ru/field-encryption.md) |
-| **Vault secrets injection** | [operations-guide/en/secrets-vault.md](operations-guide/en/secrets-vault.md) | [operations-guide/ru/secrets-vault.md](operations-guide/ru/secrets-vault.md) |
-| **Vault Transit (object keys)** | [operations-guide/en/kms-vault.md](operations-guide/en/kms-vault.md) | [operations-guide/ru/kms-vault.md](operations-guide/ru/kms-vault.md) |
-| **Extension hooks (example)** | [../examples/extension-hook/README.md](../examples/extension-hook/README.md) | same |
+| Тема | Русский | English |
+|------|---------|---------|
+| Инструкция по установке | [ru/installation.md](ru/installation.md) | — |
+| Первый запуск (Compose) | [getting-started/ru/first-run.md](getting-started/ru/first-run.md) | [getting-started/en/first-run.md](getting-started/en/first-run.md) |
+| Интерактивный установщик | [getting-started/ru/installer.md](getting-started/ru/installer.md) | [getting-started/en/installer.md](getting-started/en/installer.md) |
+| Оверлеи Compose | [ru/deploy-compose.md](ru/deploy-compose.md) | [../deploy/compose/README.md](../deploy/compose/README.md) |
+| Production Compose | [ru/deploy-production.md](ru/deploy-production.md) | [../deploy/compose/production/README.md](../deploy/compose/production/README.md) |
+| Мастер настройки | [getting-started/ru/setup-wizard.md](getting-started/ru/setup-wizard.md) | [getting-started/en/setup-wizard.md](getting-started/en/setup-wizard.md) |
+| Внешний S3 | [getting-started/ru/s3-configuration.md](getting-started/ru/s3-configuration.md) | [getting-started/en/s3-configuration.md](getting-started/en/s3-configuration.md) |
+| Kubernetes, текущий чарт | [ru/kubernetes.md](ru/kubernetes.md) | [kubernetes.md](kubernetes.md) |
+| Чарт `datasafes3` | [ru/helm-datasafes3.md](ru/helm-datasafes3.md) | [../deploy/helm/datasafes3/README.md](../deploy/helm/datasafes3/README.md) |
+| Прежний чарт `datasafe` | [ru/helm-datasafe.md](ru/helm-datasafe.md) | [../deploy/helm/datasafe/README.md](../deploy/helm/datasafe/README.md) |
+| Пакеты .deb / .rpm | [ru/linux-packages.md](ru/linux-packages.md) | [linux-packages.md](linux-packages.md) |
+| Зеркало GitVerse | [ru/gitverse-mirror.md](ru/gitverse-mirror.md) | тот же файл |
+| Чеклист production | [ru/production-checklist.md](ru/production-checklist.md) | [production-checklist.md](production-checklist.md) |
+| Локальная разработка | [ru/context/local-dev.md](ru/context/local-dev.md) | [en/context/local-dev.md](en/context/local-dev.md) |
 
----
-
-## Reference — справочник
-
-| Topic | English | Русский |
-|-------|---------|---------|
-| **Database schema** | [en/database.md](en/database.md) | [ru/database.md](ru/database.md) |
-| **Gateway (technical)** | [en/context/gateway.md](en/context/gateway.md) | [ru/context/gateway.md](ru/context/gateway.md) |
-| **Roadmap** | [en/context/roadmap.md](en/context/roadmap.md) | [ru/context/roadmap.md](ru/context/roadmap.md) |
-| **Specifications (TZ)** | [en/specs/](en/specs/) | [ru/specs/](ru/specs/) |
-| **File collaboration (status)** | [en/specs/file-collaboration-status.md](en/specs/file-collaboration-status.md) | [ru/specs/file-collaboration-status.md](ru/specs/file-collaboration-status.md) |
-| **File collaboration (TZ)** | [en/specs/file-collaboration-tz.md](en/specs/file-collaboration-tz.md) | [ru/specs/file-collaboration-tz.md](ru/specs/file-collaboration-tz.md) |
-| **File collaboration Phase 4 backlog** | [en/specs/file-collaboration-phase4-backlog.md](en/specs/file-collaboration-phase4-backlog.md) | [ru/specs/file-collaboration-phase4-backlog.md](ru/specs/file-collaboration-phase4-backlog.md) |
-| **Field encryption (v1.0.3 TZ)** | [specs/field-encryption-1.0.3-tz.md](specs/field-encryption-1.0.3-tz.md) | same |
-| **UI screenshots** | [images/screenshots/](images/screenshots/) | same |
-| **Diagrams (Mermaid)** | [diagrams/README.md](diagrams/README.md) | same |
+Kafka и Vault в установку по умолчанию не входят.
 
 ---
 
-## API
+## Настроить и управлять
 
-| Topic | English | Русский |
-|-------|---------|---------|
-| **API guide** | [api-guide/en/README.md](api-guide/en/README.md) | [api-guide/ru/README.md](api-guide/ru/README.md) |
-| **Authentication** | [api-guide/en/authentication.md](api-guide/en/authentication.md) | [api-guide/ru/authentication.md](api-guide/ru/authentication.md) |
-| **curl examples** | [api-guide/en/curl-examples.md](api-guide/en/curl-examples.md) | [api-guide/ru/curl-examples.md](api-guide/ru/curl-examples.md) |
-| **Swagger UI** | [en/api/swagger.md](en/api/swagger.md) | [ru/api/swagger.md](ru/api/swagger.md) |
-| **OpenAPI specs** | [api/openapi.yaml](api/openapi.yaml) · [openapi-full.yaml](api/openapi-full.yaml) | same files |
-
-Live Swagger: `http://localhost:8080/api/v1/docs`
-
----
-
-## Enterprise — Community and commercial edition
-
-How features move between Community (Apache-2.0) and Enterprise, and how requests are evaluated.
-
-| Topic | English | Русский |
-|-------|---------|---------|
-| **Community ↔ Enterprise lifecycle** | [en/enterprise/community-enterprise-lifecycle.md](en/enterprise/community-enterprise-lifecycle.md) | [ru/enterprise/community-enterprise-lifecycle.md](ru/enterprise/community-enterprise-lifecycle.md) |
-| **Feature request evaluation template** | [en/enterprise/feature-request-evaluation.md](en/enterprise/feature-request-evaluation.md) | [ru/enterprise/feature-request-evaluation.md](ru/enterprise/feature-request-evaluation.md) |
+| Тема | Русский | English |
+|------|---------|---------|
+| Руководство администратора | [administrator-guide/ru/README.md](administrator-guide/ru/README.md) | [administrator-guide/en/README.md](administrator-guide/en/README.md) |
+| Пользователи | [administrator-guide/ru/users.md](administrator-guide/ru/users.md) | [administrator-guide/en/users.md](administrator-guide/en/users.md) |
+| Группы и роли | [administrator-guide/ru/groups-roles.md](administrator-guide/ru/groups-roles.md) | [administrator-guide/en/groups-roles.md](administrator-guide/en/groups-roles.md) |
+| Арендаторы | [administrator-guide/ru/tenants.md](administrator-guide/ru/tenants.md) | [administrator-guide/en/tenants.md](administrator-guide/en/tenants.md) |
+| Квоты | [administrator-guide/ru/quotas.md](administrator-guide/ru/quotas.md) | [administrator-guide/en/quotas.md](administrator-guide/en/quotas.md) |
+| Жизненный цикл объектов | [administrator-guide/ru/lifecycle.md](administrator-guide/ru/lifecycle.md) | [administrator-guide/en/lifecycle.md](administrator-guide/en/lifecycle.md) |
+| Репликация Gateway | [administrator-guide/ru/replication.md](administrator-guide/ru/replication.md) | [administrator-guide/en/replication.md](administrator-guide/en/replication.md) |
+| Аудит | [administrator-guide/ru/audit.md](administrator-guide/ru/audit.md) | [administrator-guide/en/audit.md](administrator-guide/en/audit.md) |
+| LDAP | [administrator-guide/ru/ldap.md](administrator-guide/ru/ldap.md) | [administrator-guide/en/ldap.md](administrator-guide/en/ldap.md) |
+| OIDC | [administrator-guide/ru/oidc.md](administrator-guide/ru/oidc.md) | [administrator-guide/en/oidc.md](administrator-guide/en/oidc.md) |
+| MFA | [administrator-guide/ru/mfa.md](administrator-guide/ru/mfa.md) | [administrator-guide/en/mfa.md](administrator-guide/en/mfa.md) |
+| Мониторинг | [administrator-guide/ru/monitoring.md](administrator-guide/ru/monitoring.md) | [administrator-guide/en/monitoring.md](administrator-guide/en/monitoring.md) |
+| Консоль, подробные главы | [ru/user-guide/README.md](ru/user-guide/README.md) | [en/user-guide/README.md](en/user-guide/README.md) |
+| Стенд LDAP и Keycloak | [ru/integrations/ldap-keycloak-standalone.md](ru/integrations/ldap-keycloak-standalone.md) | [en/integrations/ldap-keycloak-standalone.md](en/integrations/ldap-keycloak-standalone.md) |
 
 ---
 
-## Documentation standards
+## Эксплуатировать
 
-Product positioning and writing rules for contributors: [Product documentation TZ](en/specs/product-documentation-tz.md) · [RU](ru/specs/product-documentation-tz.md)
+| Тема | Русский | English |
+|------|---------|---------|
+| Хаб эксплуатации | [operations-guide/ru/README.md](operations-guide/ru/README.md) | [operations-guide/en/README.md](operations-guide/en/README.md) |
+| Резервное копирование | [operations-guide/ru/backup-restore.md](operations-guide/ru/backup-restore.md) | [operations-guide/en/backup-restore.md](operations-guide/en/backup-restore.md) |
+| Перенос с MinIO | [ru/migrate-from-minio.md](ru/migrate-from-minio.md) | [migrate-from-minio.md](migrate-from-minio.md) |
+| Обновление | [operations-guide/ru/upgrade.md](operations-guide/ru/upgrade.md) | [operations-guide/en/upgrade.md](operations-guide/en/upgrade.md) |
+| Масштабирование | [operations-guide/ru/scaling.md](operations-guide/ru/scaling.md) | [operations-guide/en/scaling.md](operations-guide/en/scaling.md) |
+| Высокая доступность | [operations-guide/ru/high-availability.md](operations-guide/ru/high-availability.md) | [operations-guide/en/high-availability.md](operations-guide/en/high-availability.md) |
+| Эталон двух узлов | [operations-guide/ru/reference-deployment-2node.md](operations-guide/ru/reference-deployment-2node.md) | [operations-guide/en/reference-deployment-2node.md](operations-guide/en/reference-deployment-2node.md) |
+| Аварийное восстановление | [operations-guide/ru/disaster-recovery.md](operations-guide/ru/disaster-recovery.md) | [operations-guide/en/disaster-recovery.md](operations-guide/en/disaster-recovery.md) |
+| События и вебхуки | [ru/integrations/events.md](ru/integrations/events.md) | [en/integrations/events.md](en/integrations/events.md) |
+| Kafka | [ru/integrations/kafka.md](ru/integrations/kafka.md) | [en/integrations/kafka.md](en/integrations/kafka.md) |
+| Мониторинг | [operations-guide/ru/monitoring.md](operations-guide/ru/monitoring.md) | [operations-guide/en/monitoring.md](operations-guide/en/monitoring.md) |
+| Неисправности | [operations-guide/ru/troubleshooting.md](operations-guide/ru/troubleshooting.md) | [operations-guide/en/troubleshooting.md](operations-guide/en/troubleshooting.md) |
+| Самооценка безопасности | [operations-guide/ru/security-self-assessment.md](operations-guide/ru/security-self-assessment.md) | [operations-guide/en/security-self-assessment.md](operations-guide/en/security-self-assessment.md) |
+| Шифрование объектов | [operations-guide/ru/encryption.md](operations-guide/ru/encryption.md) | [operations-guide/en/encryption.md](operations-guide/en/encryption.md) |
+| Шифрование полей метаданных | [operations-guide/ru/field-encryption.md](operations-guide/ru/field-encryption.md) | [operations-guide/en/field-encryption.md](operations-guide/en/field-encryption.md) |
+| Vault: подстановка секретов | [operations-guide/ru/secrets-vault.md](operations-guide/ru/secrets-vault.md) | [operations-guide/en/secrets-vault.md](operations-guide/en/secrets-vault.md) |
+| Vault Transit | [operations-guide/ru/kms-vault.md](operations-guide/ru/kms-vault.md) | [operations-guide/en/kms-vault.md](operations-guide/en/kms-vault.md) |
+| Лаборатория Vault | [ru/vault.md](ru/vault.md) | [../deploy/vault/README.md](../deploy/vault/README.md) |
+
+---
+
+## Справочник и API
+
+| Тема | Русский | English |
+|------|---------|---------|
+| Шлюз, технически | [ru/context/gateway.md](ru/context/gateway.md) | [en/context/gateway.md](en/context/gateway.md) |
+| Дорожная карта | [ru/context/roadmap.md](ru/context/roadmap.md) | [en/context/roadmap.md](en/context/roadmap.md) |
+| Статус | [ru/context/project-status.md](ru/context/project-status.md) | [en/context/project-status.md](en/context/project-status.md) |
+| ADR | [ru/architecture/adr/README.md](ru/architecture/adr/README.md) | [architecture/adr/README.md](architecture/adr/README.md) |
+| Руководство по API | [api-guide/ru/README.md](api-guide/ru/README.md) | [api-guide/en/README.md](api-guide/en/README.md) |
+| Аутентификация API | [api-guide/ru/authentication.md](api-guide/ru/authentication.md) | [api-guide/en/authentication.md](api-guide/en/authentication.md) |
+| Примеры curl | [api-guide/ru/curl-examples.md](api-guide/ru/curl-examples.md) | [api-guide/en/curl-examples.md](api-guide/en/curl-examples.md) |
+| OpenAPI | [api/README.md](api/README.md) | [ru/api/README.md](ru/api/README.md) |
+| Swagger | [ru/api/swagger.md](ru/api/swagger.md) | [en/api/swagger.md](en/api/swagger.md) |
+| Скриншоты | [images/screenshots/](images/screenshots/) | тот же каталог |
+| Диаграммы | [ru/diagrams/README.md](ru/diagrams/README.md) | [diagrams/README.md](diagrams/README.md) |
+| Community и Enterprise | [ru/enterprise/community-enterprise-lifecycle.md](ru/enterprise/community-enterprise-lifecycle.md) | [en/enterprise/community-enterprise-lifecycle.md](en/enterprise/community-enterprise-lifecycle.md) |
+
+Swagger UI при установке через Compose открывается как `http://localhost:8080/api/v1/docs` (Caddy проксирует `/api`). Тот же UI слушает процесс на порту API: `http://127.0.0.1:9000/api/v1/docs`.
+
+Журнал изменений продукта: [../CHANGELOG.md](../CHANGELOG.md). Журнал интеграционного API: [ru/api/CHANGELOG.md](ru/api/CHANGELOG.md).

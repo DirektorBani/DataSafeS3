@@ -429,26 +429,20 @@ docker run --rm -e PGPASSWORD=datasafe postgres:16-alpine psql -h host.docker.in
 
 ### Kubernetes / Helm
 
-For Kubernetes clusters, use the official Helm chart in [`deploy/helm/datasafe/`](../../../deploy/helm/datasafe/). It mirrors the Docker Compose stack: `storage-server`, Caddy (console on port 80 → Ingress **8080** equivalent), optional PostgreSQL StatefulSet, Prometheus/Grafana, and separate Ingress hosts for the console and S3 API.
+Two charts are in the repository.
 
-**Install (BoltDB, default):**
-
-```bash
-helm install datasafe deploy/helm/datasafe --namespace datasafe --create-namespace
-```
-
-**PostgreSQL metadata:**
+**Current chart (v1.7.0),** [`deploy/helm/datasafes3`](../../../deploy/helm/datasafes3/): one pod, a PVC, and Bolt by default. `values-ha.yaml` turns on Postgres metadata and `STORAGE_HA_ENABLED`. Kafka and NATS are not installed. The console Service is port 8080 and the S3 Service is port 9000. Guide: [docs/kubernetes.md](../../../docs/kubernetes.md).
 
 ```bash
-helm install datasafe deploy/helm/datasafe \
-  --set postgres.enabled=true \
-  --set storageServer.metadataBackend=postgres \
-  --namespace datasafe --create-namespace
+helm install ds deploy/helm/datasafes3 \
+  --set auth.accessKey=datasafe \
+  --set auth.secretKey=change-me \
+  --set auth.adminPassword=change-me-admin \
+  --set auth.jwtSecret=change-me-jwt \
+  --set auth.metricsToken=change-me-metrics
 ```
 
-Add `datasafe.local` and `s3.datasafe.local` to DNS or `/etc/hosts`, or use `kubectl port-forward` (see chart `NOTES.txt`).
-
-Full values reference, image build steps, LDAP/OIDC/logging knobs: **[Helm chart README](../../../deploy/helm/datasafe/README.md)**.
+**Earlier chart,** [`deploy/helm/datasafe`](../../../deploy/helm/datasafe/): the Compose-like stack with Caddy, optional Prometheus, Grafana, and Postgres. It is not the chart described in the v1.7.0 release notes.
 
 Русская версия: [Kubernetes / Helm](../../ru/user-guide/README.md#kubernetes--helm).
 
@@ -591,7 +585,7 @@ Elasticsearch joins network **`datasafe_default`** (same as the compose project)
 
 #### Loki
 
-There is **no** separate `start-loki-test.cmd` in the repository. If you have your own Loki on the Docker network `datasafe_default`, enable the sink in Settings: address `http://<container>:3100`. For manual testing see [feature-audit-report.md](../../testing/feature-audit-report.md) (container `datasafe-log-loki`, image `grafana/loki:2.9.4`).
+`scripts\start-loki-test.cmd` starts container `datasafe-log-loki` from `grafana/loki:2.9.4` on port 3100 and joins the Docker network `datasafe_default`. In **Administrator settings → External logging**, set the address to `http://host.docker.internal:3100` (or the container address on that network).
 
 ---
 
@@ -714,7 +708,7 @@ Without `AUDIT_RESET_ADMIN=1` the script exits without changes.
 powershell -File scripts\feature-audit-test.ps1
 ```
 
-Requires a running core stack; for LDAP/OIDC/Gateway/ES blocks — corresponding test containers. Report: [feature-audit-report.md](../../testing/feature-audit-report.md).
+Requires a running core stack; for LDAP/OIDC/Gateway/ES blocks — corresponding test containers. The report file is not in this repository.
 
 ---
 

@@ -57,5 +57,5 @@ Provide credentials in a sealed channel; rotate after assessment.
 ## Related
 
 - [SECURITY.md](../../../SECURITY.md)
-- [v1.1.0 TZ](../../specs/v1.1.0-trust-debt-oss-growth-tz.md)
+- [ТЗ v1.1.0 (RU)](../../ru/specs/v1.1.0-trust-debt-oss-growth-tz.md)
 - [Field encryption](field-encryption.md)

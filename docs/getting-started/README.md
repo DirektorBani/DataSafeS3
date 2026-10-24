@@ -1,5 +1,7 @@
 # Getting Started / Начало работы
 
+Интерфейс продукта доступен на русском и английском. Строки Deutsch и Français ниже — прежние переводы двух обзорных страниц, не языки интерфейса.
+
 | English | Русский | Deutsch | Français |
 |---------|---------|---------|----------|
 | [en/README.md](en/README.md) | [ru/README.md](ru/README.md) | [de/README.md](de/README.md) | [fr/README.md](fr/README.md) |
@@ -9,5 +11,5 @@
 - [First run](en/first-run.md) · [Первый запуск](ru/first-run.md)
 - [Setup wizard](en/setup-wizard.md) · [Мастер настройки](ru/setup-wizard.md)
 - [S3 configuration](en/s3-configuration.md) · [Настройка S3](ru/s3-configuration.md)
-- [First bucket](en/first-bucket.md) · [Первый bucket](ru/first-bucket.md)
+- [First bucket](en/first-bucket.md) · [Первый бакет](ru/first-bucket.md)
 - **[Onboarding](en/onboarding.md)** · **[Онбординг](ru/onboarding.md)**

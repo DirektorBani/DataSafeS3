@@ -93,7 +93,7 @@ flowchart TB
 
 Production checklist: TLS, PostgreSQL metadata, backups, monitoring alerts, changed bootstrap credentials. Optional HA: [2-node reference](../../operations-guide/en/reference-deployment-2node.md), Helm `values-ha.yaml`.
 
-Guide: [Helm chart](../../../deploy/helm/datasafe/README.md) · [Operations guide](../../operations-guide/en/README.md)
+Guide: [current Helm chart](../../../deploy/helm/datasafes3/README.md) · [earlier chart](../../../deploy/helm/datasafe/README.md) · [Operations guide](../../operations-guide/en/README.md)
 
 ---
 

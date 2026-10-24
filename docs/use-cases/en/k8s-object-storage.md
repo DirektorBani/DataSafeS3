@@ -20,12 +20,12 @@ flowchart TB
   ds --> pvc
 ```
 
-1. `helm install datasafe deploy/helm/datasafe`
-2. Ingress for S3 endpoint and console
+1. `helm install ds deploy/helm/datasafes3` with real `auth.*` values. The earlier chart `deploy/helm/datasafe` is still in the tree.
+2. Ingress for the S3 endpoint and the console, or `kubectl port-forward`
 3. Per-tenant buckets and credentials for workloads
-4. Prometheus ServiceMonitor for alerts
+4. Optional Prometheus ServiceMonitor (`monitoring.serviceMonitor.enabled` on the current chart)
 
-See [Helm README](../../../deploy/helm/datasafe/README.md).
+See [Kubernetes](../../kubernetes.md) and the [current chart](../../../deploy/helm/datasafes3/README.md).
 
 ## Result
 

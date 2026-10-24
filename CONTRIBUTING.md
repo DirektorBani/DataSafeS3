@@ -1,5 +1,9 @@
 # Contributing to DataSafeS3
 
+По-русски: [docs/ru/contributing.md](docs/ru/contributing.md).
+
+
+
 
 
 Thank you for improving DataSafeS3 Community Edition.

@@ -92,6 +92,6 @@ Gateway replication пишет во **внешний S3**. Site replication пи
 
 ## Kubernetes
 
-Helm: лимиты, PDB, `values-production.yaml`. [deploy/helm/datasafe/README.md](../../../deploy/helm/datasafe/README.md).
+Текущий чарт [deploy/helm/datasafes3](../../../deploy/helm/datasafes3/README.md) задаёт запросы ресурсов, PodDisruptionBudget и `values-production.yaml`. У прежнего чарта [deploy/helm/datasafe](../../../deploy/helm/datasafe/README.md) свои лимиты и PDB.
 
-Бенчмарки: [performance-benchmarks](../../testing/performance-benchmarks.md).
+Отдельного отчёта с бенчмарками в репозитории нет. Гейт одного узла сравнивает RSS и время старта с опубликованным образом v1.5.0; см. [single-node-gate.md](single-node-gate.md).

@@ -119,7 +119,7 @@ scripts\setup-minio-gateway.cmd
 | Connection refused из Docker | `http://host.docker.internal:9100` |
 | Не удалить connection | Сначала удалите правила репликации |
 
-Подробнее: [docs/context/gateway.md](../../context/gateway.md)
+Подробнее: [docs/ru/context/gateway.md](../context/gateway.md)
 
 ---
 

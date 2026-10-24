@@ -167,5 +167,5 @@ Prototype code exists (`clients/mobile`, `clients/mobile-web`) but **not** part 
 ## Related documents
 
 - [file-collaboration-tz.md](./file-collaboration-tz.md) — original Phase 1 spec
-- [competitive-assessment-2026-v5.md](../../analysis/competitive-assessment-2026-v5.md) — market score **9.1/10**
+- An internal market assessment is not part of this repository.
 - [tenant-bucket-isolation-tz.md](./tenant-bucket-isolation-tz.md) — grants foundation

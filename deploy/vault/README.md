@@ -1,5 +1,9 @@
 # HashiCorp Vault — local development
 
+По-русски: [docs/ru/vault.md](../../docs/ru/vault.md).
+
+
+
 Optional **opt-in** stack for the Vault Agent → `STORAGE_*` env injection pattern. DataSafeS3 has **no Vault SDK**; secrets are rendered to `/rendered/datasafe.env` and sourced at container start.
 
 **Operations guide:** [EN](../../docs/operations-guide/en/secrets-vault.md) · [RU](../../docs/operations-guide/ru/secrets-vault.md)
