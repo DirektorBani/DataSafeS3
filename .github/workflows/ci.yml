@@ -19,6 +19,8 @@ jobs:
             echo "CRLF in shell scripts; .gitattributes requires LF"
             exit 1
           fi
+      - name: GitVerse publish checks
+        run: python3 scripts/gitverse_publish_test.py
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.9"

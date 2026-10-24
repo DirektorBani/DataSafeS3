@@ -53,3 +53,4 @@ curl http://localhost:9000/api/v1/health
 
 - [Мастер настройки](setup-wizard.md)
 - [Онбординг](onboarding.md)
+- [Установка из зеркала GitVerse](../../ru/gitverse-mirror.md)

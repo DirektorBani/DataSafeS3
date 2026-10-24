@@ -13,4 +13,4 @@ helm install ds deploy/helm/datasafes3 \
 
 Production uses a Secret you create yourself. See `values-production.yaml`. HA uses `values-ha.yaml`: Postgres holds metadata, and Kafka or NATS are optional event sinks, not the cluster connection.
 
-Guide: [docs/kubernetes.md](../../../docs/kubernetes.md).
+Guide: [docs/kubernetes.md](../../../docs/kubernetes.md). GitVerse mirror (RU): [docs/ru/gitverse-mirror.md](../../../docs/ru/gitverse-mirror.md).
