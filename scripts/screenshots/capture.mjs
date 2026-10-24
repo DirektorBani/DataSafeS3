@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = path.resolve(__dirname, "../../docs/images/screenshots");
+const OUT_DIR = path.resolve(__dirname, "../../docs/images/_capture-output");
 const BASE = process.env.DATASAFE_URL || "http://localhost:8080";
 const API = `${BASE}/api/v1`;
 const ADMIN_USER = "admin";

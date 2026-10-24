@@ -730,7 +730,7 @@ Requires a running core stack; for LDAP/OIDC/Gateway/ES blocks — corresponding
 | PostgreSQL, DBeaver | [§10. PostgreSQL](#10-postgresql-and-dbeaver) |
 | Docker, OIDC, Gateway issues | [§12. Troubleshooting](#12-troubleshooting) |
 
-**UI screenshots:** folder [images/](../../user-guide/images/). Update: `scripts/capture-screenshots.mjs` — see [images/README.md](../../user-guide/images/README.md).
+**UI screenshots:** all frames are in [images/screenshots/](../../images/screenshots/); captioned overview — [What it looks like](../screenshots-gallery.md).
 
 ---
 
@@ -784,7 +784,7 @@ Everything runs on your server — data does not leave to a third-party cloud un
 1. Make sure DataSafeS3 is running (see [Quick start](#quick-start)).
 2. Open your browser: **http://localhost:8080/**
 
-![Sign-in screen](../../user-guide/images/login.png)
+![Sign-in screen](../../images/screenshots/en/login.png)
 
 ### Sign-in
 
@@ -857,7 +857,7 @@ Below — volume growth chart. Statistics depend on role:
 | **tenant_admin** / bucket owner | Own and tenant buckets; for tenant_admin — transfer metrics per tenant |
 | **user** / **viewer** | Only accessible buckets and personal quota |
 
-![Dashboard home page](../../user-guide/images/dashboard.png)
+![Dashboard home page](../../images/screenshots/en/dashboard.png)
 
 ### Bucket list
 
@@ -883,7 +883,7 @@ For end users, the list is split into tabs:
 
 **Mobile (Phase 4 — backlog):** prototype code in [clients/mobile](../../../clients/mobile/README.md) and [clients/mobile-web](../../../clients/mobile-web/README.md); not part of current delivery. Scope: [phase4-backlog](../specs/file-collaboration-phase4-backlog.md).
 
-![Bucket list](../../user-guide/images/buckets.png)
+![Bucket list](../../images/screenshots/en/buckets.png)
 
 **Create bucket:** **Create bucket** → name (Latin letters, digits, hyphen) → confirm.
 
@@ -897,7 +897,7 @@ For end users, the list is split into tabs:
 
 Click a bucket name — file view opens.
 
-![Object browser inside a bucket](../../user-guide/images/bucket-detail.png)
+![Object browser inside a bucket](../../images/screenshots/en/object-browser.png)
 
 **Upload:**
 
@@ -1002,7 +1002,7 @@ Per-bucket quotas: bucket **Settings** → **Quotas**.
 
 **Password change:** `POST /api/v1/me/password` — for users with `auth_source` local. For **LDAP** and **OIDC**, password is managed by the external provider (403 response).
 
-![Profile section — MFA setup](../../user-guide/images/mfa-profile.png)
+![Profile section — MFA setup](../../images/screenshots/en/profile.png)
 
 ### MFA (TOTP)
 
@@ -1194,7 +1194,7 @@ HTTP notifications on ObjectCreated, ObjectDeleted, BucketCreated/Deleted, UserC
 
 **Gateway** copies files from DataSafeS3 to **external S3** (external S3) **in the background**.
 
-![Gateway — Connections tab](../../user-guide/images/gateway.png)
+![Gateway — Connections tab](../../images/screenshots/en/gateway.png)
 
 ### External S3 test endpoint
 
@@ -1336,7 +1336,7 @@ Stop: `scripts\stop-ldap-keycloak-test.cmd` (full reset: `--remove`).
 | System Overview | http://localhost:3000/d/datasafe-overview/datasafe-overview |
 | Buckets (multi-select) | http://localhost:3000/d/datasafe-buckets/datasafe-buckets |
 
-![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/monitoring.png)
+![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/common/monitoring.png)
 
 Metrics: **HTTP / S3** row (RPS, counts, storage, latency, errors, top buckets), **Host** row (disk, CPU, memory, network, Postgres lag), and **Event delivery** (queue, rates, lag, bridge restarts). Prometheus: http://localhost:9090 (usually no manual sign-in).
 

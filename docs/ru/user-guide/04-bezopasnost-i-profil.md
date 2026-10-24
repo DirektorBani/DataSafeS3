@@ -14,7 +14,7 @@
 - **двухфакторная аутентификация (MFA)**;
 - коды восстановления.
 
-![Раздел Profile — настройка MFA](../../user-guide/images/mfa-profile.png)
+![Раздел Profile — настройка MFA](../../images/screenshots/ru/profile.png)
 
 ---
 

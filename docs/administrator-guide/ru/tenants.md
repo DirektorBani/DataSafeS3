@@ -2,7 +2,7 @@
 
 # Управление тенантами
 
-![Tenants](../../images/screenshots/tenants.png)
+![Tenants](../../images/screenshots/ru/tenants.png)
 
 Мульти-тенантность изолирует организации с отдельными пространствами имён bucket и ролями участников.
 

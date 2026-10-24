@@ -120,7 +120,8 @@ Kafka и Vault в установку по умолчанию не входят.
 | Примеры curl | [api-guide/ru/curl-examples.md](api-guide/ru/curl-examples.md) | [api-guide/en/curl-examples.md](api-guide/en/curl-examples.md) |
 | OpenAPI | [api/README.md](api/README.md) | [ru/api/README.md](ru/api/README.md) |
 | Swagger | [ru/api/swagger.md](ru/api/swagger.md) | [en/api/swagger.md](en/api/swagger.md) |
-| Скриншоты | [images/screenshots/](images/screenshots/) | тот же каталог |
+| Как это выглядит (галерея скриншотов) | [ru/screenshots-gallery.md](ru/screenshots-gallery.md) | [en/screenshots-gallery.md](en/screenshots-gallery.md) |
+| Файлы скриншотов | [images/screenshots/](images/screenshots/) | тот же каталог |
 | Диаграммы | [ru/diagrams/README.md](ru/diagrams/README.md) | [diagrams/README.md](diagrams/README.md) |
 | Community и Enterprise | [ru/enterprise/community-enterprise-lifecycle.md](ru/enterprise/community-enterprise-lifecycle.md) | [en/enterprise/community-enterprise-lifecycle.md](en/enterprise/community-enterprise-lifecycle.md) |
 

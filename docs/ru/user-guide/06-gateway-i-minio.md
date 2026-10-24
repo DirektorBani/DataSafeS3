@@ -18,7 +18,7 @@
 
 Копирование **в фоне** — через несколько секунд объект появляется на удалённой стороне.
 
-![Gateway — вкладка Connections](../../user-guide/images/gateway.png)
+![Gateway — вкладка Connections](../../images/screenshots/ru/gateway.png)
 
 ---
 

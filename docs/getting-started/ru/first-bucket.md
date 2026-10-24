@@ -10,7 +10,7 @@
 4. Имя (например `documents`) и видимость (`private` или `public-read`)
 5. Откройте bucket → загрузите файл drag-and-drop или **Загрузить**
 
-![Браузер объектов](../../images/screenshots/object-browser.png)
+![Браузер объектов](../../images/screenshots/ru/object-browser.png)
 
 ## Через Admin API
 

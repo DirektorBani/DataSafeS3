@@ -10,7 +10,7 @@
 | **Site replication** | Другой **DataSafeS3** (AK/SK) | Lab, legacy |
 | **Trusted cluster replication** | **Paired** DataSafeS3 (mTLS) | DR с автоматическим trust — **предпочтительно** |
 
-![Gateway](../../images/screenshots/gateway.png)
+![Gateway](../../images/screenshots/ru/gateway.png)
 
 ## Gateway replication (external S3)
 

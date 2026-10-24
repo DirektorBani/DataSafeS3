@@ -2,7 +2,7 @@
 
 # Эксплуатационный мониторинг
 
-![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/monitoring.png)
+![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/common/monitoring.png)
 
 Панели обзора: **HTTP / S3** (RPS, счётчики, объём, latency, ошибки, топ бакетов), **Cluster (summary)** (общий статус, healthy/offline, HA leader), **Host** (диск, CPU, память, сеть, lag Postgres), **Event delivery** (очередь, скорость доставки, задержка, перезапуски моста) и **KMS** (доступность Vault по узлам, латентность запросов, кэш DEK, фоновые задачи). Ряды KMS есть только пока включён Vault Transit, кроме `datasafe_kms_jobs_objects_total`, который появляется после первого обработанного объекта, и счётчиков классификации 1.5.0, которые регистрируются при старте процесса.
 

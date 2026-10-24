@@ -10,7 +10,7 @@ English | **[Русский](../ru/first-bucket.md)**
 4. Enter a name (e.g. `documents`) and choose visibility (`private` or `public-read`)
 5. Open the bucket → upload a file via drag-and-drop or **Upload**
 
-![Object browser](../../images/screenshots/object-browser.png)
+![Object browser](../../images/screenshots/en/object-browser.png)
 
 ## Via Admin API
 

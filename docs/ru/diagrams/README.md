@@ -19,4 +19,4 @@ English: [diagrams/README.md](../../diagrams/README.md).
 | Макет настроек бакета | [bucket-settings-multi-select-tz](../specs/bucket-settings-multi-select-tz.md) |
 | ER базы | [database.md](../database.md) |
 
-Снимки интерфейса — статические PNG в [images/screenshots/](../../images/screenshots/) и [user-guide/images/](../../user-guide/images/). Это кадры консоли, не диаграммы.
+Снимки интерфейса — статические PNG в [images/screenshots/](../../images/screenshots/). Это кадры консоли, не диаграммы. Обзор с подписями: [Как это выглядит](../screenshots-gallery.md).

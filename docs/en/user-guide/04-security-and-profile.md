@@ -14,7 +14,7 @@ The **Profile** menu contains your account settings:
 - **multi-factor authentication (MFA)**;
 - recovery codes.
 
-![Profile section — MFA setup](../../user-guide/images/mfa-profile.png)
+![Profile section — MFA setup](../../images/screenshots/en/profile.png)
 
 ---
 

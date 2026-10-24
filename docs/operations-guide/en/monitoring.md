@@ -2,7 +2,7 @@ English | **[Русский](../ru/monitoring.md)**
 
 # Monitoring operations
 
-![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/monitoring.png)
+![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/common/monitoring.png)
 
 Overview panels: **HTTP / S3** (RPS, counts, storage, latency, errors, top buckets), **Cluster (summary)** (overall status, healthy/offline counts, HA leader), **Host** (disk, CPU, memory, network, Postgres replication lag), **Event delivery** (queue, rates, lag, bridge restarts), and **KMS** (Vault availability by node, request latency, DEK cache, background jobs). The KMS series exist only while Vault Transit is enabled, except `datasafe_kms_jobs_objects_total`, which appears after the first finished object, and the legacy-classification counters, which are registered at process start.
 

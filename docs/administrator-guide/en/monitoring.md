@@ -2,7 +2,7 @@ English | **[Русский](../ru/monitoring.md)**
 
 # Monitoring
 
-![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/monitoring.png)
+![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/common/monitoring.png)
 
 The **DataSafeS3 Overview** dashboard has three rows:
 

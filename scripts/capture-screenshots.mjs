@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
-const OUT_DIR = path.join(ROOT, "docs", "user-guide", "images");
+const OUT_DIR = path.join(ROOT, "docs", "images", "_capture-output");
 
 const CONSOLE_URL = process.env.CONSOLE_URL || "http://localhost:8080";
 const GRAFANA_URL = process.env.GRAFANA_URL || "http://localhost:3000";

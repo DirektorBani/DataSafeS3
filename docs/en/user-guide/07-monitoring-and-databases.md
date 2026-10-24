@@ -26,7 +26,7 @@ After sign-in, open:
 | **DataSafeS3 Cluster Status** (node health / HA) | http://localhost:3000/d/datasafe-cluster/datasafe-cluster |
 | **DataSafeS3 Buckets** (per-bucket selector) | http://localhost:3000/d/datasafe-buckets/datasafe-buckets |
 
-![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/monitoring.png)
+![Grafana — DataSafeS3 Overview dashboard](../../images/screenshots/common/monitoring.png)
 
 On the overview dashboard you will see these rows:
 

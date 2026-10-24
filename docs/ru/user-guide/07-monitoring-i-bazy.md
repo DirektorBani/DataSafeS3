@@ -26,7 +26,7 @@
 | **Статус кластера** (ноды / HA) | http://localhost:3000/d/datasafe-cluster/datasafe-cluster |
 | **Бакеты** (выбор одного или нескольких) | http://localhost:3000/d/datasafe-buckets/datasafe-buckets |
 
-![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/monitoring.png)
+![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/common/monitoring.png)
 
 На дашборде обзора такие ряды панелей:
 

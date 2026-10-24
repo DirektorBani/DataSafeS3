@@ -2,7 +2,7 @@
 
 # Пользователи и RBAC
 
-![Users](../../images/screenshots/users.png)
+![Users](../../images/screenshots/ru/users.png)
 
 ## Роли
 

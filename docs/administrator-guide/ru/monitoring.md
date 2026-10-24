@@ -2,7 +2,7 @@
 
 # Мониторинг
 
-![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/monitoring.png)
+![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/common/monitoring.png)
 
 Дашборд **DataSafeS3 Overview** состоит из трёх рядов панелей:
 

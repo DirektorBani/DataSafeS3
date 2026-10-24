@@ -2,7 +2,7 @@ English | **[Русский](../ru/users.md)**
 
 # Users and RBAC
 
-![Users](../../images/screenshots/users.png)
+![Users](../../images/screenshots/en/users.png)
 
 ## Roles
 

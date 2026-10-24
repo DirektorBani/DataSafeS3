@@ -52,6 +52,6 @@ See the [central documentation hub](../README.md) for complete EN/RU tables:
 
 ## Screenshots
 
-[../images/screenshots/](../images/screenshots/)
+[What it looks like — screenshot gallery](screenshots-gallery.md) · files: [../images/screenshots/](../images/screenshots/)
 
 [Repository README](../../README.md)

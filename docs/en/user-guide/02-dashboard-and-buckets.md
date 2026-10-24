@@ -19,7 +19,7 @@ After sign-in, **Dashboard** opens — a brief summary:
 
 Below that is a chart of data volume growth over recent time.
 
-![Dashboard home page](../../user-guide/images/dashboard.png)
+![Dashboard home page](../../images/screenshots/en/dashboard.png)
 
 > The administrator sees system-wide statistics. A regular user sees only their own buckets.
 
@@ -30,7 +30,7 @@ Below that is a chart of data volume growth over recent time.
 1. In the left menu, select **Buckets**.
 2. A table of all buckets available to you is displayed.
 
-![Bucket list](../../user-guide/images/buckets.png)
+![Bucket list](../../images/screenshots/en/buckets.png)
 
 ### Create a Bucket
 
@@ -51,7 +51,7 @@ Below that is a chart of data volume growth over recent time.
 
 Click a bucket name to open the file view inside it.
 
-![Object browser inside a bucket](../../user-guide/images/bucket-detail.png)
+![Object browser inside a bucket](../../images/screenshots/en/object-browser.png)
 
 ### Upload Files
 

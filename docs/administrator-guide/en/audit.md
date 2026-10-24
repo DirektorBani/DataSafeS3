@@ -2,7 +2,7 @@ English | **[Русский](../ru/audit.md)**
 
 # Audit and activity log
 
-![Activity](../../images/screenshots/activity.png)
+![Activity](../../images/screenshots/en/activity.png)
 
 DataSafeS3 records administrative and data-plane actions in the **Activity** log.
 

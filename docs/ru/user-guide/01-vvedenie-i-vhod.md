@@ -25,7 +25,7 @@
 2. Откройте браузер.
 3. Перейдите по адресу: **http://localhost:8080/**
 
-![Экран входа в консоль](../../user-guide/images/login.png)
+![Экран входа в консоль](../../images/screenshots/ru/login.png)
 
 ---
 

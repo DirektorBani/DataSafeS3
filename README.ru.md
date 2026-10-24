@@ -119,12 +119,18 @@ docker pull gitverse.ru/direktorbani/datasafe-console:v1.7.0
 ## Снимки консоли
 
 | Обзор | Бакеты | Объекты |
-|-------|--------|---------|
-| ![Обзор](docs/images/screenshots/dashboard.png) | ![Бакеты](docs/images/screenshots/buckets.png) | ![Объекты](docs/images/screenshots/object-browser.png) |
+|---|---|---|
+| ![Обзор](docs/images/screenshots/ru/dashboard.png) | ![Бакеты](docs/images/screenshots/ru/buckets.png) | ![Объекты](docs/images/screenshots/ru/object-browser.png) |
 
-| Пользователи | Журнал | Мониторинг |
-|--------------|--------|------------|
-| ![Пользователи](docs/images/screenshots/users.png) | ![Журнал](docs/images/screenshots/activity.png) | ![Мониторинг](docs/images/screenshots/monitoring.png) |
+| Пользователи | Журнал | Мониторинг (Grafana) |
+|---|---|---|
+| ![Пользователи](docs/images/screenshots/ru/users.png) | ![Журнал](docs/images/screenshots/ru/activity.png) | ![Мониторинг (Grafana)](docs/images/screenshots/common/monitoring.png) |
+
+| Тенанты | Настройки | Шлюз |
+|---|---|---|
+| ![Тенанты](docs/images/screenshots/ru/tenants.png) | ![Настройки](docs/images/screenshots/ru/settings.png) | ![Шлюз](docs/images/screenshots/ru/gateway.png) |
+
+Все экраны — установка, интеграции (LDAP, Keycloak, Kafka, NATS, Vault, Grafana) и светлая/тёмная темы — в разделе **[Как это выглядит](docs/ru/screenshots-gallery.md)** ([EN](docs/en/screenshots-gallery.md)).
 
 ## Состав репозитория
 

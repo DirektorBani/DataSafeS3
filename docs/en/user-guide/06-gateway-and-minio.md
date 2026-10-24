@@ -18,7 +18,7 @@
 
 Copying runs **in the background** — shortly after upload, the object appears on the remote side.
 
-![Gateway — Connections tab](../../user-guide/images/gateway.png)
+![Gateway — Connections tab](../../images/screenshots/en/gateway.png)
 
 ---
 

@@ -2,7 +2,7 @@ English | **[Русский](../ru/tenants.md)**
 
 # Tenant management
 
-![Tenants](../../images/screenshots/tenants.png)
+![Tenants](../../images/screenshots/en/tenants.png)
 
 Multi-tenancy isolates organizations with separate bucket namespaces and member roles.
 

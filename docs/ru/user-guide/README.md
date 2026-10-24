@@ -732,7 +732,7 @@ powershell -File scripts\feature-audit-test.ps1
 | PostgreSQL, DBeaver | [§10. PostgreSQL](#10-postgresql-и-dbeaver) |
 | Проблемы с Docker, OIDC, Gateway | [§12. Устранение неполадок](#12-устранение-неполадок) |
 
-**Скриншоты интерфейса:** папка [images/](../../user-guide/images/). Обновление: `scripts/capture-screenshots.mjs` — см. [images/README.md](../../user-guide/images/README.md).
+**Скриншоты интерфейса:** все снимки — в каталоге [images/screenshots/](../../images/screenshots/); обзор с подписями — [«Как это выглядит»](../screenshots-gallery.md).
 
 ---
 
@@ -786,7 +786,7 @@ scripts\reset-fresh-install.cmd
 1. Убедитесь, что Датасейф S3 запущен (см. [Быстрый старт](#быстрый-старт)).
 2. Откройте браузер: **http://localhost:8080/**
 
-![Экран входа в консоль](../../user-guide/images/login.png)
+![Экран входа в консоль](../../images/screenshots/ru/login.png)
 
 ### Вход в систему
 
@@ -859,7 +859,7 @@ scripts\reset-fresh-install.cmd
 | **tenant_admin** / владелец бакетов | Свои и tenant-бакеты; для tenant_admin — метрики передачи по tenant |
 | **user** / **viewer** | Только доступные бакеты и личная квота |
 
-![Главная страница Dashboard](../../user-guide/images/dashboard.png)
+![Главная страница Dashboard](../../images/screenshots/ru/dashboard.png)
 
 ### Список бакетов
 
@@ -885,7 +885,7 @@ scripts\reset-fresh-install.cmd
 
 **Мобильный клиент (фаза 4 — беклог):** прототипы в [clients/mobile](../../../clients/mobile/README.md) и [mobile-web](../../../clients/mobile-web/README.md); не в поставке. Scope: [phase4-backlog](../specs/file-collaboration-phase4-backlog.md).
 
-![Список бакетов](../../user-guide/images/buckets.png)
+![Список бакетов](../../images/screenshots/ru/buckets.png)
 
 **Создать бакет:** **Создать бакет** → имя (латиница, цифры, дефис) → подтвердить.
 
@@ -899,7 +899,7 @@ scripts\reset-fresh-install.cmd
 
 Нажмите имя бакета — откроется просмотр файлов.
 
-![Браузер объектов внутри бакета](../../user-guide/images/bucket-detail.png)
+![Браузер объектов внутри бакета](../../images/screenshots/ru/object-browser.png)
 
 **Загрузка:**
 
@@ -1004,7 +1004,7 @@ Authorization: Bearer ds_...
 
 **Смена пароля:** `POST /api/v1/me/password` — для пользователей с `auth_source` local. Для **LDAP** и **OIDC** пароль управляется внешним провайдером (ответ 403).
 
-![Раздел Profile — настройка MFA](../../user-guide/images/mfa-profile.png)
+![Раздел Profile — настройка MFA](../../images/screenshots/ru/profile.png)
 
 ### MFA (TOTP)
 
@@ -1196,7 +1196,7 @@ HTTP-уведомления при ObjectCreated, ObjectDeleted, BucketCreated/D
 
 **Gateway** копирует файлы из Датасейф S3 во **внешнее S3** (external S3) **в фоне**.
 
-![Gateway — вкладка Connections](../../user-guide/images/gateway.png)
+![Gateway — вкладка Connections](../../images/screenshots/ru/gateway.png)
 
 ### Тестовый S3 endpoint
 
@@ -1338,7 +1338,7 @@ SSO-пользователь: `ssouser` / `password`
 | Обзор системы | http://localhost:3000/d/datasafe-overview/datasafe-overview |
 | Бакеты (мультивыбор) | http://localhost:3000/d/datasafe-buckets/datasafe-buckets |
 
-![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/monitoring.png)
+![Grafana — дашборд DataSafeS3 Overview](../../images/screenshots/common/monitoring.png)
 
 Метрики: ряд **HTTP / S3** (RPS, счётчики, объём, latency, ошибки, топ бакетов), ряд **Host** (диск, CPU, память, сеть, lag Postgres) и ряд **Event delivery** (очередь, скорость, задержка, перезапуски моста). Prometheus: http://localhost:9090 (обычно не требует ручного входа).
 

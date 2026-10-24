@@ -25,7 +25,7 @@ Everything runs on your server — data does not leave to a third-party cloud un
 2. Open your browser.
 3. Go to: **http://localhost:8080/**
 
-![Sign-in screen](../../user-guide/images/login.png)
+![Sign-in screen](../../images/screenshots/en/login.png)
 
 ---
 

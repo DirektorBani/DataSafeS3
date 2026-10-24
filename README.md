@@ -113,17 +113,19 @@ The product combines **S3-compatible storage**, a **web console**, **enterprise 
 
 ## Product screenshots
 
-| Dashboard / Обзор | Storage / Бакеты | Object browser / Объекты |
-|-------------------|------------------|--------------------------|
-| ![Dashboard](docs/images/screenshots/dashboard.png) | ![Buckets](docs/images/screenshots/buckets.png) | ![Object browser](docs/images/screenshots/object-browser.png) |
+| Dashboard | Buckets | Object browser |
+|---|---|---|
+| ![Dashboard](docs/images/screenshots/en/dashboard.png) | ![Buckets](docs/images/screenshots/en/buckets.png) | ![Object browser](docs/images/screenshots/en/object-browser.png) |
 
-| User management / Пользователи | Audit / Активность | Monitoring / Мониторинг |
-|------------------------------|--------------------|-------------------------|
-| ![Users](docs/images/screenshots/users.png) | ![Activity](docs/images/screenshots/activity.png) | ![Monitoring](docs/images/screenshots/monitoring.png) |
+| Users | Activity | Monitoring (Grafana) |
+|---|---|---|
+| ![Users](docs/images/screenshots/en/users.png) | ![Activity](docs/images/screenshots/en/activity.png) | ![Monitoring (Grafana)](docs/images/screenshots/common/monitoring.png) |
 
-| Tenants / Тенанты | Settings / Настройки | Gateway / Репликация |
-|-------------------|----------------------|----------------------|
-| ![Tenants](docs/images/screenshots/tenants.png) | ![Settings](docs/images/screenshots/settings.png) | ![Gateway](docs/images/screenshots/gateway.png) |
+| Tenants | Settings | Gateway |
+|---|---|---|
+| ![Tenants](docs/images/screenshots/en/tenants.png) | ![Settings](docs/images/screenshots/en/settings.png) | ![Gateway](docs/images/screenshots/en/gateway.png) |
+
+See every screen — installation, integrations (LDAP, Keycloak, Kafka, NATS, Vault, Grafana) and light/dark themes — in **[What it looks like](docs/en/screenshots-gallery.md)** ([RU](docs/ru/screenshots-gallery.md)).
 
 ---
 

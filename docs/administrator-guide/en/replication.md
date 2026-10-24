@@ -10,7 +10,7 @@ DataSafeS3 supports **three replication models** for DataSafeS3-to-DataSafeS3 sc
 | **Site replication** | Another **DataSafeS3** (access keys) | Lab, legacy AK/SK peer |
 | **Trusted cluster replication** | Another **paired** DataSafeS3 (mTLS) | DR site with automated trust — **preferred** |
 
-![Gateway](../../images/screenshots/gateway.png)
+![Gateway](../../images/screenshots/en/gateway.png)
 
 ## Gateway replication (external S3)
 

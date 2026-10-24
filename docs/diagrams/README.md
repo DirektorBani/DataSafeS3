@@ -17,4 +17,4 @@ All architecture diagrams in DataSafeS3 documentation use **[Mermaid](https://me
 | Bucket settings layout | [bucket-settings-multi-select-tz](../en/specs/bucket-settings-multi-select-tz.md) |
 | Database ER | [database.md](../en/database.md) |
 
-**UI screenshots** (`docs/user-guide/images/*.png`) remain static images — they are console captures, not diagrams.
+**UI screenshots** are static images in [images/screenshots/](../images/screenshots/) — they are console captures, not diagrams. Captioned overview: [What it looks like](../en/screenshots-gallery.md).

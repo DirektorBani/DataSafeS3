@@ -21,7 +21,7 @@
    - Настроить external S3 для репликации Gateway
 5. **Завершить** — попадёте на главную (дашборд)
 
-![Главная](../../images/screenshots/dashboard.png)
+![Главная](../../images/screenshots/ru/dashboard.png)
 
 ## Фаза 3 — Первая организация (tenant)
 
@@ -34,7 +34,7 @@
    - `member` — чтение/запись в выданных бакетах
    - `viewer` — только чтение
 
-![Тенанты](../../images/screenshots/tenants.png)
+![Тенанты](../../images/screenshots/ru/tenants.png)
 
 См. [Руководство администратора — тенанты](../../administrator-guide/ru/tenants.md).
 
@@ -47,7 +47,7 @@
    - `user` — только свои бакеты
 3. При необходимости назначьте в тенанты
 
-![Пользователи](../../images/screenshots/users.png)
+![Пользователи](../../images/screenshots/ru/users.png)
 
 ## Фаза 5 — Первый bucket и загрузка
 
@@ -55,7 +55,7 @@
 2. Откройте bucket → **Загрузить** или перетащите файлы
 3. Убедитесь, что объекты видны в браузере объектов
 
-![Браузер объектов](../../images/screenshots/object-browser.png)
+![Браузер объектов](../../images/screenshots/ru/object-browser.png)
 
 Альтернатива: [первый bucket через S3 CLI](first-bucket.md#через-s3-cli).
 

@@ -69,6 +69,6 @@
 
 ## Скриншоты
 
-[../images/screenshots/](../images/screenshots/)
+[Как это выглядит — галерея снимков](screenshots-gallery.md) · файлы: [../images/screenshots/](../images/screenshots/)
 
 [README репозитория](../../README.md)

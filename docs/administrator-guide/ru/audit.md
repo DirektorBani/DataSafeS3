@@ -2,7 +2,7 @@
 
 # Аудит и журнал активности
 
-![Activity](../../images/screenshots/activity.png)
+![Activity](../../images/screenshots/ru/activity.png)
 
 DataSafeS3 записывает административные и data-plane действия в журнал **Activity**.
 

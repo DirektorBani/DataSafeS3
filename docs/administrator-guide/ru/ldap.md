@@ -2,7 +2,7 @@
 
 # Интеграция LDAP
 
-![Системные настройки](../../images/screenshots/settings.png)
+![Системные настройки](../../images/screenshots/ru/settings.png)
 
 Синхронизация пользователей и сопоставление LDAP-групп с ролями DataSafeS3 при входе.
 

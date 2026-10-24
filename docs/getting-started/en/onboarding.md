@@ -21,7 +21,7 @@ Step-by-step guide from zero to a working DataSafeS3 deployment with users, tena
    - Configure external external S3 for Gateway replication
 5. Click **Finish** — you land on the dashboard
 
-![Dashboard](../../images/screenshots/dashboard.png)
+![Dashboard](../../images/screenshots/en/dashboard.png)
 
 ## Phase 3 — First organization (tenant)
 
@@ -34,7 +34,7 @@ Tenants isolate buckets and members for departments or customers.
    - `member` — read/write within granted buckets
    - `viewer` — read-only
 
-![Tenants](../../images/screenshots/tenants.png)
+![Tenants](../../images/screenshots/en/tenants.png)
 
 See [Administrator guide — tenants](../../administrator-guide/en/tenants.md).
 
@@ -47,7 +47,7 @@ See [Administrator guide — tenants](../../administrator-guide/en/tenants.md).
    - `user` — own buckets only
 3. Optionally assign users to tenants
 
-![Users](../../images/screenshots/users.png)
+![Users](../../images/screenshots/en/users.png)
 
 ## Phase 5 — First bucket and upload
 
@@ -55,7 +55,7 @@ See [Administrator guide — tenants](../../administrator-guide/en/tenants.md).
 2. Open the bucket → **Upload** or drag files
 3. Verify objects appear in the object browser
 
-![Object browser](../../images/screenshots/object-browser.png)
+![Object browser](../../images/screenshots/en/object-browser.png)
 
 Alternative: [S3 CLI first bucket](first-bucket.md#via-s3-cli).
 
