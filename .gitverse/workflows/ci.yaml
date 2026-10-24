@@ -1,0 +1,76 @@
+# Checks that fit the GitVerse cloud runner (ubuntu-latest, no docker.sock).
+# Syntax: https://gitverse.ru/docs/cicd/docs/workflow/
+# Runner limits: https://gitverse.ru/docs/cicd/docs/runners/cloud-hosted
+#                https://gitverse.ru/docs/cicd/docs/limits
+#
+# Left on GitHub (.github/workflows/ci.yml), because the cloud runner has no
+# Docker daemon and a job is capped at 15 or 30 minutes depending on the page:
+#   docker-build, single-node-gate (Docker), e2e-smoke, kafka-integration,
+#   vault-integration, minio-migrate, list-buckets-clients, upgrade-16,
+#   ha-promote-drill, cluster-kms-gate, s3-compat, helm-smoke, linux-packages,
+#   install-ps1-syntax (windows-latest), event-observability.
+# Postgres tests skip themselves when TEST_POSTGRES_DSN is unset. The workflow
+# syntax page does not document service containers, and the cloud runner
+# cannot start them without docker.sock.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.10"
+      - name: gofmt
+        run: |
+          test -z "$(gofmt -l .)" || (echo "gofmt issues:" && gofmt -l . && exit 1)
+      - name: go vet
+        run: go vet ./...
+      - name: go build
+        run: go build ./...
+      - name: go test
+        run: go test ./...
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: build console
+        working-directory: web/console
+        run: |
+          npm ci
+          npm run build
+
+  single-node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: python3
+        run: |
+          if command -v python3 >/dev/null; then
+            exit 0
+          fi
+          if command -v sudo >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y python3
+          else
+            apt-get update
+            apt-get install -y python3
+          fi
+      - name: single-node gate assertions
+        run: python3 scripts/single-node-gate.py self-test
