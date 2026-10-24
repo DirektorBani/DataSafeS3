@@ -74,12 +74,16 @@
         "en": "Cloning the repository and running install.ps1: Docker and port checks and profile selection (terminal output, Windows 11 + Docker Desktop)."
       },
       "alt": {
-        "ru": "Клонирование репозитория и запуск install.ps1",
-        "en": "Cloning the repository and running install.ps1"
+        "ru": "DataSafeS3 — Клонирование и install.ps1",
+        "en": "DataSafeS3 — Clone and install.ps1"
       },
       "sha256": {
         "ru": "2dfc74bacfcb41ddbe2444040e1239b59ed07e0eff033a8874d41798ccc2793b",
         "en": "2dfc74bacfcb41ddbe2444040e1239b59ed07e0eff033a8874d41798ccc2793b"
+      },
+      "label": {
+        "ru": "Клонирование и install.ps1",
+        "en": "Clone and install.ps1"
       }
     },
     {
@@ -96,12 +100,16 @@
         "en": "The installer starts the test LDAP and Keycloak and prints the lab endpoints and credentials (terminal output)."
       },
       "alt": {
-        "ru": "Установщик поднимает тестовые LDAP и Keycloak и печатает адреса и учётные данные лабораторного стенда (вывод терминала)",
-        "en": "The installer starts the test LDAP and Keycloak and prints the lab endpoints and credentials (terminal output)"
+        "ru": "DataSafeS3 — LDAP и Keycloak",
+        "en": "DataSafeS3 — LDAP and Keycloak lab"
       },
       "sha256": {
         "ru": "549191edcb5b11f151701bfabcb0d518d963cfb189558ac3789ca05ca487508f",
         "en": "549191edcb5b11f151701bfabcb0d518d963cfb189558ac3789ca05ca487508f"
+      },
+      "label": {
+        "ru": "LDAP и Keycloak",
+        "en": "LDAP and Keycloak lab"
       }
     },
     {
@@ -118,12 +126,16 @@
         "en": "docker compose up from the published GitVerse images and the console readiness check (terminal output)."
       },
       "alt": {
-        "ru": "docker compose up по опубликованным образам GitVerse и проверка готовности консоли (вывод терминала)",
-        "en": "docker compose up from the published GitVerse images and the console readiness check (terminal output)"
+        "ru": "DataSafeS3 — docker compose up",
+        "en": "DataSafeS3 — docker compose up"
       },
       "sha256": {
         "ru": "9cb2796be2c9d58329d4a189a594fe606a4a2d9e4c8c6f4a594e99581bd12e21",
         "en": "9cb2796be2c9d58329d4a189a594fe606a4a2d9e4c8c6f4a594e99581bd12e21"
+      },
+      "label": {
+        "ru": "docker compose up",
+        "en": "docker compose up"
       }
     },
     {
@@ -140,12 +152,16 @@
         "en": "Base installation: storage server, Caddy, PostgreSQL, Prometheus, Grafana and Kafka are all running (docker compose ps)."
       },
       "alt": {
-        "ru": "Базовая установка",
-        "en": "Base installation"
+        "ru": "DataSafeS3 — Базовые сервисы",
+        "en": "DataSafeS3 — Core services"
       },
       "sha256": {
         "ru": "df463cb0bee56db17080358634be5c41a9dd2432b4d0b718fe928be2c1af3216",
         "en": "df463cb0bee56db17080358634be5c41a9dd2432b4d0b718fe928be2c1af3216"
+      },
+      "label": {
+        "ru": "Базовые сервисы",
+        "en": "Core services"
       }
     },
     {
@@ -162,12 +178,16 @@
         "en": "Full installation with every integration: two storage nodes, Kafka and Kafka UI, NATS, Vault, a MinIO source, a second site and a webhook viewer (docker ps)."
       },
       "alt": {
-        "ru": "Полная установка со всеми интеграциями",
-        "en": "Full installation with every integration"
+        "ru": "DataSafeS3 — Все интеграции",
+        "en": "DataSafeS3 — All integrations"
       },
       "sha256": {
         "ru": "97bbbb9fbe8ec09a3200c576ed4e357bcc5757e14b8fb75fbf0a8a608bb60955",
         "en": "97bbbb9fbe8ec09a3200c576ed4e357bcc5757e14b8fb75fbf0a8a608bb60955"
+      },
+      "label": {
+        "ru": "Все интеграции",
+        "en": "All integrations"
       }
     },
     {
@@ -182,10 +202,14 @@
         "ru": "Мастер настройки, шаг 1: смена пароля администратора при первом входе."
       },
       "alt": {
-        "ru": "Мастер настройки, шаг 1"
+        "ru": "DataSafeS3 — Шаг 1: пароль"
       },
       "sha256": {
         "ru": "1de1f5b747a252885eab09a3270dc57dcc716c976fa196338689d4560a4e4ec7"
+      },
+      "label": {
+        "ru": "Шаг 1: пароль",
+        "en": "Step 1: password"
       }
     },
     {
@@ -200,10 +224,14 @@
         "ru": "Мастер настройки, шаг 2: приветствие, можно подключить внешнее S3-хранилище или пропустить шаг."
       },
       "alt": {
-        "ru": "Мастер настройки, шаг 2"
+        "ru": "DataSafeS3 — Шаг 2: приветствие"
       },
       "sha256": {
         "ru": "ecc21d3e044f8e46b4c06bc63e7f6fcf6ffcc00ac0331e02beef99c34cf5ca07"
+      },
+      "label": {
+        "ru": "Шаг 2: приветствие",
+        "en": "Step 2: welcome"
       }
     },
     {
@@ -218,10 +246,14 @@
         "ru": "Мастер настройки, шаг 3: параметры подключения к внешнему S3 и проверка соединения."
       },
       "alt": {
-        "ru": "Мастер настройки, шаг 3"
+        "ru": "DataSafeS3 — Шаг 3: внешний S3"
       },
       "sha256": {
         "ru": "6c7de515217312ece82bb80a939cef81e10eac82ce343338c07030dd99ed17d3"
+      },
+      "label": {
+        "ru": "Шаг 3: внешний S3",
+        "en": "Step 3: external S3"
       }
     },
     {
@@ -236,10 +268,14 @@
         "ru": "Мастер настройки, шаг 4: настройка завершена, переход в консоль."
       },
       "alt": {
-        "ru": "Мастер настройки, шаг 4"
+        "ru": "DataSafeS3 — Шаг 4: готово"
       },
       "sha256": {
         "ru": "7711b216d9112d23f198aea548263dc5cd01b3458cc34150e1d8d0c134f166db"
+      },
+      "label": {
+        "ru": "Шаг 4: готово",
+        "en": "Step 4: done"
       }
     },
     {
@@ -256,12 +292,16 @@
         "en": "Console sign-in page with the language switcher at the top right and the SSO option."
       },
       "alt": {
-        "ru": "Страница входа в консоль. Переключатель языка вверху справа; доступен вход через SSO",
-        "en": "Console sign-in page with the language switcher at the top right and the SSO option"
+        "ru": "DataSafeS3 — Вход",
+        "en": "DataSafeS3 — Sign-in"
       },
       "sha256": {
         "ru": "88325db748bd8940eeec4756c28ba676408210ba2111f124c983455b2000852b",
         "en": "bb34802c381c1f91c246b07cfbf9b397d4315566f593be1700c69690ae8b4f99"
+      },
+      "label": {
+        "ru": "Вход",
+        "en": "Sign-in"
       }
     },
     {
@@ -278,12 +318,16 @@
         "en": "Overview: buckets, storage used, objects, access keys and API status (dark theme, demo data)."
       },
       "alt": {
-        "ru": "Обзор",
-        "en": "Overview"
+        "ru": "DataSafeS3 — Обзор",
+        "en": "DataSafeS3 — Dashboard"
       },
       "sha256": {
         "ru": "685985c3afb207d6d6507c3d88e33f2884d036a1f5ff1977cd5650c85a20e339",
         "en": "a247c27d169d72d01eb0f27a7eb758847d024013f8e351664066bd09eb459abb"
+      },
+      "label": {
+        "ru": "Обзор",
+        "en": "Dashboard"
       }
     },
     {
@@ -298,10 +342,14 @@
         "ru": "Обзор в светлой теме."
       },
       "alt": {
-        "ru": "Обзор в светлой теме"
+        "ru": "DataSafeS3 — Обзор (светлая)"
       },
       "sha256": {
         "ru": "00287523863f2d3dcda62b56897800095a3ede405ac0cdda684c73a77afb9839"
+      },
+      "label": {
+        "ru": "Обзор (светлая)",
+        "en": "Dashboard (light)"
       }
     },
     {
@@ -318,12 +366,16 @@
         "en": "Bucket list: demo buckets with different access levels (dark theme)."
       },
       "alt": {
-        "ru": "Список бакетов",
-        "en": "Bucket list"
+        "ru": "DataSafeS3 — Бакеты",
+        "en": "DataSafeS3 — Buckets"
       },
       "sha256": {
         "ru": "b5f2463d13a54d8ab58da796bcec4a1669ea46ba2fcf8effbdd4e841d2d2e0d8",
         "en": "d287bd69e4428427f4402f5d8f0978a2b3dff5ce797d6d7c09501bcd7d2c5b0e"
+      },
+      "label": {
+        "ru": "Бакеты",
+        "en": "Buckets"
       }
     },
     {
@@ -338,10 +390,14 @@
         "ru": "Список бакетов в светлой теме."
       },
       "alt": {
-        "ru": "Список бакетов в светлой теме"
+        "ru": "DataSafeS3 — Бакеты (светлая)"
       },
       "sha256": {
         "ru": "787d1fa9b67c950f31e9fe384897f614b9a4eb418d303f78413ea620c999ec70"
+      },
+      "label": {
+        "ru": "Бакеты (светлая)",
+        "en": "Buckets (light)"
       }
     },
     {
@@ -358,12 +414,16 @@
         "en": "Object browser: folders, upload, share links and the metadata panel of the selected object (dark theme)."
       },
       "alt": {
-        "ru": "Обозреватель объектов",
-        "en": "Object browser"
+        "ru": "DataSafeS3 — Обозреватель объектов",
+        "en": "DataSafeS3 — Object browser"
       },
       "sha256": {
         "ru": "70cf1b26ee3dff3f8884d9c80514aa94e8bc5c959ee1f2facaf5c195b39b1b69",
         "en": "dda9aa7477aeafed3bc7f1733eb2940bd7b742a3a860165bc28a9daf518672f0"
+      },
+      "label": {
+        "ru": "Обозреватель объектов",
+        "en": "Object browser"
       }
     },
     {
@@ -378,10 +438,14 @@
         "ru": "Обозреватель объектов в светлой теме."
       },
       "alt": {
-        "ru": "Обозреватель объектов в светлой теме"
+        "ru": "DataSafeS3 — Объекты (светлая)"
       },
       "sha256": {
         "ru": "cf8c1928cb9ae6c143d53df2774ca606a1218bb0f69346d1814a3a99d9682b8f"
+      },
+      "label": {
+        "ru": "Объекты (светлая)",
+        "en": "Objects (light)"
       }
     },
     {
@@ -396,10 +460,14 @@
         "ru": "Бакет с изображениями: список объектов и панель сведений (ключ, размер, тип, теги)."
       },
       "alt": {
-        "ru": "Бакет с изображениями"
+        "ru": "DataSafeS3 — Сведения об объекте"
       },
       "sha256": {
         "ru": "7ed9d8dde455c348fcffef7048965f3ffc08cf90b1b263c189504b5be964ccdb"
+      },
+      "label": {
+        "ru": "Сведения об объекте",
+        "en": "Object details"
       }
     },
     {
@@ -416,12 +484,16 @@
         "en": "Object versions: each version has an ID, size and date; a version can be downloaded or deleted."
       },
       "alt": {
-        "ru": "Версии объектов",
-        "en": "Object versions"
+        "ru": "DataSafeS3 — Версии объектов",
+        "en": "DataSafeS3 — Object versions"
       },
       "sha256": {
         "ru": "268fe9157ef5ba9afda81980bd31b14b9162555cd79bccec84105a7d90a9f929",
         "en": "b506b19ded971afbaae0b8cac0a949801d4d62bb7f2bef781c85d063b616ada8"
+      },
+      "label": {
+        "ru": "Версии объектов",
+        "en": "Object versions"
       }
     },
     {
@@ -436,10 +508,14 @@
         "ru": "Настройки бакета, вкладка «Версионирование»: включение версий объектов."
       },
       "alt": {
-        "ru": "Настройки бакета, вкладка «Версионирование»"
+        "ru": "DataSafeS3 — Версионирование"
       },
       "sha256": {
         "ru": "a81b66e20b6f1319959b3e43ff7b770fae1470bdccdd89177b9dfbc27a5009a3"
+      },
+      "label": {
+        "ru": "Версионирование",
+        "en": "Versioning"
       }
     },
     {
@@ -456,12 +532,16 @@
         "en": "Bucket lifecycle rules: automatic deletion of objects by prefix after a set number of days."
       },
       "alt": {
-        "ru": "Правила жизненного цикла бакета",
-        "en": "Bucket lifecycle rules"
+        "ru": "DataSafeS3 — Жизненный цикл",
+        "en": "DataSafeS3 — Lifecycle"
       },
       "sha256": {
         "ru": "f5906ddb00ff3b6394e70127be1b7c83ee8c1fb72a7ccf3c6e2046ff66598962",
         "en": "28719c1983394f2630cfc5757234683fbbe9441a3cfd402bff7fec94e5331139"
+      },
+      "label": {
+        "ru": "Жизненный цикл",
+        "en": "Lifecycle"
       }
     },
     {
@@ -478,12 +558,16 @@
         "en": "Bucket settings, Access tab: tenant access and access to folders (prefixes) inside the bucket."
       },
       "alt": {
-        "ru": "Настройки бакета, вкладка «Доступ»",
-        "en": "Bucket settings, Access tab"
+        "ru": "DataSafeS3 — Доступ к бакету",
+        "en": "DataSafeS3 — Bucket access"
       },
       "sha256": {
         "ru": "23f4f46b3d5bdcff2be74c3751b80e78475d9bab44548aa8318d7a934f815d4f",
         "en": "27cbbaad063f6328b9a6a1ec6123657cafdafbad3d2ca4dd8f26846f4ccc76e9"
+      },
+      "label": {
+        "ru": "Доступ к бакету",
+        "en": "Bucket access"
       }
     },
     {
@@ -500,12 +584,16 @@
         "en": "Bucket settings, File sharing tab: public access, share links and their lifetime."
       },
       "alt": {
-        "ru": "Настройки бакета, вкладка «Обмен файлами»",
-        "en": "Bucket settings, File sharing tab"
+        "ru": "DataSafeS3 — Обмен файлами",
+        "en": "DataSafeS3 — File sharing"
       },
       "sha256": {
         "ru": "ce8ba9df5eb47a71ef26655a08ee2ac93a44469cc8488cdd6bd182a0121777b8",
         "en": "20d5e8549bb67e770346e2e0c3a2dce977ddd2a0ff7a5a8528cd9c5608b715bf"
+      },
+      "label": {
+        "ru": "Обмен файлами",
+        "en": "File sharing"
       }
     },
     {
@@ -522,12 +610,16 @@
         "en": "Bucket encryption: server key or Vault Transit key (the secure-vault bucket)."
       },
       "alt": {
-        "ru": "Шифрование бакета",
-        "en": "Bucket encryption"
+        "ru": "DataSafeS3 — Шифрование бакета",
+        "en": "DataSafeS3 — Bucket encryption"
       },
       "sha256": {
         "ru": "97d942d80b44ca8fd277604736ec8ad038b3bcee76da90dabbadf9b0b0a05f95",
         "en": "b44d29a105d2138c322edce9955bef4c54e295e2ea0e52450a420053b7ae000e"
+      },
+      "label": {
+        "ru": "Шифрование бакета",
+        "en": "Bucket encryption"
       }
     },
     {
@@ -544,12 +636,16 @@
         "en": "S3 access keys and API tokens; secret keys are not displayed."
       },
       "alt": {
-        "ru": "Ключи доступа S3 и API-токены; значения секретных ключей не показываются",
-        "en": "S3 access keys and API tokens; secret keys are not displayed"
+        "ru": "DataSafeS3 — Ключи доступа",
+        "en": "DataSafeS3 — Access keys"
       },
       "sha256": {
         "ru": "3261887b8cddd52b00c49b7c275cf212195741b30435da8db51b31feaf3038da",
         "en": "f1f975af0e1911ceeb593f1faf7dd280c2381ecd63f5b80d24afbfd0058d86bf"
+      },
+      "label": {
+        "ru": "Ключи доступа",
+        "en": "Access keys"
       }
     },
     {
@@ -566,12 +662,16 @@
         "en": "Usage: size and object count per bucket and storage growth."
       },
       "alt": {
-        "ru": "Использование",
-        "en": "Usage"
+        "ru": "DataSafeS3 — Использование",
+        "en": "DataSafeS3 — Usage"
       },
       "sha256": {
         "ru": "b6b9d0b9f0be40d1728a480245829e036cdb5961793819c7019520b1e361eb2d",
         "en": "80770d0b30b4b803bd1e9edbb08b865555f6f29497dab6ea9dbce630907049a9"
+      },
+      "label": {
+        "ru": "Использование",
+        "en": "Usage"
       }
     },
     {
@@ -588,12 +688,16 @@
         "en": "Users: roles, quotas, statuses and last sign-in (fictional users)."
       },
       "alt": {
-        "ru": "Пользователи",
-        "en": "Users"
+        "ru": "DataSafeS3 — Пользователи",
+        "en": "DataSafeS3 — Users"
       },
       "sha256": {
         "ru": "088f0c593e62311abd27e3f0bde52e82310705e3a239e55f816aae38e0a10560",
         "en": "75b75ccfdc76d681f33abc13a7ebf8c0258e5f538af284751e141582780b8e77"
+      },
+      "label": {
+        "ru": "Пользователи",
+        "en": "Users"
       }
     },
     {
@@ -610,12 +714,16 @@
         "en": "Teams: grouping users for access grants."
       },
       "alt": {
-        "ru": "Команды",
-        "en": "Teams"
+        "ru": "DataSafeS3 — Команды",
+        "en": "DataSafeS3 — Teams"
       },
       "sha256": {
         "ru": "27b99000b57f9c2e2f56c9a7a472f27f2480742c4517bd291fc5a47cc146eba4",
         "en": "bed4c720a3cbc3192530bd26f88c035a15061272a0fb054f614b04cfc8b3e0db"
+      },
+      "label": {
+        "ru": "Команды",
+        "en": "Teams"
       }
     },
     {
@@ -630,10 +738,14 @@
         "ru": "Состав выбранной команды: выбор участников."
       },
       "alt": {
-        "ru": "Состав выбранной команды"
+        "ru": "DataSafeS3 — Состав команды"
       },
       "sha256": {
         "ru": "6c37dcc1ed6170ecb4e3071804ed50558af2f8d71d9a6f27966d71ce1325af91"
+      },
+      "label": {
+        "ru": "Состав команды",
+        "en": "Team members"
       }
     },
     {
@@ -650,12 +762,16 @@
         "en": "Tenants: isolated organisations with their own users and buckets."
       },
       "alt": {
-        "ru": "Тенанты",
-        "en": "Tenants"
+        "ru": "DataSafeS3 — Тенанты",
+        "en": "DataSafeS3 — Tenants"
       },
       "sha256": {
         "ru": "6c473e273b0461d614fd74b1d2511d710e242c1023dcc261d0ab787d17e245f2",
         "en": "464f606ccbe7affd139e41334367eb99c931e19adb7674b6bc933a6f43fa51d8"
+      },
+      "label": {
+        "ru": "Тенанты",
+        "en": "Tenants"
       }
     },
     {
@@ -670,10 +786,14 @@
         "ru": "Тенант: участники и создание пользователей внутри тенанта."
       },
       "alt": {
-        "ru": "Тенант"
+        "ru": "DataSafeS3 — Участники тенанта"
       },
       "sha256": {
         "ru": "3f444cd29e2e8e5eaeb507b0446300261673805215f7655d7c435d595e236b29"
+      },
+      "label": {
+        "ru": "Участники тенанта",
+        "en": "Tenant members"
       }
     },
     {
@@ -688,10 +808,14 @@
         "ru": "Тенант: группы и привязка к внешним группам (IdP)."
       },
       "alt": {
-        "ru": "Тенант"
+        "ru": "DataSafeS3 — Группы тенанта"
       },
       "sha256": {
         "ru": "50ca2baa9eb57fe3192ea1ab42f3724f5ef3564be2081892e31192e20b5dd5ef"
+      },
+      "label": {
+        "ru": "Группы тенанта",
+        "en": "Tenant groups"
       }
     },
     {
@@ -708,12 +832,16 @@
         "en": "Activity log: sign-ins, administrator actions and delivery events (filters and CSV/JSON export)."
       },
       "alt": {
-        "ru": "Журнал активности",
-        "en": "Activity log"
+        "ru": "DataSafeS3 — Активность",
+        "en": "DataSafeS3 — Activity"
       },
       "sha256": {
         "ru": "59aa39e9d177beece3252d753ac495caa9d658c87bf097b7f50687857634e0ae",
         "en": "54f1f40818b999adaca6dd832b84034e2743c9d06fcf6c47e558339717d3357d"
+      },
+      "label": {
+        "ru": "Активность",
+        "en": "Activity"
       }
     },
     {
@@ -730,12 +858,16 @@
         "en": "Webhooks: object event subscriptions (a delivery viewer is attached)."
       },
       "alt": {
-        "ru": "Вебхуки",
-        "en": "Webhooks"
+        "ru": "DataSafeS3 — Вебхуки",
+        "en": "DataSafeS3 — Webhooks"
       },
       "sha256": {
         "ru": "e4176ff8c97b11f86428087df31885774d213217d05571d1b1ae0abc79890b8b",
         "en": "a78454caf6a3f97ff0014a75e25fc8bc58c2d9ae96361e894d8cdeaf937e4d91"
+      },
+      "label": {
+        "ru": "Вебхуки",
+        "en": "Webhooks"
       }
     },
     {
@@ -752,12 +884,16 @@
         "en": "Profile: two-factor authentication (TOTP), passkeys (WebAuthn) and password change."
       },
       "alt": {
-        "ru": "Профиль",
-        "en": "Profile"
+        "ru": "DataSafeS3 — Профиль и MFA",
+        "en": "DataSafeS3 — Profile and MFA"
       },
       "sha256": {
         "ru": "6024f8538f59ccd8618853afc559f1185ca31c8dbdfa6aa0190a4ee20675edeb",
         "en": "eb0b7797e7470b9b836f2118456b7e2e87625ab421aa2f16b5495ca1478e6ed9"
+      },
+      "label": {
+        "ru": "Профиль и MFA",
+        "en": "Profile and MFA"
       }
     },
     {
@@ -774,12 +910,16 @@
         "en": "Administrator settings: soft delete, LDAP/AD and OIDC/SSO."
       },
       "alt": {
-        "ru": "Настройки администратора",
-        "en": "Administrator settings"
+        "ru": "DataSafeS3 — Настройки",
+        "en": "DataSafeS3 — Settings"
       },
       "sha256": {
         "ru": "5a68c6f927c82e3600f5eb9f76d083c140d759c1f5b312533e27d1b76bbc1f4c",
         "en": "51f88196f382d0d4e9f79af7d476b11ad7c56168cb1b0d435e9b10ce55e8deef"
+      },
+      "label": {
+        "ru": "Настройки",
+        "en": "Settings"
       }
     },
     {
@@ -794,10 +934,14 @@
         "ru": "Подключение LDAP и OIDC (Keycloak): адреса, учётная запись привязки (пароль скрыт), проверка подключения и синхронизация пользователей."
       },
       "alt": {
-        "ru": "Подключение LDAP и OIDC (Keycloak)"
+        "ru": "DataSafeS3 — LDAP и OIDC"
       },
       "sha256": {
         "ru": "014e9cfb83bcedd71ab771620ad6093604f6dbd24616c00205287ba5b6749c4d"
+      },
+      "label": {
+        "ru": "LDAP и OIDC",
+        "en": "LDAP and OIDC"
       }
     },
     {
@@ -812,10 +956,14 @@
         "ru": "Внешнее логирование: приёмники журнала (Webhook подключён к демо-просмотрщику)."
       },
       "alt": {
-        "ru": "Внешнее логирование"
+        "ru": "DataSafeS3 — Внешнее логирование"
       },
       "sha256": {
         "ru": "5ccf7f35e21d4109054aae1f14a609590f2c9a06c6310169b93bf905c752c018"
+      },
+      "label": {
+        "ru": "Внешнее логирование",
+        "en": "Log sinks"
       }
     },
     {
@@ -832,12 +980,16 @@
         "en": "Bucket settings: apply parameters to several buckets at once."
       },
       "alt": {
-        "ru": "Настройки бакетов",
-        "en": "Bucket settings"
+        "ru": "DataSafeS3 — Настройки бакетов",
+        "en": "DataSafeS3 — Bucket settings"
       },
       "sha256": {
         "ru": "8bdbeaf7cde339d10d933b0e08998565dd3c0096cd152862ee582124da1c64e9",
         "en": "1c33034c45cd1c1e22f98fa3541a3ab107387362e160b8364b759354bc79cde8"
+      },
+      "label": {
+        "ru": "Настройки бакетов",
+        "en": "Bucket settings"
       }
     },
     {
@@ -854,12 +1006,16 @@
         "en": "Security: public access, pre-signed links, lifetimes and MFA."
       },
       "alt": {
-        "ru": "Безопасность",
-        "en": "Security"
+        "ru": "DataSafeS3 — Безопасность",
+        "en": "DataSafeS3 — Security"
       },
       "sha256": {
         "ru": "f54a6982662b0800bab7d2d794b5390be24c6f15b8bc02eec9fd5b69ea2cfa6a",
         "en": "82fbcb15ec9738c578acceab4fdf47f7b5f0504e1e93afc070079d2b50f522d1"
+      },
+      "label": {
+        "ru": "Безопасность",
+        "en": "Security"
       }
     },
     {
@@ -876,12 +1032,16 @@
         "en": "Event delivery: Kafka, NATS JetStream and webhooks, with queue and delivery counters."
       },
       "alt": {
-        "ru": "Доставка событий",
-        "en": "Event delivery"
+        "ru": "DataSafeS3 — Доставка событий",
+        "en": "DataSafeS3 — Event delivery"
       },
       "sha256": {
         "ru": "4c2fae635010b4c31c0dbca1b96d352f0a91fbd396ae75e85262d1f153cfe30b",
         "en": "34aa6a01ad3a16396c851093a64f477b30c251c8e9a69bf42b3268f9ef59052f"
+      },
+      "label": {
+        "ru": "Доставка событий",
+        "en": "Event delivery"
       }
     },
     {
@@ -898,12 +1058,16 @@
         "en": "Vault (KMS): connection to Vault Transit for encryption; the token is not displayed."
       },
       "alt": {
-        "ru": "Vault (KMS)",
-        "en": "Vault (KMS)"
+        "ru": "DataSafeS3 — Vault (KMS)",
+        "en": "DataSafeS3 — Vault (KMS)"
       },
       "sha256": {
         "ru": "28ab78a9f5d4693fd125650cd1264f294c46615ace419aee57e8e92da3f7af4b",
         "en": "8d49f2fbe0a99381d6e6d81775ba70266ef012cb9b9e403a5c8094a26f39287a"
+      },
+      "label": {
+        "ru": "Vault (KMS)",
+        "en": "Vault (KMS)"
       }
     },
     {
@@ -920,12 +1084,16 @@
         "en": "Migration from MinIO: the wizard builds the command for the migration utility."
       },
       "alt": {
-        "ru": "Миграция из MinIO",
-        "en": "Migration from MinIO"
+        "ru": "DataSafeS3 — Миграция из MinIO",
+        "en": "DataSafeS3 — MinIO migration"
       },
       "sha256": {
         "ru": "3251f37d2c4bbc7016fe35a27ff36f6119918185fcd08a5656c4ad7b1c501717",
         "en": "915802f7d508e3d16ad36a2234fcf1447ce3539a8a42becbb7de9561ff265c1e"
+      },
+      "label": {
+        "ru": "Миграция из MinIO",
+        "en": "MinIO migration"
       }
     },
     {
@@ -940,10 +1108,14 @@
         "ru": "Миграция из MinIO: параметры источника и получателя заполнены, команда готова."
       },
       "alt": {
-        "ru": "Миграция из MinIO"
+        "ru": "DataSafeS3 — Миграция: параметры"
       },
       "sha256": {
         "ru": "f4b9c12c7ceeae12aef04488eff2cdae48e26e62e1dbbeada1f6f76e198d3c68"
+      },
+      "label": {
+        "ru": "Миграция: параметры",
+        "en": "Migration: parameters"
       }
     },
     {
@@ -958,10 +1130,14 @@
         "ru": "Миграция из MinIO: перенос IAM (пользователи, группы, политики)."
       },
       "alt": {
-        "ru": "Миграция из MinIO"
+        "ru": "DataSafeS3 — Миграция: IAM"
       },
       "sha256": {
         "ru": "0f6eeeedb6a94deea34b79c85818177b617b91070115482a81834e7f33cd898d"
+      },
+      "label": {
+        "ru": "Миграция: IAM",
+        "en": "Migration: IAM"
       }
     },
     {
@@ -978,12 +1154,16 @@
         "en": "Gateway: connections to an external S3 storage (the Site B demo site) with a connection test, and the add-connection form."
       },
       "alt": {
-        "ru": "Шлюз",
-        "en": "Gateway"
+        "ru": "DataSafeS3 — Шлюз",
+        "en": "DataSafeS3 — Gateway"
       },
       "sha256": {
         "ru": "6f3ec30d029b8fcd3eebdce7de70e5fae7bb5d7a9e44ad3821dec8cffcb10f14",
         "en": "c3266fdf4fcde05e1025827648ef5a35a1e533d4c0ed895392975c5b8042c83f"
+      },
+      "label": {
+        "ru": "Шлюз",
+        "en": "Gateway"
       }
     },
     {
@@ -1000,12 +1180,16 @@
         "en": "Gateway: replication rules and manual sync."
       },
       "alt": {
-        "ru": "Шлюз",
-        "en": "Gateway"
+        "ru": "DataSafeS3 — Правила репликации",
+        "en": "DataSafeS3 — Replication rules"
       },
       "sha256": {
         "ru": "0523dcdb7d734c9a42858afef2888f845f00f87bd4e38ecde4e5593bd5d6fd5a",
         "en": "e9f9b398f2e8f323c5b9416e7040af5732e4b7c2ee8984deb0fb3847bb607eac"
+      },
+      "label": {
+        "ru": "Правила репликации",
+        "en": "Replication rules"
       }
     },
     {
@@ -1022,12 +1206,16 @@
         "en": "Gateway: sync jobs and their results."
       },
       "alt": {
-        "ru": "Шлюз",
-        "en": "Gateway"
+        "ru": "DataSafeS3 — Задачи синхронизации",
+        "en": "DataSafeS3 — Sync jobs"
       },
       "sha256": {
         "ru": "d6cad4d8f86d6aafc666922d4a30915a31631e4db4d4496fb0dad729811db3df",
         "en": "e7719a8281bf5c98678f84fc432632a66c95873af201ea21f9d62c686ef06b86"
+      },
+      "label": {
+        "ru": "Задачи синхронизации",
+        "en": "Sync jobs"
       }
     },
     {
@@ -1044,12 +1232,16 @@
         "en": "Gateway: status — 2/2 connections OK, one rule, empty replication queue, 4 tasks replicated."
       },
       "alt": {
-        "ru": "Шлюз",
-        "en": "Gateway"
+        "ru": "DataSafeS3 — Состояние шлюза",
+        "en": "DataSafeS3 — Gateway status"
       },
       "sha256": {
         "ru": "3815de690263ded9f524006273d9ef8cd46d6414cbabe1b40b68d3fb56311dc3",
         "en": "433e84fded6d778edba9d06ebc1e7b4d7177666e45946a2d84130b7fa01f5ba0"
+      },
+      "label": {
+        "ru": "Состояние шлюза",
+        "en": "Gateway status"
       }
     },
     {
@@ -1066,12 +1258,16 @@
         "en": "Clusters: the local node and trusted clusters."
       },
       "alt": {
-        "ru": "Кластеры",
-        "en": "Clusters"
+        "ru": "DataSafeS3 — Кластеры",
+        "en": "DataSafeS3 — Clusters"
       },
       "sha256": {
         "ru": "c4939cf9ee620f9346db6bdea4d0bc850a69acd875d1c203794c42016c99d47a",
         "en": "4245bd5c37538c13af8f3be71a9f0e1ef037696f23faa60fc698c030d1db3910"
+      },
+      "label": {
+        "ru": "Кластеры",
+        "en": "Clusters"
       }
     },
     {
@@ -1088,12 +1284,16 @@
         "en": "Two-node HA: /cluster/status reports HA enabled and a leader elected (terminal output)."
       },
       "alt": {
-        "ru": "HA из двух узлов",
-        "en": "Two-node HA"
+        "ru": "DataSafeS3 — HA: статус",
+        "en": "DataSafeS3 — HA status"
       },
       "sha256": {
         "ru": "32990607ec662361968b30de426e9f4845df5cab05533063073d189d28a2b342",
         "en": "32990607ec662361968b30de426e9f4845df5cab05533063073d189d28a2b342"
+      },
+      "label": {
+        "ru": "HA: статус",
+        "en": "HA status"
       }
     },
     {
@@ -1110,12 +1310,16 @@
         "en": "Grafana overview dashboard: requests, storage, object count, latency and HTTP errors (Prometheus data)."
       },
       "alt": {
-        "ru": "Grafana, дашборд обзора",
-        "en": "Grafana overview dashboard"
+        "ru": "DataSafeS3 — Grafana: обзор",
+        "en": "DataSafeS3 — Grafana: overview"
       },
       "sha256": {
         "ru": "d21a00ce7fd753874fe3eaa4e099cad41b28d03a434af6fd67520b8db8039c39",
         "en": "d21a00ce7fd753874fe3eaa4e099cad41b28d03a434af6fd67520b8db8039c39"
+      },
+      "label": {
+        "ru": "Grafana: обзор",
+        "en": "Grafana: overview"
       }
     },
     {
@@ -1132,12 +1336,16 @@
         "en": "Grafana buckets dashboard: size and object count per bucket."
       },
       "alt": {
-        "ru": "Grafana, дашборд бакетов",
-        "en": "Grafana buckets dashboard"
+        "ru": "DataSafeS3 — Grafana: бакеты",
+        "en": "DataSafeS3 — Grafana: buckets"
       },
       "sha256": {
         "ru": "62bc48dfc78efc88b344b98450a426a5eb1b4365829b3eb9572691efd35c0bcc",
         "en": "62bc48dfc78efc88b344b98450a426a5eb1b4365829b3eb9572691efd35c0bcc"
+      },
+      "label": {
+        "ru": "Grafana: бакеты",
+        "en": "Grafana: buckets"
       }
     },
     {
@@ -1154,12 +1362,16 @@
         "en": "Prometheus: the storage-server scrape target is UP."
       },
       "alt": {
-        "ru": "Prometheus",
-        "en": "Prometheus"
+        "ru": "DataSafeS3 — Prometheus",
+        "en": "DataSafeS3 — Prometheus"
       },
       "sha256": {
         "ru": "c47500480d059979343c3cd18cab2f7a53a011fb3b0f22c824feffe977adf090",
         "en": "c47500480d059979343c3cd18cab2f7a53a011fb3b0f22c824feffe977adf090"
+      },
+      "label": {
+        "ru": "Prometheus",
+        "en": "Prometheus"
       }
     },
     {
@@ -1176,12 +1388,16 @@
         "en": "Kafka UI: the datasafe.events topic with storage events."
       },
       "alt": {
-        "ru": "Kafka UI",
-        "en": "Kafka UI"
+        "ru": "DataSafeS3 — Kafka UI: темы",
+        "en": "DataSafeS3 — Kafka UI: topics"
       },
       "sha256": {
         "ru": "abdb92da9a50246acc2e1387b54a93cb4f6a0a9dfddbd610ba4ad4c27763dbc3",
         "en": "abdb92da9a50246acc2e1387b54a93cb4f6a0a9dfddbd610ba4ad4c27763dbc3"
+      },
+      "label": {
+        "ru": "Kafka UI: темы",
+        "en": "Kafka UI: topics"
       }
     },
     {
@@ -1198,12 +1414,16 @@
         "en": "Kafka UI: messages of the datasafe.events topic: object created and deleted events."
       },
       "alt": {
-        "ru": "Kafka UI",
-        "en": "Kafka UI"
+        "ru": "DataSafeS3 — Kafka UI: сообщения",
+        "en": "DataSafeS3 — Kafka UI: messages"
       },
       "sha256": {
         "ru": "7ab60c3dcc257de8fd711c11da032dfbaa36d9f7968f72cf0a25649c301f7813",
         "en": "7ab60c3dcc257de8fd711c11da032dfbaa36d9f7968f72cf0a25649c301f7813"
+      },
+      "label": {
+        "ru": "Kafka UI: сообщения",
+        "en": "Kafka UI: messages"
       }
     },
     {
@@ -1220,12 +1440,16 @@
         "en": "Webhook viewer: received event deliveries (a demo receiver on localhost)."
       },
       "alt": {
-        "ru": "Просмотрщик вебхуков",
-        "en": "Webhook viewer"
+        "ru": "DataSafeS3 — Просмотрщик вебхуков",
+        "en": "DataSafeS3 — Webhook viewer"
       },
       "sha256": {
         "ru": "af8485097bcabccb5ca6a93cc6648033c4553bf3ead663df90f457e6a3815724",
         "en": "af8485097bcabccb5ca6a93cc6648033c4553bf3ead663df90f457e6a3815724"
+      },
+      "label": {
+        "ru": "Просмотрщик вебхуков",
+        "en": "Webhook viewer"
       }
     },
     {
@@ -1242,12 +1466,16 @@
         "en": "NATS JetStream: the DATASAFE_EVENTS stream with event messages (terminal output)."
       },
       "alt": {
-        "ru": "NATS JetStream",
-        "en": "NATS JetStream"
+        "ru": "DataSafeS3 — NATS JetStream",
+        "en": "DataSafeS3 — NATS JetStream"
       },
       "sha256": {
         "ru": "45283a0138568623be73576a53daa1b76b8bda5c48a6950bdbecb97e74c865a3",
         "en": "45283a0138568623be73576a53daa1b76b8bda5c48a6950bdbecb97e74c865a3"
+      },
+      "label": {
+        "ru": "NATS JetStream",
+        "en": "NATS JetStream"
       }
     },
     {
@@ -1264,12 +1492,16 @@
         "en": "Vault Transit: the bucket encryption key and Vault status (terminal output, token hidden)."
       },
       "alt": {
-        "ru": "Vault Transit",
-        "en": "Vault Transit"
+        "ru": "DataSafeS3 — Vault Transit",
+        "en": "DataSafeS3 — Vault Transit"
       },
       "sha256": {
         "ru": "f20be07b0a8ce308d33befc2a752a90902761c67d7b236f619d49dfa1defefa3",
         "en": "f20be07b0a8ce308d33befc2a752a90902761c67d7b236f619d49dfa1defefa3"
+      },
+      "label": {
+        "ru": "Vault Transit",
+        "en": "Vault Transit"
       }
     },
     {
@@ -1286,12 +1518,16 @@
         "en": "MinIO as a migration source: objects of the test bucket (terminal output)."
       },
       "alt": {
-        "ru": "MinIO как источник миграции",
-        "en": "MinIO as a migration source"
+        "ru": "DataSafeS3 — MinIO-источник",
+        "en": "DataSafeS3 — MinIO source"
       },
       "sha256": {
         "ru": "a44fc4ee0dd3f67096440dd015ceaa480bab941bcdb95d0bfc3af24fee6a1b33",
         "en": "a44fc4ee0dd3f67096440dd015ceaa480bab941bcdb95d0bfc3af24fee6a1b33"
+      },
+      "label": {
+        "ru": "MinIO-источник",
+        "en": "MinIO source"
       }
     },
     {
@@ -1308,12 +1544,16 @@
         "en": "Keycloak: the datasafe realm sign-in page shown when signing in to the console via OIDC."
       },
       "alt": {
-        "ru": "Keycloak",
-        "en": "Keycloak"
+        "ru": "DataSafeS3 — Keycloak: вход",
+        "en": "DataSafeS3 — Keycloak sign-in"
       },
       "sha256": {
         "ru": "8f961022ec9f58ae8b4eeb3f8543792176963713678443e91745b32893195a46",
         "en": "8f961022ec9f58ae8b4eeb3f8543792176963713678443e91745b32893195a46"
+      },
+      "label": {
+        "ru": "Keycloak: вход",
+        "en": "Keycloak sign-in"
       }
     },
     {
@@ -1328,10 +1568,14 @@
         "ru": "Профиль пользователя, вошедшего через OIDC (Keycloak)."
       },
       "alt": {
-        "ru": "Профиль пользователя, вошедшего через OIDC (Keycloak)"
+        "ru": "DataSafeS3 — Профиль (OIDC)"
       },
       "sha256": {
         "ru": "451397d4a1d5982f45c3d9c25b2216c140ec9b10109f2cce9a4faab17d3ec36c"
+      },
+      "label": {
+        "ru": "Профиль (OIDC)",
+        "en": "Profile (OIDC)"
       }
     },
     {
@@ -1346,10 +1590,14 @@
         "ru": "Профиль пользователя, вошедшего через LDAP."
       },
       "alt": {
-        "ru": "Профиль пользователя, вошедшего через LDAP"
+        "ru": "DataSafeS3 — Профиль (LDAP)"
       },
       "sha256": {
         "ru": "0207ee688dcc22a335722655056b0b5d0eae60ea919c5ff131f72eb08fd12293"
+      },
+      "label": {
+        "ru": "Профиль (LDAP)",
+        "en": "Profile (LDAP)"
       }
     },
     {
@@ -1364,10 +1612,14 @@
         "ru": "Личное хранилище пользователя LDAP: вошедший пользователь видит только свой бакет files."
       },
       "alt": {
-        "ru": "Личное хранилище пользователя LDAP"
+        "ru": "DataSafeS3 — Файлы (LDAP)"
       },
       "sha256": {
         "ru": "ad654a7443a046cf9c19c0135c566894d9344f1cfd6183aa47f22aeef0c5b9e0"
+      },
+      "label": {
+        "ru": "Файлы (LDAP)",
+        "en": "Files (LDAP)"
       }
     }
   ]
