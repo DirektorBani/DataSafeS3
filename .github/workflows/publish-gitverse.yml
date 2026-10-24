@@ -192,6 +192,7 @@ jobs:
         if: steps.gate.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.settings.outputs.tag }}
         run: |
           set -euo pipefail
