@@ -1,5 +1,9 @@
 # Compose overlays
 
+По-русски: [docs/ru/deploy-compose.md](../../docs/ru/deploy-compose.md).
+
+
+
 For day-1 setup prefer the **interactive installer** at the repo root: [`install.ps1`](../../install.ps1) / [`install.sh`](../../install.sh) — see [installer docs](../../docs/getting-started/en/installer.md).
 
 Canonical entrypoints stay at the **repository root**:

@@ -118,4 +118,4 @@ The installer checks Docker Engine + `docker compose`. If missing, it **offers**
 
 Next: change admin password → setup wizard → [onboarding](onboarding.md).
 
-Overlays reference: [`deploy/compose/README.md`](../../deploy/compose/README.md).
+Overlays reference: [`deploy/compose/README.md`](../../../deploy/compose/README.md).

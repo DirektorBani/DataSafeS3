@@ -130,4 +130,4 @@ Cross-site mTLS **не** терминируйте на edge LB.
 
 - [Репликация (admin)](../../administrator-guide/ru/trusted-clusters.md)
 - [Масштабирование](./scaling.md)
-- [Спека](../../specs/multi-cluster-trusted-replication-tz.md)
+- Файл инженерного ТЗ в репозиторий не входит. Порядок для оператора — эта страница.

@@ -1,8 +1,14 @@
 # DataSafeS3 · Датасейф S3
 
-**[English](docs/en/README.md)** · **[Русский](docs/ru/README.md)** · **[Documentation](docs/README.md)**
+**По-русски:** [README.ru.md](README.ru.md) · [документация](docs/README.md) · [руководство пользователя](docs/ru/user-guide.md)
 
 **Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.7.0](CHANGELOG.md#170---2026-10-19)
+
+Локальное S3-совместимое объектное хранилище: один процесс или контейнер, метаданные Bolt, отдельная СУБД не нужна. Лицензия Apache-2.0. Интерфейс консоли доступен на русском и английском.
+
+Установка, пакеты, Helm и комплект документов для реестра российского ПО — в [README.ru.md](README.ru.md). Ниже та же справка на английском.
+
+---
 
 Self-hosted S3-compatible object storage you can run today: one binary or container, Bolt metadata, no extra database. Apache-2.0. A MinIO alternative for Docker, Compose, and Kubernetes.
 

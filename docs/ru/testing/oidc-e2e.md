@@ -1,4 +1,4 @@
-**[English](../../testing/oidc-e2e.md)** | Русский
+**[English](../../en/testing/oidc-e2e.md)** | Русский
 
 # OIDC Keycloak E2E (nightly / опционально)
 

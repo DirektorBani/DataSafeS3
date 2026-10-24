@@ -99,5 +99,5 @@
 ## Связанные документы
 
 - [file-collaboration-tz.md](./file-collaboration-tz.md)
-- [competitive-assessment-2026-v5.md](../../analysis/competitive-assessment-2026-v5.md) — **9.1/10**
+- Внутренняя рыночная оценка в репозиторий не входит.
 - [tenant-bucket-isolation-tz.md](./tenant-bucket-isolation-tz.md)

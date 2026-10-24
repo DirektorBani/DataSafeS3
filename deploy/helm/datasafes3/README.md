@@ -1,5 +1,9 @@
 # datasafes3
 
+По-русски: [docs/ru/helm-datasafes3.md](../../../docs/ru/helm-datasafes3.md).
+
+
+
 Helm chart for a single DataSafeS3 node (Bolt, one PVC) or several nodes that share Postgres. The container image tag defaults to `v` plus `appVersion` (`v1.7.0` for this chart).
 
 ```bash

@@ -50,4 +50,4 @@ Edit route inventory in `tools/gen-openapi-yaml.go` (`operations` slice), not YA
 
 - [Swagger UI guide](swagger.md)
 - [OpenAPI roadmap](../context/openapi-roadmap.md)
-- [Scope proposal](../../testing/openapi-scope-proposal.md)
+- The scope proposal file is not in this repository. The shipped specs are [openapi.yaml](../../api/openapi.yaml) and [openapi-full.yaml](../../api/openapi-full.yaml).

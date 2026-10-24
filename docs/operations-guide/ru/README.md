@@ -26,4 +26,4 @@
 | Vault Transit (ключи объектов) | [kms-vault.md](kms-vault.md) |
 | Устранение неполадок | [troubleshooting.md](troubleshooting.md) |
 
-Helm: [../../../deploy/helm/datasafe/README.md](../../../deploy/helm/datasafe/README.md)
+Helm: [текущий чарт](../../../deploy/helm/datasafes3/README.md) · [прежний чарт](../../../deploy/helm/datasafe/README.md) · [Kubernetes](../../ru/kubernetes.md)

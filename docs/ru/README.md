@@ -4,7 +4,24 @@
 
 **Текущий релиз:** [v1.7.0](../../CHANGELOG.md#170---2026-10-19)
 
-Хаб документации по жизненному циклу продукта: **Learn → Deploy → Configure → Manage → Operate → Reference → API**.
+Интерфейс продукта доступен на русском и английском. Глоссарий: [glossary.md](glossary.md).
+
+Хаб документации по жизненному циклу продукта: **понять → развернуть → настроить → управлять → эксплуатировать → справочник → API**.
+
+## Документы для реестра российского ПО
+
+| Документ | Файл |
+|----------|------|
+| Руководство пользователя | [user-guide.md](user-guide.md) |
+| Инструкция по установке | [installation.md](installation.md) |
+| Жизненный цикл ПО | [lifecycle.md](lifecycle.md) |
+| Функциональные характеристики | [functional-description.md](functional-description.md) |
+| Лицензионное соглашение | [license.md](license.md) |
+| Политика конфиденциальности | [privacy-policy.md](privacy-policy.md) |
+| Политика безопасности | [security-policy.md](security-policy.md) |
+| Порядок поддержки | [support.md](support.md) |
+
+Полный указатель: [../README.md](../README.md).
 
 **Полный двуязычный хаб:** [../README.md](../README.md)
 

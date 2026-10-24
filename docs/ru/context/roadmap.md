@@ -6,7 +6,7 @@ Author: **Трачук Илья** | Last updated: 2026-06-22
 
 Status legend: **done** | **partial** | **in-progress** | **planned**
 
-> **Поставка 2026-06:** фазы 1–4 в основном реализованы (`20b8518` → `6299610`). GHCR+SBOM+cosign, WebAuthn, Object Lock XML, LDAP sync worker, federation ListObjectsV2 proxy, Postgres HA tooling, STS (привязка к пользователю), NATS, nightly feature-audit CI, встроенный Swagger UI. См. [дорожную карту конкурентоспособности](../../specs/roadmap/README.md).
+> **Поставка 2026-06:** фазы 1–4 в основном реализованы (`20b8518` → `6299610`). GHCR+SBOM+cosign, WebAuthn, Object Lock XML, LDAP sync worker, federation ListObjectsV2 proxy, Postgres HA tooling, STS (привязка к пользователю), NATS, nightly feature-audit CI, встроенный Swagger UI. Отдельного файла дорожной карты конкурентоспособности в репозитории нет.
 
 > Blocks 16–25 are available to **all licensed self-hosted deployments** (not admin-only or enterprise-gated). Navigation exposes features by role; administrators have full access.
 
@@ -14,7 +14,7 @@ Status legend: **done** | **partial** | **in-progress** | **planned**
 
 ## Feature Audit Improvements (2026-06-17)
 
-Prioritized backlog from [feature audit 2026-06-17](../../testing/feature-audit-report.md). Source: internal improvement suggestions derived from audit.
+Приоритетный список из внутреннего feature audit от 2026-06-17. Файл отчёта в репозиторий не входит.
 
 ### P0 — Critical / Reliability
 

@@ -61,4 +61,4 @@ SigV4 + XML — poor OpenAPI fit; AWS SDK compatibility guide instead.
 
 - [Swagger guide](../api/swagger.md)
 - [docs/api/README.md](../../api/README.md)
-- Scope proposal: [docs/testing/openapi-scope-proposal.md](../../testing/openapi-scope-proposal.md)
+- The scope proposal file is not in this repository.

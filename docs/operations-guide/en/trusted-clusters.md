@@ -178,7 +178,7 @@ See [upgrade guide](./upgrade.md#trusted-clusters-post-v110).
 
 OpenAPI (admin): `docs/api/openapi-full.yaml` — paths under `/api/v1/clusters/…`.
 
-Engineering spec: [multi-cluster-trusted-replication-tz.md](../../specs/multi-cluster-trusted-replication-tz.md).
+The engineering TZ file is not in this repository. Operator steps are this page.
 
 Console walkthrough: [Administrator guide — trusted clusters](../../administrator-guide/en/trusted-clusters.md).
 

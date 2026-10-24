@@ -2,8 +2,6 @@
 
 # Локальная разработка
 
-Полный текст документа на английском:
-
-**[docs/context/local-dev.md](../../context/local-dev.md)**
+Локальная разработка: сервер хранения на порту 9000, для работы над консолью — Vite. Повседневные шаги: [первый запуск](../../getting-started/ru/first-run.md), [установщик](../../getting-started/ru/installer.md) и [README](../../../README.md) репозитория.
 
 [Индекс документации](../README.md) · [Архитектура](./architecture.md)

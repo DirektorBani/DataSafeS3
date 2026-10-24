@@ -8,7 +8,7 @@ Architecture Decision Records for DataSafeS3 Community Edition.
 | [0002](0002-event-sink-interface.md) | EventSink interface and durable outbox | Accepted |
 | [0003](0003-immutable-backup-path.md) | Immutable backup golden path | Accepted |
 | [0004](0004-inventory-jobs.md) | Inventory jobs | Accepted (partial) |
-| [0005](0005-scripted-ha-promote.md) | Scripted HA promote | Proposed |
+| [0005](0005-scripted-ha-promote.md) | Scripted HA promote | Accepted |
 | [0006](0006-object-encryption-envelope.md) | Object encryption envelope | Accepted |
 | [0007](0007-minio-s3-copier.md) | MinIO S3 copier | Accepted |
 

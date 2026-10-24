@@ -6,7 +6,7 @@ English | **[Русский](../../ru/context/project-status.md)**
 
 ## Summary
 
-DataSafeS3 **Community Edition v1.7.0** is the current release: S3 DeleteObjects, a production Helm chart (`deploy/helm/datasafes3`), a hardened Compose file, multi-arch release images, and Linux `.deb` / `.rpm` packages. Images and packages for this tag are published when the git tag is pushed. This repository commit does not push that tag. Prior: **v1.6.0** (SSE-S3 and optional SSE-KMS, key rotation, `storage-cli migrate from-minio`), **v1.5.0** (durable event outbox, optional Kafka, scripted HA promote, per-rule gateway sync), **v1.4.1** (release pins and a production-safe default install) on **v1.4.0 Governance Evidence Pack**, cluster installer (v1.3.0), immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Core platform: S3-compatible API, web console (RU/EN), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, Teams, metrics-token protection, share-token hashing, and HA v2 lab tooling.
+DataSafeS3 **Community Edition v1.7.0** is the current release: S3 DeleteObjects, a production Helm chart (`deploy/helm/datasafes3`), a hardened Compose file, multi-arch release images, and Linux `.deb` / `.rpm` packages. Images and packages for this tag are published when the git tag is pushed. This repository commit does not push that tag. Prior: **v1.6.0** (SSE-S3 and optional SSE-KMS, key rotation, `storage-cli migrate from-minio`), **v1.5.0** (durable event outbox, optional Kafka, scripted HA promote, per-rule gateway sync), **v1.4.1** (release pins and a production-safe default install) on **v1.4.0 Governance Evidence Pack**, cluster installer (v1.3.0), immutable backup golden path (v1.2.0), MinIO migration kit (v1.1.1). Core platform: S3-compatible API, web console (Russian and English), PostgreSQL/Bolt metadata, LDAP/OIDC/MFA/WebAuthn, Object Lock (WORM), Gateway replication, federation MVP, Teams, metrics-token protection, share-token hashing, and HA v2 lab tooling.
 
 **v1.1.0** burns down trust-debt C01-C21 and ships **HA v2 CE lab foundation**: erasure backend, Postgres leader lock, site replication, and local validation scripts. This HA scope is explicitly **lab / not production multi-AZ**: no automatic failover orchestrator, no Patroni-certified production cluster, and no petabyte 4+2 multi-host promise.
 
@@ -33,8 +33,8 @@ Prior patch **v1.0.3**: opt-in metadata field encryption, Vault Agent env inject
 | OpenAPI 3.1 + Swagger UI | **Shipped** | Community Integration API scope |
 | File collaboration (phases 1–3) | **Shipped** | Home bucket, grants, share links, desktop sync |
 | Security hardening (v1.0.2+) | **Shipped** | SSRF policy, rate limits, security-status API |
-| Metadata field encryption (v1.0.3) | **Shipped (opt-in)** | `STORAGE_FIELD_ENCRYPTION_*`, migration `012` — [field-encryption.md](../operations-guide/en/field-encryption.md) |
-| Vault secrets injection (v1.0.3) | **Shipped (ops)** | Agent sidecar → `STORAGE_*` env — [secrets-vault.md](../operations-guide/en/secrets-vault.md) |
+| Metadata field encryption (v1.0.3) | **Shipped (opt-in)** | `STORAGE_FIELD_ENCRYPTION_*`, migration `012` — [field-encryption.md](../../operations-guide/en/field-encryption.md) |
+| Vault secrets injection (v1.0.3) | **Shipped (ops)** | Agent sidecar → `STORAGE_*` env — [secrets-vault.md](../../operations-guide/en/secrets-vault.md) |
 
 ## Test gates (last verified)
 
@@ -51,13 +51,13 @@ Prior patch **v1.0.3**: opt-in metadata field encryption, Vault Agent env inject
 - Roadmap audit items: [roadmap.md](./roadmap.md).
 - Architecture: [architecture.md](./architecture.md).
 
-## Out of scope for CE (future)
+## Still outside the supported production claim
 
-Mobile (Flutter/PWA), Kafka event sink, automatic failover orchestrator, production multi-AZ erasure tier, Vault Transit in-process KEK (Enterprise phase 2).
+No automatic failover orchestrator and no production multi-AZ erasure tier. Kafka (v1.5.0) and Vault Transit (v1.6.0) are optional and are not started unless configured. The console is Russian and English. Clients under `clients/` are optional and are not the server install path.
 
 ## v1.1.0 shipped scope
 
-Charter: trust-debt burn-down + OSS growth — internal TZ under `D:\datasafe_tz\specs\v1.1.0\` (see [docs/specs/README.md](../specs/README.md)).
+Charter: trust-debt burn-down + OSS growth — internal TZ under `D:\datasafe_tz\specs\v1.1.0\` (see [docs/specs/README.md](../../specs/README.md)). The public summary is [v1.1.0-trust-debt-oss-growth-tz.md](../../ru/specs/v1.1.0-trust-debt-oss-growth-tz.md).
 
 | Item | Status |
 |------|--------|

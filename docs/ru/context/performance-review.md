@@ -2,8 +2,6 @@
 
 # Обзор производительности
 
-Полный текст документа на английском:
+Отдельного отчёта обзора производительности в репозитории нет. Проверка, которая поставляется, — гейт одного узла: простой RSS и время старта этой сборки против `ghcr.io/direktorbani/datasafe-storage-server:v1.5.0`. Порог — база +10% RSS или +1 с к старту. См. [гейт одного узла](../../operations-guide/ru/single-node-gate.md).
 
-**[docs/context/performance-review.md](../../context/performance-review.md)**
-
-[Индекс документации](../README.md) · [Roadmap](./roadmap.md)
+[Индекс документации](../README.md) · [Дорожная карта](./roadmap.md)

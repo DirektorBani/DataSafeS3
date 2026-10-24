@@ -67,7 +67,7 @@ Scoped application credentials: **STS AssumeRole** returns short-lived session t
 | **GHCR images + SBOM** | Reproducible releases with supply-chain metadata |
 | **cosign signatures** | Verify container images on deploy |
 | **Nightly feature-audit CI** | 93+ automated regression checks on `main` |
-| **Published benchmarks** | [performance-benchmarks](../testing/performance-benchmarks.md) with list-index improvements |
+| **Resource gate** | Single-node RSS and startup are compared with the published v1.5.0 image. A separate benchmark report is not in this repository. |
 | **SECURITY.md** | Coordinated disclosure process |
 
 ## Who DataSafeS3 is for

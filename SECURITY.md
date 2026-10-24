@@ -1,5 +1,9 @@
 # Security Policy
 
+Русская политика: [docs/ru/security-policy.md](docs/ru/security-policy.md).
+
+
+
 ## Supported versions
 
 | Version | Supported |
@@ -25,7 +29,7 @@ Release tags on GHCR are signed with [Cosign](https://docs.sigstore.dev/) (keyle
 ```bash
 # Install cosign: https://docs.sigstore.dev/cosign/system_install/
 export COSIGN_EXPERIMENTAL=1
-TAG=v1.1.0
+TAG=v1.7.0
 
 cosign verify "ghcr.io/direktorbani/datasafe-storage-server:${TAG}" \
   --certificate-identity-regexp='https://github.com/DirektorBani/DataSafeS3/.+' \

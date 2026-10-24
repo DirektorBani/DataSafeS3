@@ -4,7 +4,7 @@
 **Date:** 2026-07-10  
 **Release:** v1.1.1  
 
-The checklist, rclone/aws-cli cookbook, and `scripts/migrate/minio-cutover-smoke.ps1` stay in force. Object copy itself is now `storage-cli migrate from-minio` (ADR 0007). IAM import is still out of scope.
+The checklist, rclone/aws-cli cookbook, and `scripts/migrate/minio-cutover-smoke.ps1` stay in force. Object copy is `storage-cli migrate from-minio` (ADR 0007). IAM import is `storage-cli migrate from-minio iam` since v1.6.0: users, groups, service accounts, and policies this server can enforce. LDAP and OIDC are reported and not imported. MinIO secrets are not copied.
 
 ## Context
 

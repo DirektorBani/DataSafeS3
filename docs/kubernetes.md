@@ -1,5 +1,9 @@
 # Kubernetes
 
+По-русски: [ru/kubernetes.md](ru/kubernetes.md).
+
+
+
 The chart `deploy/helm/datasafes3` installs DataSafeS3. The default is one pod, a PersistentVolumeClaim, and Bolt metadata. Nothing else has to be running.
 
 ```bash

@@ -5,7 +5,7 @@ English | **[Русский](../../ru/specs/file-collaboration-tz.md)**
 **Version:** 1.1  
 **Date:** 2026-06-23  
 **Status:** **Phase 1–3 implemented** · Phase 4 mobile [backlog](./file-collaboration-phase4-backlog.md) — see [file-collaboration-status.md](./file-collaboration-status.md)  
-**Parent:** [roadmap-to-9.md](../../analysis/roadmap-to-9.md) (segment: end-user file workspace)  
+**Parent:** internal roadmap note, not included in this repository (segment: end-user file workspace)  
 **Prerequisite:** [tenant-bucket-isolation-tz.md](./tenant-bucket-isolation-tz.md) — **Implemented**  
 **License:** Apache-2.0 Community Edition — no paid gates  
 **Audience:** Implementing agent / developer
@@ -98,7 +98,7 @@ Give every authenticated user a **personal file workspace** in the web console (
 | P1-5 | Console: **Share** dialog on bucket detail (owner + tenant_admin) |
 | P1-6 | User picker (tenant members + search users in org — see FR-5) |
 | P1-7 | Activity log events for grant create/update/delete |
-| P1-8 | i18n RU/EN for new strings |
+| P1-8 | New console strings in Russian and English |
 | P1-9 | Tests + docs |
 
 ### Phase 1 — Out of scope
@@ -276,7 +276,7 @@ Keep: Dashboard (or redirect to Files), Files, Access keys, Usage, Profile.
 | NFR-1 | Grant API p95 < 200 ms for ≤100 grants |
 | NFR-2 | No regression in `go test ./internal/api/...` RBAC tests |
 | NFR-3 | feature-audit **93/93 PASS** |
-| NFR-4 | RU/EN strings complete, key for key |
+| NFR-4 | Russian and English strings complete, key for key |
 | NFR-5 | OpenAPI drift check passes if routes documented |
 
 ---
@@ -447,7 +447,7 @@ Not part of Phase 1 agent work unless explicitly requested.
 
 ## Appendix C — Agent skill
 
-Cursor agents: [.cursor/skills/datasafe-file-collaboration/SKILL.md](../../../.cursor/skills/datasafe-file-collaboration/SKILL.md)
+The agent skill file named in earlier drafts is not in this repository.
 
 ---
 

@@ -11,7 +11,7 @@ Hand-written OpenAPI **3.1** specifications for the JSON REST API (`/api/v1/*`).
 | Live YAML | `GET /api/v1/openapi.yaml` |
 | Swagger UI | [`/api/v1/docs`](http://localhost:8080/api/v1/docs) |
 | Guides (EN/RU) | [docs/en/api/swagger.md](../en/api/swagger.md) · [openapi-full.md](../en/api/openapi-full.md) |
-| Spectral rules | [`.spectral.yaml`](../../.spectral.yaml) |
+| Spectral rules | not shipped in this repository |
 
 **Not in OpenAPI:** S3 XML API (SigV4 on port 9000) — use AWS SDKs.
 

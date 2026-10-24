@@ -25,4 +25,4 @@ See English version: [why-datasafes3-vs.md](../en/why-datasafes3-vs.md)
 ## Доказательства
 
 - `scripts/feature-audit-test.ps1`
-- [performance-benchmarks.md](../testing/performance-benchmarks.md)
+- Отдельного отчёта с бенчмарками в репозитории нет. Гейт одного узла описан в журнале изменений и в [гейте одного узла](../operations-guide/ru/single-node-gate.md).

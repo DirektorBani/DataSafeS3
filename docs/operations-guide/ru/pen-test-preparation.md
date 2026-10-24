@@ -29,4 +29,4 @@ Auth, SSRF, IDOR/tenant RBAC, S3 key traversal, metrics disclosure, cosign/SBOM.
 
 Триаж в GitHub Security Advisories; обновление roadmap AUD-*; публичное раскрытие только после coordinated disclosure.
 
-См. [SECURITY.md](../../../SECURITY.md), [TZ v1.1.0](../../specs/v1.1.0-trust-debt-oss-growth-tz.md).
+См. [SECURITY.md](../../../SECURITY.md), [ТЗ v1.1.0](../../ru/specs/v1.1.0-trust-debt-oss-growth-tz.md).

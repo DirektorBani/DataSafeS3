@@ -31,7 +31,7 @@ Application-layer envelope encryption для выбранных **секрето
 
 **Не шифруется в v1.0.3:** `password_hash`, хеши API-токенов, TOTP (`aes:`), `shared_links.token`, несекретный config.
 
-Спецификация: [field-encryption-1.0.3-tz.md](../../specs/field-encryption-1.0.3-tz.md).
+Исходный файл ТЗ в репозиторий не входит. Публичное описание — эта страница.
 
 ## Threat model (кратко)
 
@@ -202,4 +202,4 @@ OLD_KEK_ID=kek-20260630-a3f1 NEW_KEK_ID=kek-20260701-b2c4 ./scripts/crypto/rotat
 - [scripts/crypto/README.md](../../../scripts/crypto/README.md)
 - [secrets-vault.md](secrets-vault.md)
 - [security-self-assessment.md](security-self-assessment.md)
-- [Спецификация](../../specs/field-encryption-1.0.3-tz.md)
+- Формат, криптосхема и критерии приёмки описаны на этой странице. Исходный файл ТЗ в репозиторий не входит.

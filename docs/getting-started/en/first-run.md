@@ -18,7 +18,7 @@ copy .env.example .env
 docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml up -d
 ```
 
-Optional overlays (HA, Vault, OAuth2, local binary, …): see [`deploy/compose/README.md`](../../deploy/compose/README.md).
+Optional overlays (HA, Vault, OAuth2, local binary, …): see [`deploy/compose/README.md`](../../../deploy/compose/README.md).
 
 ### PostgreSQL metadata (recommended for production-like setup)
 

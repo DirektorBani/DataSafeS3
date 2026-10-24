@@ -20,7 +20,7 @@ Add a resumable S3 copier in `internal/migrate`, driven by `storage-cli migrate 
 - The report is `summary.md`, `evidence.json` with top-level `verdicts`, and `evidence.zip`.
 - **Settings → Migrate** prints the command with `$SOURCE_ACCESS_KEY` and the other key variables. The browser does not receive or store source credentials. It can open a local `evidence.json`.
 
-The checklist, rclone cookbook, and smoke script from ADR 0001 stay. IAM import is a later step.
+The checklist, rclone cookbook, and smoke script from ADR 0001 stay. IAM import is `storage-cli migrate from-minio iam` in the same release: users, groups, service accounts, and policies this server can enforce. LDAP and OIDC are reported and not imported. MinIO secrets are not copied.
 
 ## Consequences
 

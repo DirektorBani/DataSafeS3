@@ -98,8 +98,8 @@ Gateway replication targets **external S3**. Site replication targets another **
 
 ## Kubernetes
 
-Helm chart supports resource limits, PDB, and production values (`values-production.yaml`). See [deploy/helm/datasafe/README.md](../../../deploy/helm/datasafe/README.md).
+The current chart [deploy/helm/datasafes3](../../../deploy/helm/datasafes3/README.md) sets resource requests, a PodDisruptionBudget, and `values-production.yaml`. The earlier chart [deploy/helm/datasafe](../../../deploy/helm/datasafe/README.md) still has its own limits and PDB.
 
 For hyper-scale multi-petabyte needs, use Gateway replication or erasure MVP today; see [reference deployment](./reference-deployment-2node.md).
 
-Benchmarks: [performance-benchmarks](../../testing/performance-benchmarks.md).
+A separate benchmark report is not in this repository. The single-node gate compares RSS and startup with the published v1.5.0 image; see [single-node-gate.md](single-node-gate.md).
