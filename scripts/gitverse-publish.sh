@@ -233,7 +233,7 @@ if [ "$DRY_RUN" != "1" ]; then
   : "${GITHUB_ACTOR:?GITHUB_ACTOR is required to read ghcr.io}"
   umask 077
   netrc=$(mktemp)
-  printf 'machine api.gitverse.ru login %s password %s\n' "$GITVERSE_USER" "$GITVERSE_TOKEN" > "$netrc"
+  printf 'machine gitverse.ru login %s password %s\n' "$GITVERSE_USER" "$GITVERSE_TOKEN" > "$netrc"
   printf '%s\n' "$GITHUB_TOKEN" | crane auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
   printf '%s\n' "$GITVERSE_TOKEN" | crane auth login gitverse.ru -u "$GITVERSE_USER" --password-stdin
 fi
