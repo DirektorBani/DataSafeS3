@@ -27,7 +27,7 @@ Mobile access to DataSafeS3 file workspace: browse shared/owned buckets, upload 
 | M4-9 | iOS Files / Android SAF integration | P3 | Requires native bridges |
 | M4-10 | Push notifications (APNs/FCM) | P3 | Server work + secrets |
 | M4-11 | Store-ready builds (signed APK/IPA) | P2 | CI + assets |
-| M4-12 | EN/RU strings in mobile clients | P1 | Match console i18n |
+| M4-12 | Russian and English strings in mobile clients | P1 | Match the console, which is Russian and English |
 
 ---
 

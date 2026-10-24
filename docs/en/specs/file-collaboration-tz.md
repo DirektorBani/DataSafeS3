@@ -98,7 +98,7 @@ Give every authenticated user a **personal file workspace** in the web console (
 | P1-5 | Console: **Share** dialog on bucket detail (owner + tenant_admin) |
 | P1-6 | User picker (tenant members + search users in org — see FR-5) |
 | P1-7 | Activity log events for grant create/update/delete |
-| P1-8 | i18n EN/RU/de/fr for new strings |
+| P1-8 | New console strings in Russian and English |
 | P1-9 | Tests + docs |
 
 ### Phase 1 — Out of scope
@@ -234,7 +234,7 @@ Response GET:
 4. Empty state **My files:** «Your personal storage is ready» with link to home bucket; if no home bucket and auto-provision off — CTA create bucket.
 5. Administrator nav unchanged (still sees admin section).
 
-**Files:** `web/console/src/pages/buckets.tsx`, `layouts/sidebar.tsx`, locales `nav.json`, `buckets.json` (+ de/fr).
+**Files:** `web/console/src/pages/buckets.tsx`, `layouts/sidebar.tsx`, locales `nav.json`, `buckets.json` (ru/en).
 
 ### FR-5 Share dialog (UI)
 
@@ -276,7 +276,7 @@ Keep: Dashboard (or redirect to Files), Files, Access keys, Usage, Profile.
 | NFR-1 | Grant API p95 < 200 ms for ≤100 grants |
 | NFR-2 | No regression in `go test ./internal/api/...` RBAC tests |
 | NFR-3 | feature-audit **93/93 PASS** |
-| NFR-4 | EN/RU strings complete; de/fr fall back to EN or machine keys filled |
+| NFR-4 | Russian and English strings complete, key for key |
 | NFR-5 | OpenAPI drift check passes if routes documented |
 
 ---
@@ -427,7 +427,7 @@ With 1 backend + 1 frontend in parallel: **4–6 weeks**.
 | List | `internal/api/server.go` `handleListBucketsJSON` |
 | Shareable users | new handler |
 | Console | `buckets.tsx`, `bucket-detail.tsx`, `api.ts`, `sidebar.tsx` |
-| i18n | `web/console/src/locales/{en,ru,de,fr}/*.json` |
+| i18n | `web/console/src/locales/{ru,en}/*.json` |
 | OpenAPI | `docs/api/openapi.yaml` |
 | Tests | `internal/api/*_test.go`, optional `web/console/e2e/` |
 

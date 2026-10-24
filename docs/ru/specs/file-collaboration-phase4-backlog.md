@@ -24,7 +24,7 @@
 | M4-9 | iOS Files / Android SAF | P3 |
 | M4-10 | Push (APNs/FCM) | P3 |
 | M4-11 | Подписанные сборки store | P2 |
-| M4-12 | i18n EN/RU | P1 |
+| M4-12 | Строки интерфейса на русском и английском | P1 |
 
 ## Вне scope
 
