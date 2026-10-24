@@ -55,7 +55,7 @@ sudoedit /etc/datasafes3/datasafes3.env
 sudo systemctl enable --now datasafes3
 ```
 
-Guides: [Kubernetes](docs/kubernetes.md) · [Linux packages](docs/linux-packages.md) · [Move from MinIO](docs/migrate-from-minio.md) · [Production checklist](docs/production-checklist.md) · [S3 compatibility](docs/compatibility.md)
+Guides: [Kubernetes](docs/kubernetes.md) · [Linux packages](docs/linux-packages.md) · [GitVerse mirror (RU)](docs/ru/gitverse-mirror.md) · [Move from MinIO](docs/migrate-from-minio.md) · [Production checklist](docs/production-checklist.md) · [S3 compatibility](docs/compatibility.md)
 
 The image tag above is the release pin. This branch does not push the git tag, so `v1.7.0` is on GHCR only after that tag is published. Until then, build `deploy/docker/Dockerfile` yourself.
 
@@ -204,7 +204,7 @@ docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-co
 
 The default Compose stack serves the console from `DATASAFE_CONSOLE_IMAGE` (`ghcr.io/direktorbani/datasafe-console:v1.7.0`); a host `web/console/dist` is not required. To serve a local production build, add `-f deploy/compose/docker-compose.local-console.yml`. For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
 
-Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.7.0` and `ghcr.io/direktorbani/datasafe-console:v1.7.0`.
+Published images (on release tags): `ghcr.io/direktorbani/datasafe-storage-server:v1.7.0` and `ghcr.io/direktorbani/datasafe-console:v1.7.0`. The same release is mirrored to GitVerse: [установка из зеркала](docs/ru/gitverse-mirror.md).
 
 Default Compose install is production-safe: `STORAGE_DEV` is off unless you pass installer `-Dev` / `--dev` (or profile `dev`). The installer generates `STORAGE_METRICS_TOKEN` and wires Prometheus. First login is still `admin` / `admin`, then the setup wizard.
 
@@ -234,7 +234,7 @@ Documentation is organized by what you need to do:
 | Phase | Topics |
 |-------|--------|
 | **Learn** | [Overview](docs/getting-started/en/what-is-datasafe.md), [architecture](docs/learn/en/conceptual-architecture.md), [security model](docs/administrator-guide/en/mfa.md) |
-| **Deploy** | [Docker Compose](docs/getting-started/en/first-run.md), [production Compose](deploy/compose/production/README.md), [Kubernetes / Helm](docs/kubernetes.md), [Linux packages](docs/linux-packages.md) |
+| **Deploy** | [Docker Compose](docs/getting-started/en/first-run.md), [production Compose](deploy/compose/production/README.md), [Kubernetes / Helm](docs/kubernetes.md), [Linux packages](docs/linux-packages.md), [GitVerse mirror (RU)](docs/ru/gitverse-mirror.md) |
 | **Configure** | [LDAP](docs/administrator-guide/en/ldap.md), [OIDC](docs/administrator-guide/en/oidc.md), [monitoring](docs/administrator-guide/en/monitoring.md) |
 | **Manage** | [Users](docs/administrator-guide/en/users.md), [tenants](docs/administrator-guide/en/tenants.md), [replication](docs/administrator-guide/en/replication.md) |
 | **Operate** | [Backup](docs/operations-guide/en/backup-restore.md), [Migrate from MinIO](docs/migrate-from-minio.md), [production checklist](docs/production-checklist.md), [HA reference](docs/operations-guide/en/reference-deployment-2node.md), [scaling](docs/operations-guide/en/scaling.md), [troubleshooting](docs/operations-guide/en/troubleshooting.md) |

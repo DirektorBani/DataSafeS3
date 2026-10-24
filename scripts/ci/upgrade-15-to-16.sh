@@ -250,13 +250,21 @@ docker run -d --name "$PG" --network "$NET" \
   -e POSTGRES_PASSWORD=datasafe \
   -e POSTGRES_DB=datasafe \
   postgres:16 >/dev/null
+# pg_isready succeeds while the entrypoint's temporary server is up, before
+# POSTGRES_DB exists. Wait until the real database accepts a query.
+db_ready=0
 for _ in $(seq 1 60); do
-  if docker exec "$PG" pg_isready -U datasafe >/dev/null 2>&1; then
+  if docker exec "$PG" psql -U datasafe -d datasafe -c 'SELECT 1' >/dev/null 2>&1; then
+    db_ready=1
     break
   fi
   sleep 1
 done
-docker exec "$PG" pg_isready -U datasafe >/dev/null
+if [ "$db_ready" != 1 ]; then
+  echo "postgres database datasafe did not become ready" >&2
+  docker logs "$PG" >&2 || true
+  exit 1
+fi
 docker exec "$PG" psql -U datasafe -d datasafe -c 'CREATE DATABASE upfwd' >/dev/null
 docker exec "$PG" psql -U datasafe -d datasafe -c 'CREATE DATABASE uprb' >/dev/null
 forward_path postgres e06-up-pg e06-up-pg 19321 "postgres://datasafe:datasafe@${PG}:5432/upfwd?sslmode=disable"

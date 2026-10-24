@@ -2,6 +2,12 @@
 
 All notable changes to DataSafeS3 are documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- **Go 1.26.10.** `govulncheck` reports GO-2026-6809 in `crypto/x509` of Go 1.26.9 (fixed in 1.26.10). `webauthn.FinishLogin` reaches `x509.Certificate.Verify`. Pins: `go.mod`, `deploy/docker/Dockerfile` (`golang:1.26.10-alpine`), and `setup-go` in CI, release, and audit.
+
 ## [1.7.0] - 2026-10-19
 
 `VERSION` is **1.7.0**. This commit does not push the git tag. Images, the Helm chart, and the Linux packages are published when `release.yml` runs on `v1.7.0`.
