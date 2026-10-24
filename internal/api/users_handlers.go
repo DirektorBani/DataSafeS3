@@ -146,6 +146,15 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+func allowedUILocale(locale string) bool {
+	switch locale {
+	case "ru", "en":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Server) handleUpdateLocale(w http.ResponseWriter, r *http.Request) {
 	info, _ := authFrom(r)
 	var req struct {
@@ -156,8 +165,8 @@ func (s *Server) handleUpdateLocale(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	locale := strings.TrimSpace(req.Locale)
-	if locale != "en" && locale != "ru" && locale != "de" && locale != "fr" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "locale must be en, ru, de, or fr"})
+	if !allowedUILocale(locale) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "locale must be ru or en"})
 		return
 	}
 	user, err := s.meta.GetUser(info.UserID)
