@@ -17,4 +17,6 @@ Open `http://127.0.0.1:8080`, change the admin password, and finish setup. S3 is
 
 TLS: place `fullchain.pem` and `privkey.pem` in `deploy/compose/production/certs` and add `--profile tls`.
 
+Default images are `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0` and `gitverse.ru/direktorbani/datasafe-console:v1.7.0` (GitVerse registry, public). The same release is on GHCR (`ghcr.io/direktorbani/...`) on the GitHub mirror; set `DATASAFE_SERVER_IMAGE` and `DATASAFE_CONSOLE_IMAGE` in `.env` to use it.
+
 Backups and the rest of the go-live list: [docs/production-checklist.md](../../../docs/production-checklist.md).

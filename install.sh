@@ -348,7 +348,7 @@ show_plan() {
   if [ "$(opt_get binary)" = "1" ]; then
     info "Images:   local build (storage-server-linux + web/console/dist)"
   else
-    info "Images:   ghcr.io/direktorbani/datasafe-storage-server:$TAG + ghcr.io/direktorbani/datasafe-console:$TAG"
+    info "Images:   gitverse.ru/direktorbani/datasafe-storage-server:$TAG + gitverse.ru/direktorbani/datasafe-console:$TAG"
   fi
   [ "$(opt_get data)" = "1" ] && files="$files + docker-compose.local-data.yml"
   [ "$(opt_get binary)" = "1" ] && files="$files + deploy/compose/docker-compose.local-binary.yml + deploy/compose/docker-compose.local-console.yml"
@@ -409,6 +409,7 @@ set_env_key() {
 
 find_local_server_image() {
   local img candidates="datasafe-storage-server:latest
+gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0
 ghcr.io/direktorbani/datasafe-storage-server:v1.7.0
 ghcr.io/direktorbani/datasafe-storage-server:v1.5.0
 ghcr.io/direktorbani/datasafe-storage-server:v1.1.0
@@ -450,8 +451,8 @@ ensure_env() {
       exit 1
     fi
   else
-    set_env_key .env DATASAFE_SERVER_IMAGE "ghcr.io/direktorbani/datasafe-storage-server:$TAG"
-    set_env_key .env DATASAFE_CONSOLE_IMAGE "ghcr.io/direktorbani/datasafe-console:$TAG"
+    set_env_key .env DATASAFE_SERVER_IMAGE "gitverse.ru/direktorbani/datasafe-storage-server:$TAG"
+    set_env_key .env DATASAFE_CONSOLE_IMAGE "gitverse.ru/direktorbani/datasafe-console:$TAG"
   fi
   ensure_generated_secret STORAGE_JWT_SECRET datasafe-jwt-secret
   ensure_generated_secret STORAGE_SECRET_KEY datasafesecret

@@ -31,7 +31,7 @@ jobs:
       - name: Build console image for Caddy
         run: |
           tag="v$(tr -d '[:space:]' < VERSION)"
-          docker build -t "ghcr.io/direktorbani/datasafe-console:${tag}" -f deploy/docker/Dockerfile.console .
+          docker build -t "gitverse.ru/direktorbani/datasafe-console:${tag}" -f deploy/docker/Dockerfile.console .
 
       - name: Start core compose stack
         env:

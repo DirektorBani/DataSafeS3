@@ -1,6 +1,6 @@
 [Unit]
 Description=DataSafeS3 storage server
-Documentation=https://github.com/DirektorBani/DataSafeS3
+Documentation=https://gitverse.ru/DirektorBani/DataSafeS3
 After=network-online.target
 Wants=network-online.target
 

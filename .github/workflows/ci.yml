@@ -150,11 +150,11 @@ jobs:
       - name: Build console image for the installer pin
         run: |
           tag="v$(tr -d '[:space:]' < VERSION)"
-          docker build -t "ghcr.io/direktorbani/datasafe-console:${tag}" -f deploy/docker/Dockerfile.console .
+          docker build -t "gitverse.ru/direktorbani/datasafe-console:${tag}" -f deploy/docker/Dockerfile.console .
       - name: Install core profile (non-interactive)
         run: |
           tag="v$(tr -d '[:space:]' < VERSION)"
-          docker tag datasafe-storage-server:gate "ghcr.io/direktorbani/datasafe-storage-server:${tag}"
+          docker tag datasafe-storage-server:gate "gitverse.ru/direktorbani/datasafe-storage-server:${tag}"
           bash install.sh --yes --profiles core --project datasafe-gate --data-root "${{ runner.temp }}/datasafe-gate"
       - name: Smoke the core install
         run: bash scripts/single-node-gate.sh smoke-installed
