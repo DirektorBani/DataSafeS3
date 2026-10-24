@@ -98,3 +98,5 @@ sudo systemctl enable --now datasafes3
 ```
 
 Удаление пакета не удаляет `/var/lib/datasafes3`. Там остаются `metadata.db` и файлы объектов. `apt purge` забирает конфиг, каталог данных остаётся. Обновление пакета сохраняет ваши правки в env-файле.
+
+Те же `.deb` и `.rpm` публикуются в реестры GitVerse: [установка из зеркала](ru/gitverse-mirror.md).

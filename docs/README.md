@@ -36,6 +36,7 @@ What DataSafeS3 is, how it works, and how data and access are modeled.
 | **External S3 (optional)** | [getting-started/en/s3-configuration.md](getting-started/en/s3-configuration.md) | [getting-started/ru/s3-configuration.md](getting-started/ru/s3-configuration.md) |
 | **Kubernetes / Helm** | [../deploy/helm/datasafe/README.md](../deploy/helm/datasafe/README.md) | same |
 | **Linux packages (.deb / .rpm)** | [linux-packages.md](linux-packages.md) | [linux-packages.md#по-русски](linux-packages.md#по-русски) |
+| **GitVerse mirror** | [ru/gitverse-mirror.md](ru/gitverse-mirror.md) | [установка из зеркала GitVerse](ru/gitverse-mirror.md) |
 | **Production deployment** | [operations-guide/en/README.md](operations-guide/en/README.md) | [operations-guide/ru/README.md](operations-guide/ru/README.md) |
 | **Local development** | [en/context/local-dev.md](en/context/local-dev.md) | [ru/context/local-dev.md](ru/context/local-dev.md) |
 
