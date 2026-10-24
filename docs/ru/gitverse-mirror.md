@@ -1,4 +1,92 @@
-# Установка из зеркала GitVerse
+# Зеркало GitVerse
+
+Репозиторий [DirektorBani/DataSafeS3](https://gitverse.ru/DirektorBani/DataSafeS3) получает ветки и теги с GitHub и хранит пакеты релиза. Это обычный репозиторий GitVerse, а не импорт в режиме зеркала: у импортированного зеркала CI/CD выключен ([FAQ](https://gitverse.ru/docs/cicd/faq/)).
+
+## Зеркало исходного кода
+
+[`.github/workflows/mirror-gitverse.yml`](../../.github/workflows/mirror-gitverse.yml) запускается на каждый push любой ветки и любого тега, а также вручную (`workflow_dispatch`). Скрипт [`scripts/gitverse-mirror.sh`](../../scripts/gitverse-mirror.sh) забирает с GitHub все `refs/heads/*` и `refs/tags/*` и отправляет их на `https://gitverse.ru/DirektorBani/DataSafeS3.git`.
+
+Это не `git push --mirror`. Ссылки, которых нет на GitHub, на GitVerse не удаляются: своя ветка, свой тег и ветка, уже удалённая на GitHub, остаются. Обновление только fast-forward. Если история разошлась, эта ссылка не перезаписывается, остальные всё равно уходят, и job завершается с ошибкой.
+
+Форс-пуш включается отдельно. Он перезаписывает разошедшиеся ветки и теги, которые указывают на другой коммит. Чужие ссылки он тоже не удаляет.
+
+- Ручной запуск: input `force` (по умолчанию выключен). Значение `false` не подменяется переменной репозитория.
+- На обычном push: переменная репозитория `GITVERSE_MIRROR_FORCE` = `true`. Пока переменная не задана, форс-пуша нет.
+
+Проверка скрипта без сети: `bash scripts/gitverse-mirror-test.sh`. Тот же шаг есть в workflow до push.
+
+### Как передаётся токен
+
+Рабочий способ по документации GitVerse — HTTPS. Логин `DirektorBani`, вместо пароля персональный токен ([клонирование с токеном](https://gitverse.ru/docs/collaborative/repositories/guides/repository-workflow/clone-repository), [работа по HTTPS](https://gitverse.ru/docs/collaborative/authentification/work-over-https)). В URL токена нет: на запрос пароля отвечает `GIT_ASKPASS`. В командах нет `set -x`. Вывод `git push` проходит через редактор, который вырезает токен, приватный ключ и userinfo в URL. Секрет GitHub дополнительно маскируется раннером.
+
+Токен для git должен быть выпущен с чекбоксом «Репозитории» ([управление токенами](https://gitverse.ru/docs/collaborative/authentification/tokens)). В той же статье токен реестра пакетов описан отдельной процедурой. Совмещаются ли чекбокс «Репозитории» и права записи пакетов в одном токене, страница не говорит. Секрет `GITVERSE_TOKEN` уже использует публикация пакетов. Если этот токен только для пакетов, git push получит отказ. Тогда пакетный токен не заменяют, а для зеркала включают SSH (ниже).
+
+SSH — запасной путь, если HTTPS-токен к git push не подходит ([ключи SSH](https://gitverse.ru/docs/collaborative/authentification/ssh-keys)). URL: `git@gitverse.ru:DirektorBani/DataSafeS3.git`. Host key зафиксирован по отпечатку `SHA256:IL4khwaSrT4uHCu9LTUW7dRJyMB5XkOJnFrP0nmdMXU` ([отпечатки](https://gitverse.ru/docs/collaborative/authentification/gitverse-ssh-key-fingerprints)). Ключ в секрете — приватный PEM без парольной фразы (`BEGIN … PRIVATE KEY`). Публичная половина добавляется в профиль GitVerse: Настройки → Ключи SSH/GPG.
+
+Если заданы и токен, и ключ, по умолчанию используется HTTPS. Переменная `GITVERSE_MIRROR_AUTH=ssh` переключает на ключ. Если выбранный секрет пуст, а второй задан, скрипт берёт второй и пишет об этом. Если пусты оба, job успешна и ничего не отправляет: в логе и в summary есть предупреждение `Mirror skipped`.
+
+Workflow срабатывает только в `DirektorBani/DataSafeS3` на `https://github.com`. Форк и случайный запуск того же файла на раннере GitVerse push не делают.
+
+## CI на GitVerse
+
+Файл [`.gitverse/workflows/ci.yaml`](../../.gitverse/workflows/ci.yaml). Каталог workflow — `.gitverse/workflows/`; синтаксис совместим с GitHub Actions ([быстрый старт](https://gitverse.ru/docs/cicd/quick-start), [синтаксис](https://gitverse.ru/docs/cicd/docs/workflow/)). Раннер также умеет читать `.github/workflows/`, поэтому в настройках репозитория нужен приоритет каталога `.gitverse/workflows/`. Точные подписи пункта меню документация не приводит: Настройки → Репозиторий → тумблер CI/CD → «приоритет для пути конфигурационных файлов» → Обновить ([вкладка репозитория](https://gitverse.ru/docs/collaborative/repositories/guides/repo-settings/repository-subtab-uc)).
+
+Запуски смотреть на вкладке CI/CD репозитория. У публичных запусков адрес вида `https://gitverse.ru/DirektorBani/DataSafeS3/cicd/<номер>` (так устроены страницы запусков на GitVerse).
+
+Триггеры `push` и `pull_request`. Раннер `ubuntu-latest`. `actions/checkout@v4` есть в быстром старте. `actions/setup-go@v5` уже выполняется на облачных раннерах других репозиториев; страница действия — <https://gitverse.ru/actions/setup-go>. `actions/setup-node` опубликован на <https://gitverse.ru/actions/setup-node>. Публичный успешный лог с меткой `@v4` не найден; версия та же, что в GitHub CI, а [FAQ](https://gitverse.ru/docs/cicd/faq/) говорит, что большинство действий Marketplace подходят.
+
+| Job | Что делает |
+| --- | --- |
+| `go` | `gofmt -l`, `go vet ./...`, `go build ./...`, `go test ./...`, `govulncheck ./...`. Go `1.26.10`, как в GitHub CI. |
+| `web` | `npm ci` и `npm run build` в `web/console`, Node 20. |
+| `single-node` | `python3 scripts/single-node-gate.py self-test`. Это проверки порогов и разбора вывода, без Docker. |
+
+`go test ./...` не получает `TEST_POSTGRES_DSN`, `KAFKA_INTEGRATION`, `VAULT_ADDR`, `MINIO_ENDPOINT`. Тесты, которым нужна Postgres, пропускаются сами. Сервисных контейнеров в справочнике синтаксиса нет, а у облачного раннера нет `docker.sock` ([облачные раннеры](https://gitverse.ru/docs/cicd/docs/runners/cloud-hosted)), поэтому Postgres в этом workflow не поднимается.
+
+Лимит одной job: [страница лимитов CI/CD](https://gitverse.ru/docs/cicd/docs/limits) называет 30 минут, [настройки раннеров](https://gitverse.ru/docs/repositories/repo-settings/runners-subtab-uc/) — 15 минут. В workflow стоит `timeout-minutes: 20` у `go` и `web` и `10` у `single-node`. Сборочное время: 1000 минут в месяц на публичный репозиторий и 500 на приватный (у верифицированной организации 2000 и 1000). Первый push всех веток и тегов может запустить CI на каждую обновлённую ссылку.
+
+Секреты и переменные на стороне GitVerse этому CI не нужны. Имена секретов GitVerse не могут начинаться с `GITVERSE_` ([секреты](https://gitverse.ru/docs/cicd/docs/secrets-and-variables)).
+
+### Что остаётся только на GitHub
+
+Тяжёлые job из [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) на облачный раннер не переносятся: нет демона Docker, а `docker build` туда не входит (для образов документация предлагает kaniko, это не проверка продукта). `install-ps1-syntax` требует `windows-latest`, такого раннера в документации облака нет.
+
+| Job на GitHub | Почему не на GitVerse |
+| --- | --- |
+| `docker-build` | нет `docker.sock` |
+| `single-node-gate` | Docker, образы, compose; на GitVerse остаётся только `self-test` |
+| `e2e-smoke` | compose и Playwright |
+| `kafka-integration`, `vault-integration`, `minio-migrate` | брокер, Vault и MinIO в Docker |
+| `list-buckets-clients`, `upgrade-16`, `ha-promote-drill`, `cluster-kms-gate` | Docker и долгий стенд |
+| `s3-compat` | набор клиентов и длинный прогон |
+| `helm-smoke` | kind и кластер |
+| `linux-packages` | QEMU и контейнеры дистрибутивов |
+| `install-ps1-syntax` | раннер Windows |
+| `event-observability` | остаётся рядом с остальным GitHub CI; Docker ей не нужен, в обязательный набор облака она не входит |
+
+## Секреты и переменные
+
+Значения сюда не записываются. На GitHub: Settings → Secrets and variables → Actions.
+
+| Имя | Где | Назначение |
+| --- | --- | --- |
+| `GITVERSE_TOKEN` | секрет GitHub | Токен пользователя `DirektorBani`. Для зеркала нужен чекбокс «Репозитории». Для пакетов — запись (и удаление, если включена очистка). |
+| `GITVERSE_SSH_KEY` | секрет GitHub | Приватный ключ без пароля. Нужен только при `GITVERSE_MIRROR_AUTH=ssh` или если токена нет. |
+| `GITVERSE_MIRROR_AUTH` | переменная GitHub | `https` (по умолчанию) или `ssh`. |
+| `GITVERSE_MIRROR_FORCE` | переменная GitHub | `true` включает форс-пуш на обычном push. Пусто или `false` — только fast-forward. |
+| `GITVERSE_ARCHITECTURES`, `GITVERSE_DELETE_OLD`, `GITVERSE_KEEP_VERSIONS`, `GITVERSE_SIZE_LIMIT_MB`, `GITVERSE_DEB_DISTRIBUTION`, `GITVERSE_DEB_COMPONENT`, `GITVERSE_RPM_GROUP` | переменные GitHub | Только публикация пакетов, см. ниже. |
+
+На GitVerse для CI из этого репозитория секреты создавать не нужно. CI/CD должен быть включён, приоритет пути — `.gitverse/workflows/`.
+
+### Что сделать владельцу
+
+1. Убедиться, что `https://gitverse.ru/DirektorBani/DataSafeS3` — обычный репозиторий, а не импортированное зеркало. Иначе CI/CD недоступен, а push зеркала может быть запрещён.
+2. Настройки → Репозиторий: включить CI/CD, выбрать приоритет `.gitverse/workflows/` (чтобы раннер не выполнял `.github/workflows/` с Docker), нажать Обновить.
+3. Для git push выпустить токен с чекбоксом «Репозитории». Если текущий `GITVERSE_TOKEN` уже пишет пакеты и UI не даёт добавить этот чекбокс в тот же токен, оставить его для пакетов и настроить SSH: публичный ключ в GitVerse, приватный в секрет `GITVERSE_SSH_KEY`, переменная `GITVERSE_MIRROR_AUTH=ssh`.
+4. Форс-пуш не включать, пока push не остановится на non-fast-forward. Тогда либо Actions → Mirror GitVerse → Run workflow → `force`, либо переменная `GITVERSE_MIRROR_FORCE=true`.
+5. После первого успешного прогона открыть вкладку CI/CD на GitVerse и проверить job `go`, `web`, `single-node`.
+
+## Установка из реестров
 
 Артефакты релиза DataSafeS3 публикуются в реестры пакетов [GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3) (владелец `DirektorBani`). Так дистрибутив доступен с ресурса на территории РФ. Тот же релиз по-прежнему лежит на GitHub и в `ghcr.io`.
 
@@ -121,3 +209,5 @@ curl -sS http://127.0.0.1:9000/healthz
 [`.github/workflows/publish-gitverse.yml`](../../.github/workflows/publish-gitverse.yml) копирует мультиархитектурный манифест (`linux/amd64` и `linux/arm64`) и загружает `.deb`, `.rpm` и чарт `datasafes3`. Суммарный лимит всех пакетов пользователя на GitVerse — 500 Мбайт. Перед загрузкой workflow считает размер. Если полный набор не помещается, ручной запуск с `architectures=amd64` (или переменная репозитория `GITVERSE_ARCHITECTURES=amd64`) публикует только amd64.
 
 Очистка старых версий выключена по умолчанию. Её включает `delete_old` у `workflow_dispatch` или переменная `GITVERSE_DELETE_OLD=true`. Остаются две последние версии (`keep` / `GITVERSE_KEEP_VERSIONS`); тег `latest` не удаляется.
+
+Ветки и теги исходного кода этот workflow не копирует. Их отправляет `mirror-gitverse`, раздел «Зеркало исходного кода» выше.
