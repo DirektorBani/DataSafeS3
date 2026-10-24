@@ -23,7 +23,7 @@ jobs:
         run: python3 scripts/gitverse_publish_test.py
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
       - name: gofmt
         run: |
           test -z "$(gofmt -l .)" || (echo "gofmt issues:" && gofmt -l . && exit 1)
@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
       - name: Install AWS CLI v2
         run: |
           curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
@@ -339,7 +339,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
       - name: Wait for the broker
         run: |
           for i in $(seq 1 60); do
@@ -377,7 +377,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
       - name: Start Vault dev
         run: |
           docker run -d --name datasafe-vault \
@@ -406,7 +406,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
       - name: Start MinIO-compatible source
         run: |
           docker run -d --name datasafe-minio \
@@ -543,7 +543,7 @@ jobs:
           cache-dependency-path: web/console/package-lock.json
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
       - uses: actions/download-artifact@v4
         with:
           name: storage-server-image
@@ -574,7 +574,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
       - name: Install clients
         run: |
           set -euo pipefail
@@ -646,7 +646,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Build packages
