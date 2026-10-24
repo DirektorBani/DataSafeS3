@@ -1,0 +1,41 @@
+# GitVerse is the primary repository. This workflow copies pushes to the
+# GitHub mirror (github.com/DirektorBani/DataSafeS3).
+# Only main, release branches and version tags are mirrored, so the monthly
+# cloud runner minutes (1000 for a public repo) are not spent on every branch.
+# No --mirror and no --force: see scripts/github-mirror.sh.
+# Secrets (repository settings): GH_MIRROR_ACTOR, GH_MIRROR_REPO, GH_MIRROR_TOKEN.
+# Docs: docs/ru/gitverse-mirror.md
+name: mirror_to_gh
+
+on:
+  push:
+    branches:
+      - main
+      - "release/**"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Push the ref to GitHub
+        env:
+          GH_MIRROR_ACTOR: ${{ secrets.GH_MIRROR_ACTOR }}
+          GH_MIRROR_REPO: ${{ secrets.GH_MIRROR_REPO }}
+          GH_MIRROR_TOKEN: ${{ secrets.GH_MIRROR_TOKEN }}
+          REF_NAME_FULL: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          REF="${REF_NAME_FULL}"
+          if [ -z "${REF}" ]; then REF="refs/heads/main"; fi
+          # Make sure the local ref exists (checkout may leave a detached HEAD).
+          case "$REF" in
+            refs/heads/*) git update-ref "$REF" HEAD ;;
+          esac
+          bash scripts/github-mirror.sh "$REF"
