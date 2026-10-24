@@ -9,9 +9,11 @@ English: [deploy/helm/datasafe/README.md](../../deploy/helm/datasafe/README.md).
 - Kubernetes 1.24 и новее (у этого чарта своя планка; у `datasafes3` — 1.25)
 - Helm 3.10 и новее
 - StorageClass для данных и, если включён, для PostgreSQL
-- Образы `ghcr.io/direktorbani/datasafe-storage-server:v1.7.0` и `ghcr.io/direktorbani/datasafe-console:v1.7.0`
+- Образы `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0` и `gitverse.ru/direktorbani/datasafe-console:v1.7.0` (реестр GitVerse публичный)
 
 ## Установка опубликованных тегов
+
+Чарт ставится из клона репозитория: в репозиторий Helm на GitVerse публикуется только `datasafes3`. Образы по умолчанию берутся с GitVerse.
 
 ```bash
 helm install datasafe deploy/helm/datasafe \

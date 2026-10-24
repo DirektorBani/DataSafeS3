@@ -4,17 +4,16 @@
 
 
 
-The GitHub Release for `v1.7.0` includes `datasafes3` packages for `linux/amd64` and `linux/arm64`:
+The `datasafes3` packages for `linux/amd64` and `linux/arm64` are published to the package repositories on [GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3/packages) (owner `DirektorBani`). The repositories are public; no login is needed to install.
 
-| File | Where |
-|------|--------|
-| `datasafes3_1.7.0_amd64.deb` | Debian, Ubuntu (amd64) |
-| `datasafes3_1.7.0_arm64.deb` | Debian, Ubuntu (arm64) |
-| `datasafes3-1.7.0-1.x86_64.rpm` | Fedora, RHEL, Rocky, Alma (x86_64) |
-| `datasafes3-1.7.0-1.aarch64.rpm` | Fedora, RHEL, Rocky, Alma (aarch64) |
-| `SHA256SUMS` | Checksums of those four files |
+| Format | Repository | Where |
+|--------|------------|-------|
+| DEB (`amd64`, `arm64`) | `https://gitverse.ru/api/packages/DirektorBani/debian`, distribution `stable`, component `main` | Debian, Ubuntu |
+| RPM (`x86_64`, `aarch64`) | `https://gitverse.ru/api/packages/DirektorBani/rpm/stable.repo` | Fedora, RHEL, Rocky, Alma |
 
-Each of those files also has a cosign bundle named with a `.bundle` suffix. Check the checksums, then the signature, before you install:
+The apt repository is signed with a GPG key (`https://gitverse.ru/api/packages/DirektorBani/debian/repository.key`) and `apt` verifies it. The RPM packages themselves are not GPG-signed, so `dnf` needs `--nogpgcheck` (as the GitVerse docs describe for unsigned packages); the repository metadata is signed.
+
+The GitHub mirror keeps the `v1.7.0` Release with the same packages, `SHA256SUMS`, and a cosign bundle (`.bundle`) per file. It is an alternative source: download the files there when you want to check the cosign signature.
 
 ```bash
 sha256sum -c SHA256SUMS
@@ -42,16 +41,24 @@ The unit is not enabled and the process is not started during install. Fedora's 
 Debian or Ubuntu:
 
 ```bash
-sudo apt install ./datasafes3_1.7.0_amd64.deb
+sudo mkdir -p /etc/apt/keyrings
+sudo curl -fsSL https://gitverse.ru/api/packages/DirektorBani/debian/repository.key \
+  -o /etc/apt/keyrings/gitverse-DirektorBani.asc
+echo "deb [signed-by=/etc/apt/keyrings/gitverse-DirektorBani.asc] https://gitverse.ru/api/packages/DirektorBani/debian stable main" \
+  | sudo tee /etc/apt/sources.list.d/gitverse-DirektorBani.list
+sudo apt update
+sudo apt install datasafes3
 ```
 
 Fedora, RHEL, Rocky, or Alma:
 
 ```bash
-sudo dnf install ./datasafes3-1.7.0-1.x86_64.rpm
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://gitverse.ru/api/packages/DirektorBani/rpm/stable.repo
+sudo dnf install datasafes3 --nogpgcheck
 ```
 
-On arm64 use the `arm64` deb or the `aarch64` rpm.
+A specific version: `sudo apt install datasafes3=1.7.0-1` or `sudo dnf install datasafes3-1.7.0-1`. The architecture is picked automatically.
 
 ## Enable
 
@@ -84,23 +91,34 @@ sudo dnf remove datasafes3
 
 ## Upgrade
 
-Install the newer package with the same command. Your env file is kept. If the service was already running, the package restarts it. If it was stopped, it stays stopped.
+Run `sudo apt update && sudo apt install --only-upgrade datasafes3` (or `sudo dnf upgrade datasafes3 --nogpgcheck`). Your env file is kept. If the service was already running, the package restarts it. If it was stopped, it stays stopped.
 
 ## По-русски
 
-Пакеты `datasafes3` лежат на GitHub Release `v1.7.0`: `.deb` для Debian/Ubuntu и `.rpm` для Fedora, RHEL, Rocky и Alma, архитектуры amd64 и arm64. Рядом `SHA256SUMS` и cosign-bundle на каждый файл.
+Пакеты `datasafes3` лежат в реестрах пакетов [GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3/packages): `.deb` для Debian/Ubuntu и `.rpm` для Fedora, RHEL, Rocky и Alma, архитектуры amd64 и arm64. Зеркало на GitHub хранит тот же релиз с `SHA256SUMS` и cosign-bundle на каждый файл.
 
 Пакет ставит бинарники `datasafe-storage-server` и `storage-cli`, мост Kafka, системного пользователя `datasafes3` без входа в систему, unit `datasafes3.service`, конфиг `/etc/datasafes3/datasafes3.env` и каталог данных `/var/lib/datasafes3`.
 
 Сервис при установке не включается и не запускается. В файле окружения исторические секреты, и `STORAGE_STRICT_SECRETS=true` не даст процессу стартовать, пока вы их не замените. Debian обычно запускает демон сам, Fedora — нет. Этот пакет на обоих семействах остаётся остановленным: так не поднимается сервис с паролем по умолчанию.
 
 ```bash
-sudo apt install ./datasafes3_1.7.0_amd64.deb
-# или: sudo dnf install ./datasafes3-1.7.0-1.x86_64.rpm
+# Debian, Ubuntu
+sudo mkdir -p /etc/apt/keyrings
+sudo curl -fsSL https://gitverse.ru/api/packages/DirektorBani/debian/repository.key \
+  -o /etc/apt/keyrings/gitverse-DirektorBani.asc
+echo "deb [signed-by=/etc/apt/keyrings/gitverse-DirektorBani.asc] https://gitverse.ru/api/packages/DirektorBani/debian stable main" \
+  | sudo tee /etc/apt/sources.list.d/gitverse-DirektorBani.list
+sudo apt update && sudo apt install datasafes3
+
+# Fedora, RHEL, Rocky, Alma (RPM не подписан GPG, поэтому --nogpgcheck)
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager --add-repo https://gitverse.ru/api/packages/DirektorBani/rpm/stable.repo
+sudo dnf install datasafes3 --nogpgcheck
+
 sudoedit /etc/datasafes3/datasafes3.env
 sudo systemctl enable --now datasafes3
 ```
 
 Удаление пакета не удаляет `/var/lib/datasafes3`. Там остаются `metadata.db` и файлы объектов. `apt purge` забирает конфиг, каталог данных остаётся. Обновление пакета сохраняет ваши правки в env-файле.
 
-Те же `.deb` и `.rpm` публикуются в реестры GitVerse: [установка из зеркала](ru/gitverse-mirror.md).
+Подробности про реестры GitVerse: [gitverse-mirror.md](ru/gitverse-mirror.md).

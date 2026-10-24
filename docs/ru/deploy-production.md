@@ -17,6 +17,6 @@ TLS: положите `fullchain.pem` и `privkey.pem` в `deploy/compose/produc
 
 Копии и остальной список выхода в бой: [production-checklist.md](production-checklist.md).
 
-Образы по умолчанию: `ghcr.io/direktorbani/datasafe-storage-server:v1.7.0` и `ghcr.io/direktorbani/datasafe-console:v1.7.0`. Зеркало: [gitverse-mirror.md](gitverse-mirror.md).
+Образы по умолчанию лежат на GitVerse: `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0` и `gitverse.ru/direktorbani/datasafe-console:v1.7.0` (реестр публичный). Подробности про реестры GitVerse: [gitverse-mirror.md](gitverse-mirror.md). Тот же релиз есть в `ghcr.io` на зеркале GitHub: подставьте его через `DATASAFE_SERVER_IMAGE` и `DATASAFE_CONSOLE_IMAGE` в `.env`.
 
 Интерфейс консоли доступен на русском и английском. Kafka и Vault этот файл не запускает.

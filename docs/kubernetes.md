@@ -4,7 +4,24 @@
 
 
 
-The chart `deploy/helm/datasafes3` installs DataSafeS3. The default is one pod, a PersistentVolumeClaim, and Bolt metadata. Nothing else has to be running.
+The chart `datasafes3` installs DataSafeS3. The default is one pod, a PersistentVolumeClaim, and Bolt metadata. Nothing else has to be running.
+
+From the GitVerse Helm repository (`https://gitverse.ru/api/packages/DirektorBani/helm`):
+
+```bash
+helm repo add datasafes3 https://gitverse.ru/api/packages/DirektorBani/helm
+helm repo update
+helm install ds datasafes3/datasafes3 --version 1.7.0 \
+  --set storageServer.image.repository=gitverse.ru/direktorbani/datasafe-storage-server \
+  --set console.image.repository=gitverse.ru/direktorbani/datasafe-console \
+  --set auth.accessKey=datasafe \
+  --set auth.secretKey="$(openssl rand -hex 24)" \
+  --set auth.adminPassword="$(openssl rand -hex 18)" \
+  --set auth.jwtSecret="$(openssl rand -hex 24)" \
+  --set auth.metricsToken="$(openssl rand -hex 16)"
+```
+
+Or from a clone of the repository (the chart there already defaults to the GitVerse images):
 
 ```bash
 helm install ds deploy/helm/datasafes3 \
@@ -15,7 +32,7 @@ helm install ds deploy/helm/datasafes3 \
   --set auth.metricsToken="$(openssl rand -hex 16)"
 ```
 
-The image tag is `v` plus the chart `appVersion` when `storageServer.image.tag` is empty. This release is `ghcr.io/direktorbani/datasafe-storage-server:v1.7.0`.
+The image tag is `v` plus the chart `appVersion` when `storageServer.image.tag` is empty. This release is `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0`. The registry is public. GHCR (`ghcr.io/direktorbani/...`) on the GitHub mirror holds the same images.
 
 `kubectl -n default port-forward svc/ds-datasafes3-s3 9000:9000` reaches the S3 API. The console Service is `ds-datasafes3-console` on port 8080 when `console.enabled` is true. Liveness and readiness both call `GET /healthz`.
 
@@ -53,4 +70,4 @@ bash scripts/helm-kind-smoke.sh
 KIND_SMOKE=1 bash scripts/helm-kind-smoke.sh
 ```
 
-The first command is `helm lint` and `helm template`. The second builds nothing by itself: load `ghcr.io/direktorbani/datasafe-storage-server:v1.7.0` into the local Docker, then the script creates a kind cluster, installs the chart, and puts and gets an object with the AWS CLI. CI does that with the image built in the `docker-build` job.
+The first command is `helm lint` and `helm template`. The second builds nothing by itself: pull `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.0` into the local Docker and retag it as `ghcr.io/direktorbani/datasafe-storage-server:v1.7.0` (the name the script passes to kind), then the script creates a kind cluster, installs the chart, and puts and gets an object with the AWS CLI. CI does that with the image built in the `docker-build` job.
