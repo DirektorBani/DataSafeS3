@@ -18,6 +18,8 @@ STANDALONE = {  # run as the only/first -f file: paths relative to deploy/compos
 }
 # Produced by `go build` before the overlay is used (see install.ps1 / docs), not in git.
 BUILD_ARTIFACTS = {"deploy/docker/storage-server-linux"}
+# Generated frontend build outputs (e.g. web/console/dist from `npm run build`), not in git.
+GENERATED_DIRS = {"dist"}
 SRC = re.compile(r"^\s*-\s*[\"']?(\.{1,2}/[^:\"']+):")
 bad = []
 files = [ROOT / "docker-compose.yml", ROOT / "docker-compose.local-data.yml"]
@@ -35,6 +37,8 @@ for f in files:
             continue
         target = (base / src).resolve()
         if str(target).startswith(str(ROOT)) and target.relative_to(ROOT).as_posix() in BUILD_ARTIFACTS:
+            continue
+        if str(target).startswith(str(ROOT)) and any(p in GENERATED_DIRS for p in target.relative_to(ROOT).parts):
             continue
         if not target.exists():
             bad.append(f"{f.relative_to(ROOT)}:{n}: {src} does not exist relative to {base.relative_to(ROOT) if base != ROOT else '.'}")
