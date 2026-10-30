@@ -2,9 +2,10 @@
 # Push the current GitVerse ref (branch or tag) to the GitHub mirror.
 #
 # GitVerse is the primary repository, GitHub is a mirror. This is not
-# git push --mirror and never forces: refs that exist only on GitHub (Cursor
-# agent branches, refs/pull/*) stay in place, a non-fast-forward update is
-# rejected. Needs GH_MIRROR_ACTOR, GH_MIRROR_REPO and GH_MIRROR_TOKEN
+# git push --mirror: refs that exist only on GitHub (Cursor agent branches,
+# refs/pull/*) stay in place. Branches are never forced (a non-fast-forward
+# update is rejected); tags are force-pushed so a moved release tag on GitVerse
+# (the primary) replaces the mirror copy. Needs GH_MIRROR_ACTOR, GH_MIRROR_REPO and GH_MIRROR_TOKEN
 # (a GitHub token with repo and workflow scopes). The token is passed through
 # GIT_ASKPASS, never put in the remote URL, and never printed.
 # Usage: scripts/github-mirror.sh <refs/heads/x | refs/tags/y>
@@ -31,5 +32,7 @@ chmod 700 "$ASKPASS"
 export GIT_ASKPASS="$ASKPASS"
 
 URL="https://github.com/${GH_MIRROR_ACTOR}/${GH_MIRROR_REPO}.git"
-git push "$URL" "${REF}:${REF}" 2>&1 \
+SPEC="${REF}:${REF}"
+case "$REF" in refs/tags/*) SPEC="+${SPEC}" ;; esac  # force only tags
+git push "$URL" "$SPEC" 2>&1 \
   | sed -e "s#${GH_MIRROR_TOKEN}#***#g" -e 's#https://[^/ @]*@#https://***@#g'

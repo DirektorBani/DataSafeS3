@@ -15,7 +15,7 @@
 #   OUT                    output dir (default dist/sbom)
 #   SBOM_SERVER_IMAGE      e.g. gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1 (optional)
 #   SBOM_CONSOLE_IMAGE     e.g. gitverse.ru/direktorbani/datasafe-console:v1.7.1 (optional)
-# Tools: cyclonedx-gomod, cyclonedx-npm, syft (installed by .gitverse/workflows/release.yaml via go-mirror/npm-mirror).
+# Tools: cyclonedx-gomod, cyclonedx-npm, syft (installed by .gitverse/workflows/release.yaml: pinned release binaries + npm-mirror).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION="${1:-$(cat VERSION)}"

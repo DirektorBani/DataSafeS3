@@ -6,7 +6,7 @@
 
 Workflow [`.gitverse/workflows/mirror_to_gh.yaml`](../../.gitverse/workflows/mirror_to_gh.yaml) срабатывает на push в `main`, `release/**` и теги `v*`, а также вручную. Скрипт [`scripts/github-mirror.sh`](../../scripts/github-mirror.sh) отправляет на GitHub только эту ссылку.
 
-Это не `git push --mirror` и не форс-пуш. Ветки, которых нет на GitVerse (ветки агентов Cursor, `refs/pull/*`), на GitHub остаются. Если история разошлась, push отклоняется и job завершается с ошибкой.
+Это не `git push --mirror`. Ветки, которых нет на GitVerse (ветки агентов Cursor, `refs/pull/*`), на GitHub остаются. Ветки не форсятся: если история разошлась, push отклоняется и job завершается с ошибкой. Теги отправляются с force, чтобы перенесённый на GitVerse релизный тег обновился и на GitHub.
 
 Секреты репозитория GitVerse: `GH_MIRROR_ACTOR` (владелец на GitHub), `GH_MIRROR_REPO` (имя репозитория), `GH_MIRROR_TOKEN` (токен GitHub с правами Contents и Workflows на запись, либо classic со scopes `repo` и `workflow`). Токен в URL не попадает: на запрос пароля отвечает `GIT_ASKPASS`, вывод `git push` проходит через маскирование.
 

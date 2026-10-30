@@ -2,7 +2,7 @@
 # GitHub mirror (github.com/DirektorBani/DataSafeS3).
 # Only main, release branches and version tags are mirrored, so the monthly
 # cloud runner minutes (1000 for a public repo) are not spent on every branch.
-# No --mirror and no --force: see scripts/github-mirror.sh.
+# No --mirror; branches are never forced, tags are force-pushed: see scripts/github-mirror.sh.
 # Secrets (repository settings): GH_MIRROR_ACTOR, GH_MIRROR_REPO, GH_MIRROR_TOKEN.
 # Docs: docs/ru/gitverse-mirror.md
 name: mirror_to_gh

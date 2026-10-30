@@ -140,16 +140,30 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - name: install SBOM tools and crane (Go and npm mirrors)
+      - name: install SBOM tools and crane (pinned release binaries, sha256-verified; npm mirror)
+        timeout-minutes: 10
         run: |
-          export GOBIN="$PWD/dist/tools"
-          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.12.0
-          go install github.com/anchore/syft/cmd/syft@v1.55.0
-          go install github.com/google/go-containerregistry/cmd/crane@v0.22.1
+          set -euo pipefail
+          mkdir -p dist/tools dist/dl
+          fetch() { # url sha256 binary
+            f="dist/dl/$(basename "$1")"
+            curl -fsSL --retry 3 --max-time 300 -o "$f" "$1"
+            echo "$2  $f" | sha256sum -c -
+            tar -xzf "$f" -C dist/tools "$3"
+          }
+          fetch https://github.com/CycloneDX/cyclonedx-gomod/releases/download/v1.12.0/cyclonedx-gomod_1.12.0_linux_amd64.tar.gz \
+            004b9f5cc595b797fb5423e2ae4c97bcf0f18c712ed2faee1640b09e5efd6d15 cyclonedx-gomod
+          fetch https://github.com/anchore/syft/releases/download/v1.55.0/syft_1.55.0_linux_amd64.tar.gz \
+            bb65249542db5fedeeb4d3f9b018b75e7264dbfbbb10486f044581a92f90490d syft
+          fetch https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_x86_64.tar.gz \
+            0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0 crane
+          dist/tools/cyclonedx-gomod version; dist/tools/syft version | head -3; dist/tools/crane version
           npm install --prefix dist/npm-tools --registry "$NPM_REGISTRY" @cyclonedx/cyclonedx-npm
       - name: console dependencies for the npm SBOM
+        timeout-minutes: 10
         run: cd web/console && npm ci
       - name: SBOM, digests, licence notices
+        timeout-minutes: 15
         run: |
           export PATH="$PWD/dist/tools:$PWD/dist/npm-tools/node_modules/.bin:$PATH"
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
