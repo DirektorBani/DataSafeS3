@@ -158,7 +158,12 @@ jobs:
           fetch https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_x86_64.tar.gz \
             0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0 crane
           dist/tools/cyclonedx-gomod version; dist/tools/syft version | head -3; dist/tools/crane version
-          npm install --prefix dist/npm-tools --registry "$NPM_REGISTRY" @cyclonedx/cyclonedx-npm
+          # npm-mirror intermittently answers 504 for uncached packages and npm retries for minutes:
+          # mirror capped at 3 minutes, then fall back to the public registry.
+          NPM_FAST="--no-audit --no-fund --fetch-timeout=30000 --fetch-retries=1"
+          timeout 180 npm install --prefix dist/npm-tools $NPM_FAST --registry "$NPM_REGISTRY" @cyclonedx/cyclonedx-npm@6.0.1 \
+            || npm install --prefix dist/npm-tools $NPM_FAST --registry https://registry.npmjs.org/ @cyclonedx/cyclonedx-npm@6.0.1
+          dist/npm-tools/node_modules/.bin/cyclonedx-npm --version
       - name: console dependencies for the npm SBOM
         timeout-minutes: 10
         run: cd web/console && npm ci
