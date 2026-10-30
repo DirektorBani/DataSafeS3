@@ -1,5 +1,5 @@
 {
-  "version": "v1.7.0",
+  "version": "v1.7.1",
   "viewport": "1440x900",
   "groups": [
     {
@@ -65,6 +65,10 @@
       "group": "install",
       "order": 1,
       "theme": "dark",
+      "label": {
+        "ru": "Клонирование и install.ps1",
+        "en": "Clone and install.ps1"
+      },
       "files": {
         "ru": "common/install-clone.png",
         "en": "common/install-clone.png"
@@ -78,12 +82,8 @@
         "en": "DataSafeS3 — Clone and install.ps1"
       },
       "sha256": {
-        "ru": "2dfc74bacfcb41ddbe2444040e1239b59ed07e0eff033a8874d41798ccc2793b",
-        "en": "2dfc74bacfcb41ddbe2444040e1239b59ed07e0eff033a8874d41798ccc2793b"
-      },
-      "label": {
-        "ru": "Клонирование и install.ps1",
-        "en": "Clone and install.ps1"
+        "ru": "2a70fa479bb193b1f4b09fa3465d7692dfd18d69cb452da444d1e52bc70bb8c2",
+        "en": "2a70fa479bb193b1f4b09fa3465d7692dfd18d69cb452da444d1e52bc70bb8c2"
       }
     },
     {
@@ -91,6 +91,10 @@
       "group": "install",
       "order": 2,
       "theme": "dark",
+      "label": {
+        "ru": "LDAP и Keycloak",
+        "en": "LDAP and Keycloak lab"
+      },
       "files": {
         "ru": "common/install-identity.png",
         "en": "common/install-identity.png"
@@ -106,10 +110,6 @@
       "sha256": {
         "ru": "549191edcb5b11f151701bfabcb0d518d963cfb189558ac3789ca05ca487508f",
         "en": "549191edcb5b11f151701bfabcb0d518d963cfb189558ac3789ca05ca487508f"
-      },
-      "label": {
-        "ru": "LDAP и Keycloak",
-        "en": "LDAP and Keycloak lab"
       }
     },
     {
@@ -117,6 +117,10 @@
       "group": "install",
       "order": 3,
       "theme": "dark",
+      "label": {
+        "ru": "docker compose up",
+        "en": "docker compose up"
+      },
       "files": {
         "ru": "common/install-compose.png",
         "en": "common/install-compose.png"
@@ -130,12 +134,8 @@
         "en": "DataSafeS3 — docker compose up"
       },
       "sha256": {
-        "ru": "9cb2796be2c9d58329d4a189a594fe606a4a2d9e4c8c6f4a594e99581bd12e21",
-        "en": "9cb2796be2c9d58329d4a189a594fe606a4a2d9e4c8c6f4a594e99581bd12e21"
-      },
-      "label": {
-        "ru": "docker compose up",
-        "en": "docker compose up"
+        "ru": "b7d4f7f58b2f83a23b746fdf923b25ad475bf95b877335abba59eda30215ee86",
+        "en": "b7d4f7f58b2f83a23b746fdf923b25ad475bf95b877335abba59eda30215ee86"
       }
     },
     {
@@ -143,6 +143,10 @@
       "group": "install",
       "order": 4,
       "theme": "dark",
+      "label": {
+        "ru": "Базовые сервисы",
+        "en": "Core services"
+      },
       "files": {
         "ru": "common/compose-ps-core.png",
         "en": "common/compose-ps-core.png"
@@ -156,12 +160,8 @@
         "en": "DataSafeS3 — Core services"
       },
       "sha256": {
-        "ru": "df463cb0bee56db17080358634be5c41a9dd2432b4d0b718fe928be2c1af3216",
-        "en": "df463cb0bee56db17080358634be5c41a9dd2432b4d0b718fe928be2c1af3216"
-      },
-      "label": {
-        "ru": "Базовые сервисы",
-        "en": "Core services"
+        "ru": "c46ba36461a8dc99f390433dee5cd5b7f86da963853b24a6738e0e4bbb82c221",
+        "en": "c46ba36461a8dc99f390433dee5cd5b7f86da963853b24a6738e0e4bbb82c221"
       }
     },
     {
@@ -169,6 +169,10 @@
       "group": "install",
       "order": 5,
       "theme": "dark",
+      "label": {
+        "ru": "Все интеграции",
+        "en": "All integrations"
+      },
       "files": {
         "ru": "common/compose-ps-full.png",
         "en": "common/compose-ps-full.png"
@@ -182,12 +186,8 @@
         "en": "DataSafeS3 — All integrations"
       },
       "sha256": {
-        "ru": "97bbbb9fbe8ec09a3200c576ed4e357bcc5757e14b8fb75fbf0a8a608bb60955",
-        "en": "97bbbb9fbe8ec09a3200c576ed4e357bcc5757e14b8fb75fbf0a8a608bb60955"
-      },
-      "label": {
-        "ru": "Все интеграции",
-        "en": "All integrations"
+        "ru": "0655cd3177416d4ad968245cea0f348ca91cd510bfebf1e672abd2346d201548",
+        "en": "0655cd3177416d4ad968245cea0f348ca91cd510bfebf1e672abd2346d201548"
       }
     },
     {
@@ -195,6 +195,10 @@
       "group": "setup",
       "order": 6,
       "theme": "dark",
+      "label": {
+        "ru": "Шаг 1: пароль",
+        "en": "Step 1: password"
+      },
       "files": {
         "ru": "ru/setup-password.png"
       },
@@ -205,11 +209,7 @@
         "ru": "DataSafeS3 — Шаг 1: пароль"
       },
       "sha256": {
-        "ru": "1de1f5b747a252885eab09a3270dc57dcc716c976fa196338689d4560a4e4ec7"
-      },
-      "label": {
-        "ru": "Шаг 1: пароль",
-        "en": "Step 1: password"
+        "ru": "b52a9b66d3e78471ebd45dfb174cc0d7d15e570065bf4268189ab08df4d330c7"
       }
     },
     {
@@ -217,6 +217,10 @@
       "group": "setup",
       "order": 7,
       "theme": "dark",
+      "label": {
+        "ru": "Шаг 2: приветствие",
+        "en": "Step 2: welcome"
+      },
       "files": {
         "ru": "ru/setup-welcome.png"
       },
@@ -227,11 +231,7 @@
         "ru": "DataSafeS3 — Шаг 2: приветствие"
       },
       "sha256": {
-        "ru": "ecc21d3e044f8e46b4c06bc63e7f6fcf6ffcc00ac0331e02beef99c34cf5ca07"
-      },
-      "label": {
-        "ru": "Шаг 2: приветствие",
-        "en": "Step 2: welcome"
+        "ru": "28c41c30a459f2817bdd10d854882bcea2dc357025011adae3239318a83d51b5"
       }
     },
     {
@@ -239,6 +239,10 @@
       "group": "setup",
       "order": 8,
       "theme": "dark",
+      "label": {
+        "ru": "Шаг 3: внешний S3",
+        "en": "Step 3: external S3"
+      },
       "files": {
         "ru": "ru/setup-s3.png"
       },
@@ -249,11 +253,7 @@
         "ru": "DataSafeS3 — Шаг 3: внешний S3"
       },
       "sha256": {
-        "ru": "6c7de515217312ece82bb80a939cef81e10eac82ce343338c07030dd99ed17d3"
-      },
-      "label": {
-        "ru": "Шаг 3: внешний S3",
-        "en": "Step 3: external S3"
+        "ru": "41ac59be773285229c43d17a4ce35a73510fd68e70e39f55b8a6f004cab363a1"
       }
     },
     {
@@ -261,6 +261,10 @@
       "group": "setup",
       "order": 9,
       "theme": "dark",
+      "label": {
+        "ru": "Шаг 4: готово",
+        "en": "Step 4: done"
+      },
       "files": {
         "ru": "ru/setup-done.png"
       },
@@ -271,11 +275,7 @@
         "ru": "DataSafeS3 — Шаг 4: готово"
       },
       "sha256": {
-        "ru": "7711b216d9112d23f198aea548263dc5cd01b3458cc34150e1d8d0c134f166db"
-      },
-      "label": {
-        "ru": "Шаг 4: готово",
-        "en": "Step 4: done"
+        "ru": "01cb55f9f823239a19d99377a710f76f39a64839216649bb8af7106dc81b28fb"
       }
     },
     {
@@ -283,6 +283,10 @@
       "group": "console",
       "order": 10,
       "theme": "dark",
+      "label": {
+        "ru": "Вход",
+        "en": "Sign-in"
+      },
       "files": {
         "ru": "ru/login.png",
         "en": "en/login.png"
@@ -296,12 +300,8 @@
         "en": "DataSafeS3 — Sign-in"
       },
       "sha256": {
-        "ru": "88325db748bd8940eeec4756c28ba676408210ba2111f124c983455b2000852b",
-        "en": "bb34802c381c1f91c246b07cfbf9b397d4315566f593be1700c69690ae8b4f99"
-      },
-      "label": {
-        "ru": "Вход",
-        "en": "Sign-in"
+        "ru": "a5dfe96894bcca17aed427b0a4fb0a29e5b75373bb94cb8ec70151c43fa11507",
+        "en": "a9d189e692dff7349b33cdf26e4468ef2e8516f195c90c300f66a9f94f035854"
       }
     },
     {
@@ -309,6 +309,10 @@
       "group": "console",
       "order": 11,
       "theme": "dark",
+      "label": {
+        "ru": "Обзор",
+        "en": "Dashboard"
+      },
       "files": {
         "ru": "ru/dashboard.png",
         "en": "en/dashboard.png"
@@ -322,12 +326,8 @@
         "en": "DataSafeS3 — Dashboard"
       },
       "sha256": {
-        "ru": "685985c3afb207d6d6507c3d88e33f2884d036a1f5ff1977cd5650c85a20e339",
-        "en": "a247c27d169d72d01eb0f27a7eb758847d024013f8e351664066bd09eb459abb"
-      },
-      "label": {
-        "ru": "Обзор",
-        "en": "Dashboard"
+        "ru": "0d889a78077928c6f01f24055f98e61b36c9b0eec9dd79b13527b1c806e47a48",
+        "en": "cae879198f6c0200db79ebb042d45da2350b742da7449cc2d9b9fa4eab7e9aac"
       }
     },
     {
@@ -335,6 +335,10 @@
       "group": "console",
       "order": 12,
       "theme": "light",
+      "label": {
+        "ru": "Обзор (светлая)",
+        "en": "Dashboard (light)"
+      },
       "files": {
         "ru": "ru/dashboard-light.png"
       },
@@ -345,11 +349,7 @@
         "ru": "DataSafeS3 — Обзор (светлая)"
       },
       "sha256": {
-        "ru": "00287523863f2d3dcda62b56897800095a3ede405ac0cdda684c73a77afb9839"
-      },
-      "label": {
-        "ru": "Обзор (светлая)",
-        "en": "Dashboard (light)"
+        "ru": "adf07eb2460ebba19cca675ca0da7152c6fd61187209140ede83201010499d7f"
       }
     },
     {
@@ -357,6 +357,10 @@
       "group": "console",
       "order": 13,
       "theme": "dark",
+      "label": {
+        "ru": "Бакеты",
+        "en": "Buckets"
+      },
       "files": {
         "ru": "ru/buckets.png",
         "en": "en/buckets.png"
@@ -370,12 +374,8 @@
         "en": "DataSafeS3 — Buckets"
       },
       "sha256": {
-        "ru": "b5f2463d13a54d8ab58da796bcec4a1669ea46ba2fcf8effbdd4e841d2d2e0d8",
-        "en": "d287bd69e4428427f4402f5d8f0978a2b3dff5ce797d6d7c09501bcd7d2c5b0e"
-      },
-      "label": {
-        "ru": "Бакеты",
-        "en": "Buckets"
+        "ru": "37f980c8edc58f121f76ec85ae6dcd58027c87c3ac8aa32f560a10194c89c38a",
+        "en": "69e3feae2ee650abfcf649df25fa830bb58d661215178555f3f000bc589f8e2b"
       }
     },
     {
@@ -383,6 +383,10 @@
       "group": "console",
       "order": 14,
       "theme": "light",
+      "label": {
+        "ru": "Бакеты (светлая)",
+        "en": "Buckets (light)"
+      },
       "files": {
         "ru": "ru/buckets-light.png"
       },
@@ -393,11 +397,7 @@
         "ru": "DataSafeS3 — Бакеты (светлая)"
       },
       "sha256": {
-        "ru": "787d1fa9b67c950f31e9fe384897f614b9a4eb418d303f78413ea620c999ec70"
-      },
-      "label": {
-        "ru": "Бакеты (светлая)",
-        "en": "Buckets (light)"
+        "ru": "6bb586eb4f5519d5b7c6a97900f4b96324f82145280430d71784a4e4a1310109"
       }
     },
     {
@@ -405,6 +405,10 @@
       "group": "console",
       "order": 15,
       "theme": "dark",
+      "label": {
+        "ru": "Обозреватель объектов",
+        "en": "Object browser"
+      },
       "files": {
         "ru": "ru/object-browser.png",
         "en": "en/object-browser.png"
@@ -418,12 +422,8 @@
         "en": "DataSafeS3 — Object browser"
       },
       "sha256": {
-        "ru": "70cf1b26ee3dff3f8884d9c80514aa94e8bc5c959ee1f2facaf5c195b39b1b69",
-        "en": "dda9aa7477aeafed3bc7f1733eb2940bd7b742a3a860165bc28a9daf518672f0"
-      },
-      "label": {
-        "ru": "Обозреватель объектов",
-        "en": "Object browser"
+        "ru": "9b6bb80b0c82462eee5e16d8b74410ffcefcf2e94b12dd4c58d78bbe546f57b5",
+        "en": "6120e4d769b5dfb846ea648d72b6674851f30572d2be67c81796fbeadc3ddecc"
       }
     },
     {
@@ -431,6 +431,10 @@
       "group": "console",
       "order": 16,
       "theme": "light",
+      "label": {
+        "ru": "Объекты (светлая)",
+        "en": "Objects (light)"
+      },
       "files": {
         "ru": "ru/object-browser-light.png"
       },
@@ -441,11 +445,7 @@
         "ru": "DataSafeS3 — Объекты (светлая)"
       },
       "sha256": {
-        "ru": "cf8c1928cb9ae6c143d53df2774ca606a1218bb0f69346d1814a3a99d9682b8f"
-      },
-      "label": {
-        "ru": "Объекты (светлая)",
-        "en": "Objects (light)"
+        "ru": "e163ea22bd4815642ecc32291d60a5ba35495cb19cdd1e0297ee1126eb394741"
       }
     },
     {
@@ -453,6 +453,10 @@
       "group": "console",
       "order": 17,
       "theme": "dark",
+      "label": {
+        "ru": "Сведения об объекте",
+        "en": "Object details"
+      },
       "files": {
         "ru": "ru/object-details.png"
       },
@@ -463,11 +467,7 @@
         "ru": "DataSafeS3 — Сведения об объекте"
       },
       "sha256": {
-        "ru": "7ed9d8dde455c348fcffef7048965f3ffc08cf90b1b263c189504b5be964ccdb"
-      },
-      "label": {
-        "ru": "Сведения об объекте",
-        "en": "Object details"
+        "ru": "a966599f34777d1d64c9e8326a932a23d6ce3bad68868f35b62506f8017af136"
       }
     },
     {
@@ -475,6 +475,10 @@
       "group": "console",
       "order": 18,
       "theme": "dark",
+      "label": {
+        "ru": "Версии объектов",
+        "en": "Object versions"
+      },
       "files": {
         "ru": "ru/object-versions.png",
         "en": "en/object-versions.png"
@@ -488,12 +492,8 @@
         "en": "DataSafeS3 — Object versions"
       },
       "sha256": {
-        "ru": "268fe9157ef5ba9afda81980bd31b14b9162555cd79bccec84105a7d90a9f929",
-        "en": "b506b19ded971afbaae0b8cac0a949801d4d62bb7f2bef781c85d063b616ada8"
-      },
-      "label": {
-        "ru": "Версии объектов",
-        "en": "Object versions"
+        "ru": "477b82273ea7a50974fbabdec1b15da8851d4bdcdf4c07df231bd379c5705ad6",
+        "en": "5ea43f5d4a1a8c942abb7738714ce85ea9147d9af6cb0788c4c9a7b03e04779c"
       }
     },
     {
@@ -501,6 +501,10 @@
       "group": "console",
       "order": 19,
       "theme": "dark",
+      "label": {
+        "ru": "Версионирование",
+        "en": "Versioning"
+      },
       "files": {
         "ru": "ru/bucket-versioning.png"
       },
@@ -511,11 +515,7 @@
         "ru": "DataSafeS3 — Версионирование"
       },
       "sha256": {
-        "ru": "a81b66e20b6f1319959b3e43ff7b770fae1470bdccdd89177b9dfbc27a5009a3"
-      },
-      "label": {
-        "ru": "Версионирование",
-        "en": "Versioning"
+        "ru": "f8ef19ac19cce99456fce4f9683c1ba75ccfee404efbd0cbb3575910197fda6c"
       }
     },
     {
@@ -523,6 +523,10 @@
       "group": "console",
       "order": 20,
       "theme": "dark",
+      "label": {
+        "ru": "Жизненный цикл",
+        "en": "Lifecycle"
+      },
       "files": {
         "ru": "ru/bucket-lifecycle.png",
         "en": "en/bucket-lifecycle.png"
@@ -536,12 +540,8 @@
         "en": "DataSafeS3 — Lifecycle"
       },
       "sha256": {
-        "ru": "f5906ddb00ff3b6394e70127be1b7c83ee8c1fb72a7ccf3c6e2046ff66598962",
-        "en": "28719c1983394f2630cfc5757234683fbbe9441a3cfd402bff7fec94e5331139"
-      },
-      "label": {
-        "ru": "Жизненный цикл",
-        "en": "Lifecycle"
+        "ru": "57c217e9785aa9737e9ece7ecda1835738740e91a7269f0452ec617c90d7b098",
+        "en": "3f5aba9647940387cd87d835f4b9cf99094520ed508ecc56b4731912e0b0d1d7"
       }
     },
     {
@@ -549,6 +549,10 @@
       "group": "console",
       "order": 21,
       "theme": "dark",
+      "label": {
+        "ru": "Доступ к бакету",
+        "en": "Bucket access"
+      },
       "files": {
         "ru": "ru/bucket-access.png",
         "en": "en/bucket-access.png"
@@ -562,12 +566,8 @@
         "en": "DataSafeS3 — Bucket access"
       },
       "sha256": {
-        "ru": "23f4f46b3d5bdcff2be74c3751b80e78475d9bab44548aa8318d7a934f815d4f",
-        "en": "27cbbaad063f6328b9a6a1ec6123657cafdafbad3d2ca4dd8f26846f4ccc76e9"
-      },
-      "label": {
-        "ru": "Доступ к бакету",
-        "en": "Bucket access"
+        "ru": "b559867209264f0556fdd74a477bf07e67ec3f270e1afd242922eca67a66da8e",
+        "en": "3ff8dd566137f53c5cfcf0cdd95320209c6f89f29339801e6ec8e62f10a3566e"
       }
     },
     {
@@ -575,6 +575,10 @@
       "group": "console",
       "order": 22,
       "theme": "dark",
+      "label": {
+        "ru": "Обмен файлами",
+        "en": "File sharing"
+      },
       "files": {
         "ru": "ru/bucket-sharing.png",
         "en": "en/bucket-sharing.png"
@@ -588,12 +592,8 @@
         "en": "DataSafeS3 — File sharing"
       },
       "sha256": {
-        "ru": "ce8ba9df5eb47a71ef26655a08ee2ac93a44469cc8488cdd6bd182a0121777b8",
-        "en": "20d5e8549bb67e770346e2e0c3a2dce977ddd2a0ff7a5a8528cd9c5608b715bf"
-      },
-      "label": {
-        "ru": "Обмен файлами",
-        "en": "File sharing"
+        "ru": "ee5e84cb364bc0c3c3fbeefbcb94a4a2bd5468ef677b96e5a620406d992602e3",
+        "en": "627e4a85d2014da6f09ef09bbe985f4e24b9a089fbea45703604c01fe0ed07ae"
       }
     },
     {
@@ -601,6 +601,10 @@
       "group": "console",
       "order": 23,
       "theme": "dark",
+      "label": {
+        "ru": "Шифрование бакета",
+        "en": "Bucket encryption"
+      },
       "files": {
         "ru": "ru/bucket-encryption.png",
         "en": "en/bucket-encryption.png"
@@ -614,12 +618,8 @@
         "en": "DataSafeS3 — Bucket encryption"
       },
       "sha256": {
-        "ru": "97d942d80b44ca8fd277604736ec8ad038b3bcee76da90dabbadf9b0b0a05f95",
-        "en": "b44d29a105d2138c322edce9955bef4c54e295e2ea0e52450a420053b7ae000e"
-      },
-      "label": {
-        "ru": "Шифрование бакета",
-        "en": "Bucket encryption"
+        "ru": "7588c076128f95e89bee40f837f3163ecd1b62008bfd24257c6e047017285a2c",
+        "en": "a15a563b8c0f95b8c4fbc1624dbb184c0c5e5252bc92362080e71f2c92715a63"
       }
     },
     {
@@ -627,6 +627,10 @@
       "group": "access",
       "order": 24,
       "theme": "dark",
+      "label": {
+        "ru": "Ключи доступа",
+        "en": "Access keys"
+      },
       "files": {
         "ru": "ru/keys.png",
         "en": "en/keys.png"
@@ -640,12 +644,8 @@
         "en": "DataSafeS3 — Access keys"
       },
       "sha256": {
-        "ru": "3261887b8cddd52b00c49b7c275cf212195741b30435da8db51b31feaf3038da",
-        "en": "f1f975af0e1911ceeb593f1faf7dd280c2381ecd63f5b80d24afbfd0058d86bf"
-      },
-      "label": {
-        "ru": "Ключи доступа",
-        "en": "Access keys"
+        "ru": "3ca94199a146b2f0e679b09864d9078d6a49aeb0597e6000102614e030e03cc3",
+        "en": "b8ba039c49a32b63328315558bf08175e6061b7418cc0d1e2f5ebb9205f0b6f2"
       }
     },
     {
@@ -653,6 +653,10 @@
       "group": "access",
       "order": 25,
       "theme": "dark",
+      "label": {
+        "ru": "Использование",
+        "en": "Usage"
+      },
       "files": {
         "ru": "ru/usage.png",
         "en": "en/usage.png"
@@ -666,12 +670,8 @@
         "en": "DataSafeS3 — Usage"
       },
       "sha256": {
-        "ru": "b6b9d0b9f0be40d1728a480245829e036cdb5961793819c7019520b1e361eb2d",
-        "en": "80770d0b30b4b803bd1e9edbb08b865555f6f29497dab6ea9dbce630907049a9"
-      },
-      "label": {
-        "ru": "Использование",
-        "en": "Usage"
+        "ru": "9bb1ecd6115bbeb073de47bbb91ca16a8af17812d2518d3b5b89a0a8e14b0c60",
+        "en": "40fc3cf9816136b2ab9046ea455dde29789566637c603fc1fafa7a6d0bc5453e"
       }
     },
     {
@@ -679,6 +679,10 @@
       "group": "access",
       "order": 26,
       "theme": "dark",
+      "label": {
+        "ru": "Пользователи",
+        "en": "Users"
+      },
       "files": {
         "ru": "ru/users.png",
         "en": "en/users.png"
@@ -692,12 +696,8 @@
         "en": "DataSafeS3 — Users"
       },
       "sha256": {
-        "ru": "088f0c593e62311abd27e3f0bde52e82310705e3a239e55f816aae38e0a10560",
-        "en": "75b75ccfdc76d681f33abc13a7ebf8c0258e5f538af284751e141582780b8e77"
-      },
-      "label": {
-        "ru": "Пользователи",
-        "en": "Users"
+        "ru": "8a1e355b534e9198b6a175b111ef4a149e3d46cc3cec06a5262f2c0a61874e89",
+        "en": "848934a2a026ed384eea36d68da5987f2016a4d13a9e6595de1e8014d367db5a"
       }
     },
     {
@@ -705,6 +705,10 @@
       "group": "access",
       "order": 27,
       "theme": "dark",
+      "label": {
+        "ru": "Команды",
+        "en": "Teams"
+      },
       "files": {
         "ru": "ru/teams.png",
         "en": "en/teams.png"
@@ -718,12 +722,8 @@
         "en": "DataSafeS3 — Teams"
       },
       "sha256": {
-        "ru": "27b99000b57f9c2e2f56c9a7a472f27f2480742c4517bd291fc5a47cc146eba4",
-        "en": "bed4c720a3cbc3192530bd26f88c035a15061272a0fb054f614b04cfc8b3e0db"
-      },
-      "label": {
-        "ru": "Команды",
-        "en": "Teams"
+        "ru": "4ff507912cc60ed457aae5201cc906d2825b568251402596e3708d21cd7e1310",
+        "en": "3ecc41de1b32b5ea8941ad119da5b220a3349c6823e84f6cc199d65ac4c67838"
       }
     },
     {
@@ -731,6 +731,10 @@
       "group": "access",
       "order": 28,
       "theme": "dark",
+      "label": {
+        "ru": "Состав команды",
+        "en": "Team members"
+      },
       "files": {
         "ru": "ru/team-members.png"
       },
@@ -741,11 +745,7 @@
         "ru": "DataSafeS3 — Состав команды"
       },
       "sha256": {
-        "ru": "6c37dcc1ed6170ecb4e3071804ed50558af2f8d71d9a6f27966d71ce1325af91"
-      },
-      "label": {
-        "ru": "Состав команды",
-        "en": "Team members"
+        "ru": "268d3ded193e29d1fdc4c62d4bdb26abeb5a056d605afe07e2b8366a54b9f604"
       }
     },
     {
@@ -753,6 +753,10 @@
       "group": "access",
       "order": 29,
       "theme": "dark",
+      "label": {
+        "ru": "Тенанты",
+        "en": "Tenants"
+      },
       "files": {
         "ru": "ru/tenants.png",
         "en": "en/tenants.png"
@@ -766,12 +770,8 @@
         "en": "DataSafeS3 — Tenants"
       },
       "sha256": {
-        "ru": "6c473e273b0461d614fd74b1d2511d710e242c1023dcc261d0ab787d17e245f2",
-        "en": "464f606ccbe7affd139e41334367eb99c931e19adb7674b6bc933a6f43fa51d8"
-      },
-      "label": {
-        "ru": "Тенанты",
-        "en": "Tenants"
+        "ru": "cbfa4f120b92c20e2053afc045f996ffe5367938c809fb06f8dc8e65ba083d8b",
+        "en": "4912b92245a9283ef38b60a85009a027bedcdaa8111f76d92cdf4ccb2f39055d"
       }
     },
     {
@@ -779,6 +779,10 @@
       "group": "access",
       "order": 30,
       "theme": "dark",
+      "label": {
+        "ru": "Участники тенанта",
+        "en": "Tenant members"
+      },
       "files": {
         "ru": "ru/tenant-members.png"
       },
@@ -789,11 +793,7 @@
         "ru": "DataSafeS3 — Участники тенанта"
       },
       "sha256": {
-        "ru": "3f444cd29e2e8e5eaeb507b0446300261673805215f7655d7c435d595e236b29"
-      },
-      "label": {
-        "ru": "Участники тенанта",
-        "en": "Tenant members"
+        "ru": "748d86e51cb6786e56ab100fb99fd39520b41ddf7331579708ddd7211d777496"
       }
     },
     {
@@ -801,6 +801,10 @@
       "group": "access",
       "order": 31,
       "theme": "dark",
+      "label": {
+        "ru": "Группы тенанта",
+        "en": "Tenant groups"
+      },
       "files": {
         "ru": "ru/tenant-groups.png"
       },
@@ -811,11 +815,7 @@
         "ru": "DataSafeS3 — Группы тенанта"
       },
       "sha256": {
-        "ru": "50ca2baa9eb57fe3192ea1ab42f3724f5ef3564be2081892e31192e20b5dd5ef"
-      },
-      "label": {
-        "ru": "Группы тенанта",
-        "en": "Tenant groups"
+        "ru": "2173a6c02aa3aec5672b33a40e7eb1442609ee92b2351c15f3ca3e213d8410ea"
       }
     },
     {
@@ -823,6 +823,10 @@
       "group": "access",
       "order": 32,
       "theme": "dark",
+      "label": {
+        "ru": "Активность",
+        "en": "Activity"
+      },
       "files": {
         "ru": "ru/activity.png",
         "en": "en/activity.png"
@@ -836,12 +840,8 @@
         "en": "DataSafeS3 — Activity"
       },
       "sha256": {
-        "ru": "59aa39e9d177beece3252d753ac495caa9d658c87bf097b7f50687857634e0ae",
-        "en": "54f1f40818b999adaca6dd832b84034e2743c9d06fcf6c47e558339717d3357d"
-      },
-      "label": {
-        "ru": "Активность",
-        "en": "Activity"
+        "ru": "0cdae5eaa9ed203d507c36c5b46dfa9b2d8b64d339edb4819d8b6a15191124db",
+        "en": "5c9831f7b4ff38ee84c91ae4440f68dad3075debfd7cb91ec090d3d56a00bcc7"
       }
     },
     {
@@ -849,6 +849,10 @@
       "group": "access",
       "order": 33,
       "theme": "dark",
+      "label": {
+        "ru": "Вебхуки",
+        "en": "Webhooks"
+      },
       "files": {
         "ru": "ru/webhooks.png",
         "en": "en/webhooks.png"
@@ -862,12 +866,8 @@
         "en": "DataSafeS3 — Webhooks"
       },
       "sha256": {
-        "ru": "e4176ff8c97b11f86428087df31885774d213217d05571d1b1ae0abc79890b8b",
-        "en": "a78454caf6a3f97ff0014a75e25fc8bc58c2d9ae96361e894d8cdeaf937e4d91"
-      },
-      "label": {
-        "ru": "Вебхуки",
-        "en": "Webhooks"
+        "ru": "d1ed1f1f280e35b4d6f1cc7c745a5f9b105f9763adf7cc018f32720f20cce9e4",
+        "en": "eba7c115db537c668d8175a7d1894e306e17075f28bc4d600716cbdc16e2f3f1"
       }
     },
     {
@@ -875,6 +875,10 @@
       "group": "access",
       "order": 34,
       "theme": "dark",
+      "label": {
+        "ru": "Профиль и MFA",
+        "en": "Profile and MFA"
+      },
       "files": {
         "ru": "ru/profile.png",
         "en": "en/profile.png"
@@ -888,12 +892,8 @@
         "en": "DataSafeS3 — Profile and MFA"
       },
       "sha256": {
-        "ru": "6024f8538f59ccd8618853afc559f1185ca31c8dbdfa6aa0190a4ee20675edeb",
-        "en": "eb0b7797e7470b9b836f2118456b7e2e87625ab421aa2f16b5495ca1478e6ed9"
-      },
-      "label": {
-        "ru": "Профиль и MFA",
-        "en": "Profile and MFA"
+        "ru": "ea88996163e0c092a6ef3f144ea7f11caaadf87287b84deadca60f6e6d062b7c",
+        "en": "b5ffe0bedad7a2f614f069f88573a6267dd636c28fb7f944dd127562b31c2004"
       }
     },
     {
@@ -901,6 +901,10 @@
       "group": "settings",
       "order": 35,
       "theme": "dark",
+      "label": {
+        "ru": "Настройки",
+        "en": "Settings"
+      },
       "files": {
         "ru": "ru/settings.png",
         "en": "en/settings.png"
@@ -914,12 +918,8 @@
         "en": "DataSafeS3 — Settings"
       },
       "sha256": {
-        "ru": "5a68c6f927c82e3600f5eb9f76d083c140d759c1f5b312533e27d1b76bbc1f4c",
-        "en": "51f88196f382d0d4e9f79af7d476b11ad7c56168cb1b0d435e9b10ce55e8deef"
-      },
-      "label": {
-        "ru": "Настройки",
-        "en": "Settings"
+        "ru": "6f433b4e9260c83b07feb90138bb80582f95c821b2e5b9f85e68ff0dae8603aa",
+        "en": "5a45efb2232e99cd62249ea8f8646e505396569f13695ebea2356da26608a8dc"
       }
     },
     {
@@ -927,6 +927,10 @@
       "group": "settings",
       "order": 36,
       "theme": "dark",
+      "label": {
+        "ru": "LDAP и OIDC",
+        "en": "LDAP and OIDC"
+      },
       "files": {
         "ru": "ru/settings-ldap.png"
       },
@@ -937,11 +941,7 @@
         "ru": "DataSafeS3 — LDAP и OIDC"
       },
       "sha256": {
-        "ru": "014e9cfb83bcedd71ab771620ad6093604f6dbd24616c00205287ba5b6749c4d"
-      },
-      "label": {
-        "ru": "LDAP и OIDC",
-        "en": "LDAP and OIDC"
+        "ru": "0085069b6de57829d739cb2a63abc2d665ac5a50420e0c16122840a99a1600fe"
       }
     },
     {
@@ -949,6 +949,10 @@
       "group": "settings",
       "order": 37,
       "theme": "dark",
+      "label": {
+        "ru": "Внешнее логирование",
+        "en": "Log sinks"
+      },
       "files": {
         "ru": "ru/settings-sinks.png"
       },
@@ -959,11 +963,7 @@
         "ru": "DataSafeS3 — Внешнее логирование"
       },
       "sha256": {
-        "ru": "5ccf7f35e21d4109054aae1f14a609590f2c9a06c6310169b93bf905c752c018"
-      },
-      "label": {
-        "ru": "Внешнее логирование",
-        "en": "Log sinks"
+        "ru": "4f9b6524a3ac024e122101d5d257d5bee3ee91e8eaba759fe488f60ec01c9827"
       }
     },
     {
@@ -971,6 +971,10 @@
       "group": "settings",
       "order": 38,
       "theme": "dark",
+      "label": {
+        "ru": "Настройки бакетов",
+        "en": "Bucket settings"
+      },
       "files": {
         "ru": "ru/settings-buckets.png",
         "en": "en/settings-buckets.png"
@@ -984,12 +988,8 @@
         "en": "DataSafeS3 — Bucket settings"
       },
       "sha256": {
-        "ru": "8bdbeaf7cde339d10d933b0e08998565dd3c0096cd152862ee582124da1c64e9",
-        "en": "1c33034c45cd1c1e22f98fa3541a3ab107387362e160b8364b759354bc79cde8"
-      },
-      "label": {
-        "ru": "Настройки бакетов",
-        "en": "Bucket settings"
+        "ru": "7756630ca8d84a2405fa52b2de594f5cad55ef87f7d9346706b641752cf02a99",
+        "en": "b5417fbb30f6fc8f8b19c202d0d5b8ec00804b29e5fdcbf7ffad38922c5e2bee"
       }
     },
     {
@@ -997,6 +997,10 @@
       "group": "settings",
       "order": 39,
       "theme": "dark",
+      "label": {
+        "ru": "Безопасность",
+        "en": "Security"
+      },
       "files": {
         "ru": "ru/settings-security.png",
         "en": "en/settings-security.png"
@@ -1010,12 +1014,8 @@
         "en": "DataSafeS3 — Security"
       },
       "sha256": {
-        "ru": "f54a6982662b0800bab7d2d794b5390be24c6f15b8bc02eec9fd5b69ea2cfa6a",
-        "en": "82fbcb15ec9738c578acceab4fdf47f7b5f0504e1e93afc070079d2b50f522d1"
-      },
-      "label": {
-        "ru": "Безопасность",
-        "en": "Security"
+        "ru": "4b2b777c15e7a3856aa97062cc96a5b6256ee52a346b4a03b534308f0cebe2bf",
+        "en": "50fba82b7046b00642fb0a970a6f43ca6a334385917d9c23a938fccba979e92f"
       }
     },
     {
@@ -1023,6 +1023,10 @@
       "group": "settings",
       "order": 40,
       "theme": "dark",
+      "label": {
+        "ru": "Доставка событий",
+        "en": "Event delivery"
+      },
       "files": {
         "ru": "ru/settings-events.png",
         "en": "en/settings-events.png"
@@ -1036,12 +1040,8 @@
         "en": "DataSafeS3 — Event delivery"
       },
       "sha256": {
-        "ru": "4c2fae635010b4c31c0dbca1b96d352f0a91fbd396ae75e85262d1f153cfe30b",
-        "en": "34aa6a01ad3a16396c851093a64f477b30c251c8e9a69bf42b3268f9ef59052f"
-      },
-      "label": {
-        "ru": "Доставка событий",
-        "en": "Event delivery"
+        "ru": "1c474e91676caba3e475d24d99f9d48bab42c06b11449f8d1a6cceaf42fa115a",
+        "en": "81c59750d231e27a4fb2eb12da736eb5637b4fe1a23d3a0df25e168854a6a938"
       }
     },
     {
@@ -1049,6 +1049,10 @@
       "group": "settings",
       "order": 41,
       "theme": "dark",
+      "label": {
+        "ru": "Vault (KMS)",
+        "en": "Vault (KMS)"
+      },
       "files": {
         "ru": "ru/settings-kms.png",
         "en": "en/settings-kms.png"
@@ -1062,12 +1066,8 @@
         "en": "DataSafeS3 — Vault (KMS)"
       },
       "sha256": {
-        "ru": "28ab78a9f5d4693fd125650cd1264f294c46615ace419aee57e8e92da3f7af4b",
-        "en": "8d49f2fbe0a99381d6e6d81775ba70266ef012cb9b9e403a5c8094a26f39287a"
-      },
-      "label": {
-        "ru": "Vault (KMS)",
-        "en": "Vault (KMS)"
+        "ru": "52f66ec39cb8b35749b2ec478165dd8c8311ac5635c9608a2214218005c2d8d9",
+        "en": "39d5aa7a2d6d468fcdc55d31b2398c925fccc52e50cd61b5b21ea8c576d2000a"
       }
     },
     {
@@ -1075,6 +1075,10 @@
       "group": "settings",
       "order": 42,
       "theme": "dark",
+      "label": {
+        "ru": "Миграция из MinIO",
+        "en": "MinIO migration"
+      },
       "files": {
         "ru": "ru/settings-migrate.png",
         "en": "en/settings-migrate.png"
@@ -1088,12 +1092,8 @@
         "en": "DataSafeS3 — MinIO migration"
       },
       "sha256": {
-        "ru": "3251f37d2c4bbc7016fe35a27ff36f6119918185fcd08a5656c4ad7b1c501717",
-        "en": "915802f7d508e3d16ad36a2234fcf1447ce3539a8a42becbb7de9561ff265c1e"
-      },
-      "label": {
-        "ru": "Миграция из MinIO",
-        "en": "MinIO migration"
+        "ru": "06227973c26155f3fc40a89b475524d5c5051249beabc42ae1bf127a9a4d12a8",
+        "en": "b3ed847763e1d437318240911296e2ece7f09864de785d46b449c24f1d7ffea9"
       }
     },
     {
@@ -1101,6 +1101,10 @@
       "group": "settings",
       "order": 43,
       "theme": "dark",
+      "label": {
+        "ru": "Миграция: параметры",
+        "en": "Migration: parameters"
+      },
       "files": {
         "ru": "ru/settings-migrate-filled.png"
       },
@@ -1111,11 +1115,7 @@
         "ru": "DataSafeS3 — Миграция: параметры"
       },
       "sha256": {
-        "ru": "f4b9c12c7ceeae12aef04488eff2cdae48e26e62e1dbbeada1f6f76e198d3c68"
-      },
-      "label": {
-        "ru": "Миграция: параметры",
-        "en": "Migration: parameters"
+        "ru": "c5abb5b9af38d1c85bb81c2b897489ae45d7e990ad5c88690fc8f5acd88ccc8e"
       }
     },
     {
@@ -1123,6 +1123,10 @@
       "group": "settings",
       "order": 44,
       "theme": "dark",
+      "label": {
+        "ru": "Миграция: IAM",
+        "en": "Migration: IAM"
+      },
       "files": {
         "ru": "ru/settings-migrate-iam.png"
       },
@@ -1133,11 +1137,7 @@
         "ru": "DataSafeS3 — Миграция: IAM"
       },
       "sha256": {
-        "ru": "0f6eeeedb6a94deea34b79c85818177b617b91070115482a81834e7f33cd898d"
-      },
-      "label": {
-        "ru": "Миграция: IAM",
-        "en": "Migration: IAM"
+        "ru": "cf0e757cfde8c8fc74788d9f7859f7effa40ebdd17e957196c1fe27897190a49"
       }
     },
     {
@@ -1145,6 +1145,10 @@
       "group": "gateway",
       "order": 45,
       "theme": "dark",
+      "label": {
+        "ru": "Шлюз",
+        "en": "Gateway"
+      },
       "files": {
         "ru": "ru/gateway.png",
         "en": "en/gateway.png"
@@ -1158,12 +1162,8 @@
         "en": "DataSafeS3 — Gateway"
       },
       "sha256": {
-        "ru": "6f3ec30d029b8fcd3eebdce7de70e5fae7bb5d7a9e44ad3821dec8cffcb10f14",
-        "en": "c3266fdf4fcde05e1025827648ef5a35a1e533d4c0ed895392975c5b8042c83f"
-      },
-      "label": {
-        "ru": "Шлюз",
-        "en": "Gateway"
+        "ru": "ad2127438adf5f229421b22483d5da533060ab05ac787c45f4f33089cf4f62eb",
+        "en": "1e6889e9e2b0d1f7efd8ab3310cb874299cad08c6b3d2cfae3eec0acf97f2d16"
       }
     },
     {
@@ -1171,6 +1171,10 @@
       "group": "gateway",
       "order": 46,
       "theme": "dark",
+      "label": {
+        "ru": "Правила репликации",
+        "en": "Replication rules"
+      },
       "files": {
         "ru": "ru/gateway-rules.png",
         "en": "en/gateway-rules.png"
@@ -1184,12 +1188,8 @@
         "en": "DataSafeS3 — Replication rules"
       },
       "sha256": {
-        "ru": "0523dcdb7d734c9a42858afef2888f845f00f87bd4e38ecde4e5593bd5d6fd5a",
-        "en": "e9f9b398f2e8f323c5b9416e7040af5732e4b7c2ee8984deb0fb3847bb607eac"
-      },
-      "label": {
-        "ru": "Правила репликации",
-        "en": "Replication rules"
+        "ru": "5be100ef5dfc129129c89b6dcf78333db66c1086251a9457a686400e28487c81",
+        "en": "1661acffd7818ba22da2b0bcc38e9bf591348e3f503b4c90c8bbdfb2eff00957"
       }
     },
     {
@@ -1197,6 +1197,10 @@
       "group": "gateway",
       "order": 47,
       "theme": "dark",
+      "label": {
+        "ru": "Задачи синхронизации",
+        "en": "Sync jobs"
+      },
       "files": {
         "ru": "ru/gateway-jobs.png",
         "en": "en/gateway-jobs.png"
@@ -1210,12 +1214,8 @@
         "en": "DataSafeS3 — Sync jobs"
       },
       "sha256": {
-        "ru": "d6cad4d8f86d6aafc666922d4a30915a31631e4db4d4496fb0dad729811db3df",
-        "en": "e7719a8281bf5c98678f84fc432632a66c95873af201ea21f9d62c686ef06b86"
-      },
-      "label": {
-        "ru": "Задачи синхронизации",
-        "en": "Sync jobs"
+        "ru": "a4226013a616615ba9336de2d6231c724b81d213490a550a0ccee7abbf4fba06",
+        "en": "22a023537bb21f3af5bbac5c9d733ca7fc0057e344a927b47b7dc18de580a659"
       }
     },
     {
@@ -1223,6 +1223,10 @@
       "group": "gateway",
       "order": 48,
       "theme": "dark",
+      "label": {
+        "ru": "Состояние шлюза",
+        "en": "Gateway status"
+      },
       "files": {
         "ru": "ru/gateway-status.png",
         "en": "en/gateway-status.png"
@@ -1236,12 +1240,8 @@
         "en": "DataSafeS3 — Gateway status"
       },
       "sha256": {
-        "ru": "3815de690263ded9f524006273d9ef8cd46d6414cbabe1b40b68d3fb56311dc3",
-        "en": "433e84fded6d778edba9d06ebc1e7b4d7177666e45946a2d84130b7fa01f5ba0"
-      },
-      "label": {
-        "ru": "Состояние шлюза",
-        "en": "Gateway status"
+        "ru": "a6fc7812e29cb9ce5cfafa99c5721b822ee1bf3450c1c870be1fc6fddf3c18f0",
+        "en": "8cc2b6e1585a99f86e099ba5dfd3f61617e1be854974edfac50e253668c301bb"
       }
     },
     {
@@ -1249,6 +1249,10 @@
       "group": "gateway",
       "order": 49,
       "theme": "dark",
+      "label": {
+        "ru": "Кластеры",
+        "en": "Clusters"
+      },
       "files": {
         "ru": "ru/cluster.png",
         "en": "en/cluster.png"
@@ -1262,12 +1266,8 @@
         "en": "DataSafeS3 — Clusters"
       },
       "sha256": {
-        "ru": "c4939cf9ee620f9346db6bdea4d0bc850a69acd875d1c203794c42016c99d47a",
-        "en": "4245bd5c37538c13af8f3be71a9f0e1ef037696f23faa60fc698c030d1db3910"
-      },
-      "label": {
-        "ru": "Кластеры",
-        "en": "Clusters"
+        "ru": "15749ae6b5bb4f3de86491e02f58057273832e719fde689d88bb162ee4253ce3",
+        "en": "6e9638d8c3d6e4f551e3369e96d95a2cbd0d84e86a1d539f96ec03651652016b"
       }
     },
     {
@@ -1275,6 +1275,10 @@
       "group": "gateway",
       "order": 50,
       "theme": "dark",
+      "label": {
+        "ru": "HA: статус",
+        "en": "HA status"
+      },
       "files": {
         "ru": "common/ha-status.png",
         "en": "common/ha-status.png"
@@ -1288,12 +1292,8 @@
         "en": "DataSafeS3 — HA status"
       },
       "sha256": {
-        "ru": "32990607ec662361968b30de426e9f4845df5cab05533063073d189d28a2b342",
-        "en": "32990607ec662361968b30de426e9f4845df5cab05533063073d189d28a2b342"
-      },
-      "label": {
-        "ru": "HA: статус",
-        "en": "HA status"
+        "ru": "c7f19afcd1f68ac36ed90f4de5284f75b103e5309b80c87763e2441b0f265412",
+        "en": "c7f19afcd1f68ac36ed90f4de5284f75b103e5309b80c87763e2441b0f265412"
       }
     },
     {
@@ -1301,6 +1301,10 @@
       "group": "external",
       "order": 51,
       "theme": "dark",
+      "label": {
+        "ru": "Grafana: обзор",
+        "en": "Grafana: overview"
+      },
       "files": {
         "ru": "common/monitoring.png",
         "en": "common/monitoring.png"
@@ -1314,12 +1318,8 @@
         "en": "DataSafeS3 — Grafana: overview"
       },
       "sha256": {
-        "ru": "d21a00ce7fd753874fe3eaa4e099cad41b28d03a434af6fd67520b8db8039c39",
-        "en": "d21a00ce7fd753874fe3eaa4e099cad41b28d03a434af6fd67520b8db8039c39"
-      },
-      "label": {
-        "ru": "Grafana: обзор",
-        "en": "Grafana: overview"
+        "ru": "ff74072c2f44ce1b3053c97a92485c9efb5cbb46ab01a2ae87b3df764ec56535",
+        "en": "ff74072c2f44ce1b3053c97a92485c9efb5cbb46ab01a2ae87b3df764ec56535"
       }
     },
     {
@@ -1327,6 +1327,10 @@
       "group": "external",
       "order": 52,
       "theme": "dark",
+      "label": {
+        "ru": "Grafana: бакеты",
+        "en": "Grafana: buckets"
+      },
       "files": {
         "ru": "common/grafana-buckets.png",
         "en": "common/grafana-buckets.png"
@@ -1340,12 +1344,8 @@
         "en": "DataSafeS3 — Grafana: buckets"
       },
       "sha256": {
-        "ru": "62bc48dfc78efc88b344b98450a426a5eb1b4365829b3eb9572691efd35c0bcc",
-        "en": "62bc48dfc78efc88b344b98450a426a5eb1b4365829b3eb9572691efd35c0bcc"
-      },
-      "label": {
-        "ru": "Grafana: бакеты",
-        "en": "Grafana: buckets"
+        "ru": "433a1bd43ad4db20e0ee1b22226831fa06ffc5a8713f2d7b7da8cd378d02aa26",
+        "en": "433a1bd43ad4db20e0ee1b22226831fa06ffc5a8713f2d7b7da8cd378d02aa26"
       }
     },
     {
@@ -1353,6 +1353,10 @@
       "group": "external",
       "order": 53,
       "theme": "dark",
+      "label": {
+        "ru": "Prometheus",
+        "en": "Prometheus"
+      },
       "files": {
         "ru": "common/prometheus-targets.png",
         "en": "common/prometheus-targets.png"
@@ -1366,12 +1370,8 @@
         "en": "DataSafeS3 — Prometheus"
       },
       "sha256": {
-        "ru": "c47500480d059979343c3cd18cab2f7a53a011fb3b0f22c824feffe977adf090",
-        "en": "c47500480d059979343c3cd18cab2f7a53a011fb3b0f22c824feffe977adf090"
-      },
-      "label": {
-        "ru": "Prometheus",
-        "en": "Prometheus"
+        "ru": "a0deb96d7fc33c8643cf0a2d2647247cd812e2ec705ffb1e71d153099ff80f52",
+        "en": "a0deb96d7fc33c8643cf0a2d2647247cd812e2ec705ffb1e71d153099ff80f52"
       }
     },
     {
@@ -1379,6 +1379,10 @@
       "group": "external",
       "order": 54,
       "theme": "dark",
+      "label": {
+        "ru": "Kafka UI: темы",
+        "en": "Kafka UI: topics"
+      },
       "files": {
         "ru": "common/kafka-ui-topics.png",
         "en": "common/kafka-ui-topics.png"
@@ -1392,12 +1396,8 @@
         "en": "DataSafeS3 — Kafka UI: topics"
       },
       "sha256": {
-        "ru": "abdb92da9a50246acc2e1387b54a93cb4f6a0a9dfddbd610ba4ad4c27763dbc3",
-        "en": "abdb92da9a50246acc2e1387b54a93cb4f6a0a9dfddbd610ba4ad4c27763dbc3"
-      },
-      "label": {
-        "ru": "Kafka UI: темы",
-        "en": "Kafka UI: topics"
+        "ru": "1befcc0e97423486380b467551e53e17f2c8be8e397b3b8e27706515b7136c34",
+        "en": "1befcc0e97423486380b467551e53e17f2c8be8e397b3b8e27706515b7136c34"
       }
     },
     {
@@ -1405,6 +1405,10 @@
       "group": "external",
       "order": 55,
       "theme": "dark",
+      "label": {
+        "ru": "Kafka UI: сообщения",
+        "en": "Kafka UI: messages"
+      },
       "files": {
         "ru": "common/kafka-ui-messages.png",
         "en": "common/kafka-ui-messages.png"
@@ -1418,12 +1422,8 @@
         "en": "DataSafeS3 — Kafka UI: messages"
       },
       "sha256": {
-        "ru": "7ab60c3dcc257de8fd711c11da032dfbaa36d9f7968f72cf0a25649c301f7813",
-        "en": "7ab60c3dcc257de8fd711c11da032dfbaa36d9f7968f72cf0a25649c301f7813"
-      },
-      "label": {
-        "ru": "Kafka UI: сообщения",
-        "en": "Kafka UI: messages"
+        "ru": "9ef450eb8240e2144f8b6e206c875e70e53e2f6712c746758fdce543b5376246",
+        "en": "9ef450eb8240e2144f8b6e206c875e70e53e2f6712c746758fdce543b5376246"
       }
     },
     {
@@ -1431,6 +1431,10 @@
       "group": "external",
       "order": 56,
       "theme": "dark",
+      "label": {
+        "ru": "Просмотрщик вебхуков",
+        "en": "Webhook viewer"
+      },
       "files": {
         "ru": "common/webhook-viewer.png",
         "en": "common/webhook-viewer.png"
@@ -1444,12 +1448,8 @@
         "en": "DataSafeS3 — Webhook viewer"
       },
       "sha256": {
-        "ru": "af8485097bcabccb5ca6a93cc6648033c4553bf3ead663df90f457e6a3815724",
-        "en": "af8485097bcabccb5ca6a93cc6648033c4553bf3ead663df90f457e6a3815724"
-      },
-      "label": {
-        "ru": "Просмотрщик вебхуков",
-        "en": "Webhook viewer"
+        "ru": "8f70c4bb99b1ef6fa3f3f3b895c8492ae673b5fa648c959bdc4c481e92fe3e77",
+        "en": "8f70c4bb99b1ef6fa3f3f3b895c8492ae673b5fa648c959bdc4c481e92fe3e77"
       }
     },
     {
@@ -1457,6 +1457,10 @@
       "group": "external",
       "order": 57,
       "theme": "dark",
+      "label": {
+        "ru": "NATS JetStream",
+        "en": "NATS JetStream"
+      },
       "files": {
         "ru": "common/nats.png",
         "en": "common/nats.png"
@@ -1470,12 +1474,8 @@
         "en": "DataSafeS3 — NATS JetStream"
       },
       "sha256": {
-        "ru": "45283a0138568623be73576a53daa1b76b8bda5c48a6950bdbecb97e74c865a3",
-        "en": "45283a0138568623be73576a53daa1b76b8bda5c48a6950bdbecb97e74c865a3"
-      },
-      "label": {
-        "ru": "NATS JetStream",
-        "en": "NATS JetStream"
+        "ru": "5d0f2bcb33c9f6d8eb362169eda1b3736e36b380ea608b8242c3a2bdd0860ff1",
+        "en": "5d0f2bcb33c9f6d8eb362169eda1b3736e36b380ea608b8242c3a2bdd0860ff1"
       }
     },
     {
@@ -1483,6 +1483,10 @@
       "group": "external",
       "order": 58,
       "theme": "dark",
+      "label": {
+        "ru": "Vault Transit",
+        "en": "Vault Transit"
+      },
       "files": {
         "ru": "common/vault.png",
         "en": "common/vault.png"
@@ -1496,12 +1500,8 @@
         "en": "DataSafeS3 — Vault Transit"
       },
       "sha256": {
-        "ru": "f20be07b0a8ce308d33befc2a752a90902761c67d7b236f619d49dfa1defefa3",
-        "en": "f20be07b0a8ce308d33befc2a752a90902761c67d7b236f619d49dfa1defefa3"
-      },
-      "label": {
-        "ru": "Vault Transit",
-        "en": "Vault Transit"
+        "ru": "07be78923d9fb89fe057e24183038e525a44f9ef38e84956deb2e49dcbcc9a2c",
+        "en": "07be78923d9fb89fe057e24183038e525a44f9ef38e84956deb2e49dcbcc9a2c"
       }
     },
     {
@@ -1509,6 +1509,10 @@
       "group": "external",
       "order": 59,
       "theme": "dark",
+      "label": {
+        "ru": "MinIO-источник",
+        "en": "MinIO source"
+      },
       "files": {
         "ru": "common/minio-src.png",
         "en": "common/minio-src.png"
@@ -1522,12 +1526,8 @@
         "en": "DataSafeS3 — MinIO source"
       },
       "sha256": {
-        "ru": "a44fc4ee0dd3f67096440dd015ceaa480bab941bcdb95d0bfc3af24fee6a1b33",
-        "en": "a44fc4ee0dd3f67096440dd015ceaa480bab941bcdb95d0bfc3af24fee6a1b33"
-      },
-      "label": {
-        "ru": "MinIO-источник",
-        "en": "MinIO source"
+        "ru": "bf6ec80b76a6808ebf1645005d214f5b79cf00789585c7700c798175bdc8a296",
+        "en": "bf6ec80b76a6808ebf1645005d214f5b79cf00789585c7700c798175bdc8a296"
       }
     },
     {
@@ -1535,6 +1535,10 @@
       "group": "auth",
       "order": 60,
       "theme": "dark",
+      "label": {
+        "ru": "Keycloak: вход",
+        "en": "Keycloak sign-in"
+      },
       "files": {
         "ru": "common/keycloak-login.png",
         "en": "common/keycloak-login.png"
@@ -1550,10 +1554,6 @@
       "sha256": {
         "ru": "8f961022ec9f58ae8b4eeb3f8543792176963713678443e91745b32893195a46",
         "en": "8f961022ec9f58ae8b4eeb3f8543792176963713678443e91745b32893195a46"
-      },
-      "label": {
-        "ru": "Keycloak: вход",
-        "en": "Keycloak sign-in"
       }
     },
     {
@@ -1561,6 +1561,10 @@
       "group": "auth",
       "order": 61,
       "theme": "dark",
+      "label": {
+        "ru": "Профиль (OIDC)",
+        "en": "Profile (OIDC)"
+      },
       "files": {
         "ru": "ru/sso-profile.png"
       },
@@ -1571,11 +1575,7 @@
         "ru": "DataSafeS3 — Профиль (OIDC)"
       },
       "sha256": {
-        "ru": "451397d4a1d5982f45c3d9c25b2216c140ec9b10109f2cce9a4faab17d3ec36c"
-      },
-      "label": {
-        "ru": "Профиль (OIDC)",
-        "en": "Profile (OIDC)"
+        "ru": "a5dfe96894bcca17aed427b0a4fb0a29e5b75373bb94cb8ec70151c43fa11507"
       }
     },
     {
@@ -1583,6 +1583,10 @@
       "group": "auth",
       "order": 62,
       "theme": "dark",
+      "label": {
+        "ru": "Профиль (LDAP)",
+        "en": "Profile (LDAP)"
+      },
       "files": {
         "ru": "ru/ldap-profile.png"
       },
@@ -1593,11 +1597,7 @@
         "ru": "DataSafeS3 — Профиль (LDAP)"
       },
       "sha256": {
-        "ru": "0207ee688dcc22a335722655056b0b5d0eae60ea919c5ff131f72eb08fd12293"
-      },
-      "label": {
-        "ru": "Профиль (LDAP)",
-        "en": "Profile (LDAP)"
+        "ru": "322fbc53e882316f44a8ee1c6d90ea1e062c4d31f1c4f25d7bbe0859826ec552"
       }
     },
     {
@@ -1605,6 +1605,10 @@
       "group": "auth",
       "order": 63,
       "theme": "dark",
+      "label": {
+        "ru": "Файлы (LDAP)",
+        "en": "Files (LDAP)"
+      },
       "files": {
         "ru": "ru/ldap-buckets.png"
       },
@@ -1615,11 +1619,7 @@
         "ru": "DataSafeS3 — Файлы (LDAP)"
       },
       "sha256": {
-        "ru": "ad654a7443a046cf9c19c0135c566894d9344f1cfd6183aa47f22aeef0c5b9e0"
-      },
-      "label": {
-        "ru": "Файлы (LDAP)",
-        "en": "Files (LDAP)"
+        "ru": "ec354c86c9e294a49293ad64ac3817dcc1a8348f6cfec62a5ee733a44eae4e2a"
       }
     }
   ]
