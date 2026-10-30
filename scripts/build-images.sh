@@ -70,8 +70,18 @@ if [ "$SKIP_CONSOLE_BUILD" != "1" ]; then
   echo "== console"
   (
     cd web/console
-    if [ -n "$NPM_REGISTRY" ]; then export npm_config_registry="$NPM_REGISTRY"; fi
-    npm ci
+    # npm-mirror intermittently answers 504 for uncached tarballs: cap the mirror
+    # attempt, then retry once against NPM_FALLBACK_REGISTRY (empty disables it).
+    NPM_FALLBACK_REGISTRY="${NPM_FALLBACK_REGISTRY-https://registry.npmjs.org/}"
+    if [ -n "$NPM_REGISTRY" ]; then
+      if ! npm_config_registry="$NPM_REGISTRY" timeout 600 npm ci --no-audit --no-fund --fetch-retries=1 --fetch-timeout=60000; then
+        [ -n "$NPM_FALLBACK_REGISTRY" ] || exit 1
+        echo "npm ci via $NPM_REGISTRY failed, retrying via $NPM_FALLBACK_REGISTRY"
+        npm_config_registry="$NPM_FALLBACK_REGISTRY" npm ci --no-audit --no-fund
+      fi
+    else
+      npm ci
+    fi
     npm run build
   )
 fi
