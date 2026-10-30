@@ -911,7 +911,7 @@ export function BucketDetailPage() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex flex-wrap items-end gap-3">
-                      <div className="space-y-2 min-w-[12rem] flex-1">
+                      <div className="space-y-2 min-w-48 flex-1">
                         <Label htmlFor="inventory-prefix">{t("bucketDetail:inventory.prefix")}</Label>
                         <Input
                           id="inventory-prefix"
@@ -920,7 +920,7 @@ export function BucketDetailPage() {
                           placeholder={t("bucketDetail:inventory.prefixPlaceholder")}
                         />
                       </div>
-                      <div className="space-y-2 min-w-[10rem] flex-1">
+                      <div className="space-y-2 min-w-40 flex-1">
                         <Label htmlFor="inventory-dest-bucket">{t("bucketDetail:inventory.destBucket")}</Label>
                         <Input
                           id="inventory-dest-bucket"
@@ -929,7 +929,7 @@ export function BucketDetailPage() {
                           placeholder={t("bucketDetail:inventory.destBucketPlaceholder")}
                         />
                       </div>
-                      <div className="space-y-2 min-w-[12rem] flex-1">
+                      <div className="space-y-2 min-w-48 flex-1">
                         <Label htmlFor="inventory-dest-key">{t("bucketDetail:inventory.destKey")}</Label>
                         <Input
                           id="inventory-dest-key"
@@ -1033,7 +1033,7 @@ export function BucketDetailPage() {
                   const inDraft = accessDraft.some((g) => g.user_id === userId);
                   return (
                     <div key={userId} className="flex flex-wrap items-center gap-4 rounded border p-3 text-sm">
-                      <span className="min-w-[8rem] font-medium">{uname}</span>
+                      <span className="min-w-32 font-medium">{uname}</span>
                       {"role" in m && m.role ? (
                         <span className="text-muted-foreground">{m.role}</span>
                       ) : null}
@@ -1125,7 +1125,7 @@ export function BucketDetailPage() {
                   {prefixAccessDraft.map((row, idx) => (
                     <div key={`${row.user_id}-${row.prefix}-${idx}`} className="flex flex-wrap items-center gap-3 rounded border p-3 text-sm">
                       <Input
-                        className="max-w-[10rem] font-mono text-xs"
+                        className="max-w-40 font-mono text-xs"
                         placeholder={t("bucketDetail:access.folderPrefix")}
                         value={row.prefix ?? ""}
                         onChange={(e) =>
@@ -1146,7 +1146,7 @@ export function BucketDetailPage() {
                           );
                         }}
                       >
-                        <SelectTrigger className="w-[10rem]">
+                        <SelectTrigger className="w-40">
                           <SelectValue placeholder={t("bucketDetail:access.selectUser")} />
                         </SelectTrigger>
                         <SelectContent>

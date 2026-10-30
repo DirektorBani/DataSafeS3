@@ -93,7 +93,7 @@ export function OtpInput({
           aria-label={t("otp.digitAria", { index: index + 1, length })}
           className={cn(
             "h-12 w-10 rounded-md border bg-background text-center text-lg font-semibold tabular-nums",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
             focusedIndex === index && "ring-2 ring-ring",
             disabled && "opacity-50"
           )}
