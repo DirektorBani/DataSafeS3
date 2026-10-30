@@ -61,12 +61,17 @@ else
   echo "release id $RID exists for $TAG"
 fi
 
+# A re-run for the same tag replaces assets with the same name (delete, then upload).
 existing=$(call "$API/$RID/assets?per_page=50" | python3 -c 'import json,sys
-try: print("\n".join(a["name"] for a in json.load(sys.stdin)))
+try: print("\n".join(str(a["id"])+" "+a["name"] for a in json.load(sys.stdin)))
 except Exception: pass')
 for f in "$@"; do
   name=$(basename "$f")
-  if printf '%s\n' "$existing" | grep -qx "$name"; then echo "asset $name already attached"; continue; fi
+  old_id=$(printf '%s\n' "$existing" | awk -v n="$name" '$2==n{print $1; exit}')
+  if [ -n "$old_id" ]; then
+    code=$(call -o /dev/null -w '%{http_code}' -X DELETE "$API/$RID/assets/$old_id") || code=000
+    case "$code" in 204|200|404) echo "replacing $name (old asset $old_id removed)" ;; *) echo "delete old $name failed HTTP $code" >&2; exit 1 ;; esac
+  fi
   code=$(call -o /tmp/asset-resp.$$ -w '%{http_code}' -X POST -F "attachment=@${f}" "$API/$RID/assets?name=${name}") || code=000
   if [ "$code" = "201" ] || [ "$code" = "200" ]; then echo "attached $name"; else echo "attach $name failed HTTP $code" >&2; cat /tmp/asset-resp.$$ >&2 || true; rm -f /tmp/asset-resp.$$; exit 1; fi
   rm -f /tmp/asset-resp.$$
