@@ -266,17 +266,12 @@ class SourceTests(unittest.TestCase):
         mode = (ROOT / "scripts" / "gitverse-publish.sh").stat().st_mode
         self.assertTrue(mode & stat.S_IXUSR)
 
-    def test_workflow_triggers_and_permissions(self) -> None:
-        text = (ROOT / ".github" / "workflows" / "publish-gitverse.yml").read_text(encoding="utf-8")
-        self.assertIn('workflows: ["release"]', text)
-        self.assertIn("workflow_dispatch:", text)
-        self.assertIn("contents: read", text)
-        self.assertIn("packages: read", text)
-        self.assertIn("GITVERSE_TOKEN is not set", text)
-        self.assertNotIn("packages: write", text)
-        release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-        self.assertIn("name: release", release)
-
+    def test_github_has_no_release_workflows(self) -> None:
+        # Releases are built only on GitVerse (.gitverse/workflows/release.yaml).
+        gh = ROOT / ".github" / "workflows"
+        for name in ("release.yml", "publish-gitverse.yml", "publish-main.yml"):
+            self.assertFalse((gh / name).exists(), name)
+        self.assertTrue((ROOT / ".gitverse" / "workflows" / "release.yaml").exists())
 
 if __name__ == "__main__":
     unittest.main()

@@ -229,7 +229,7 @@ curl -sS http://127.0.0.1:9000/healthz
 
 Основной путь — [`.gitverse/workflows/release.yaml`](../../.gitverse/workflows/release.yaml): образы (`linux/amd64`, `linux/arm64`), `.deb`, `.rpm`, чарт, страница релиза с `SHA256SUMS.txt`, дайджестами образов и SBOM. Подробности — [build.md](build.md). Ниже описан запасной путь через GitHub.
 
-[`.github/workflows/publish-gitverse.yml`](../../.github/workflows/publish-gitverse.yml) копирует мультиархитектурный манифест (`linux/amd64` и `linux/arm64`) и загружает `.deb`, `.rpm` и чарт `datasafes3`. Суммарный лимит всех пакетов пользователя на GitVerse — 500 Мбайт. Перед загрузкой workflow считает размер. Если полный набор не помещается, ручной запуск с `architectures=amd64` (или переменная репозитория `GITVERSE_ARCHITECTURES=amd64`) публикует только amd64.
+Ранее `.github/workflows/publish-gitverse.yml` (удалён; теперь всё делает `.gitverse/workflows/release.yaml`) копировал мультиархитектурный манифест (`linux/amd64` и `linux/arm64`) и загружает `.deb`, `.rpm` и чарт `datasafes3`. Суммарный лимит всех пакетов пользователя на GitVerse — 500 Мбайт. Перед загрузкой workflow считает размер. Если полный набор не помещается, ручной запуск с `architectures=amd64` (или переменная репозитория `GITVERSE_ARCHITECTURES=amd64`) публикует только amd64.
 
 Очистка старых версий выключена по умолчанию. Её включает `delete_old` у `workflow_dispatch` или переменная `GITVERSE_DELETE_OLD=true`. Остаются две последние версии (`keep` / `GITVERSE_KEEP_VERSIONS`); тег `latest` не удаляется.
 

@@ -1,6 +1,6 @@
 # Сборка и публикация релиза
 
-Релиз собирается и публикуется на GitVerse. Для выпуска не нужны GitHub, GHCR и Docker Hub. Прежний путь через GitHub (`.github/workflows/publish-gitverse.yml`) остаётся запасным, пока новый путь не пройдёт полный прогон на GitVerse.
+Релиз собирается и публикуется на GitVerse. Для выпуска не нужны GitHub, GHCR и Docker Hub. Релизных воркфлоу на GitHub нет: репозиторий GitHub — только зеркало (`.gitverse/workflows/mirror_to_gh.yaml`).
 
 ## Что получается на выходе
 
