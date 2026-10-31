@@ -29,8 +29,13 @@ on:
       tag:
         description: "Tag to release, for example v1.7.1"
         required: true
+      dry_run:
+        description: "true = build everything (images to OCI layouts, packages, chart, SBOM) but publish nothing"
+        required: false
+        default: "false"
 
 env:
+  DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
   GOPROXY: "https://go-mirror.gitverse.ru,direct"
   GOTOOLCHAIN: local
   NPM_REGISTRY: "https://npm-mirror.gitverse.ru/"
@@ -44,7 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event.inputs.dry_run == 'true' && github.sha || github.event.inputs.tag || github.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.10"
@@ -69,7 +74,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event.inputs.dry_run == 'true' && github.sha || github.event.inputs.tag || github.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.10"
@@ -80,6 +85,7 @@ jobs:
         env:
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
+          if [ "$DRY_RUN" = "true" ]; then echo "dry run: no registry login"; exit 0; fi
           test -n "$REGISTRY_TOKEN" || { echo "secret REGISTRY_TOKEN is not set"; exit 1; }
           umask 077
           mkdir -p "$HOME/.docker"
@@ -88,7 +94,30 @@ jobs:
       - name: build and push both images (amd64 + arm64)
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          bash scripts/build-images.sh --registry "$REGISTRY" --tags "${TAG},latest"
+          if [ "$DRY_RUN" = "true" ]; then
+            bash scripts/build-images.sh --registry "$REGISTRY" --tags "${TAG},latest" --oci-dir dist/oci
+            du -sh dist/oci/*
+          else
+            bash scripts/build-images.sh --registry "$REGISTRY" --tags "${TAG},latest"
+          fi
+      - name: trusted-OS variant Astra Linux (amd64, storage server only)
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          OCI=""; [ "$DRY_RUN" = "true" ] && OCI="--oci-dir dist/oci"
+          # RED OS registry uses the Russian Trusted Root CA (Минцифры); add it for the Go client.
+          curl -fsSL --retry 3 -o dist/russian_trusted_root_ca.crt https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt
+          echo "d26d2d0231b7c39f92cc738512ba54103519e4405d68b5bd703e9788ca8ecf31  dist/russian_trusted_root_ca.crt" | sha256sum -c - \
+            || openssl x509 -in dist/russian_trusted_root_ca.crt -noout -fingerprint -sha256
+          cat /etc/ssl/certs/ca-certificates.crt dist/russian_trusted_root_ca.crt > dist/ca-ru.pem
+          bash scripts/build-images.sh --registry "$REGISTRY" --tags "$TAG" --platforms linux/amd64 --server-only --skip-console-build \
+            --base-image registry.astralinux.ru/library/astra/ubi18:1.8.6 --name-suffix -astra $OCI
+      - name: trusted-OS variant RED OS (amd64; registry TLS chain may not verify from Go, see protocol 06)
+        continue-on-error: true
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          OCI=""; [ "$DRY_RUN" = "true" ] && OCI="--oci-dir dist/oci"
+          SSL_CERT_FILE=dist/ca-ru.pem bash scripts/build-images.sh --registry "$REGISTRY" --tags "$TAG" --platforms linux/amd64 --server-only --skip-console-build \
+            --base-image registry.red-soft.ru/ubi8/ubi:8.0.3-261027 --name-suffix -redos $OCI
 
   packages:
     needs: checks
@@ -97,7 +126,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event.inputs.dry_run == 'true' && github.sha || github.event.inputs.tag || github.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.10"
@@ -111,6 +140,7 @@ jobs:
           export PATH="$PWD/dist/tools:$PATH"
           helm lint deploy/helm/datasafes3
       - name: publish packages to GitVerse registries
+        if: env.DRY_RUN != 'true'
         env:
           GV_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
@@ -118,6 +148,7 @@ jobs:
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           TAG="$TAG" PKG_DIR=dist/packages CHART_SRC=deploy/helm/datasafes3 bash scripts/gitverse-publish-packages.sh
       - name: attach checksums to the release
+        if: env.DRY_RUN != 'true'
         continue-on-error: true
         env:
           GV_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
@@ -133,7 +164,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event.inputs.dry_run == 'true' && github.sha || github.event.inputs.tag || github.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.10"
@@ -172,6 +203,10 @@ jobs:
         run: |
           export PATH="$PWD/dist/tools:$PWD/dist/npm-tools/node_modules/.bin:$PATH"
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [ "$DRY_RUN" = "true" ]; then
+            bash scripts/sbom.sh "${TAG#v}"   # no image SBOMs: nothing was pushed
+            ls -l dist/sbom; exit 0
+          fi
           export SBOM_SERVER_IMAGE="$REGISTRY/datasafe-storage-server:$TAG"
           export SBOM_CONSOLE_IMAGE="$REGISTRY/datasafe-console:$TAG"
           bash scripts/sbom.sh "${TAG#v}"
@@ -182,6 +217,7 @@ jobs:
             echo "datasafe-console:$TAG $(crane digest "$SBOM_CONSOLE_IMAGE")"
           } | tee dist/sbom/image-digests.txt
       - name: attach SBOM and digests to the release
+        if: env.DRY_RUN != 'true'
         env:
           GV_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |

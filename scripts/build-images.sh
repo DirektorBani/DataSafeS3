@@ -28,6 +28,10 @@ PLATFORMS="linux/amd64,linux/arm64"
 VERSION="$(tr -d '[:space:]' < VERSION)"
 TAGS="v${VERSION},latest"
 SKIP_CONSOLE_BUILD=0
+OCI_DIR=""        # dry run: write OCI layouts to $OCI_DIR/<image> instead of pushing
+BASE_IMAGE=""     # alternative base image, e.g. Astra Linux or RED OS (trusted-OS variants)
+SERVER_ONLY=0
+NAME_SUFFIX=""    # e.g. -astra, -redos
 BASE_REGISTRY="${BASE_REGISTRY-dh-mirror.gitverse.ru/library/}"
 ALPINE_VERSION="${ALPINE_VERSION:-3.24}"
 export GOPROXY="${GOPROXY:-https://go-mirror.gitverse.ru,direct}"
@@ -42,6 +46,10 @@ while [ $# -gt 0 ]; do
     --tags) TAGS="$2"; shift 2 ;;
     --platforms) PLATFORMS="$2"; shift 2 ;;
     --skip-console-build) SKIP_CONSOLE_BUILD=1; shift ;;
+    --oci-dir) OCI_DIR="$2"; shift 2 ;;
+    --base-image) BASE_IMAGE="$2"; shift 2 ;;
+    --server-only) SERVER_ONLY=1; shift ;;
+    --name-suffix) NAME_SUFFIX="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -66,7 +74,7 @@ done
 tr -d '\015' < deploy/docker/docker-entrypoint.sh > "$OUT/docker-entrypoint.sh"
 tr -d '\015' < deploy/docker/entrypoint-launcher.sh > "$OUT/datasafe-entrypoint"
 
-if [ "$SKIP_CONSOLE_BUILD" != "1" ]; then
+if [ "$SKIP_CONSOLE_BUILD" != "1" ] && [ "$SERVER_ONLY" != "1" ]; then
   echo "== console"
   (
     cd web/console
@@ -85,12 +93,13 @@ if [ "$SKIP_CONSOLE_BUILD" != "1" ]; then
     npm run build
   )
 fi
-test -f web/console/dist/index.html
+[ "$SERVER_ONLY" = "1" ] || test -f web/console/dist/index.html
 
 tag_args() {
   local repo="$1" t
   IFS=, read -r -a ts <<< "$TAGS"
-  for t in "${ts[@]}"; do printf -- '--tag\n%s/%s:%s\n' "$REGISTRY" "$repo" "$t"; done
+  for t in "${ts[@]}"; do printf -- '--tag\n%s/%s%s:%s\n' "$REGISTRY" "$repo" "$NAME_SUFFIX" "$t"; done
+  if [ -n "$OCI_DIR" ]; then printf -- '--oci-dir\n%s/%s%s\n' "$OCI_DIR" "$repo" "$NAME_SUFFIX"; fi
 }
 labels() {
   printf -- '--label\n%s\n' \
@@ -100,7 +109,10 @@ labels() {
     "org.opencontainers.image.source=https://gitverse.ru/DirektorBani/DataSafeS3" \
     "org.opencontainers.image.licenses=Apache-2.0"
 }
-BASE="${BASE_REGISTRY}alpine:${ALPINE_VERSION}"
+BASE="${BASE_IMAGE:-${BASE_REGISTRY}alpine:${ALPINE_VERSION}}"
+# busybox wget on Alpine; curl on Astra Linux / RED OS bases
+HEALTHCHECK='wget -q -O- http://127.0.0.1:9000/healthz || exit 1'
+[ -z "$BASE_IMAGE" ] || HEALTHCHECK='curl -fsS http://127.0.0.1:9000/healthz >/dev/null || wget -q -O- http://127.0.0.1:9000/healthz || exit 1'
 
 echo "== datasafe-storage-server"
 mapfile -t TA < <(tag_args datasafe-storage-server)
@@ -113,7 +125,9 @@ mapfile -t LA < <(labels datasafe-storage-server)
   --file "$OUT/datasafe-entrypoint=/usr/local/bin/datasafe-entrypoint:0755" \
   --entrypoint /usr/local/bin/datasafe-entrypoint \
   --expose 9000/tcp \
-  --healthcheck 'wget -q -O- http://127.0.0.1:9000/healthz || exit 1'
+  --healthcheck "$HEALTHCHECK"
+
+if [ "$SERVER_ONLY" = "1" ]; then exit 0; fi
 
 echo "== datasafe-console"
 mapfile -t TA < <(tag_args datasafe-console)

@@ -1,0 +1,21 @@
+# DataSafeS3 storage server on a trusted Russian OS base image (RRPO, п.5 «м»).
+# The binaries are the same static Go binaries as in the Alpine image; build them first:
+#   scripts/build-images.sh --platforms linux/amd64 --server-only --oci-dir dist/oci
+# then (context = dist/image):
+#   podman build -f deploy/docker/Dockerfile.trusted-os \
+#     --build-arg BASE_IMAGE=registry.astralinux.ru/library/astra/ubi18:1.8.6 -t datasafe-storage-server-astra dist/image
+#   podman build -f deploy/docker/Dockerfile.trusted-os \
+#     --build-arg BASE_IMAGE=registry.red-soft.ru/ubi8/ubi:8.0.3-261027 -t datasafe-storage-server-redos dist/image
+# Or without a daemon: scripts/build-images.sh --server-only --base-image <BASE_IMAGE> --name-suffix -astra
+ARG BASE_IMAGE=registry.astralinux.ru/library/astra/ubi18:1.8.6
+FROM ${BASE_IMAGE}
+ARG TARGETARCH=amd64
+COPY linux_${TARGETARCH}/storage-server /storage-server
+COPY linux_${TARGETARCH}/datasafe-kafka-bridge /usr/lib/datasafe/datasafe-kafka-bridge
+COPY linux_${TARGETARCH}/su-exec /usr/local/bin/su-exec
+COPY --chmod=0755 docker-entrypoint.sh /docker-entrypoint.sh
+COPY --chmod=0755 datasafe-entrypoint /usr/local/bin/datasafe-entrypoint
+EXPOSE 9000
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:9000/healthz >/dev/null || exit 1
+ENTRYPOINT ["/usr/local/bin/datasafe-entrypoint"]

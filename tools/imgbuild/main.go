@@ -39,6 +39,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
@@ -50,6 +51,7 @@ func (m *multi) String() string     { return strings.Join(*m, ",") }
 func (m *multi) Set(v string) error { *m = append(*m, v); return nil }
 
 type options struct {
+	ociDir      string
 	base        string
 	platforms   string
 	tags        multi
@@ -303,6 +305,21 @@ func run(o *options) error {
 		single = img
 		idx = mutate.AppendManifests(idx, mutate.IndexAddendum{Add: img, Descriptor: v1.Descriptor{Platform: p}})
 	}
+	if o.ociDir != "" {
+		// Dry run: write an OCI image layout instead of pushing (nothing leaves the machine).
+		lp, err := layout.Write(o.ociDir, empty.Index)
+		if err != nil {
+			return err
+		}
+		for _, t := range o.tags {
+			ann := map[string]string{"org.opencontainers.image.ref.name": t}
+			if err := lp.AppendIndex(idx, layout.WithAnnotations(ann)); err != nil {
+				return err
+			}
+			fmt.Printf("wrote %s to %s\n", t, o.ociDir)
+		}
+		return nil
+	}
 	for _, t := range o.tags {
 		ref, err := name.ParseReference(t)
 		if err != nil {
@@ -324,6 +341,7 @@ func run(o *options) error {
 
 func main() {
 	o := &options{}
+	flag.StringVar(&o.ociDir, "oci-dir", "", "write an OCI image layout to this directory instead of pushing")
 	flag.StringVar(&o.base, "base", "", "base image reference")
 	flag.StringVar(&o.platforms, "platform", "linux/amd64", "comma separated platforms; {arch} in --file/--dir is replaced per platform")
 	flag.Var(&o.tags, "tag", "destination reference (repeatable)")
