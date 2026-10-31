@@ -139,7 +139,9 @@ jobs:
         run: |
           GOBIN="$PWD/dist/tools" go install helm.sh/helm/v3/cmd/helm@v3.16.4
       - name: build .deb and .rpm (nfpm via Go mirror)
-        run: bash scripts/package-linux.sh
+        run: |
+          bash scripts/package-linux.sh
+          ls dist/packages/*.deb dist/packages/*.rpm
       - name: lint chart
         run: |
           export PATH="$PWD/dist/tools:$PATH"
@@ -152,15 +154,14 @@ jobs:
           export PATH="$PWD/dist/tools:$PATH"
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           TAG="$TAG" PKG_DIR=dist/packages CHART_SRC=deploy/helm/datasafes3 bash scripts/gitverse-publish-packages.sh
-      - name: attach checksums to the release
+      - name: attach packages and checksums to the release
         if: env.DRY_RUN != 'true'
-        continue-on-error: true
         env:
           GV_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           sh scripts/extract-changelog-section.sh "${TAG#v}" CHANGELOG.md dist/release-body.md
-          TAG="$TAG" RELEASE_NOTES_FILE=dist/release-body.md bash scripts/gitverse-release-assets.sh dist/packages/SHA256SUMS.txt
+          TAG="$TAG" RELEASE_NOTES_FILE=dist/release-body.md PACKAGE_FALLBACK_TGZ=1 bash scripts/gitverse-release-assets.sh dist/packages/SHA256SUMS.txt dist/packages/*.deb dist/packages/*.rpm
 
   sbom:
     needs: [images, packages]

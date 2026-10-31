@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Create (or find) the GitVerse release for a tag and attach files to it.
-# GitVerse accepts only some asset extensions (.txt .md .tgz .zip .gz ...), so
-# .deb/.rpm stay in the package registry and the release carries checksums,
-# image digests and SBOM archives.
+# GitVerse may refuse some asset extensions. With PACKAGE_FALLBACK_TGZ=1 a file
+# that is refused with HTTP 4xx is attached again as <name>.tgz (the file inside).
 #
 #   TAG=v1.7.1 GV_TOKEN=... scripts/gitverse-release-assets.sh FILE [FILE ...]
 #
@@ -73,6 +72,16 @@ for f in "$@"; do
     case "$code" in 204|200|404) echo "replacing $name (old asset $old_id removed)" ;; *) echo "delete old $name failed HTTP $code" >&2; exit 1 ;; esac
   fi
   code=$(call -o /tmp/asset-resp.$$ -w '%{http_code}' -X POST -F "attachment=@${f}" "$API/$RID/assets?name=${name}") || code=000
+  if [ "$code" != "201" ] && [ "$code" != "200" ] && [ "${PACKAGE_FALLBACK_TGZ:-0}" = "1" ] && [ "${code#4}" != "$code" ]; then
+    echo "attach $name refused HTTP $code, retrying as $name.tgz" >&2
+    cat /tmp/asset-resp.$$ >&2 || true; echo >&2
+    tgz="$(mktemp -d)/$name.tgz"; tar -czf "$tgz" -C "$(dirname "$f")" "$name"
+    tname="$name.tgz"
+    old_id=$(printf '%s\n' "$existing" | awk -v n="$tname" '$2==n{print $1; exit}')
+    [ -n "$old_id" ] && call -o /dev/null -X DELETE "$API/$RID/assets/$old_id" || true
+    code=$(call -o /tmp/asset-resp.$$ -w '%{http_code}' -X POST -F "attachment=@${tgz}" "$API/$RID/assets?name=${tname}") || code=000
+    name="$tname"
+  fi
   if [ "$code" = "201" ] || [ "$code" = "200" ]; then echo "attached $name"; else echo "attach $name failed HTTP $code" >&2; cat /tmp/asset-resp.$$ >&2 || true; rm -f /tmp/asset-resp.$$; exit 1; fi
   rm -f /tmp/asset-resp.$$
 done

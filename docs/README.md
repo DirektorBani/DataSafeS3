@@ -2,7 +2,7 @@
 
 **[Русский](ru/README.md)** · **[English](en/README.md)** · **[README репозитория](../README.md)**
 
-**Current Community release:** [v1.7.1](../CHANGELOG.md#170---2026-10-19) (2026-10-19)
+**Current Community release:** [v1.7.2](../CHANGELOG.md#170---2026-10-19) (2026-10-19)
 
 Это указатель продукта. Интерфейс консоли доступен на русском и английском. Термины: [глоссарий](ru/glossary.md).
 

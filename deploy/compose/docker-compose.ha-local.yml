@@ -44,7 +44,7 @@ services:
         condition: service_healthy
 
   storage-server-standby:
-    image: ${DATASAFE_SERVER_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1}
+    image: ${DATASAFE_SERVER_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.7.2}
     pull_policy: if_not_present
     volumes:
       - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-standby-1:/data:ro
@@ -66,7 +66,7 @@ services:
       retries: 10
 
   storage-server-standby-2:
-    image: ${DATASAFE_SERVER_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1}
+    image: ${DATASAFE_SERVER_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.7.2}
     pull_policy: if_not_present
     volumes:
       - ${DATASAFE_DATA_ROOT:-./.datasafe-data}/storage-standby-2:/data:ro

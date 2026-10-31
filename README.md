@@ -2,7 +2,7 @@
 
 **По-русски:** [README.ru.md](README.ru.md) · [документация](docs/README.md) · [руководство пользователя](docs/ru/user-guide.md)
 
-**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.7.1](CHANGELOG.md#171---2026-10-24)
+**Author / Автор:** Ilya Trachuk · **License / Лицензия:** [Apache-2.0](LICENSE) · **Release / Релиз:** [v1.7.2](CHANGELOG.md#171---2026-10-24)
 
 The primary repository and the artifact registries (images, packages, Helm) are on [GitVerse](https://gitverse.ru/DirektorBani/DataSafeS3). GitHub is a [mirror](https://gitverse.ru/DirektorBani/DataSafeS3).
 
@@ -32,7 +32,7 @@ docker run --rm -p 9000:9000 \
   -e STORAGE_SECRET_KEY=change-me \
   -e STORAGE_ADMIN_PASSWORD=change-me-admin \
   -e STORAGE_JWT_SECRET=change-me-jwt \
-  gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1
+  gitverse.ru/direktorbani/datasafe-storage-server:v1.7.2
 ```
 
 Console and API, persistent volume, `STORAGE_DEV` off:
@@ -174,7 +174,7 @@ Kafka is an opt-in event sink. A default install does not set `STORAGE_KAFKA_BRO
 
 ---
 
-## v1.7.1
+## v1.7.2
 
 - Security: Go 1.26.10, `golang.org/x/crypto` 0.58.0, `go-ntlmssp` 0.1.1, current `zod` and `react-router-dom` in the console. Base images are Alpine 3.24 and Node 24. The storage-server image installs no extra packages.
 - The arm64 image of v1.7.0 contained an amd64 binary. This release builds each architecture with its own Go target.
@@ -236,9 +236,9 @@ copy .env.example .env
 docker compose -p datasafe --profile postgres -f docker-compose.yml -f docker-compose.local-data.yml up -d
 ```
 
-The default Compose stack serves the console from `DATASAFE_CONSOLE_IMAGE` (`gitverse.ru/direktorbani/datasafe-console:v1.7.1`); a host `web/console/dist` is not required. To serve a local production build, add `-f deploy/compose/docker-compose.local-console.yml`. For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
+The default Compose stack serves the console from `DATASAFE_CONSOLE_IMAGE` (`gitverse.ru/direktorbani/datasafe-console:v1.7.2`); a host `web/console/dist` is not required. To serve a local production build, add `-f deploy/compose/docker-compose.local-console.yml`. For Vite HMR during UI work: add `-f deploy/compose/docker-compose.dev.yml --profile dev`.
 
-Published images: `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1` and `gitverse.ru/direktorbani/datasafe-console:v1.7.1`. Registry details: [GitVerse registries (RU)](docs/ru/gitverse-mirror.md).
+Published images: `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.2` and `gitverse.ru/direktorbani/datasafe-console:v1.7.2`. Registry details: [GitVerse registries (RU)](docs/ru/gitverse-mirror.md).
 
 Default Compose install is production-safe: `STORAGE_DEV` is off unless you pass installer `-Dev` / `--dev` (or profile `dev`). The installer generates `STORAGE_METRICS_TOKEN` and wires Prometheus. First login is still `admin` / `admin`, then the setup wizard.
 

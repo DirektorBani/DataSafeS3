@@ -1,6 +1,6 @@
 # DataSafeS3 Helm Chart
 
-По-русски: [docs/ru/helm-datasafe.md](../../../docs/ru/helm-datasafe.md). Чарт релиза v1.7.1 — [datasafes3](../datasafes3/README.md). Этот файл описывает прежний стек.
+По-русски: [docs/ru/helm-datasafe.md](../../../docs/ru/helm-datasafe.md). Чарт релиза v1.7.2 — [datasafes3](../datasafes3/README.md). Этот файл описывает прежний стек.
 
 Helm chart for deploying **DataSafeS3** - self-hosted S3-compatible object storage with web console, Admin API, optional PostgreSQL metadata, LDAP/OIDC, Gateway replication, and Prometheus/Grafana monitoring.
 
@@ -12,16 +12,16 @@ Helm chart for deploying **DataSafeS3** - self-hosted S3-compatible object stora
 - Helm 3.10+
 - PersistentVolume provisioner (for object data and optional PostgreSQL)
 - Built images (or pull from GitVerse):
-  - `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1` - release tag (or build locally: `docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .`)
-  - `gitverse.ru/direktorbani/datasafe-console:v1.7.1` - release tag (or build via `deploy/docker/Dockerfile.console`)
+  - `gitverse.ru/direktorbani/datasafe-storage-server:v1.7.2` - release tag (or build locally: `docker build -f deploy/docker/Dockerfile -t datasafe/storage-server:latest .`)
+  - `gitverse.ru/direktorbani/datasafe-console:v1.7.2` - release tag (or build via `deploy/docker/Dockerfile.console`)
 
 ## Quick install (GitVerse release tags)
 
 ```bash
-# Minimal BoltDB stack with published v1.7.1 images
+# Minimal BoltDB stack with published v1.7.2 images
 helm install datasafe deploy/helm/datasafe \
-  --set storageServer.image.tag=v1.7.1 \
-  --set console.image.tag=v1.7.1 \
+  --set storageServer.image.tag=v1.7.2 \
+  --set console.image.tag=v1.7.2 \
   --namespace datasafe --create-namespace
 ```
 

@@ -2,6 +2,27 @@
 
 All notable changes to DataSafeS3 are documented in this file.
 
+## [1.7.2] - 2026-10-31
+
+A maintenance release. The GitVerse release page now carries the `.deb` and `.rpm` packages (1.7.1 had only their checksums).
+
+### Fixed
+
+- **DeleteBucket** on the filesystem backend no longer fails with "bucket not empty" when only empty directories are left by deleted nested keys (`a/b/c.txt`).
+- **Release assets.** The release job attaches `datasafes3_<version>_{amd64,arm64}.deb` and `datasafes3-<version>-1.{x86_64,aarch64}.rpm` next to `SHA256SUMS.txt`. If GitVerse refuses a file extension, the package is attached as `<file>.tgz` and the checksum in `SHA256SUMS.txt` still covers the package inside.
+
+### Added
+
+- `deploy/docker/Dockerfile.trusted-os` for podman/docker builds on Astra Linux and RED OS base images. The release builds `datasafe-storage-server-astra` and `datasafe-storage-server-redos` (amd64).
+- The release trusts `registry.red-soft.ru` through the Минцифры root and the 2024 sub CA, downloaded from the gosuslugi CDN and pinned by the SHA-256 of the PEM files.
+- `tools/s3smoke -persist put|check` writes objects before a restart and checks them after it.
+- `.gitverse/workflows/release.yaml` has a `dry_run` input: everything is built, nothing is published.
+
+### Changed
+
+- Console: Vite 8 and Tailwind CSS 4; screenshots reshot on the new console.
+- GitHub has no release workflows any more; releases are built only on GitVerse.
+
 ## [1.7.1] - 2026-10-24
 
 Security, image, and installer fixes found by an audit of 1.7.0, and a release pipeline that runs on GitVerse only. Images are not signed (no cosign); verify them by digest, see [SECURITY.md](SECURITY.md).

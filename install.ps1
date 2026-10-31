@@ -11,7 +11,7 @@
 #>
 param(
   [switch]$Yes,
-  [string]$Tag = "v1.7.1",
+  [string]$Tag = "v1.7.2",
   [string]$DataRoot = "",
   [string]$Profiles = "",
   [string]$ProjectName = "datasafe",
@@ -45,7 +45,7 @@ DataSafeS3 interactive installer
   .\install.ps1 -Yes -Profiles core,postgres,monitoring,data
   .\install.ps1 -Yes -Profiles core -DataRoot "$env:USERPROFILE\datasafe-data"
   .\install.ps1 -DryRun -Yes -Profiles core,postgres,data
-  .\install.ps1 -Tag v1.7.1 -DataRoot D:/datasafe-data
+  .\install.ps1 -Tag v1.7.2 -DataRoot D:/datasafe-data
   .\install.ps1 -Dev -Yes -Profiles core,postgres,data
   .\install.ps1 -Cluster -DryRun
 
@@ -230,8 +230,8 @@ function Normalize-MenuKey([string]$ans) {
 function Find-LocalServerImage {
   $candidates = @(
     "datasafe-storage-server:latest",
-    "gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1",
-    "gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1",
+    "gitverse.ru/direktorbani/datasafe-storage-server:v1.7.2",
+    "gitverse.ru/direktorbani/datasafe-storage-server:v1.7.2",
     "gitverse.ru/direktorbani/datasafe-storage-server:v1.5.0",
     "gitverse.ru/direktorbani/datasafe-storage-server:v1.1.0",
     "gitverse.ru/direktorbani/datasafe-storage-server:v1.0.3",
@@ -436,7 +436,7 @@ function Ensure-EnvFile([string]$dataRootPath) {
       throw @"
 No local storage-server image found, and binary mode must not rebuild (Docker Hub/registry pull is broken via proxy 127.0.0.1:10801).
 Fix: run scripts\ensure-docker-pull-proxy.cmd, or pull once:
-  docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1
+  docker pull gitverse.ru/direktorbani/datasafe-storage-server:v1.7.2
 Then re-run installer with binary selected.
 "@
     }

@@ -53,7 +53,7 @@ services:
 
   storage-server-standby:
     profiles: ["ha-standby"]
-    image: ${DATASAFE_SERVER_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1}
+    image: ${DATASAFE_SERVER_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.7.2}
     pull_policy: if_not_present
     environment:
       STORAGE_READ_ONLY: "true"
@@ -87,7 +87,7 @@ services:
 
   storage-server-standby-2:
     profiles: ["ha-standby"]
-    image: ${DATASAFE_SERVER_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.7.1}
+    image: ${DATASAFE_SERVER_IMAGE:-gitverse.ru/direktorbani/datasafe-storage-server:v1.7.2}
     pull_policy: if_not_present
     environment:
       STORAGE_READ_ONLY: "true"
