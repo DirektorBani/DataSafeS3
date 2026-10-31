@@ -129,3 +129,26 @@ func TestBucketLifecycle(t *testing.T) {
 		t.Fatalf("bucket dir should be gone: %v", err)
 	}
 }
+
+// Regression: deleting a nested key left empty parent directories behind
+// and DeleteBucket then reported BucketNotEmpty.
+func TestDeleteBucketAfterNestedKeyDeleted(t *testing.T) {
+	b := newTestBackend(t)
+	ctx := context.Background()
+	body := []byte("x")
+	if _, err := b.PutObject(ctx, "test", "dir/sub/obj.txt", bytes.NewReader(body), int64(len(body)), "text/plain"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.DeleteBucket("test"); err != storage.ErrBucketNotEmpty {
+		t.Fatalf("non-empty bucket: got %v, want ErrBucketNotEmpty", err)
+	}
+	if err := b.DeleteObject(ctx, "test", "dir/sub/obj.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.DeleteBucket("test"); err != nil {
+		t.Fatalf("empty bucket with leftover dirs: %v", err)
+	}
+	if b.BucketExists("test") {
+		t.Fatal("bucket still exists")
+	}
+}

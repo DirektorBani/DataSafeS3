@@ -5,8 +5,10 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -408,8 +410,13 @@ func (b *FSBackend) DeleteBucket(bucket string) error {
 	}
 	for _, e := range entries {
 		if e.Name() == "objects" {
-			objEntries, _ := os.ReadDir(filepath.Join(dir, "objects"))
-			if len(objEntries) > 0 {
+			// Deleting a nested key leaves its (now empty) parent
+			// directories behind, so only files count as content.
+			hasFiles, err := dirHasFiles(filepath.Join(dir, "objects"))
+			if err != nil {
+				return err
+			}
+			if hasFiles {
 				return ErrBucketNotEmpty
 			}
 		} else if e.Name() != "multipart" {
@@ -417,6 +424,27 @@ func (b *FSBackend) DeleteBucket(bucket string) error {
 		}
 	}
 	return os.RemoveAll(dir)
+}
+
+// dirHasFiles reports whether root contains anything other than directories.
+func dirHasFiles(root string) (bool, error) {
+	errFound := errors.New("found")
+	err := filepath.WalkDir(root, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if !d.IsDir() {
+			return errFound
+		}
+		return nil
+	})
+	if err == errFound {
+		return true, nil
+	}
+	return false, err
 }
 
 // CreateBucket creates the bucket directory.
