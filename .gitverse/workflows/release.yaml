@@ -101,6 +101,8 @@ jobs:
             bash scripts/build-images.sh --registry "$REGISTRY" --tags "${TAG},latest"
           fi
       - name: trusted-OS variant Astra Linux (amd64, storage server only)
+        # optional variants: a full package registry (500 MB quota, HTTP 403) must not block the main images
+        continue-on-error: true
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           OCI=""; [ "$DRY_RUN" = "true" ] && OCI="--oci-dir dist/oci"
@@ -118,6 +120,8 @@ jobs:
           bash scripts/build-images.sh --registry "$REGISTRY" --tags "$TAG" --platforms linux/amd64 --server-only --skip-console-build \
             --base-image registry.astralinux.ru/library/astra/ubi18:1.8.6 --name-suffix -astra $OCI
       - name: trusted-OS variant RED OS (amd64)
+        # optional variants: a full package registry (500 MB quota, HTTP 403) must not block the main images
+        continue-on-error: true
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           OCI=""; [ "$DRY_RUN" = "true" ] && OCI="--oci-dir dist/oci"
@@ -146,14 +150,6 @@ jobs:
         run: |
           export PATH="$PWD/dist/tools:$PATH"
           helm lint deploy/helm/datasafes3
-      - name: publish packages to GitVerse registries
-        if: env.DRY_RUN != 'true'
-        env:
-          GV_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-        run: |
-          export PATH="$PWD/dist/tools:$PATH"
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          TAG="$TAG" PKG_DIR=dist/packages CHART_SRC=deploy/helm/datasafes3 bash scripts/gitverse-publish-packages.sh
       - name: attach packages and checksums to the release
         if: env.DRY_RUN != 'true'
         env:
@@ -162,6 +158,17 @@ jobs:
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           sh scripts/extract-changelog-section.sh "${TAG#v}" CHANGELOG.md dist/release-body.md
           TAG="$TAG" RELEASE_NOTES_FILE=dist/release-body.md PACKAGE_FALLBACK_TGZ=1 bash scripts/gitverse-release-assets.sh dist/packages/SHA256SUMS.txt dist/packages/*.deb dist/packages/*.rpm
+      - name: publish packages to GitVerse registries
+        if: env.DRY_RUN != 'true'
+        # the package registry has a 500 MB account quota and answers 403 when it is full;
+        # the release page above already carries the same files, so a full registry does not stop the release
+        continue-on-error: true
+        env:
+          GV_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          export PATH="$PWD/dist/tools:$PATH"
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          TAG="$TAG" PKG_DIR=dist/packages CHART_SRC=deploy/helm/datasafes3 bash scripts/gitverse-publish-packages.sh
 
   sbom:
     needs: [images, packages]
