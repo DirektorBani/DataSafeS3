@@ -106,11 +106,12 @@ jobs:
           OCI=""; [ "$DRY_RUN" = "true" ] && OCI="--oci-dir dist/oci"
           # registry.red-soft.ru is signed by the Минцифры "Russian Trusted Sub CA" (2024 key) but serves
           # an older intermediate, so the Go client needs the root and the 2024 sub CA. Both come from the
-          # official gosuslugi.ru CDN and are pinned by SHA-256.
+          # official gosuslugi.ru CDN (gu-st.ru) and are pinned by the SHA-256 of the PEM files.
+          # Certificate fingerprints (SHA-256, DER): root D2:6D:2D:02:…:8E:CF:31, sub CA 2024 21:55:78:50:…:7D:88:A3:F2.
           curl -fsSL --retry 3 -o dist/russian_trusted_root_ca.crt https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt
           curl -fsSL --retry 3 -o dist/russian_trusted_sub_ca_2024.crt https://gu-st.ru/content/lending/russian_trusted_sub_ca_2024_pem.crt
           printf '%s  %s\n' \
-            d26d2d0231b7c39f92cc738512ba54103519e4405d68b5bd703e9788ca8ecf31 dist/russian_trusted_root_ca.crt \
+            936a43fea6e8e525bcc0f81acd9c3d21b4fc4b9b68acea7906d698005afc6504 dist/russian_trusted_root_ca.crt \
             6f9d829c8e6712444fce3624658d8788672849c5d5b7b53fd9cf7e83eac4193e dist/russian_trusted_sub_ca_2024.crt | sha256sum -c -
           # the gosuslugi files have no trailing newline, so join them with awk rather than cat
           awk 1 /etc/ssl/certs/ca-certificates.crt dist/russian_trusted_root_ca.crt dist/russian_trusted_sub_ca_2024.crt > dist/ca-ru.pem
