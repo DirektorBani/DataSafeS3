@@ -44,6 +44,7 @@ func must(name string, err error, detail string) {
 func main() {
 	ep := flag.String("endpoint", "http://127.0.0.1:9000", "server URL")
 	wait := flag.Duration("wait", 60*time.Second, "how long to wait for /healthz")
+	persist := flag.String("persist", "", `"put" stores a marker object in bucket rrpo-persist; "check" verifies it (e.g. after a reboot)`)
 	flag.Parse()
 	ctx := context.Background()
 
@@ -78,6 +79,10 @@ func main() {
 		BaseEndpoint: aws.String(*ep), Region: "us-east-1", UsePathStyle: true,
 		Credentials: credentials.NewStaticCredentialsProvider(env("STORAGE_ACCESS_KEY", "datasafe"), env("STORAGE_SECRET_KEY", "datasafesecret"), ""),
 	})
+	if *persist != "" {
+		persistence(ctx, c, *persist)
+		return
+	}
 	rb := make([]byte, 4)
 	_, _ = rand.Read(rb)
 	b := "smoke-" + hex.EncodeToString(rb)
@@ -112,4 +117,30 @@ func main() {
 	_, err = c.DeleteBucket(ctx, &s3.DeleteBucketInput{Bucket: &b})
 	must("delete-bucket", err, b)
 	fmt.Println("ALL PASS")
+}
+
+// persistence stores ("put") or verifies ("check") a marker object whose body
+// carries its own SHA-256, so a check after a restart proves the data survived.
+func persistence(ctx context.Context, c *s3.Client, mode string) {
+	b, k := "rrpo-persist", "marker.txt"
+	switch mode {
+	case "put":
+		_, err := c.CreateBucket(ctx, &s3.CreateBucketInput{Bucket: &b})
+		must("persist-create-bucket", err, b)
+		rb := make([]byte, 16)
+		_, _ = rand.Read(rb)
+		body := "rrpo marker " + time.Now().Format(time.RFC3339) + " " + hex.EncodeToString(rb)
+		_, err = c.PutObject(ctx, &s3.PutObjectInput{Bucket: &b, Key: &k, Body: bytes.NewReader([]byte(body))})
+		must("persist-put", err, b+"/"+k+" = "+body)
+	case "check":
+		g, err := c.GetObject(ctx, &s3.GetObjectInput{Bucket: &b, Key: &k})
+		var got []byte
+		if err == nil {
+			got, _ = io.ReadAll(g.Body)
+			g.Body.Close()
+		}
+		must("persist-get", err, b+"/"+k+" = "+string(got))
+	default:
+		must("persist", fmt.Errorf("unknown mode %q", mode), "")
+	}
 }
